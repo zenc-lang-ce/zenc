@@ -97,11 +97,11 @@
     },
     {
         "name": "println",
-        "doc": "println \"format string {expr}\"\n  Prints to stdout with newline. Auto-formats {expr} values."
+        "doc": "println f\"format string {expr}\"\n  Prints to stdout with newline. Auto-formats {expr} values."
     },
     {
         "name": "print",
-        "doc": "print \"format string {expr}\"\n  Prints to stdout without newline."
+        "doc": "print f\"format string {expr}\"\n  Prints to stdout without newline."
     },
     {
         "name": "eprintln",

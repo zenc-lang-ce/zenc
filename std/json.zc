@@ -594,7 +594,7 @@ impl JsonValue {
             }
             buf.append_c_ptr("]");
         } else if (self.kind.tag == JsonType::JSON_OBJECT().tag) {
-            buf.append_c_ptr("{{");
+            buf.append_c_ptr(f"{{");
             let m = self.object_val;
             let first = true;
             for (let i: usize = 0; i < m.capacity(); i = i + 1) {
