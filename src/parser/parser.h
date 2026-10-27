@@ -838,6 +838,9 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
 /** @brief Moves the expressions of the last process_printf_sugar call into a NODE_RAW_STMT. */
 void take_fstring_exprs(ParserContext *ctx, ASTNode *node);
 
+/** @brief Warns that a plain "..." with a `{expr}` interpolates (deprecated by RFC 0001). */
+void warn_implicit_interpolation(ParserContext *ctx, Token t, const char *content);
+
 /**
  * @brief Checks if a token is a reserved keyword.
  */

@@ -1,0 +1,45 @@
+   Compiling tests/compiler/diagnostics_output/warn_implicit_interpolation.zc...
+warning: implicit string interpolation is deprecated
+  --> tests/compiler/diagnostics_output/warn_implicit_interpolation.zc:10:13
+   |
+10 |     let s = "value {x}";
+   |             ^ here
+   |
+   = note: add the 'f' prefix: f"..."
+warning: implicit string interpolation is deprecated
+  --> tests/compiler/diagnostics_output/warn_implicit_interpolation.zc:11:13
+   |
+11 |     println "println {x}";
+   |             ^ here
+   |
+   = note: add the 'f' prefix: f"..."
+warning: implicit string interpolation is deprecated
+  --> tests/compiler/diagnostics_output/warn_implicit_interpolation.zc:12:5
+   |
+12 |     "bare {x}";
+   |     ^ here
+   |
+   = note: add the 'f' prefix: f"..."
+warning: implicit string interpolation is deprecated
+  --> tests/compiler/diagnostics_output/warn_implicit_interpolation.zc:13:6
+   |
+13 |     !"stderr {x}";
+   |      ^ here
+   |
+   = note: add the 'f' prefix: f"..."
+warning: implicit string interpolation is deprecated
+  --> tests/compiler/diagnostics_output/warn_implicit_interpolation.zc:14:17
+   |
+14 |     let got = ? "prompt {x}: " (n);
+   |                 ^ here
+   |
+   = note: add the 'f' prefix: f"..."
+warning: implicit string interpolation is deprecated
+  --> tests/compiler/diagnostics_output/warn_implicit_interpolation.zc:15:20
+   |
+15 |     assert(x == 1, "assert {x}");
+   |                    ^ here
+   |
+   = note: add the 'f' prefix: f"..."
+    Finished build in Xs with 0 errors and 6 warnings
+[exit 0]

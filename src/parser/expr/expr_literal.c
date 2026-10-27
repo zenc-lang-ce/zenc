@@ -586,6 +586,18 @@ static int string_has_interpolated_expr(const char *s)
     return 0;
 }
 
+// RFC 0001: only f"..." interpolates. A plain "..." with a `{expr}` still does for one
+// release, with this warning.
+void warn_implicit_interpolation(ParserContext *ctx, Token t, const char *content)
+{
+    if (ctx->is_speculative || t.kind != TOK_STRING || !string_has_interpolated_expr(content))
+    {
+        return;
+    }
+    zwarn_with_suggestion(t, "implicit string interpolation is deprecated",
+                          "add the 'f' prefix: f\"...\"");
+}
+
 // `{{` -> `{` and `}}` -> `}`, as interpolation does for literal text.
 static char *unescape_string_braces(const char *s)
 {
