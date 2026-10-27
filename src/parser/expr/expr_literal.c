@@ -586,16 +586,26 @@ static int string_has_interpolated_expr(const char *s)
     return 0;
 }
 
-// RFC 0001: only f"..." interpolates. A plain "..." with a `{expr}` still does for one
-// release, with this warning.
-void warn_implicit_interpolation(ParserContext *ctx, Token t, const char *content)
+// RFC 0001: only f"..." interpolates. For one release a plain "..." that relies on the old
+// meaning does not compile: its `{expr}` would interpolate and its `{{` / `}}` would mean
+// one brace. Called where those are turned into code or text, so `}}` alone in a value
+// (left as is there) is not an error.
+void reject_implicit_interpolation(ParserContext *ctx, Token t, const char *content)
 {
-    if (ctx->is_speculative || t.kind != TOK_STRING || !string_has_interpolated_expr(content))
+    if (ctx->is_speculative || t.kind != TOK_STRING)
     {
         return;
     }
-    zwarn_with_suggestion(t, "implicit string interpolation is deprecated",
-                          "add the 'f' prefix: f\"...\"");
+    if (string_has_interpolated_expr(content))
+    {
+        const char *hints[] = {"add the 'f' prefix to interpolate: f\"...\"", NULL};
+        zerror_with_hints(t, "only f\"...\" strings interpolate", hints);
+    }
+    else if (strstr(content, "{{") || strstr(content, "}}"))
+    {
+        const char *hints[] = {"add the 'f' prefix to keep them as escapes: f\"...\"", NULL};
+        zerror_with_hints(t, "'{{' and '}}' only escape braces in f\"...\" strings", hints);
+    }
 }
 
 // `{{` -> `{` and `}}` -> `}`, as interpolation does for literal text.
@@ -642,6 +652,7 @@ ASTNode *parse_string_literal(ParserContext *ctx, Token t)
     // (a global initializer).
     if (has_interpolation && !string_has_interpolated_expr(content))
     {
+        reject_implicit_interpolation(ctx, t, content);
         char *unescaped = unescape_string_braces(content);
         zfree(content);
         content = unescaped;
@@ -763,6 +774,7 @@ ASTNode *parse_string_literal(ParserContext *ctx, Token t)
 ASTNode *parse_fstring_literal(ParserContext *ctx, Token t)
 {
     char *content = token_get_string_content(t);
+
     // Without a `{expr}` (only escaped braces, or none) there is nothing to build at run
     // time: a plain C literal, so it also works where a statement expression cannot (a global
     // initializer). Built here and not by parse_string_literal: in an f"..." `{{` and `}}`

@@ -1,0 +1,65 @@
+   Compiling tests/compiler/diagnostics_output/err_implicit_interpolation.zc...
+error: only f"..." strings interpolate
+  --> tests/compiler/diagnostics_output/err_implicit_interpolation.zc:10:13
+   |
+10 |     let a = "value {x}";
+   |             ^ here
+   |
+   = help: add the 'f' prefix to interpolate: f"..."
+error: only f"..." strings interpolate
+  --> tests/compiler/diagnostics_output/err_implicit_interpolation.zc:11:13
+   |
+11 |     println "println {x}";
+   |             ^ here
+   |
+   = help: add the 'f' prefix to interpolate: f"..."
+error: only f"..." strings interpolate
+  --> tests/compiler/diagnostics_output/err_implicit_interpolation.zc:12:5
+   |
+12 |     "bare {x}";
+   |     ^ here
+   |
+   = help: add the 'f' prefix to interpolate: f"..."
+error: only f"..." strings interpolate
+  --> tests/compiler/diagnostics_output/err_implicit_interpolation.zc:13:6
+   |
+13 |     !"stderr {x}";
+   |      ^ here
+   |
+   = help: add the 'f' prefix to interpolate: f"..."
+error: only f"..." strings interpolate
+  --> tests/compiler/diagnostics_output/err_implicit_interpolation.zc:14:17
+   |
+14 |     let got = ? "prompt {x}: " (n);
+   |                 ^ here
+   |
+   = help: add the 'f' prefix to interpolate: f"..."
+error: only f"..." strings interpolate
+  --> tests/compiler/diagnostics_output/err_implicit_interpolation.zc:15:20
+   |
+15 |     assert(x == 1, "assert {x}");
+   |                    ^ here
+   |
+   = help: add the 'f' prefix to interpolate: f"..."
+error: '{{' and '}}' only escape braces in f"..." strings
+  --> tests/compiler/diagnostics_output/err_implicit_interpolation.zc:16:13
+   |
+16 |     let b = "value {{x}}";
+   |             ^ here
+   |
+   = help: add the 'f' prefix to keep them as escapes: f"..."
+error: '{{' and '}}' only escape braces in f"..." strings
+  --> tests/compiler/diagnostics_output/err_implicit_interpolation.zc:17:13
+   |
+17 |     println "println {{x}}";
+   |             ^ here
+   |
+   = help: add the 'f' prefix to keep them as escapes: f"..."
+error: '{{' and '}}' only escape braces in f"..." strings
+  --> tests/compiler/diagnostics_output/err_implicit_interpolation.zc:18:13
+   |
+18 |     println "println a}}b";
+   |             ^ here
+   |
+   = help: add the 'f' prefix to keep them as escapes: f"..."
+[exit 1]
