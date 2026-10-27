@@ -763,6 +763,23 @@ ASTNode *parse_string_literal(ParserContext *ctx, Token t)
 ASTNode *parse_fstring_literal(ParserContext *ctx, Token t)
 {
     char *content = token_get_string_content(t);
+    // Without a `{expr}` (only escaped braces, or none) there is nothing to build at run
+    // time: a plain C literal, so it also works where a statement expression cannot (a global
+    // initializer). Built here and not by parse_string_literal: in an f"..." `{{` and `}}`
+    // always mean one brace, while a "..." used as a value leaves a `}}` alone.
+    if (!string_has_interpolated_expr(content))
+    {
+        char *unescaped = unescape_string_braces(content);
+        ASTNode *node = ast_create(NODE_EXPR_LITERAL);
+        node->token = t;
+        node->literal.kind = LITERAL_STRING;
+        node->literal.string_val = escape_c_string(unescaped);
+        node->type_info = type_new(TYPE_STRING);
+        zfree(unescaped);
+        zfree(content);
+        return node;
+    }
+
     // Use safe, unified interpolation logic. is_raw=0, is_expr=1.
     char *code = process_printf_sugar(ctx, t, content, 0, "stdout", NULL, NULL, 0, 0, 1);
 
