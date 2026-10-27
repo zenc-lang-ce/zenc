@@ -24,7 +24,7 @@ jobs:
       - name: Checkout Docs Repository
         uses: actions/checkout@v4
         with:
-          repository: 'zenc-lang/docs'
+          repository: 'zenc-lang-ce/zenc-docs'
           token: ${{ secrets.WEBSITE_REPO_TOKEN }}
           path: 'docs'
 
@@ -47,7 +47,7 @@ jobs:
       - name: Setup Awesome-Zen-C repository
         run: |
           cd zen-c
-          git clone https://x-access-token:${{ secrets.WEBSITE_REPO_TOKEN }}@github.com/zenc-lang/awesome-zenc.git examples
+          git clone https://x-access-token:${{ secrets.WEBSITE_REPO_TOKEN }}@github.com/zenc-lang-ce/awesome-zenc.git examples
 
       - name: Run Rosetta Code Scraper
         # The scraper validates every candidate solution with `zc transpile`

@@ -17,5 +17,5 @@ jobs:
           pr-message: |
             Welcome to the Zen C community!
 
-            Thanks for your first Pull Request! Please make sure you have read our [Contributing Guidelines](https://github.com/zenc-lang/zenc/blob/main/CONTRIBUTING.md).
+            Thanks for your first Pull Request! Please make sure you have read our [Contributing Guidelines](https://github.com/zenc-lang-ce/zenc/blob/main/CONTRIBUTING.md).
             One of our maintainers will review your changes shortly.
