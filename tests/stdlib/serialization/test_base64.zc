@@ -5,7 +5,7 @@ import "std/encoding/base64.zc"
 
 fn check(input: char*, expected: char*) {
     let s = Base64::encode((u8*)input, strlen(input));
-    assert(s.eq_str(expected), "Encoded '{input}' expected '{expected}', got '{s.c_str()}'");
+    assert(s.eq_str(expected), f"Encoded '{input}' expected '{expected}', got '{s.c_str()}'");
     s.free();
 }
 
@@ -20,12 +20,12 @@ test "Base64 RFC 4648" {
 
 fn check_decode(encoded: char*, expected: char*) {
     let r = Base64::decode(encoded);
-    assert(r.is_ok(), "Decode '{encoded}' should succeed");
+    assert(r.is_ok(), f"Decode '{encoded}' should succeed");
     let v = r.unwrap();
     let n = v.len;
-    assert(n == strlen(expected), "Decode '{encoded}' length mismatch");
+    assert(n == strlen(expected), f"Decode '{encoded}' length mismatch");
     for (let i: usize = 0; i < n; i = i + 1) {
-        assert(v.get(i) == (u8)expected[i], "Decode '{encoded}' byte {i}");
+        assert(v.get(i) == (u8)expected[i], f"Decode '{encoded}' byte {i}");
     }
     v.free();
 }

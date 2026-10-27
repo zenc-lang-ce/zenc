@@ -9,7 +9,7 @@ struct MyResource {
 
 impl Drop for MyResource {
     fn drop(self) {
-        println "Dropping MyResource {self.id}";
+        println f"Dropping MyResource {self.id}";
         DROP_CALLED = 1;
     }
 }

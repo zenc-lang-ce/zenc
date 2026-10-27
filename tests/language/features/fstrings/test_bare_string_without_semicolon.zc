@@ -5,11 +5,11 @@
 fn main() {
     let x = 3
     "plain without semicolon"
-    "interpolated without semicolon: {x}"
-    "followed by a declaration: {x}"
+    f"interpolated without semicolon: {x}"
+    f"followed by a declaration: {x}"
     let y = x + 1
-    "y is {y}"
-    "same line"; "then {y}"
-    "without newline: {x} "..
+    f"y is {y}"
+    "same line"; f"then {y}"
+    f"without newline: {x} "..
     "last"
 }

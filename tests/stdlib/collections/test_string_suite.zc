@@ -83,14 +83,14 @@ test "test_fstrings_return" {
     let x = 100;
     let y = 50;
 
-    println "Direct F-String: x={x}";
+    println f"Direct F-String: x={x}";
     let nested = f"y is {y}";
-    println "Argument F-String: {nested}";
-    println "Math inside: 100 + 50 = {x + y}";
+    println f"Argument F-String: {nested}";
+    println f"Math inside: 100 + 50 = {x + y}";
     
     let inner = f"Inner({x})";
     let outer = f"Outer({inner})";
-    println "Composed: {outer}";
+    println f"Composed: {outer}";
     let outer_res = strcmp(outer, "Outer(Inner(100))");
     let zero: c_int = 0;
     assert(outer_res == zero, "Composed f-string failed");

@@ -50,7 +50,7 @@ test "a struct literal field named like the capture is not a local" {
 
 test "capture used only inside println" {
     let k = 7;
-    let f = fn(x: int) -> int { println "{k}"; return x; };
+    let f = fn(x: int) -> int { println f"{k}"; return x; };
     assert f(1) == 1;
 }
 

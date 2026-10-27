@@ -10,5 +10,5 @@ fn item_number(item: ItemId) -> u32 {
 
 fn main() {
     let user: UserId = 7;
-    println "{item_number(user)}";
+    println f"{item_number(user)}";
 }

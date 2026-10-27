@@ -10,17 +10,17 @@ fn main() {
     let s = String::new("Test")
     
     // Test basic interpolation
-    println "Value: {s}"
+    println f"Value: {s}"
     
     // Test multiple interpolation in one statement (verifies unique names)
-    println "{s} - {s}"
+    println f"{s} - {s}"
     
     // Test interpolation with method call
-    println "C-str: {s.c_str()}"
+    println f"C-str: {s.c_str()}"
 
     // Test with side effects (verifies single evaluation)
     let count = 0
-    println "Getter: {getter(&count)}"
+    println f"Getter: {getter(&count)}"
     if (count != 1) {
         printf("Error: getter called %d times, expected 1\n", count)
     }

@@ -128,7 +128,7 @@ output_check() {
 output_check "bare strings print without semicolons" 'fn main() {
     let x = 3
     "first"
-    "x is {x}"
+    f"x is {x}"
     "last"
 }' "" "first
 x is 3
@@ -301,18 +301,18 @@ diag_check() {
 
 diag_check "redefined function is a Zen C error" 'fn twice() -> int { return 1; }
 fn twice() -> int { return 2; }
-fn main() { println "{twice()}"; }' "Redefinition of function 'twice'"
+fn main() { println f"{twice()}"; }' "Redefinition of function 'twice'"
 
 diag_check "redefined method is a Zen C error" 'struct Counter { value: int; }
 impl Counter { fn get(self) -> int { return 1; } }
 impl Counter { fn get(self) -> int { return 2; } }
-fn main() { let c = Counter { value: 0 }; println "{c.get()}"; }' "Redefinition of method 'Counter::get'"
+fn main() { let c = Counter { value: 0 }; println f"{c.get()}"; }' "Redefinition of method 'Counter::get'"
 
 # --- Imported files: diagnostics and #line name the imported file -----------
 
 mkdir -p "$workdir/imported"
 printf 'fn make() -> int {\n    let x: int = "text";\n    return 1;\n}\n' > "$workdir/imported/broken.zc"
-printf 'import "imported/broken.zc"\nfn main() {\n    println "{make()}";\n}\n' > "$workdir/imported_main.zc"
+printf 'import "imported/broken.zc"\nfn main() {\n    println f"{make()}";\n}\n' > "$workdir/imported_main.zc"
 out=$("$ZC" build "$workdir/imported_main.zc" -o "$workdir/imported_out" 2>&1)
 if echo "$out" | grep -q "imported/broken.zc:2:" && ! echo "$out" | grep -q "imported_main.zc:"; then
     check "error in an imported file is reported at its own path" 1
@@ -322,7 +322,7 @@ fi
 
 mkdir -p "$workdir/lib"
 printf 'struct Counter { hits: int; }\nimpl Counter {\n    fn bump(self) { self.hits = self.hits + 1; }\n}\n' > "$workdir/lib/counter.zc"
-printf 'import "lib/counter.zc"\nfn main() {\n    let c = Counter { hits: 0 };\n    c.bump();\n    println "{c.hits}";\n}\n' > "$workdir/lib_main.zc"
+printf 'import "lib/counter.zc"\nfn main() {\n    let c = Counter { hits: 0 };\n    c.bump();\n    println f"{c.hits}";\n}\n' > "$workdir/lib_main.zc"
 "$ZC" build --emit-c "$workdir/lib_main.zc" -o "$workdir/lib_out" >/dev/null 2>&1
 line=$(awk '/#line/{l=$0} /^ZC_FUNC void Counter__bump\(Counter\* self\)$/{print l; exit}' "$workdir/lib_out.c" 2>/dev/null)
 if echo "$line" | grep -q 'lib/counter.zc"'; then
@@ -343,7 +343,7 @@ mkdir -p "$prefix/bin" "$prefix/share/zenc"
 cp "$ZC" "$prefix/bin/zc"
 ln -s "$repo_root/std" "$prefix/share/zenc/std"
 ln -s "$repo_root/std.zc" "$prefix/share/zenc/std.zc"
-printf 'import "std/vec.zc"\nfn main() {\n    let v = Vec<int>::new();\n    v.push(7);\n    println "installed-std-ok {v.len}";\n}\n' > "$workdir/uses_std.zc"
+printf 'import "std/vec.zc"\nfn main() {\n    let v = Vec<int>::new();\n    v.push(7);\n    println f"installed-std-ok {v.len}";\n}\n' > "$workdir/uses_std.zc"
 out=$(cd "$workdir" && env -u ZC_ROOT "$prefix/bin/zc" run uses_std.zc -o uses_std 2>&1)
 if echo "$out" | grep -q "installed-std-ok 1"; then
     check "installed zc finds its stdlib in PREFIX/share/zenc" 1

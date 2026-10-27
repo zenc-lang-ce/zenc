@@ -38,7 +38,7 @@ test "iterator_desugaring" {
 
     // This loop should be desugared by the compiler
     for i in range {
-        println "Got: {i}"; // Verification print
+        println f"Got: {i}"; // Verification print
         sum += i;
     }
 

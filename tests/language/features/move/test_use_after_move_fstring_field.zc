@@ -11,6 +11,6 @@ fn main() {
     let bag = Bag { items: Vec<int>::new() }
     bag.items.push(1)
     let taken = bag.items
-    println "{taken.len}"
-    println "{bag.items.len}"
+    println f"{taken.len}"
+    println f"{bag.items.len}"
 }

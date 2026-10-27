@@ -23,10 +23,10 @@ test "interpolations with a single expression" {
     let y = 4;
     let p = Point { x: 1, y: 2 };
     let arr: int[3] = [7, 8, 9];
-    let s = "{x + y}|{add(x, y)}|{p.sum()}|{arr[1]}|{x:03d}|{(int)Color::Green}|{{lit}}";
-    assert(strcmp(s, "7|7|3|8|003|1|{{lit}}") == 0, "single expressions");
-    let m = """
+    let s = f"{x + y}|{add(x, y)}|{p.sum()}|{arr[1]}|{x:03d}|{(int)Color::Green}|{{lit}}";
+    assert(strcmp(s, f"7|7|3|8|003|1|{{lit}}") == 0, "single expressions");
+    let m = f"""
 a {x} {{b}}
 """;
-    assert(strstr(m, "a 3 {{b}}") != NULL, "multiline interpolation");
+    assert(strstr(m, f"a 3 {{b}}") != NULL, "multiline interpolation");
 }

@@ -6,5 +6,5 @@ test "test_varargs" {
     
     let buf: char* = (char*)malloc(100);
     sprintf(buf, "Formatted: %d", 123);
-    println "  {buf}";
+    println f"  {buf}";
 }

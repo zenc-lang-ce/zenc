@@ -10,7 +10,7 @@ test "test_generics_struct" {
     w1.id = 1;
     w1.item = 500;
     
-    println "Wrapper Int: {w1.item} (ID: {w1.id})";    
+    println f"Wrapper Int: {w1.item} (ID: {w1.id})";    
 }
 
 struct RcInner<T> {

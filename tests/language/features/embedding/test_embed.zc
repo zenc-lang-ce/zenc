@@ -6,7 +6,7 @@ test "test_embed" {
     // Actually, std.zc is always searchable from root.
     
     "Target File: 'std.zc'";
-    "File Size:   {data.len} bytes";
+    f"File Size:   {data.len} bytes";
     "";
     
     let lines: I32 = 1;
@@ -46,11 +46,11 @@ test "test_embed" {
     
     "";
     "*** Report ***";
-    "Total Lines: {lines}";
-    "Total Words: {words}";
+    f"Total Lines: {lines}";
+    f"Total Words: {words}";
     
-    "Checksum:    0x{sum:X} (Simple Sum)"; 
-    "Average Byte: {sum / data.len}"; 
+    f"Checksum:    0x{sum:X} (Simple Sum)"; 
+    f"Average Byte: {sum / data.len}"; 
     
     "";
     "Analysis successfully completed.";

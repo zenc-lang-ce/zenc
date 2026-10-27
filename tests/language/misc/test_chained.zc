@@ -5,7 +5,7 @@ test "test_chained" {
     let s = String::from("hello");
     let opt = s.find('e');
     if opt.is_some() {
-        "Found at index: {opt.unwrap()}";
+        f"Found at index: {opt.unwrap()}";
     }
     
     if s.find('l').is_some() {

@@ -7,7 +7,7 @@ test "interpolation of valid values" {
     let s1 = String::new("abc")
     let s2 = s1
     s1 = String::new("again")
-    let text = "{s1.c_str()} {s2.c_str()}"
+    let text = f"{s1.c_str()} {s2.c_str()}"
     assert(strcmp(text, "again abc") == 0, "interpolated values")
-    println "{s1.c_str()} {s2.length()}"
+    println f"{s1.c_str()} {s2.length()}"
 }

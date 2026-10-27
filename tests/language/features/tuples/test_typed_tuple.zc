@@ -3,19 +3,19 @@ test "typed_tuple_destructuring" {
     // Fully typed tuple destructuring
     let (a: string, b: u8) = ("hello", 42);
     assert(b == 42, "b should be 42");
-    println "a = {a}, b = {b}";
+    println f"a = {a}, b = {b}";
     
     // Mixed: some typed, some inferred
     let (x, y: i32) = (100, 200);
     assert(x == 100, "x should be 100");
     assert(y == 200, "y should be 200");
-    println "x = {x}, y = {y}";
+    println f"x = {x}, y = {y}";
     
     // All inferred (existing behavior)
     let (p, q) = (1, 2);
     assert(p == 1, "p should be 1");
     assert(q == 2, "q should be 2");
-    println "p = {p}, q = {q}";
+    println f"p = {p}, q = {q}";
     
     println "Typed tuple destructuring OK";
 }

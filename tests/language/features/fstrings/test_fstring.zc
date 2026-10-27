@@ -7,7 +7,7 @@ test "alias namespace fstring" {
     assert(res == "42", "Import namespace in f-string failed");
     
     // Check local string formatting via println (compile check)
-    println "Val: {Mod::get_val()}";
+    println f"Val: {Mod::get_val()}";
 }
 
 import "tests/language/features/fstrings/fstring_lib.h" as Lib;
@@ -20,7 +20,7 @@ test "alias C header fstring" {
     assert(res == "99", "C header namespace in f-string failed");
     
     // Verify println (rewrite_expr_methods path)
-    println "C Val: {Lib::lib_val()}";
+    println f"C Val: {Lib::lib_val()}";
 }
 test "raw_string_no_interpolation" {
     // Raw string with interpolation characters (should not interpolate)
@@ -69,33 +69,33 @@ test "negated_struct_interpolation" {
 
 test "brace_escaping" {
     // Test {{ escapes to {
-    let a = "Open {{ and close }}";
-    println "Got: {a}";
+    let a = f"Open {{ and close }}";
+    println f"Got: {a}";
     
     // Test in interpolated string with JSON-style content  
-    let b = "JSON: {{\"key\": \"value\"}}";
-    println "Got: {b}";
+    let b = f"JSON: {{\"key\": \"value\"}}";
+    println f"Got: {b}";
     
     println "  Brace escaping: Success";
 }
 
 test "implicit_fstring_interpolation" {
     let result = 123;
-    let s = "{result}";
+    let s = f"{result}";
     // Should be "123"
     assert(strcmp(s, "123") == 0, "Implicit f-string failed");
 }
 
 test "with_const_char_ptr" {
     let a: const char* = "test";
-    let s = "Text: {a}";
+    let s = f"Text: {a}";
     assert(strcmp(s, "Text: test") == 0, "With const char* f-string failed");
 }
 
 test "implicit_fstring_complex" {
     let a = 10;
     let b = 20;
-    let s = "Sum: {a + b}";
+    let s = f"Sum: {a + b}";
     assert(strcmp(s, "Sum: 30") == 0, "Complex implicit f-string failed");
 }
 

@@ -15,5 +15,5 @@ test "test_implicit_return" {
     // With variables
     let x = 42;
     print "Value is: ";
-    println "{x}";
+    println f"{x}";
 }

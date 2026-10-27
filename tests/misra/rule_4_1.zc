@@ -23,5 +23,5 @@ fn main() {
     
     let s10 = "\x41ABC"; // FAIL (More than 2 hex digits)
     
-    println "{s1} {s2} {s3} {s4} {s6} {s7} {s9} {s10}";
+    println f"{s1} {s2} {s3} {s4} {s6} {s7} {s9} {s10}";
 }

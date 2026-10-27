@@ -6,7 +6,7 @@ test "test_hello" {
 test "test_vars" {
     let x = 10;
     let y: int = 20;
-    println "Sum: {x + y}";
+    println f"Sum: {x + y}";
 }
 
 fn take_const_arg(x: const int) -> int {

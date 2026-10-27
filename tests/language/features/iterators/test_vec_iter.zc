@@ -12,6 +12,6 @@ test "vec_int_iteration" {
         sum = sum + x;
     }
     
-    assert(sum == 60, "Expected 60, got {sum}");
+    assert(sum == 60, f"Expected 60, got {sum}");
     v.free();
 }

@@ -3,5 +3,5 @@
 let style = embed "tests/language/features/embedding/embed_braces.txt" as string;
 
 test "a global embeds a file with braces" {
-    assert(strstr(style, "{{ color: red; }}") != NULL, "the braces are kept as text");
+    assert(strstr(style, f"{{ color: red; }}") != NULL, "the braces are kept as text");
 }

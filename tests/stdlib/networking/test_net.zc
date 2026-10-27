@@ -58,7 +58,7 @@ test "test_net" {
     
     if (n2_res.is_ok()) {
         buf2[n2_res.unwrap()] = 0;
-        "Client Received: {buf2}";
+        f"Client Received: {buf2}";
     }
     free(buf2);
     

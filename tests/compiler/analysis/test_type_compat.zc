@@ -9,7 +9,7 @@ trait Printable {
 
 impl Printable for Point {
     fn print(self) {
-        println "({self.x}, {self.y})";
+        println f"({self.x}, {self.y})";
     }
 }
 

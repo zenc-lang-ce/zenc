@@ -7,7 +7,7 @@ impl Flags {
     fn new(b: int) -> Flags { return Flags{bits: b}; }
 
     fn bitor(self, other: Flags) -> Flags {
-        "  [DEBUG] Custom bitor called! combining {self.bits} | {other.bits}";
+        f"  [DEBUG] Custom bitor called! combining {self.bits} | {other.bits}";
         return Flags { bits: self.bits | other.bits };
     }
 }
@@ -77,10 +77,10 @@ test "test_operator_overloading" {
     let a = 0b1100;
     let b = 0b1010;
     
-    "{a} | {b} = {a | b} (Expected 14)";
-    "{a} & {b} = {a & b} (Expected 8)";
-    "{a} ^ {b} = {a ^ b} (Expected 6)";
-    "{a} << 1 = {a << 1} (Expected 24)";
+    f"{a} | {b} = {a | b} (Expected 14)";
+    f"{a} & {b} = {a & b} (Expected 8)";
+    f"{a} ^ {b} = {a ^ b} (Expected 6)";
+    f"{a} << 1 = {a << 1} (Expected 24)";
 
     "=> Compound Assignment Desugaring";
     let x = 10;
@@ -91,7 +91,7 @@ test "test_operator_overloading" {
     let f1 = Flags::new(1);
     let f2 = Flags::new(4);
     f1 |= f2; 
-    "Result bits: {f1.bits} (Expected 5)";
+    f"Result bits: {f1.bits} (Expected 5)";
     
     def MAX_LIMIT = 100;
 }
