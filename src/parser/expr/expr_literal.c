@@ -662,7 +662,7 @@ ASTNode *parse_string_literal(ParserContext *ctx, Token t)
 
     if (has_interpolation)
     {
-        ASTNode *node = parse_fstring_parts(ctx, t, content, NULL, NULL, 0);
+        ASTNode *node = parse_fstring_parts(ctx, t, content);
         if (!node)
         {
             zfree(content);
@@ -789,8 +789,7 @@ static ASTNode *fstring_text_part(const char *start, const char *end)
 // The `{...}` that starts at `brace`, up to its closing brace: the expression parsed and
 // typed with the current scope, and the printf conversion written after a ':' (not `::`).
 // Returns NULL after reporting an error; *end is left at the closing brace.
-static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brace, char **end,
-                                  char ***used_syms, int *count, int check_symbols)
+static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brace, char **end)
 {
     char *p = brace + 1;
     char *colon = NULL;
@@ -865,37 +864,6 @@ static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brac
         expr++;
     }
 
-    if (check_symbols)
-    {
-        Lexer lex;
-        lexer_init(&lex, expr, ctx->config, ctx->current_filename);
-        lex.line = srctoken.line;
-        lex.col = srctoken.col;
-
-        Token t;
-        Token prev = {0};
-        while ((t = lexer_next(&lex)).kind != TOK_EOF)
-        {
-            int is_member = prev.kind == TOK_OP && prev.len == 1 && prev.start[0] == '.';
-            if (t.kind == TOK_IDENT && !is_member)
-            {
-                char *name = token_strdup(t);
-                ZenSymbol *sym = find_symbol_entry(ctx, name);
-                if (sym)
-                {
-                    sym->is_used = 1;
-                }
-                if (used_syms && count)
-                {
-                    *used_syms = xrealloc(*used_syms, sizeof(char *) * (size_t)(*count + 1));
-                    (*used_syms)[*count] = name;
-                    (*count)++;
-                }
-            }
-            prev = t;
-        }
-    }
-
     // The lexer keeps pointers into the text it reads: parse a copy that outlives it.
     char *src = xstrdup(expr);
     Lexer lex;
@@ -939,12 +907,11 @@ static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brac
     return part;
 }
 
-ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *content,
-                             char ***used_syms, int *count, int check_symbols)
+ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *content)
 {
     reject_implicit_interpolation(ctx, srctoken, content);
     int saved_silent = ctx->silent_warnings;
-    ctx->silent_warnings = !check_symbols;
+    ctx->silent_warnings = 1;
 
     ASTNode *head = NULL;
     ASTNode *tail = NULL;
@@ -973,7 +940,7 @@ ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *con
         if (*brace)
         {
             char *end = NULL;
-            expr = fstring_expr_part(ctx, srctoken, brace, &end, used_syms, count, check_symbols);
+            expr = fstring_expr_part(ctx, srctoken, brace, &end);
             if (!expr)
             {
                 ctx->silent_warnings = saved_silent;
@@ -1036,7 +1003,7 @@ ASTNode *parse_fstring_literal(ParserContext *ctx, Token t)
         return node;
     }
 
-    ASTNode *node = parse_fstring_parts(ctx, t, content, NULL, NULL, 0);
+    ASTNode *node = parse_fstring_parts(ctx, t, content);
     zfree(content);
     return node ? node : ast_create(NODE_ERRONEOUS);
 }

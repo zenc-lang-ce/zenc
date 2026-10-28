@@ -83,7 +83,7 @@ static char *parse_check_message_string(ParserContext *ctx, Token st, int *is_li
 
     if (has_interpolation)
     {
-        *fstring = parse_fstring_parts(ctx, st, content, NULL, NULL, 0);
+        *fstring = parse_fstring_parts(ctx, st, content);
         zfree(content);
         *is_literal = 0;
         return NULL;

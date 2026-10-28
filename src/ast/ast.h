@@ -532,10 +532,6 @@ struct ASTNode
         struct
         {
             char *content;
-            char **used_symbols;
-            int used_symbol_count;
-            struct ASTNode **interp_exprs; ///< Parsed `{...}` expressions of an f-string.
-            int interp_expr_count;
         } raw_stmt;
 
         struct
@@ -761,10 +757,9 @@ typedef struct
  * @brief The child fields of a node, in source order.
  *
  * Not included: the tree of an imported module (`import_stmt.module_root`,
- * shared between importers; walk it yourself with a visited set), the two
- * arrays that are not lists (`func.default_values`, `raw_stmt.interp_exprs`),
- * and the pieces of an f-string (`fstring.parts`): their expressions carry the
- * position of the string, not their own.
+ * shared between importers; walk it yourself with a visited set), the array
+ * `func.default_values`, and the pieces of an f-string (`fstring.parts`): their
+ * expressions carry the position of the string, not their own.
  * For NODE_COMPTIME, both `body` (the code written) and `generated` (the code
  * it produced).
  */

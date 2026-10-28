@@ -51,7 +51,9 @@ void handle_ternary(ParserContext *ctx, ASTNode *node);
 
 // From codegen_fstring.c
 // Writes an f-string: as a value (built in a buffer) when `stream` is NULL, else each piece
-// straight to `stream` ("stdout", "stderr"), followed by a newline if `newline`.
+// straight to `stream` ("stdout", "stderr"), followed by a newline if `newline`. The value
+// is built in one `static char[8192]` per place it is emitted, not per evaluation, so two
+// results of the same f-string share their contents (#339); a longer text is cut.
 void emit_fstring(ParserContext *ctx, ASTNode *node, const char *stream, int newline);
 void handle_expr_fstring(ParserContext *ctx, ASTNode *node);
 // RFC 0001: a statement `println(f"...")` calling the println of std/io.zc (also print, eprint
