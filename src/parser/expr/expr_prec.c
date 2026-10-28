@@ -128,14 +128,13 @@ static int may_be_struct(Type *t)
     }
 }
 
-// The method that overloads an operator for `struct_name`: `Struct__method`, or the
-// one of a trait impl (`Struct__Trait__method`). Its name goes to *mangled_out.
-static FuncSig *find_operator_method(ParserContext *ctx, const char *struct_name,
-                                     const char *method, char **mangled_out)
+// The method `method` of `struct_name`: `Struct__method`, or the one of a trait impl
+// (`Struct__Trait__method`). Its name goes to *mangled_out (the plain one when there is
+// no such method).
+static FuncSig *find_method_sig(ParserContext *ctx, const char *struct_name, const char *method,
+                                char **mangled_out)
 {
-    char buf[MAX_ERROR_MSG_LEN];
-    snprintf(buf, sizeof(buf), "%s__%s", struct_name, method);
-    char *mangled = merge_underscores(buf);
+    char *mangled = mangle_method_symbol(struct_name, NULL, method);
     FuncSig *sig = find_func(ctx, mangled);
 
     StructRef *ref = ctx->parsed_impls_list;
@@ -146,10 +145,8 @@ static FuncSig *find_operator_method(ParserContext *ctx, const char *struct_name
             const char *t_struct = ref->node->impl_trait.target_type;
             if (t_struct && strcmp(t_struct, struct_name) == 0)
             {
-                char buf_t[MAX_ERROR_MSG_LEN];
-                snprintf(buf_t, sizeof(buf_t), "%s__%s__%s", struct_name,
-                         ref->node->impl_trait.trait_name, method);
-                char *trait_mangled = merge_underscores(buf_t);
+                char *trait_mangled =
+                    mangle_method_symbol(struct_name, ref->node->impl_trait.trait_name, method);
                 sig = find_func(ctx, trait_mangled);
                 if (sig)
                 {
@@ -664,11 +661,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
             if (struct_name)
             {
-                char buf[MAX_ERROR_MSG_LEN];
-                snprintf(buf, sizeof(buf), "%s__%s", struct_name, method);
-                char *mangled = merge_underscores(buf);
-
-                if (find_func(ctx, mangled))
+                char *mangled = NULL;
+                FuncSig *sig = find_method_sig(ctx, struct_name, method, &mangled);
+                if (sig)
                 {
                     // Rewrite: ~x -> Struct_bitnot(x)
                     ASTNode *call = ast_create(NODE_EXPR_CALL);
@@ -679,7 +674,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                     // Handle 'self' argument adjustment (Pointer vs Value)
                     ASTNode *arg = operand;
-                    FuncSig *sig = find_func(ctx, mangled);
 
                     if (sig->total_args > 0 && sig->arg_types[0]->kind == TYPE_POINTER && !is_ptr)
                     {
@@ -1129,38 +1123,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                 if (struct_name)
                 {
-                    char *mangled = mangle_method_symbol(struct_name, NULL, lhs->member.field);
-
-                    FuncSig *sig = find_func(ctx, mangled);
-
-                    if (!sig)
-                    {
-                        // Trait method lookup: Struct__Trait_Method
-                        StructRef *ref = ctx->parsed_impls_list;
-                        while (ref)
-                        {
-                            if (ref->node && ref->node->kind == NODE_IMPL_TRAIT)
-                            {
-                                if (ref->node->impl_trait.target_type &&
-                                    strcmp(ref->node->impl_trait.target_type, struct_name) == 0)
-                                {
-                                    char *trait_mangled = mangle_method_symbol(
-                                        struct_name, ref->node->impl_trait.trait_name,
-                                        lhs->member.field);
-
-                                    if (find_func(ctx, trait_mangled))
-                                    {
-                                        sig = find_func(ctx, trait_mangled);
-                                        zfree(mangled);
-                                        mangled = trait_mangled;
-                                        break;
-                                    }
-                                    zfree(trait_mangled);
-                                }
-                            }
-                            ref = ref->next;
-                        }
-                    }
+                    char *mangled = NULL;
+                    FuncSig *sig = find_method_sig(ctx, struct_name, lhs->member.field, &mangled);
 
                     if (sig)
                     {
@@ -1914,42 +1878,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                 if (struct_name)
                 {
-                    char buf[MAX_ERROR_MSG_LEN];
-                    snprintf(buf, sizeof(buf), "%s__%s", struct_name, node->member.field);
-                    char *mangled = merge_underscores(buf);
-
-                    FuncSig *sig = find_func(ctx, mangled);
-
-                    if (!sig)
-                    {
-                        // Try resolving as a trait method: Struct__Trait__Method
-                        StructRef *ref = ctx->parsed_impls_list;
-                        while (ref)
-                        {
-                            if (ref->node && ref->node->kind == NODE_IMPL_TRAIT)
-                            {
-                                const char *t_struct = ref->node->impl_trait.target_type;
-                                if (t_struct && strcmp(t_struct, struct_name) == 0)
-                                {
-                                    char buf_trait[MAX_ERROR_MSG_LEN];
-                                    snprintf(buf_trait, sizeof(buf_trait), "%s__%s__%s",
-                                             struct_name, ref->node->impl_trait.trait_name,
-                                             node->member.field);
-                                    char *trait_mangled = merge_underscores(buf_trait);
-
-                                    if (find_func(ctx, trait_mangled))
-                                    {
-                                        zfree(mangled);
-                                        mangled = trait_mangled;
-                                        sig = find_func(ctx, mangled);
-                                        break;
-                                    }
-                                    zfree(trait_mangled);
-                                }
-                            }
-                            ref = ref->next;
-                        }
-                    }
+                    char *mangled = NULL;
+                    FuncSig *sig = find_method_sig(ctx, struct_name, node->member.field, &mangled);
 
                     if (sig)
                     {
@@ -2598,14 +2528,14 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             if (struct_name)
             {
                 char *mangled = NULL;
-                FuncSig *sig = find_operator_method(ctx, struct_name, method, &mangled);
+                FuncSig *sig = find_method_sig(ctx, struct_name, method, &mangled);
 
                 // Without a `neq` method, `a != b` is `!a.eq(b)`.
                 int negate = 0;
                 if (!sig && strcmp(bin->binary.op, "!=") == 0)
                 {
                     zfree(mangled);
-                    sig = find_operator_method(ctx, struct_name, "eq", &mangled);
+                    sig = find_method_sig(ctx, struct_name, "eq", &mangled);
                     negate = sig != NULL;
                 }
 
