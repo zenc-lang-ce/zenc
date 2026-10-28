@@ -1471,6 +1471,12 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     case NODE_DEFER:
         new_node->defer_stmt.stmt = copy_ast_replacing(ctx, n->defer_stmt.stmt, p, c, os, ns);
         break;
+    case NODE_EXPR_FSTRING:
+        new_node->fstring.parts = copy_ast_replacing(ctx, n->fstring.parts, p, c, os, ns);
+        break;
+    case NODE_FSTRING_PART:
+        new_node->fstring_part.expr = copy_ast_replacing(ctx, n->fstring_part.expr, p, c, os, ns);
+        break;
     case NODE_TERNARY:
         new_node->ternary.cond = copy_ast_replacing(ctx, n->ternary.cond, p, c, os, ns);
         new_node->ternary.true_expr = copy_ast_replacing(ctx, n->ternary.true_expr, p, c, os, ns);

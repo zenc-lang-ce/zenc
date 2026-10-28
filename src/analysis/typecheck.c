@@ -976,6 +976,26 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             tc->move_checks_only = prev_move_checks_only;
         }
         break;
+    case NODE_EXPR_FSTRING:
+    {
+        // Reported as raw C, as when f-strings were built as C text by the parser.
+        misra_check_raw_block(tc->pctx, node->token);
+        // The `{...}` expressions were parsed and typed when the string was; check them
+        // only for moves (use after move, consumed values).
+        int prev_move_checks_only = tc->move_checks_only;
+        tc->move_checks_only = 1;
+        ASTNode *part = node->fstring.parts;
+        while (part)
+        {
+            if (part->fstring_part.expr)
+            {
+                check_node(tc, part->fstring_part.expr, depth + 1);
+            }
+            part = part->next;
+        }
+        tc->move_checks_only = prev_move_checks_only;
+        break;
+    }
     case NODE_PREPROC_DIRECTIVE:
         // Rule Zen 1.4 is already handled by parser_audit_preprocessor
         break;

@@ -1379,7 +1379,7 @@ skip_callee_gen:
             }
             else
             {
-                if (arg->kind == NODE_RAW_STMT)
+                if (arg->kind == NODE_RAW_STMT || arg->kind == NODE_EXPR_FSTRING)
                 {
                     int is_fmt_arg = 0;
                     if (sig && sig->is_varargs && arg_idx == sig->total_args - 1)

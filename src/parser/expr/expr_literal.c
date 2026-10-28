@@ -662,15 +662,12 @@ ASTNode *parse_string_literal(ParserContext *ctx, Token t)
 
     if (has_interpolation)
     {
-        // ... (interpolation logic)
-        char *code = process_printf_sugar(ctx, t, content, 0, "stdout", NULL, NULL, 0, 0, 1);
-
-        ASTNode *node = ast_create(NODE_RAW_STMT);
-        node->token = t;
-        node->raw_stmt.content = code;
-        take_fstring_exprs(ctx, node);
-        node->type_info = type_new(TYPE_STRING);
-        node->resolved_type = xstrdup("string");
+        ASTNode *node = parse_fstring_parts(ctx, t, content, NULL, NULL, 0);
+        if (!node)
+        {
+            zfree(content);
+            return ast_create(NODE_ERRONEOUS);
+        }
 
         // Rule 4.1 check also for interpolated strings (though rarer)
         if (ctx->config->misra_mode)
@@ -770,6 +767,253 @@ ASTNode *parse_string_literal(ParserContext *ctx, Token t)
     return node;
 }
 
+static ASTNode *fstring_text_part(const char *start, const char *end)
+{
+    char *text = xmalloc((size_t)(end - start) + 1);
+    char *w = text;
+    for (const char *c = start; c < end; c++)
+    {
+        if ((c[0] == '{' || c[0] == '}') && c + 1 < end && c[1] == c[0])
+        {
+            c++;
+        }
+        *w++ = *c;
+    }
+    *w = 0;
+
+    ASTNode *part = ast_create(NODE_FSTRING_PART);
+    part->fstring_part.text = text;
+    return part;
+}
+
+// The `{...}` that starts at `brace`, up to its closing brace: the expression parsed and
+// typed with the current scope, and the printf conversion written after a ':' (not `::`).
+// Returns NULL after reporting an error; *end is left at the closing brace.
+static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brace, char **end,
+                                  char ***used_syms, int *count, int check_symbols)
+{
+    char *p = brace + 1;
+    char *colon = NULL;
+    int depth = 1;
+    int paren_depth = 0;
+    while (*p && depth > 0)
+    {
+        if (*p == '{')
+        {
+            depth++;
+        }
+        if (*p == '}')
+        {
+            depth--;
+        }
+        if (*p == '(')
+        {
+            paren_depth++;
+        }
+        if (*p == ')' && paren_depth > 0)
+        {
+            paren_depth--;
+        }
+        if (depth == 1 && paren_depth == 0 && *p == ':' && !colon)
+        {
+            if (p[1] == ':')
+            {
+                p++;
+            }
+            else
+            {
+                colon = p;
+            }
+        }
+        if (depth == 0)
+        {
+            break;
+        }
+        p++;
+    }
+
+    if (*p == 0)
+    {
+        zpanic_at(srctoken, "Unclosed interpolation brace in printf-sugar");
+        return NULL;
+    }
+    *p = 0;
+    *end = p;
+
+    // `\"` inside the braces is a quote of the expression.
+    char *expr = brace + 1;
+    char *read = expr;
+    char *write = expr;
+    while (*read)
+    {
+        if (read[0] == '\\' && read[1] == '"')
+        {
+            read++;
+        }
+        *write++ = *read++;
+    }
+    *write = 0;
+
+    char *fmt = NULL;
+    if (colon)
+    {
+        *colon = 0;
+        fmt = xstrdup(colon + 1);
+    }
+    while (*expr == ' ')
+    {
+        expr++;
+    }
+
+    if (check_symbols)
+    {
+        Lexer lex;
+        lexer_init(&lex, expr, ctx->config, ctx->current_filename);
+        lex.line = srctoken.line;
+        lex.col = srctoken.col;
+
+        Token t;
+        Token prev = {0};
+        while ((t = lexer_next(&lex)).kind != TOK_EOF)
+        {
+            int is_member = prev.kind == TOK_OP && prev.len == 1 && prev.start[0] == '.';
+            if (t.kind == TOK_IDENT && !is_member)
+            {
+                char *name = token_strdup(t);
+                ZenSymbol *sym = find_symbol_entry(ctx, name);
+                if (sym)
+                {
+                    sym->is_used = 1;
+                }
+                if (used_syms && count)
+                {
+                    *used_syms = xrealloc(*used_syms, sizeof(char *) * (size_t)(*count + 1));
+                    (*used_syms)[*count] = name;
+                    (*count)++;
+                }
+            }
+            prev = t;
+        }
+    }
+
+    // The lexer keeps pointers into the text it reads: parse a copy that outlives it.
+    char *src = xstrdup(expr);
+    Lexer lex;
+    lexer_init(&lex, src, ctx->config, ctx->current_filename);
+    lex.line = srctoken.line;
+    lex.col = srctoken.col;
+
+    ASTNode *expr_node = parse_expression(ctx, &lex);
+    if (!expr_node)
+    {
+        zpanic_at(srctoken, "Could not parse expression in interpolation");
+        return NULL;
+    }
+    infer_type(ctx, expr_node);
+
+    // An interpolation holds one expression: anything left over (`{x y}`,
+    // `{x;}`, a code block in a multiline string) would be dropped silently.
+    Token leftover = lexer_peek(&lex);
+    if (leftover.kind != TOK_EOF)
+    {
+        char msg[MAX_SHORT_MSG_LEN];
+        snprintf(msg, sizeof(msg),
+                 "Invalid expression in f-string: expected '}' or ':', found '%.*s'",
+                 (int)(leftover.len > 60 ? 60 : leftover.len), leftover.start);
+        const char *hints[] = {"braces in f-strings must be escaped with '{{' or '}}'",
+                               "use a raw string literal (r\"...\") to disable interpolation",
+                               NULL};
+        zpanic_with_hints(srctoken, msg, hints);
+        return NULL;
+    }
+
+    ASTNode *part = ast_create(NODE_FSTRING_PART);
+    part->token = srctoken;
+    part->fstring_part.expr = expr_node;
+    part->fstring_part.fmt = fmt;
+    // The codegen no longer has this scope: keep what the name says the type is.
+    if (!expr_node->type_info)
+    {
+        part->fstring_part.symbol_type = find_symbol_type(ctx, src);
+    }
+    return part;
+}
+
+ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *content,
+                             char ***used_syms, int *count, int check_symbols)
+{
+    reject_implicit_interpolation(ctx, srctoken, content);
+    int saved_silent = ctx->silent_warnings;
+    ctx->silent_warnings = !check_symbols;
+
+    ASTNode *head = NULL;
+    ASTNode *tail = NULL;
+    char *s = xstrdup(content);
+    char *cur = s;
+    while (*cur)
+    {
+        // The next `{` that opens an interpolation; `{{` and `}}` are text.
+        char *brace = cur;
+        while (*brace)
+        {
+            if ((brace[0] == '{' || brace[0] == '}') && brace[1] == brace[0])
+            {
+                brace += 2;
+                continue;
+            }
+            if (*brace == '{')
+            {
+                break;
+            }
+            brace++;
+        }
+
+        ASTNode *text = brace > cur ? fstring_text_part(cur, brace) : NULL;
+        ASTNode *expr = NULL;
+        if (*brace)
+        {
+            char *end = NULL;
+            expr = fstring_expr_part(ctx, srctoken, brace, &end, used_syms, count, check_symbols);
+            if (!expr)
+            {
+                ctx->silent_warnings = saved_silent;
+                return NULL;
+            }
+            cur = end + 1;
+        }
+        else
+        {
+            cur = brace;
+        }
+
+        ASTNode *pieces[2] = {text, expr};
+        for (int i = 0; i < 2; i++)
+        {
+            if (!pieces[i])
+            {
+                continue;
+            }
+            if (tail)
+            {
+                tail->next = pieces[i];
+            }
+            else
+            {
+                head = pieces[i];
+            }
+            tail = pieces[i];
+        }
+    }
+    ctx->silent_warnings = saved_silent;
+
+    ASTNode *node = ast_create(NODE_EXPR_FSTRING);
+    node->token = srctoken;
+    node->fstring.parts = head;
+    node->type_info = type_new(TYPE_STRING);
+    node->resolved_type = xstrdup("string");
+    return node;
+}
+
 // Parse f-string literal
 ASTNode *parse_fstring_literal(ParserContext *ctx, Token t)
 {
@@ -792,18 +1036,9 @@ ASTNode *parse_fstring_literal(ParserContext *ctx, Token t)
         return node;
     }
 
-    // Use safe, unified interpolation logic. is_raw=0, is_expr=1.
-    char *code = process_printf_sugar(ctx, t, content, 0, "stdout", NULL, NULL, 0, 0, 1);
-
-    ASTNode *node = ast_create(NODE_RAW_STMT);
-    node->token = t;
-    node->raw_stmt.content = code;
-    take_fstring_exprs(ctx, node);
-    node->type_info = type_new(TYPE_STRING);
-    node->resolved_type = xstrdup("string");
-
+    ASTNode *node = parse_fstring_parts(ctx, t, content, NULL, NULL, 0);
     zfree(content);
-    return node;
+    return node ? node : ast_create(NODE_ERRONEOUS);
 }
 
 // Parse character literal

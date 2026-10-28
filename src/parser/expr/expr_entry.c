@@ -215,6 +215,16 @@ static void find_var_refs(ASTNode *node, char ***refs, int *ref_count)
         }
         return;
     }
+    if (node->kind == NODE_EXPR_FSTRING)
+    {
+        ASTNode *part = node->fstring.parts;
+        while (part)
+        {
+            find_var_refs(part->fstring_part.expr, refs, ref_count);
+            part = part->next;
+        }
+        return;
+    }
 
     // A nested lambda was analyzed when it was parsed: from outside it needs what it
     // captures, not the names in its body (its own parameters among them).

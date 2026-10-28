@@ -91,6 +91,10 @@ static const char *dot_type_name(int type)
         return "IMPORT";
     case NODE_RAW_STMT:
         return "RAW";
+    case NODE_EXPR_FSTRING:
+        return "FSTRING";
+    case NODE_FSTRING_PART:
+        return "FSTRING_PART";
     case NODE_GOTO:
         return "GOTO";
     case NODE_LABEL:

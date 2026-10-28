@@ -36,8 +36,7 @@ static void check_global_initializers(ASTNode *decls)
             continue;
         }
         ASTNode *init = d->var_decl.init_expr;
-        if (init && init->kind == NODE_RAW_STMT && init->raw_stmt.content &&
-            strncmp(init->raw_stmt.content, "({", 2) == 0)
+        if (init && init->kind == NODE_EXPR_FSTRING)
         {
             zerror_at(init->token,
                       "A global cannot be initialized with an interpolated string (it is built "

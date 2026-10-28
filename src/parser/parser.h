@@ -470,6 +470,7 @@ struct ParserContext
         ASTNode *global_user_structs; ///< List of user defined structs.
         char *current_impl_type;      ///< Type currently being implemented (in impl block).
         int tmp_counter;              ///< Counter for temporary variables.
+        int fstring_counter;          ///< Counter for the buffers of f-string values.
         ASTNode *defer_stack[1024];   ///< Stack of deferred nodes (max 1024).
         int defer_count;              ///< Counter for defer statements in current scope.
         ASTNode *current_lambda;      ///< Current lambda being generated.
@@ -837,6 +838,20 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
                            int is_raw, int is_expr);
 /** @brief Moves the expressions of the last process_printf_sugar call into a NODE_RAW_STMT. */
 void take_fstring_exprs(ParserContext *ctx, ASTNode *node);
+
+/**
+ * @brief Parses the pieces of an f-string into a NODE_EXPR_FSTRING.
+ *
+ * Text pieces keep their characters (braces unescaped); each `{expr[:fmt]}` is parsed and
+ * typed with the current scope. No C is built here: the codegen decides how each piece is
+ * written and where (a buffer for a value, a stream for a direct print).
+ *
+ * With `check_symbols`, the names used in the expressions are marked used and listed in
+ * `used_syms`; without it, warnings are silenced while they are parsed. Returns NULL after
+ * reporting an error.
+ */
+ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *content,
+                             char ***used_syms, int *count, int check_symbols);
 
 /** @brief Rejects a plain "..." that interpolates or escapes braces (RFC 0001: only f"..."). */
 void reject_implicit_interpolation(ParserContext *ctx, Token t, const char *content);

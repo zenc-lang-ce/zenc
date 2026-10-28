@@ -48,6 +48,12 @@ void handle_raw_stmt(ParserContext *ctx, ASTNode *node);
 void handle_ast_comment(ParserContext *ctx, ASTNode *node);
 void handle_erroneous(ParserContext *ctx, ASTNode *node);
 void handle_ternary(ParserContext *ctx, ASTNode *node);
+
+// From codegen_fstring.c
+// Writes an f-string: as a value (built in a buffer) when `stream` is NULL, else each piece
+// straight to `stream` ("stdout", "stderr"), followed by a newline if `newline`.
+void emit_fstring(ParserContext *ctx, ASTNode *node, const char *stream, int newline);
+void handle_expr_fstring(ParserContext *ctx, ASTNode *node);
 void handle_va_start(ParserContext *ctx, ASTNode *node);
 void handle_va_end(ParserContext *ctx, ASTNode *node);
 void handle_va_copy(ParserContext *ctx, ASTNode *node);

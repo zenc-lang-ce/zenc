@@ -286,8 +286,8 @@ ASTChildren ast_children(ASTNode *node)
         add_child(&c, &node->va_arg_val.ap);
         break;
 
-    // No children. NODE_IMPORT and NODE_RAW_STMT do hold nodes, but not as
-    // children: see ast_children() in ast.h.
+    // No children. NODE_IMPORT, NODE_RAW_STMT and the f-string nodes do hold
+    // nodes, but not as children: see ast_children() in ast.h.
     case NODE_EXPR_LITERAL:
     case NODE_EXPR_VAR:
     case NODE_BREAK:
@@ -305,6 +305,8 @@ ASTChildren ast_children(ASTNode *node)
     case NODE_PLUGIN:
     case NODE_REFLECTION:
     case NODE_AST_COMMENT:
+    case NODE_EXPR_FSTRING:
+    case NODE_FSTRING_PART:
     case NODE_ERRONEOUS:
         break;
 

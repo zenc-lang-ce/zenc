@@ -194,6 +194,8 @@ typedef enum
     NODE_IMPORT,             ///< Import statement (recursive).
     NODE_COMPTIME,           ///< Comptime block (interpreted at compile time).
     NODE_AST_COMMENT,        ///< Comment node.
+    NODE_EXPR_FSTRING,       ///< Interpolated string f"..." (a list of NODE_FSTRING_PART).
+    NODE_FSTRING_PART,       ///< Piece of an f-string: literal text or a `{expr[:fmt]}`.
     NODE_ERRONEOUS           ///< Error sentinel (safe no-op node).
 } NodeType;
 
@@ -678,6 +680,19 @@ struct ASTNode
 
         struct
         {
+            ASTNode *parts; ///< NODE_FSTRING_PART list, in source order.
+        } fstring;
+
+        struct
+        {
+            char *text;        ///< Literal text, braces unescaped (NULL for a `{expr}`).
+            ASTNode *expr;     ///< The interpolated expression (NULL for text).
+            char *fmt;         ///< printf conversion written after ':' (`.2f`), or NULL.
+            char *symbol_type; ///< Type of `expr` found by name when it has no type_info.
+        } fstring_part;
+
+        struct
+        {
             ASTNode *call;       // The kernel call (NODE_EXPR_CALL)
             ASTNode *grid;       // Grid dimensions expression
             ASTNode *block;      // Block dimensions expression
@@ -745,8 +760,10 @@ typedef struct
  * @brief The child fields of a node, in source order.
  *
  * Not included: the tree of an imported module (`import_stmt.module_root`,
- * shared between importers; walk it yourself with a visited set), and the two
- * arrays that are not lists (`func.default_values`, `raw_stmt.interp_exprs`).
+ * shared between importers; walk it yourself with a visited set), the two
+ * arrays that are not lists (`func.default_values`, `raw_stmt.interp_exprs`),
+ * and the pieces of an f-string (`fstring.parts`): their expressions carry the
+ * position of the string, not their own.
  * For NODE_COMPTIME, both `body` (the code written) and `generated` (the code
  * it produced).
  */

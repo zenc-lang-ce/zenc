@@ -51,6 +51,7 @@ src/ast/primitives.c
 src/ast/symbols.c
 src/codegen/codegen.c
 src/codegen/codegen_expr_core.c
+src/codegen/codegen_fstring.c
 src/codegen/codegen_expr_simple.c
 src/codegen/codegen_expr_member.c
 src/codegen/codegen_expr_control.c

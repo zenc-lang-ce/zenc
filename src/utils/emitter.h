@@ -34,6 +34,7 @@ typedef struct EmitterSavedState
         } buffer;
     };
     int indent_level;
+    int pending_indent;
     size_t output_line;
 } EmitterSavedState;
 
@@ -67,5 +68,8 @@ void emitter_indent(Emitter *e);
 void emitter_dedent(Emitter *e);
 int emitter_push(Emitter *e);
 int emitter_pop(Emitter *e);
+// Saves the state, as emitter_push, and writes into a new empty buffer until emitter_pop
+// (take its text first with emitter_take_string).
+int emitter_push_buffer(Emitter *e);
 
 #endif
