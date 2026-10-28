@@ -298,3 +298,40 @@ void handle_expr_fstring(ParserContext *ctx, ASTNode *node)
 {
     emit_fstring(ctx, node, NULL, 0);
 }
+
+int emit_direct_print(ParserContext *ctx, ASTNode *node)
+{
+    if (node->kind != NODE_EXPR_CALL || !node->call.callee ||
+        node->call.callee->kind != NODE_EXPR_VAR || !node->call.args ||
+        node->call.args->kind != NODE_EXPR_FSTRING || node->call.args->next)
+    {
+        return 0;
+    }
+
+    static const char *const names[] = {"print", "println", "eprint", "eprintln"};
+    const char *name = node->call.callee->var_ref.name;
+    int which = -1;
+    for (int i = 0; i < 4; i++)
+    {
+        if (strcmp(name, names[i]) == 0)
+        {
+            which = i;
+        }
+    }
+    if (which < 0)
+    {
+        return 0;
+    }
+
+    FuncSig *sig = find_func(ctx, name);
+    const char *file = sig ? sig->decl_token.file : NULL;
+    size_t flen = file ? strlen(file) : 0;
+    if (!file || flen < 9 || strcmp(file + flen - 9, "std/io.zc") != 0)
+    {
+        return 0;
+    }
+
+    int newline = (which == 1 || which == 3);
+    emit_fstring(ctx, node->call.args, which >= 2 ? "stderr" : "stdout", newline);
+    return 1;
+}

@@ -54,6 +54,11 @@ void handle_ternary(ParserContext *ctx, ASTNode *node);
 // straight to `stream` ("stdout", "stderr"), followed by a newline if `newline`.
 void emit_fstring(ParserContext *ctx, ASTNode *node, const char *stream, int newline);
 void handle_expr_fstring(ParserContext *ctx, ASTNode *node);
+// RFC 0001: a statement `println(f"...")` calling the println of std/io.zc (also print, eprint
+// and eprintln) writes each piece of the f-string straight to the stream, as the old keyword
+// did: the output is the same as building the string and printing it, without the buffer of
+// an f-string value or its size limit. Returns 0, emitting nothing, for any other node.
+int emit_direct_print(ParserContext *ctx, ASTNode *node);
 void handle_va_start(ParserContext *ctx, ASTNode *node);
 void handle_va_end(ParserContext *ctx, ASTNode *node);
 void handle_va_copy(ParserContext *ctx, ASTNode *node);

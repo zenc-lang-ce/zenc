@@ -52,86 +52,6 @@ static int string_statement_ends_at_newline(Token str, Token next)
     }
 }
 
-// RFC 0001: `println(f"...");` calling the println of std/io.zc (also print, eprint and
-// eprintln) writes each piece of the f-string straight to the stream, as the old keyword
-// did. The output is the same as building the string and printing it, without the buffer
-// of an f-string value or its size limit. Returns NULL, consuming nothing, for anything
-// else: another argument, or a print function that is not the one of std/io.zc.
-// Pending refactor: It belongs in codegen, as a choice of how to emit the call: it is
-// in the parser only because f-strings are still turned into C here
-// (process_printf_sugar), so their pieces exist only in the parser. It moves to codegen
-// when f-strings do.
-static ASTNode *parse_direct_print(ParserContext *ctx, Lexer *l, Token name)
-{
-    static const char *const names[] = {"print", "println", "eprint", "eprintln"};
-    int which = -1;
-    for (int i = 0; i < 4; i++)
-    {
-        if (name.len == strlen(names[i]) && strncmp(name.start, names[i], name.len) == 0)
-        {
-            which = i;
-        }
-    }
-    if (which < 0)
-    {
-        return NULL;
-    }
-
-    Lexer la = *l;
-    lexer_next(&la); // the name
-    if (lexer_next(&la).kind != TOK_LPAREN)
-    {
-        return NULL;
-    }
-    Token str = lexer_next(&la);
-    if (str.kind != TOK_FSTRING || lexer_next(&la).kind != TOK_RPAREN)
-    {
-        return NULL;
-    }
-    ZenTokenType after = lexer_peek(&la).kind;
-    if (after != TOK_SEMICOLON && after != TOK_RBRACE)
-    {
-        return NULL;
-    }
-
-    FuncSig *sig = find_func(ctx, names[which]);
-    const char *file = sig ? sig->decl_token.file : NULL;
-    size_t flen = file ? strlen(file) : 0;
-    if (!file || flen < 9 || strcmp(file + flen - 9, "std/io.zc") != 0)
-    {
-        return NULL;
-    }
-
-    *l = la;
-    if (after == TOK_SEMICOLON)
-    {
-        lexer_next(l);
-    }
-    int newline = (which == 1 || which == 3);
-    const char *target = (which >= 2) ? "stderr" : "stdout";
-    char *inner = token_get_string_content(str);
-    char **used_syms = NULL;
-    int used_count = 0;
-    char *code =
-        process_printf_sugar(ctx, str, inner, newline, target, &used_syms, &used_count, 1, 0, 0);
-    zfree(inner);
-    if (!code)
-    {
-        return NULL;
-    }
-
-    ASTNode *n = ast_create(NODE_RAW_STMT);
-    n->token = str;
-    char *stmt_code = xmalloc(strlen(code) + 2);
-    sprintf(stmt_code, "%s;", code); /* safe */
-    zfree(code);
-    n->raw_stmt.content = stmt_code;
-    n->raw_stmt.used_symbols = used_syms;
-    n->raw_stmt.used_symbol_count = used_count;
-    take_fstring_exprs(ctx, n);
-    return n;
-}
-
 ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
 {
     int prev_emit = l->emit_comments;
@@ -783,17 +703,6 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
                     return n;
                 }
             }
-        }
-    }
-
-    // `println(f"...")` of std/io.zc: written straight to the stream (see parse_direct_print,
-    // which is here and not in codegen only while f-strings are turned into C by the parser).
-    if (tk.kind == TOK_IDENT)
-    {
-        ASTNode *direct = parse_direct_print(ctx, l, tk);
-        if (direct)
-        {
-            return direct;
         }
     }
 
