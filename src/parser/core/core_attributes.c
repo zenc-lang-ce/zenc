@@ -120,7 +120,6 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
         {
             zpanic_at(attr, "Expected attribute name");
             return (DeclarationAttributes){0};
-            return (DeclarationAttributes){0};
         }
 
         if ((0 == strncmp(attr.start, "vector_size", 11) && 11 == attr.len) ||
@@ -139,7 +138,6 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                 if (lexer_next(l).kind != TOK_RPAREN)
                 {
                     zpanic_at(lexer_peek(l), "Expected ) after vector size");
-                    return (DeclarationAttributes){0};
                     return (DeclarationAttributes){0};
                 }
             }
@@ -164,7 +162,6 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                 if (lexer_next(l).kind != TOK_RPAREN)
                 {
                     zpanic_at(lexer_peek(l), "Expected ) after deprecated message");
-                    return (DeclarationAttributes){0};
                     return (DeclarationAttributes){0};
                 }
             }
@@ -233,13 +230,11 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                 {
                     zpanic_at(lexer_peek(l), "Expected ) after section name");
                     return (DeclarationAttributes){0};
-                    return (DeclarationAttributes){0};
                 }
             }
             else
             {
                 zpanic_at(lexer_peek(l), "@section requires a name: @section(\"name\")");
-                return (DeclarationAttributes){0};
                 return (DeclarationAttributes){0};
             }
         }
@@ -259,13 +254,11 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                 {
                     zpanic_at(lexer_peek(l), "Expected ) after crepr type name");
                     return (DeclarationAttributes){0};
-                    return (DeclarationAttributes){0};
                 }
             }
             else
             {
                 zpanic_at(lexer_peek(l), "@crepr requires a value: @crepr(\"C.kind\")");
-                return (DeclarationAttributes){0};
                 return (DeclarationAttributes){0};
             }
         }
@@ -287,13 +280,11 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                 {
                     zpanic_at(lexer_peek(l), "Expected ) after align value");
                     return (DeclarationAttributes){0};
-                    return (DeclarationAttributes){0};
                 }
             }
             else
             {
                 zpanic_at(lexer_peek(l), "@align requires a value: @align(N)");
-                return (DeclarationAttributes){0};
                 return (DeclarationAttributes){0};
             }
         }
@@ -377,19 +368,16 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                 {
                     zpanic_at(name_tok, "Expected string literal in @link_name");
                     return (DeclarationAttributes){0};
-                    return (DeclarationAttributes){0};
                 }
                 if (lexer_next(l).kind != TOK_RPAREN)
                 {
                     zpanic_at(lexer_peek(l), "Expected ) after @link_name value");
-                    return (DeclarationAttributes){0};
                     return (DeclarationAttributes){0};
                 }
             }
             else
             {
                 zpanic_at(lexer_peek(l), "@link_name requires a value: @link_name(\"name\")");
-                return (DeclarationAttributes){0};
                 return (DeclarationAttributes){0};
             }
         }
@@ -409,19 +397,16 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                 {
                     zpanic_at(path_tok, "Expected string literal in @link");
                     return (DeclarationAttributes){0};
-                    return (DeclarationAttributes){0};
                 }
                 if (lexer_next(l).kind != TOK_RPAREN)
                 {
                     zpanic_at(lexer_peek(l), "Expected ) after @link path");
-                    return (DeclarationAttributes){0};
                     return (DeclarationAttributes){0};
                 }
             }
             else
             {
                 zpanic_at(lexer_peek(l), "@link requires a path: @link(\"path/to/file.c\")");
-                return (DeclarationAttributes){0};
                 return (DeclarationAttributes){0};
             }
         }
@@ -436,7 +421,6 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                     if (inner_t.kind != TOK_IDENT)
                     {
                         zpanic_at(inner_t, "Expected trait name in @derive");
-                        return (DeclarationAttributes){0};
                         return (DeclarationAttributes){0};
                     }
                     char *trait = token_strdup(inner_t);
@@ -458,13 +442,11 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                 {
                     zpanic_at(lexer_peek(l), "Expected ) after derive traits");
                     return (DeclarationAttributes){0};
-                    return (DeclarationAttributes){0};
                 }
             }
             else
             {
                 zpanic_at(lexer_peek(l), "@derive requires traits: @derive(Debug, Clone)");
-                return (DeclarationAttributes){0};
                 return (DeclarationAttributes){0};
             }
         }
@@ -531,13 +513,11 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                         {
                             zpanic_at(lexer_peek(l), "Expected , or ) in attribute args");
                             return (DeclarationAttributes){0};
-                            return (DeclarationAttributes){0};
                         }
                     }
                     if (lexer_next(l).kind != TOK_RPAREN)
                     {
                         zpanic_at(lexer_peek(l), "Expected )");
-                        return (DeclarationAttributes){0};
                         return (DeclarationAttributes){0};
                     }
                 }
