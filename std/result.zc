@@ -41,8 +41,7 @@ impl Result<T> {
     /// Returns the `Ok` value. Panics with the error when `Err`.
     fn unwrap(self) -> T {
         if (!self.is_ok) {
-            !f"Panic: unwrap called on Err: {self.err}";
-            exit(1);
+            panic(f"unwrap called on Err: {self.err}");
         }
         let v = self.val;
         // Moved value
@@ -52,8 +51,7 @@ impl Result<T> {
     /// Returns a pointer to the `Ok` value. Panics when `Err`.
     fn unwrap_ref(self) -> T* {
         if (!self.is_ok) {
-            !f"Panic: unwrap_ref called on Err: {self.err}";
-            exit(1);
+            panic(f"unwrap_ref called on Err: {self.err}");
         }
         return &self.val;
     }
@@ -61,8 +59,7 @@ impl Result<T> {
     /// Returns the value, or panics with `msg` and the error when `Err`.
     fn expect(self, msg: char*) -> T {
         if (!self.is_ok) {
-            !f"Panic: {msg}: {self.err}";
-            exit(1);
+            panic(f"{msg}: {self.err}");
         }
         return self.val;
     }
@@ -111,8 +108,7 @@ impl Result<T> {
     /// Returns the error message, or panics with `msg` when `Ok`.
     fn expect_err(self, msg: char*) -> char* {
         if (self.is_ok) {
-            !f"Panic: {msg}: expected Err, got Ok";
-            exit(1);
+            panic(f"{msg}: expected Err, got Ok");
         }
         return self.err;
     }
