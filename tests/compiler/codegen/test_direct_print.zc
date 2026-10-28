@@ -1,0 +1,12 @@
+// codegen: test_direct_print
+// RFC 0001: println(f"...") of std/io.zc writes each piece of the f-string straight to the
+// stream, with no f-string buffer (and no size limit); an f-string used as a value still
+// builds its buffer.
+import "std/io.zc"
+
+fn main() {
+    let x = 1;
+    println(f"direct {x}");
+    let s = f"value {x}";
+    println(s);
+}
