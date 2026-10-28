@@ -328,8 +328,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 }
                 else
                 {
-                    proto = xmalloc(strlen(effective_name) + strlen(fname) + 3);
-                    sprintf(proto, "%s__%s", effective_name, fname);
+                    proto = mangle_method_symbol(effective_name, NULL, fname);
                 }
 
                 emit_func_signature(ctx, m, proto);
@@ -558,7 +557,7 @@ void emit_impl_vtables(ParserContext *ctx)
                 continue;
             }
 
-            EMIT(ctx, "%s_VTable %s__%s__VTable = {", trait, strct, trait);
+            EMIT(ctx, "%s_VTable %s = {", trait, mangle_vtable_symbol(strct, trait));
 
             ASTNode *m = node->impl_trait.methods;
             while (m)

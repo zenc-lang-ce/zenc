@@ -40,15 +40,16 @@ void emit_simple_enum(ParserContext *ctx, ASTNode *node)
     ASTNode *v = node->enm.variants;
     while (v)
     {
-        EMIT(ctx, "%s__%s_Tag = %d, ", final_name, v->variant.name, v->variant.tag_id);
+        EMIT(ctx, "%s_Tag = %d, ", mangle_variant_symbol(final_name, v->variant.name),
+             v->variant.tag_id);
         v = v->next;
     }
     EMIT(ctx, "} %s;\n\n", final_name);
     v = node->enm.variants;
     while (v)
     {
-        EMIT(ctx, "static inline %s %s__%s() { return %s__%s_Tag; }\n", final_name, final_name,
-             v->variant.name, final_name, v->variant.name);
+        char *vsym = mangle_variant_symbol(final_name, v->variant.name);
+        EMIT(ctx, "static inline %s %s() { return %s_Tag; }\n", final_name, vsym, vsym);
         v = v->next;
     }
     EMIT(ctx, "\n");
@@ -271,7 +272,8 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
             v = node->enm.variants;
             while (v)
             {
-                EMIT(ctx, "%s__%s_Tag = %d, ", final_name, v->variant.name, v->variant.tag_id);
+                EMIT(ctx, "%s_Tag = %d, ", mangle_variant_symbol(final_name, v->variant.name),
+                     v->variant.tag_id);
                 v = v->next;
             }
             EMIT(ctx, "} %s_Tag;\n", final_name);
@@ -292,6 +294,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
             v = node->enm.variants;
             while (v)
             {
+                char *vsym = mangle_variant_symbol(final_name, v->variant.name);
                 if (v->variant.payload)
                 {
                     Type *pt = v->variant.payload;
@@ -304,7 +307,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
 
                     if (tuple_def)
                     {
-                        EMIT(ctx, "%s %s__%s(", final_name, final_name, v->variant.name);
+                        EMIT(ctx, "%s %s(", final_name, vsym);
                         ASTNode *f = tuple_def->strct.fields;
                         int i = 0;
                         while (f)
@@ -318,8 +321,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                         emitter_indent(&ctx->cg.emitter);
                         if (ctx->config->use_cpp)
                         {
-                            EMIT(ctx, "%s _res = {}; _res.tag = %s__%s_Tag; ", final_name,
-                                 final_name, v->variant.name);
+                            EMIT(ctx, "%s _res = {}; _res.tag = %s_Tag; ", final_name, vsym);
                             for (int j = 0; j < i; j++)
                             {
                                 EMIT(ctx, "_res.data.%s.v%d = _%d; ", v->variant.name, j, j);
@@ -329,8 +331,8 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                         }
                         else
                         {
-                            EMIT(ctx, "return (%s){.tag=%s__%s_Tag, .data.%s={", final_name,
-                                 final_name, v->variant.name, v->variant.name);
+                            EMIT(ctx, "return (%s){.tag=%s_Tag, .data.%s={", final_name, vsym,
+                                 v->variant.name);
                             for (int j = 0; j < i; j++)
                             {
                                 EMIT(ctx, ".v%d=_%d%s", j, j, (j == i - 1) ? "" : ", ");
@@ -344,18 +346,14 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                         if (ctx->config->use_cpp)
                         {
                             EMIT(ctx,
-                                 "%s %s__%s(%s v) { %s _res = {}; _res.tag=%s__%s_Tag; "
+                                 "%s %s(%s v) { %s _res = {}; _res.tag=%s_Tag; "
                                  "_res.data.%s=v; return _res; }\n",
-                                 final_name, final_name, v->variant.name, tstr, final_name,
-                                 final_name, v->variant.name, v->variant.name);
+                                 final_name, vsym, tstr, final_name, vsym, v->variant.name);
                         }
                         else
                         {
-                            EMIT(ctx,
-                                 "%s %s__%s(%s v) { return (%s){.tag=%s__%s_Tag, .data.%s=v}; "
-                                 "}\n",
-                                 final_name, final_name, v->variant.name, tstr, final_name,
-                                 final_name, v->variant.name, v->variant.name);
+                            EMIT(ctx, "%s %s(%s v) { return (%s){.tag=%s_Tag, .data.%s=v}; }\n",
+                                 final_name, vsym, tstr, final_name, vsym, v->variant.name);
                         }
                     }
                     zfree(tstr);
@@ -364,15 +362,13 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 {
                     if (ctx->config->use_cpp)
                     {
-                        EMIT(ctx,
-                             "%s %s__%s() { %s _res = {}; _res.tag=%s__%s_Tag; return _res; }\n",
-                             final_name, final_name, v->variant.name, final_name, final_name,
-                             v->variant.name);
+                        EMIT(ctx, "%s %s() { %s _res = {}; _res.tag=%s_Tag; return _res; }\n",
+                             final_name, vsym, final_name, vsym);
                     }
                     else
                     {
-                        EMIT(ctx, "%s %s__%s() { return (%s){.tag=%s__%s_Tag}; }\n", final_name,
-                             final_name, v->variant.name, final_name, final_name, v->variant.name);
+                        EMIT(ctx, "%s %s() { return (%s){.tag=%s_Tag}; }\n", final_name, vsym,
+                             final_name, vsym);
                     }
                 }
                 v = v->next;
@@ -559,7 +555,8 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                 const char *orig = parse_original_method_name(m->func.name);
                 int is_const_self = (m->func.count > 0 && m->func.arg_types &&
                                      m->func.arg_types[0] && m->func.arg_types[0]->is_const);
-                EMIT(ctx, "%s %s__%s(%s%s* self", ret_sub, node->trait.name, orig,
+                EMIT(ctx, "%s %s(%s%s* self", ret_sub,
+                     mangle_method_symbol(node->trait.name, NULL, orig),
                      is_const_self ? "const " : "", node->trait.name);
 
                 if (m->func.args && strlen(m->func.args) > 0)

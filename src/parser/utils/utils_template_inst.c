@@ -252,9 +252,8 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
         is_still_generic = 1;
     }
 
-    char buf[MAX_ERROR_MSG_LEN];
-    snprintf(buf, sizeof(buf), "%s__%s", name, clean_type);
-    char *mangled = merge_underscores(buf);
+    char *one_type = (char *)concrete_type;
+    char *mangled = mangle_generic_name(name, &one_type, 1);
     zfree(clean_type);
 
     if (is_still_generic)
@@ -660,10 +659,7 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
                 }
             }
 
-            char *temp = xmalloc(strlen(mangled_struct_name) + strlen(original_method) + 3);
-            sprintf(temp, "%s__%s", mangled_struct_name, original_method); /* safe */
-            char *new_name = merge_underscores(temp);
-            zfree(temp);
+            char *new_name = mangle_method_symbol(mangled_struct_name, NULL, original_method);
             zfree(meth->func.name);
             meth->func.name = new_name;
         }
@@ -748,9 +744,7 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
 static void register_enum_constructor(ParserContext *ctx, const char *m, const char *var_name,
                                       int tag_id, Type *payload, Token token, int is_export)
 {
-    size_t mangled_var_sz = strlen(m) + strlen(var_name) + 3;
-    char *mangled_var = xmalloc((size_t)(mangled_var_sz));
-    snprintf(mangled_var, mangled_var_sz, "%s__%s", m, var_name);
+    char *mangled_var = mangle_variant_symbol(m, var_name);
     register_enum_variant(ctx, var_name, m, tag_id);
 
     Type *ret_t = type_new(TYPE_ENUM);
@@ -784,17 +778,8 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
         return;
     }
 
-    char *clean_arg = sanitize_mangled_name(arg);
-    char *m = xmalloc(strlen(tpl) + strlen(clean_arg) + 4);
-    strcpy(m, tpl);
-    char *m_end = m + strlen(m);
-    while (m_end > m && *(m_end - 1) == '_')
-    {
-        *(--m_end) = '\0';
-    }
-    strcat(m, "__");
-    strcat(m, clean_arg);
-    zfree(clean_arg);
+    char *one_arg = (char *)arg;
+    char *m = mangle_generic_name(tpl, &one_arg, 1);
 
     Instantiation *c = ctx->instantiations;
     while (c)
@@ -973,28 +958,7 @@ static void free_field_list(ASTNode *fields)
 void instantiate_generic_multi(ParserContext *ctx, const char *tpl, char **args, int count,
                                Token token)
 {
-    // Build mangled name from all args
-    size_t m_len = strlen(tpl) + 1;
-    for (int i = 0; i < count; i++)
-    {
-        char *clean = sanitize_mangled_name(args[i]);
-        m_len += 2 + strlen(clean);
-        zfree(clean);
-    }
-    char *m = xmalloc((size_t)(m_len + 1));
-    strcpy(m, tpl);
-    char *m_end = m + strlen(m);
-    while (m_end > m && *(m_end - 1) == '_')
-    {
-        *(--m_end) = '\0';
-    }
-    for (int i = 0; i < count; i++)
-    {
-        char *clean = sanitize_mangled_name(args[i]);
-        strcat(m, "__");
-        strcat(m, clean);
-        zfree(clean);
-    }
+    char *m = mangle_generic_name(tpl, args, count);
 
     // Check if already instantiated
     Instantiation *c = ctx->instantiations;

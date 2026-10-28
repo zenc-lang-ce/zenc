@@ -1,0 +1,8 @@
+// Helper module for test_module_names_with_leading_underscores.
+fn __counter_start() -> int {
+    return 7;
+}
+
+fn twice(x: int) -> int {
+    return x * 2;
+}

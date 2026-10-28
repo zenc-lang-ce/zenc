@@ -145,7 +145,7 @@ void repl_highlight(const char *buf, int cursor_pos)
 
     while (*p)
     {
-        long idx = p - buf;
+        int idx = (int)(p - buf);
 
         // Highlight matching braces
         if (idx == brace_pos || idx == match_pos)

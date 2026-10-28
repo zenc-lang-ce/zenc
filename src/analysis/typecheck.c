@@ -625,9 +625,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
 
                 if (struct_name)
                 {
-                    char buf[MAX_ERROR_MSG_LEN];
-                    snprintf(buf, sizeof(buf), "%s__%s", struct_name, node->member.field);
-                    char *mangled = merge_underscores(buf);
+                    char *mangled = mangle_method_symbol(struct_name, NULL, node->member.field);
 
                     FuncSig *sig = find_func(tc->pctx, mangled);
                     if (sig)

@@ -191,10 +191,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     if (ctx->imports.current_module_prefix && !gen_param && !ctx->current_impl_struct &&
         !is_extern && !is_extern_symbol(ctx, name))
     {
-        char *prefixed_name =
-            xmalloc(strlen(ctx->imports.current_module_prefix) + strlen(name) + 3);
-        sprintf(prefixed_name, "%s__%s", ctx->imports.current_module_prefix,
-                name); /* TODO: check buffer size */
+        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name);
         zfree(name);
         name = prefixed_name;
     }

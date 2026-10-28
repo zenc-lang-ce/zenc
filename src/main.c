@@ -155,7 +155,12 @@ int main(int argc, char **argv)
     }
     else if (strcmp(command, "help") == 0)
     {
-        if (argc > 2)
+        if (argc > 2 && strcmp(argv[2], "doc") == 0)
+        {
+            char *doc_help[] = {argv[0], argv[1], "--help"};
+            return exec_tool("doc", "zc-doc", 3, doc_help);
+        }
+        else if (argc > 2)
         {
             print_command_help(argv[2]);
         }

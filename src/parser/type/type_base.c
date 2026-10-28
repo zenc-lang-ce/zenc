@@ -50,6 +50,26 @@ Type *type_from_name(ParserContext *ctx, const char *name)
     return t;
 }
 
+// The `>` that closes a list of generic arguments. A `>>` (two lists closing together, as in
+// `Vec<Vec<int>>`) is split: its first `>` is consumed and the second is left for the outer
+// list. Returns 0 when neither comes next.
+static int consume_generic_close(Lexer *l)
+{
+    Token t = lexer_peek(l);
+    if (t.kind == TOK_RANGLE)
+    {
+        lexer_next(l);
+        return 1;
+    }
+    if (t.kind == TOK_OP && t.len == 2 && strncmp(t.start, ">>", 2) == 0)
+    {
+        l->pos += 1;
+        l->col += 1;
+        return 1;
+    }
+    return 0;
+}
+
 Type *parse_type_base(ParserContext *ctx, Lexer *l)
 {
     RECURSION_GUARD(ctx, l, type_new(TYPE_UNKNOWN));
@@ -141,17 +161,13 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                 else
                 {
                     // Zen module: Use module base name as prefix
-                    size_t mer_sz = strlen(mod->base_name) + strlen(resolved_suffix) + 3;
-                    merged = xmalloc(mer_sz);
-                    snprintf(merged, mer_sz, "%s__%s", mod->base_name, resolved_suffix);
+                    merged = mangle_module_symbol(mod->base_name, resolved_suffix);
                 }
             }
             else
             {
                 // Regular namespace or enum variant
-                size_t mer_sz = strlen(name) + strlen(resolved_suffix) + 3;
-                merged = xmalloc(mer_sz);
-                snprintf(merged, mer_sz, "%s__%s", name, resolved_suffix);
+                merged = mangle_module_symbol(name, resolved_suffix);
             }
 
             zfree(name);
@@ -285,9 +301,7 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                 // Resolve to the actual struct name which was prefixed during module
                 // parsing
                 zfree(name);
-                name = xmalloc(strlen(si->source_module) + strlen(si->symbol) + 3);
-                snprintf(name, strlen(si->source_module) + strlen(si->symbol) + 3, "%s__%s",
-                         si->source_module, si->symbol);
+                name = mangle_module_symbol(si->source_module, si->symbol);
             }
         }
 
@@ -308,10 +322,7 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                 // Auto-prefix struct name if in module context (unless it's a known
                 // primitive/generic or an imported type)
                 char *prefixed_name =
-                    xmalloc(strlen(ctx->imports.current_module_prefix) + strlen(name) + 3);
-                snprintf(prefixed_name,
-                         strlen(ctx->imports.current_module_prefix) + strlen(name) + 3, "%s__%s",
-                         ctx->imports.current_module_prefix, name);
+                    mangle_module_symbol(ctx->imports.current_module_prefix, name);
                 zfree(name);
                 name = prefixed_name;
             }
@@ -363,21 +374,10 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                     zfree(arg_str);
                 }
 
-                // Consume >
-                next_tok = lexer_peek(l);
-                if (next_tok.kind == TOK_RANGLE)
-                {
-                    lexer_next(l);
-                }
-                else if (next_tok.kind == TOK_OP && next_tok.len == 2 &&
-                         strncmp(next_tok.start, ">>", 2) == 0)
-                {
-                    l->pos += 1;
-                    l->col += 1;
-                }
-                else
+                if (!consume_generic_close(l))
                 {
                     zpanic_at(t, "Expected > after generic");
+                    RECURSION_EXIT(ctx);
                     return NULL;
                 }
 
@@ -422,21 +422,11 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
             }
             else
             {
-                // Single-arg case - PRESERVE ORIGINAL FLOW EXACTLY
-                if (next_tok.kind == TOK_RANGLE)
-                {
-                    lexer_next(l); // Consume >
-                }
-                else if (next_tok.kind == TOK_OP && next_tok.len == 2 &&
-                         strncmp(next_tok.start, ">>", 2) == 0)
-                {
-                    // Split >> into two > tokens
-                    l->pos += 1;
-                    l->col += 1;
-                }
-                else
+                // Single-arg case
+                if (!consume_generic_close(l))
                 {
                     zpanic_at(t, "Expected > after generic");
+                    RECURSION_EXIT(ctx);
                     return NULL;
                 }
 
@@ -450,11 +440,7 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                 }
                 zfree(unmangled_arg);
 
-                char *clean_arg = sanitize_mangled_name(first_arg_str);
-                size_t mangled_sz = strlen(name) + strlen(clean_arg) + 3;
-                char *mangled = xmalloc(mangled_sz);
-                snprintf(mangled, mangled_sz, "%s__%s", name, clean_arg);
-                zfree(clean_arg);
+                char *mangled = mangle_generic_name(name, &first_arg_str, 1);
 
                 zfree(ty->name);
                 ty->name = mangled;
