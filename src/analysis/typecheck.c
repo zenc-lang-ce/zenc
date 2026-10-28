@@ -964,8 +964,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         break;
     case NODE_EXPR_FSTRING:
     {
-        // Reported as raw C, as when f-strings were built as C text by the parser.
-        misra_check_raw_block(tc->pctx, node->token);
+        misra_check_fstring(tc->pctx, node->token);
         // The `{...}` expressions were parsed and typed when the string was; check them
         // only for moves (use after move, consumed values).
         int prev_move_checks_only = tc->move_checks_only;

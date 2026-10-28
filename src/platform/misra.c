@@ -1441,6 +1441,15 @@ void misra_check_banned_function(struct ParserContext *ctx, const char *name, To
     }
 }
 
+void misra_check_fstring(struct ParserContext *ctx, Token tok)
+{
+    if (ctx->config->misra_mode)
+    {
+        zerror_at(tok, "MISRA Rule 21.6: an f-string is formatted with <stdio.h> "
+                       "(snprintf/fprintf)");
+    }
+}
+
 void misra_check_file_dereference(struct ParserContext *ctx, struct Type *type, Token tok)
 {
     if (!ctx->config->misra_mode || !type)
