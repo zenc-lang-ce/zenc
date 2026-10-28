@@ -128,6 +128,41 @@ static int may_be_struct(Type *t)
     }
 }
 
+// A member access to `field` of `target`; `is_pointer_access` is 0 for `.`, 1 for `->` and 2
+// for `?.`. A field of an opaque struct can only be accessed in the file that defines it.
+static ASTNode *new_member_node(ParserContext *ctx, ASTNode *target, Token field,
+                                int is_pointer_access)
+{
+    ASTNode *node = ast_create(NODE_EXPR_MEMBER);
+    node->token = field;
+    node->member.target = target;
+    node->member.field = token_strdup(field);
+    node->member.is_pointer_access = is_pointer_access;
+
+    int is_ptr = 0;
+    char *alloc_name = NULL;
+    char *sname = resolve_struct_name_from_type(ctx, target->type_info, &is_ptr, &alloc_name);
+    if (sname)
+    {
+        ASTNode *def = find_struct_def(ctx, sname);
+        if (def && def->kind == NODE_STRUCT && def->strct.is_opaque)
+        {
+            if (!def->strct.defined_in_file ||
+                (ctx->current_filename &&
+                 strcmp(def->strct.defined_in_file, ctx->current_filename) != 0))
+            {
+                zpanic_at(field, "Cannot access private field '%s' of opaque struct '%s'",
+                          node->member.field, sname);
+            }
+        }
+        if (alloc_name)
+        {
+            zfree(alloc_name);
+        }
+    }
+    return node;
+}
+
 // The method `method` of `struct_name`: `Struct__method`, or the one of a trait impl
 // (`Struct__Trait__method`). Its name goes to *mangled_out (the plain one when there is
 // no such method).
@@ -905,35 +940,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 zpanic_at(field, "Expected field name after ->");
                 break;
             }
-            ASTNode *node = ast_create(NODE_EXPR_MEMBER);
-            node->token = field;
-            node->member.target = lhs;
-            node->member.field = token_strdup(field);
-            node->member.is_pointer_access = 1;
-
-            // Opaque Check
-            int is_ptr_dummy = 0;
-            char *alloc_name = NULL;
-            char *sname =
-                resolve_struct_name_from_type(ctx, lhs->type_info, &is_ptr_dummy, &alloc_name);
-            if (sname)
-            {
-                ASTNode *def = find_struct_def(ctx, sname);
-                if (def && def->kind == NODE_STRUCT && def->strct.is_opaque)
-                {
-                    if (!def->strct.defined_in_file ||
-                        (ctx->current_filename &&
-                         strcmp(def->strct.defined_in_file, ctx->current_filename) != 0))
-                    {
-                        zpanic_at(field, "Cannot access private field '%s' of opaque struct '%s'",
-                                  node->member.field, sname);
-                    }
-                }
-                if (alloc_name)
-                {
-                    zfree(alloc_name);
-                }
-            }
+            ASTNode *node = new_member_node(ctx, lhs, field, 1);
 
             if (lhs->type_info)
             {
@@ -966,35 +973,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 zpanic_at(field, "Expected field name after ?.");
                 break;
             }
-            ASTNode *node = ast_create(NODE_EXPR_MEMBER);
-            node->token = field;
-            node->member.target = lhs;
-            node->member.field = token_strdup(field);
-            node->member.is_pointer_access = 2;
-
-            // Opaque Check
-            int is_ptr_dummy = 0;
-            char *alloc_name = NULL;
-            char *sname =
-                resolve_struct_name_from_type(ctx, lhs->type_info, &is_ptr_dummy, &alloc_name);
-            if (sname)
-            {
-                ASTNode *def = find_struct_def(ctx, sname);
-                if (def && def->kind == NODE_STRUCT && def->strct.is_opaque)
-                {
-                    if (!def->strct.defined_in_file ||
-                        (ctx->current_filename &&
-                         strcmp(def->strct.defined_in_file, ctx->current_filename) != 0))
-                    {
-                        zpanic_at(field, "Cannot access private field '%s' of opaque struct '%s'",
-                                  node->member.field, sname);
-                    }
-                }
-                if (alloc_name)
-                {
-                    zfree(alloc_name);
-                }
-            }
+            ASTNode *node = new_member_node(ctx, lhs, field, 2);
 
             node->type_info = get_field_type(ctx, lhs->type_info, node->member.field);
             if (node->type_info)
@@ -1770,38 +1749,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 zpanic_at(field, "Expected field name after .");
                 break;
             }
-            ASTNode *node = ast_create(NODE_EXPR_MEMBER);
-            node->token = field;
-            node->member.target = lhs;
-            node->member.field = token_strdup(field);
-            node->member.is_pointer_access = 0;
-
-            // Opaque Check
-            int is_ptr_dummy = 0;
-            char *alloc_name = NULL;
-            char *sname =
-                resolve_struct_name_from_type(ctx, lhs->type_info, &is_ptr_dummy, &alloc_name);
-            if (sname)
-            {
-                ASTNode *def = find_struct_def(ctx, sname);
-                if (def && def->kind == NODE_STRUCT && def->strct.is_opaque)
-                {
-                    if (!def->strct.defined_in_file ||
-                        (ctx->current_filename &&
-                         strcmp(def->strct.defined_in_file, ctx->current_filename) != 0))
-                    {
-                        zpanic_at(field, "Cannot access private field '%s' of opaque struct '%s'",
-                                  node->member.field, sname);
-                    }
-                }
-                if (alloc_name)
-                {
-                    zfree(alloc_name);
-                }
-            }
-
-            node->member.field = token_strdup(field);
-            node->member.is_pointer_access = 0;
+            ASTNode *node = new_member_node(ctx, lhs, field, 0);
 
             if (lhs->type_info && lhs->type_info->kind == TYPE_POINTER)
             {
