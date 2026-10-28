@@ -6,6 +6,8 @@ import "./string.zc"
 include <stdio.h>
 include <stdarg.h>
 
+extern struct FILE;
+
 /// Formats into a thread-local buffer (ring of buffers for nesting).
 fn format(fmt: char*, ...) -> char* {
     // A small ring of thread-local buffers so nested format() calls (e.g.
