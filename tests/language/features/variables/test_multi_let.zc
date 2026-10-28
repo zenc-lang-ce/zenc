@@ -39,3 +39,19 @@ test "multi_let_mixed_types" {
     expect_eq(b == "hello", true, "mixed-types b should be hello");
     println("mixed types compile");
 }
+
+let g_first = 1, g_second = 2;
+let g_typed: int, g_inferred = 4;
+
+test "multi_let_global" {
+    expect_eq(g_first, 1, "first global of a multi-let should be 1");
+    expect_eq(g_second, 2, "second global of a multi-let should be 2");
+    g_second = g_second + 1;
+    expect_eq(g_second, 3, "second global of a multi-let should be assignable");
+}
+
+test "multi_let_global_first_without_init" {
+    g_typed = 3;
+    expect_eq(g_typed, 3, "typed global without init should be assignable");
+    expect_eq(g_inferred, 4, "global after a typed one should be 4");
+}
