@@ -111,6 +111,32 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
     memset(&res, 0, sizeof(res));
     res.derived_traits = xmalloc(sizeof(char *) * 32);
 
+    // The attributes that only set a flag.
+    struct
+    {
+        const char *name;
+        int *flag;
+    } flags[] = {
+        {"required", &res.is_required},
+        {"inline", &res.is_inline},
+        {"noinline", &res.is_noinline},
+        {"noreturn", &res.is_noreturn},
+        {"cold", &res.is_cold},
+        {"hot", &res.is_hot},
+        {"constructor", &res.is_constructor},
+        {"destructor", &res.is_destructor},
+        {"unused", &res.is_unused},
+        {"weak", &res.is_weak},
+        {"export", &res.is_export},
+        {"thread_local", &res.is_thread_local},
+        {"comptime", &res.is_comptime},
+        {"packed", &res.is_packed},
+        {"pure", &res.is_pure},
+        {"global", &res.cuda_global},
+        {"device", &res.cuda_device},
+        {"host", &res.cuda_host},
+    };
+
     Token t = lexer_peek(l);
     while (t.kind == TOK_AT)
     {
@@ -122,8 +148,22 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
             return (DeclarationAttributes){0};
         }
 
-        if ((0 == strncmp(attr.start, "vector_size", 11) && 11 == attr.len) ||
-            (0 == strncmp(attr.start, "vector", 6) && 6 == attr.len))
+        int *flag = NULL;
+        for (size_t i = 0; i < sizeof(flags) / sizeof(flags[0]); i++)
+        {
+            if (strlen(flags[i].name) == attr.len &&
+                strncmp(attr.start, flags[i].name, attr.len) == 0)
+            {
+                flag = flags[i].flag;
+            }
+        }
+
+        if (flag)
+        {
+            *flag = 1;
+        }
+        else if ((0 == strncmp(attr.start, "vector_size", 11) && 11 == attr.len) ||
+                 (0 == strncmp(attr.start, "vector", 6) && 6 == attr.len))
         {
             if (lexer_peek(l).kind == TOK_LPAREN)
             {
@@ -141,10 +181,6 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                     return (DeclarationAttributes){0};
                 }
             }
-        }
-        else if (0 == strncmp(attr.start, "required", 8) && 8 == attr.len)
-        {
-            res.is_required = 1;
         }
         else if (0 == strncmp(attr.start, "deprecated", 10) && 10 == attr.len)
         {
@@ -165,54 +201,6 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                     return (DeclarationAttributes){0};
                 }
             }
-        }
-        else if (0 == strncmp(attr.start, "inline", 6) && 6 == attr.len)
-        {
-            res.is_inline = 1;
-        }
-        else if (0 == strncmp(attr.start, "noinline", 8) && 8 == attr.len)
-        {
-            res.is_noinline = 1;
-        }
-        else if (0 == strncmp(attr.start, "noreturn", 8) && 8 == attr.len)
-        {
-            res.is_noreturn = 1;
-        }
-        else if (0 == strncmp(attr.start, "cold", 4) && 4 == attr.len)
-        {
-            res.is_cold = 1;
-        }
-        else if (0 == strncmp(attr.start, "hot", 3) && 3 == attr.len)
-        {
-            res.is_hot = 1;
-        }
-        else if (0 == strncmp(attr.start, "constructor", 11) && 11 == attr.len)
-        {
-            res.is_constructor = 1;
-        }
-        else if (0 == strncmp(attr.start, "destructor", 10) && 10 == attr.len)
-        {
-            res.is_destructor = 1;
-        }
-        else if (0 == strncmp(attr.start, "unused", 6) && 6 == attr.len)
-        {
-            res.is_unused = 1;
-        }
-        else if (0 == strncmp(attr.start, "weak", 4) && 4 == attr.len)
-        {
-            res.is_weak = 1;
-        }
-        else if (0 == strncmp(attr.start, "export", 6) && 6 == attr.len)
-        {
-            res.is_export = 1;
-        }
-        else if (0 == strncmp(attr.start, "thread_local", 12) && 12 == attr.len)
-        {
-            res.is_thread_local = 1;
-        }
-        else if (0 == strncmp(attr.start, "comptime", 8) && 8 == attr.len)
-        {
-            res.is_comptime = 1;
         }
         else if (0 == strncmp(attr.start, "section", 7) && 7 == attr.len)
         {
@@ -261,10 +249,6 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                 zpanic_at(lexer_peek(l), "@crepr requires a value: @crepr(\"C.kind\")");
                 return (DeclarationAttributes){0};
             }
-        }
-        else if (0 == strncmp(attr.start, "packed", 6) && 6 == attr.len)
-        {
-            res.is_packed = 1;
         }
         else if (0 == strncmp(attr.start, "align", 5) && 5 == attr.len)
         {
@@ -452,74 +436,54 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
         }
         else
         {
-            // Checking for CUDA and other attributes...
-            if (0 == strncmp(attr.start, "pure", 4) && 4 == attr.len)
-            {
-                res.is_pure = 1;
-            }
-            else if (0 == strncmp(attr.start, "global", 6) && 6 == attr.len)
-            {
-                res.cuda_global = 1;
-            }
-            else if (0 == strncmp(attr.start, "device", 6) && 6 == attr.len)
-            {
-                res.cuda_device = 1;
-            }
-            else if (0 == strncmp(attr.start, "host", 4) && 4 == attr.len)
-            {
-                res.cuda_host = 1;
-            }
-            else
-            {
-                Attribute *new_attr = xmalloc(sizeof(Attribute));
-                new_attr->name = token_strdup(attr);
-                new_attr->args = NULL;
-                new_attr->count = 0;
-                new_attr->next = res.custom_attributes; // Prepend
-                res.custom_attributes = new_attr;
+            Attribute *new_attr = xmalloc(sizeof(Attribute));
+            new_attr->name = token_strdup(attr);
+            new_attr->args = NULL;
+            new_attr->count = 0;
+            new_attr->next = res.custom_attributes; // Prepend
+            res.custom_attributes = new_attr;
 
-                if (lexer_peek(l).kind == TOK_LPAREN)
+            if (lexer_peek(l).kind == TOK_LPAREN)
+            {
+                lexer_next(l);
+                while (1)
                 {
-                    lexer_next(l);
-                    while (1)
+                    Token inner_t = lexer_next(l);
+                    new_attr->args =
+                        realloc(new_attr->args, sizeof(char *) * (size_t)(new_attr->count + 1));
+
+                    if (inner_t.kind == TOK_STRING)
                     {
-                        Token inner_t = lexer_next(l);
-                        new_attr->args =
-                            realloc(new_attr->args, sizeof(char *) * (size_t)(new_attr->count + 1));
-
-                        if (inner_t.kind == TOK_STRING)
-                        {
-                            new_attr->args[new_attr->count++] = token_strdup(inner_t);
-                        }
-                        else
-                        {
-                            new_attr->args[new_attr->count++] = token_strdup(inner_t);
-                        }
-
-                        if (lexer_peek(l).kind == TOK_EOF)
-                        {
-                            zpanic_at(lexer_peek(l), "Unexpected end of file in attribute args");
-                            break;
-                        }
-                        if (lexer_peek(l).kind == TOK_COMMA)
-                        {
-                            lexer_next(l);
-                        }
-                        else if (lexer_peek(l).kind == TOK_RPAREN)
-                        {
-                            break;
-                        }
-                        else
-                        {
-                            zpanic_at(lexer_peek(l), "Expected , or ) in attribute args");
-                            return (DeclarationAttributes){0};
-                        }
+                        new_attr->args[new_attr->count++] = token_strdup(inner_t);
                     }
-                    if (lexer_next(l).kind != TOK_RPAREN)
+                    else
                     {
-                        zpanic_at(lexer_peek(l), "Expected )");
+                        new_attr->args[new_attr->count++] = token_strdup(inner_t);
+                    }
+
+                    if (lexer_peek(l).kind == TOK_EOF)
+                    {
+                        zpanic_at(lexer_peek(l), "Unexpected end of file in attribute args");
+                        break;
+                    }
+                    if (lexer_peek(l).kind == TOK_COMMA)
+                    {
+                        lexer_next(l);
+                    }
+                    else if (lexer_peek(l).kind == TOK_RPAREN)
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        zpanic_at(lexer_peek(l), "Expected , or ) in attribute args");
                         return (DeclarationAttributes){0};
                     }
+                }
+                if (lexer_next(l).kind != TOK_RPAREN)
+                {
+                    zpanic_at(lexer_peek(l), "Expected )");
+                    return (DeclarationAttributes){0};
                 }
             }
         }
