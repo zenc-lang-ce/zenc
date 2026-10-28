@@ -1,5 +1,6 @@
 // ARGS: run -q
+import "std/io.zc"
 fn main() {
     assert(1 == 2, "boom");
-    println "after";
+    println("after");
 }

@@ -11,7 +11,7 @@ struct SharedData {
 }
 
 test "test_condvar" {
-    println "Testing CondVar...";
+    println("Testing CondVar...");
     
     let data = (SharedData*)malloc(sizeof(SharedData));
     data.mutex.handle = NULL;
@@ -45,7 +45,7 @@ test "test_condvar" {
     data.cond.free();
     data.mutex.free();
     free(data);
-    println "CondVar Test Passed!";
+    println("CondVar Test Passed!");
 }
 
 struct RwData {
@@ -54,7 +54,7 @@ struct RwData {
 }
 
 test "test_rwlock" {
-    println "Testing RwLock...";
+    println("Testing RwLock...");
     
     let data = (RwData*)malloc(sizeof(RwData));
     data.lock.handle = NULL;
@@ -95,5 +95,5 @@ test "test_rwlock" {
     
     data.lock.free();
     free(data);
-    println "RwLock Test Passed!";
+    println("RwLock Test Passed!");
 }

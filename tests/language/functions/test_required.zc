@@ -1,4 +1,5 @@
 // functions: test_required
+import "std/io.zc"
 include <stdio.h>
 
 @required
@@ -8,7 +9,7 @@ fn compute() -> int {
 
 @deprecated("Use new_version instead")
 fn old_function() {
-    "deprecated!";
+    println("deprecated!");
 }
 
 @inline
@@ -44,5 +45,5 @@ test "attributes" {
     let c = combined();
     assert(c == 100, "combined failed");
     
-    "Attributes test completed";
+    println("Attributes test completed");
 }

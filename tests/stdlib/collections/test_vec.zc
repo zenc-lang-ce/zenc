@@ -12,7 +12,7 @@ struct Point {
 }
 
 test "Vec Basics (Construction, Push, Pop, Access)" {
-    print "Testing Vec basics...\n";
+    print("Testing Vec basics...\n");
     let v = Vec<int>::new();
     assert(v.len == 0, "Initial len");
     assert(v.cap == 0, "Initial cap");
@@ -40,7 +40,7 @@ test "Vec Basics (Construction, Push, Pop, Access)" {
 }
 
 test "Vec Capacity and Allocation" {
-    print "Testing Vec capacity...\n";
+    print("Testing Vec capacity...\n");
     // with_capacity
     let v1 = Vec<int>::with_capacity(10);
     assert(v1.len == 0, "with_capacity len");
@@ -62,7 +62,7 @@ test "Vec Capacity and Allocation" {
 }
 
 test "Vec Modification (Insert, Append, Remove, Clear)" {
-    print "Testing Vec modification...\n";
+    print("Testing Vec modification...\n");
     let v = Vec<int>::new();
     v.push(1);
     v.push(3);
@@ -91,7 +91,7 @@ test "Vec Modification (Insert, Append, Remove, Clear)" {
 }
 
 test "Vec Extensions (pop_opt)" {
-    print "Testing Vec extensions...\n";
+    print("Testing Vec extensions...\n");
     let v = Vec<int>::new();
     v.push(42);
     
@@ -104,7 +104,7 @@ test "Vec Extensions (pop_opt)" {
 }
 
 test "Vec Iteration (Reference and Value)" {
-    print "Testing Vec iteration...\n";
+    print("Testing Vec iteration...\n");
     let v = Vec<Point>::new();
     v.push(Point { x: 10, y: 10 });
     v.push(Point { x: 20, y: 20 });
@@ -132,7 +132,7 @@ test "Vec Iteration (Reference and Value)" {
 }
 
 test "Vec Clone and Drop" {
-    print "Testing Vec clone and drop...\n";
+    print("Testing Vec clone and drop...\n");
     let v = Vec<int>::new();
     v.push(100);
     v.push(200);
@@ -151,7 +151,7 @@ test "Vec Clone and Drop" {
 }
 
 test "Vec Utils (Reverse, Contains)" {
-    print "Testing Vec utils...\n";
+    print("Testing Vec utils...\n");
     let v = Vec<int>::new();
     v.push(1);
     v.push(2);

@@ -27,7 +27,7 @@ fn take_point(p: Point) {
 }
 
 test "Resource Semantics" {
-    "Testing Resource Semantics...";
+    puts("Testing Resource Semantics...");
 
     let p1 = Point{x: 10, y: 20};
     let _p2 = p1; // Copied
@@ -51,6 +51,6 @@ test "Resource Semantics" {
     take_point(p1);
     take_point(p1); // Still valid because Copy
     
-    "Resource Semantics Passed.";
+    puts("Resource Semantics Passed.");
 }
 

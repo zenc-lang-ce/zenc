@@ -8,5 +8,5 @@ struct Point {
 
 fn main() {
     let p = Point { x: 1 };
-    println f"{p.x}";
+    println(f"{p.x}");
 }

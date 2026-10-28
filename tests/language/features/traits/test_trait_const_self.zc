@@ -1,4 +1,5 @@
 // traits: test_trait_const_self
+import "std/io.zc"
 trait Reader {
     fn read(const self) -> i32;
     fn read_mut(self) -> i32;
@@ -35,5 +36,5 @@ test "test_const_trait" {
     let v3 = r.read();
     assert v3 == 43;
 
-    println "Trait const self test passed!";
+    println("Trait const self test passed!");
 }

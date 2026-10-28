@@ -19,5 +19,5 @@ fn main() {
     let user = UserId { value: 3 };
     let owner = owner_of(raw_of(user));
     let here: Point = origin();
-    println f"{owner.value} {here.x}";
+    puts(f"{owner.value} {here.x}");
 }

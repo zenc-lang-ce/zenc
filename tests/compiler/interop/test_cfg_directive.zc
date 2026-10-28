@@ -1,6 +1,7 @@
 // Test @cfg() with //> define: build directive
 //> define: SELF_DEFINED_FLAG
 
+import "std/io.zc"
 @cfg(SELF_DEFINED_FLAG)
 fn get_mode() -> char* {
     return "Self-defined mode";
@@ -14,6 +15,6 @@ fn get_mode() -> char* {
 fn main() {
     let mode = get_mode();
     assert(mode[0] == 'S', "Expected 'Self-defined mode'");
-    println f"Mode: {mode}";
-    println "build directive cfg test passed";
+    println(f"Mode: {mode}");
+    println("build directive cfg test passed");
 }

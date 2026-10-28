@@ -6,5 +6,5 @@ fn main() {
     let x = 1;
     let y = 2;
     let s = f"[{x; y}]";
-    println f"{s}";
+    println(f"{s}");
 }

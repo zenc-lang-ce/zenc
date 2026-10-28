@@ -45,5 +45,5 @@ fn main() {
     let level = level_of(value);
     let sum = sum_of(Value::Point(3, 4));
     let label = label_of(Value::Label("x"));
-    println f"{level} {sum} {label}";
+    puts(f"{level} {sum} {label}");
 }

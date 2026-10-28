@@ -6,5 +6,5 @@ let count = 3;
 let label = f"count is {count}";
 
 fn main() {
-    println f"{label}";
+    println(f"{label}");
 }

@@ -1,4 +1,5 @@
 // memory: test_drop
+import "std/io.zc"
 import "std/mem.zc"
 
 let DROP_CALLED = 0;
@@ -9,7 +10,7 @@ struct MyResource {
 
 impl Drop for MyResource {
     fn drop(self) {
-        println f"Dropping MyResource {self.id}";
+        println(f"Dropping MyResource {self.id}");
         DROP_CALLED = 1;
     }
 }

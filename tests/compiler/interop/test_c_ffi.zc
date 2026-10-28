@@ -1,4 +1,5 @@
 // compiler/interop: interop: test_c_ffi
+import "std/io.zc"
 include "tests/compiler/interop/test_ffi_helper.h"
 
 test "test_ffi_function_scanning" {
@@ -9,7 +10,7 @@ test "test_ffi_function_scanning" {
     assert(product == 12.0, "ffi_multiply(3.0, 4.0) should return 12.0");
 
     ffi_noop();
-    println "PASS: ffi_noop scanned from header";
+    println("PASS: ffi_noop scanned from header");
 }
 
 test "test_ffi_nested_header_scanning" {
@@ -21,5 +22,5 @@ extern struct ExplicitStruct;
 extern union ExplicitUnion;
 
 test "test_extern_struct_union" {
-    println "PASS: extern struct/union declarations accepted";
+    println("PASS: extern struct/union declarations accepted");
 }

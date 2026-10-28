@@ -1,24 +1,20 @@
 // ARGS: build
 // RFC 0001: only f"..." interpolates. During the transition a plain "..." that relies
-// on the old meaning is an error: a `{expr}` (in a value, println, a bare string, `!`,
-// `?` or an assert message) and `{{` / `}}` where they would become one brace. A `}}`
-// alone in a value, f"...", r"..." and text without braces compile.
+// on the old meaning is an error: a `{expr}` (in a value, an argument or an assert
+// message) and `{{` / `}}` where they would become one brace. A `}}` alone, f"...",
+// r"..." and text without braces compile.
+import "std/io.zc"
 
 fn main() {
     let x = 1;
-    let n = 0;
     let a = "value {x}";
-    println "println {x}";
-    "bare {x}";
-    !"stderr {x}";
-    let got = ? "prompt {x}: " (n);
+    println("argument {x}");
     assert(x == 1, "assert {x}");
     let b = "value {{x}}";
-    println "println {{x}}";
-    println "println a}}b";
+    println("argument {{x}}");
     let c = "value a}}b";
     let d = f"f-string {x} {{x}}";
     let e = r"raw {x} {{x}}";
-    println "no braces";
-    printf("%s %s %s %s %s %d\n", a, b, c, d, e, got);
+    println("no braces");
+    printf("%s %s %s %s %s\n", a, b, c, d, e);
 }

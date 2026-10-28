@@ -1,4 +1,5 @@
 // language/features/traits: traits: test_traits_suite
+import "std/io.zc"
 trait Greeter {
     fn greet(self, msg: string);
     fn shout(self);
@@ -10,10 +11,10 @@ struct Robot {
 
 impl Greeter for Robot {
     fn greet(self, msg: string) {
-        println f"Robot {self.id} says: {msg}";
+        println(f"Robot {self.id} says: {msg}");
     }
     fn shout(self) {
-        println f"ROBOT {self.id} ACTIVATED";
+        println(f"ROBOT {self.id} ACTIVATED");
     }
 }
 
@@ -57,7 +58,7 @@ struct Point {
 
 
 fn print_shape_info(s: Shape) {
-    println f"Shape: {s.name()}, Area: {s.area()}";
+    println(f"Shape: {s.name()}, Area: {s.area()}");
 }
 
 test "basic_traits" {
@@ -79,9 +80,9 @@ test "advanced_traits" {
     print_shape_info(s_r);
     
     if (s_c.area() > s_r.area()) {
-        println "Circle is larger";
+        println("Circle is larger");
     } else {
-        println "Rectangle is larger";
+        println("Rectangle is larger");
     }
 }
 
@@ -115,7 +116,7 @@ test "implicit_trait_cast" {
 let g_def_circle = Circle { radius: 2.0 };
 
 fn print_default_shape(s: Shape = &g_def_circle) {
-    println f"Default Shape: {s.name()}";
+    println(f"Default Shape: {s.name()}");
 }
 
 test "implicit_trait_cast_default" {

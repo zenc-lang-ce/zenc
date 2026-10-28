@@ -1,4 +1,5 @@
 // memory: test_drop_flags
+import "std/io.zc"
 import "std/mem.zc"
 
 // Global to track destructor calls
@@ -11,7 +12,7 @@ struct Buffer {
 impl Drop for Buffer {
     fn drop(self) {
         // This should run exactly ONCE per unique allocation
-        println "Entering destructor";
+        println("Entering destructor");
         DTOR_COUNT = DTOR_COUNT + 1;
         if (self.data != NULL) {
             free(self.data);
@@ -23,14 +24,14 @@ impl Drop for Buffer {
 test "drop_flags_variable_move" {
     DTOR_COUNT = 0;
     {
-        println "Init";
+        println("Init");
         let buffer = Buffer { data: malloc(100) };
-        println "Moved";
+        println("Moved");
         let buf = buffer;  // Move occurs
         // buffer is moved-from. Flag should prevent destructor.
         // buf owns data.
     }
-    println "Left scope";
+    println("Left scope");
     
     // Check count
     // buffer dtor: SKIPPED (flag=0)

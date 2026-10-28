@@ -1,6 +1,7 @@
 // compiler/analysis: type analysis: test_type_compat
 // Type compatibility tests: int, float, string, void*, struct, trait
 
+import "std/io.zc"
 struct Point { x: i32; y: i32; }
 
 trait Printable {
@@ -9,7 +10,7 @@ trait Printable {
 
 impl Printable for Point {
     fn print(self) {
-        println f"({self.x}, {self.y})";
+        println(f"({self.x}, {self.y})");
     }
 }
 

@@ -1,4 +1,5 @@
 // language/modules: modules: test_aliasing
+import "std/io.zc"
 import { Vector as MathVec } from "./test_modules/_math.zc";
 import { Vector as PhysicsVec } from "./test_modules/_physics.zc";
 
@@ -9,5 +10,5 @@ test "test_selective_aliasing" {
     assert(mv.x == 3 && mv.y == 4, "MathVec initialization failed");
     assert(pv.vx == 5.0 && pv.vy == 12.0, "PhysicsVec initialization failed");
     
-    "PASS: Selective import aliasing works";
+    println("PASS: Selective import aliasing works");
 }

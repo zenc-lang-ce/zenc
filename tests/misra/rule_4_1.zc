@@ -2,6 +2,7 @@
 // EXPECT: MISRA Rule 4.1
 // EXPECT: MISRA Rule 4.1
 
+import "std/io.zc"
 fn main() {
     let s1 = "\x41BC";   // FAIL (3+ hex digits)
     let s2 = "\x41 G";   // PASS (2 hex digits followed by space)
@@ -16,12 +17,12 @@ fn main() {
     let s7 = "\012";     // PASS
     
     // Violation for octal: shorter than 3 followed by digit
-    let _s8 = "\01" "2";  // Wait, Zen doesn't have concatenation.
+    let _s8 = "\01" println("2");  // Wait, Zen doesn't have concatenation.
     // If I have "\012", it's 3 digits.
     // If I have "\01" then some other char...
     let s9 = "\018";     // PASS (8 is not octal digit, so it terminates \01)
     
     let s10 = "\x41ABC"; // FAIL (More than 2 hex digits)
     
-    println f"{s1} {s2} {s3} {s4} {s6} {s7} {s9} {s10}";
+    println(f"{s1} {s2} {s3} {s4} {s6} {s7} {s9} {s10}");
 }

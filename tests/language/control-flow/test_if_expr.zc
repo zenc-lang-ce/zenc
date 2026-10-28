@@ -1,4 +1,5 @@
 // language/control-flow: control-flow: test_if_expr
+import "std/io.zc"
 test "if_as_expression" {
     // If-expression with blocks
     let x = if (1) { 10 } else { 20 };
@@ -13,5 +14,5 @@ test "if_as_expression" {
     let z = if (val > 3) { 1 } else { 0 };
     assert(z == 1, "if-expression with comparison should work");
 
-    println "  If-expression tests: Success";
+    println("  If-expression tests: Success");
 }

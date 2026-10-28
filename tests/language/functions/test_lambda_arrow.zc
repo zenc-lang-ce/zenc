@@ -1,4 +1,5 @@
 // language/functions: functions: test_lambda_arrow
+import "std/io.zc"
 fn compute(op: fn(I32, I32) -> I32, a: I32, b: I32) -> I32 {
     return op(a, b);
 }
@@ -6,16 +7,16 @@ fn compute(op: fn(I32, I32) -> I32, a: I32, b: I32) -> I32 {
 test "test_lambda_arrow" {
     let doubler = x -> x * 2;
     let res1 = doubler(5);
-    f"doubler(5) = {res1}";
+    println(f"doubler(5) = {res1}");
     assert(res1 == 10, "doubler(5) should be 10");
 
     let add = (x, y) -> x + y;
     let res2 = add(10, 20);
-    f"add(10, 20) = {res2}";
+    println(f"add(10, 20) = {res2}");
     assert(res2 == 30, "add(10, 20) should be 30");
     
     let res3 = compute((a, b) -> a * b, 3, 4);
-    f"compute((a, b) -> a * b, 3, 4) = {res3}";
+    println(f"compute((a, b) -> a * b, 3, 4) = {res3}");
     assert(res3 == 12, "compute((a, b) -> a * b, 3, 4) should be 12");
 }
 

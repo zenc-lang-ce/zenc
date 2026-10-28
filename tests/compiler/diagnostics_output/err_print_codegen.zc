@@ -1,0 +1,14 @@
+// ARGS: build
+// RFC 0001 errors found while generating code: a string as the arm of a match statement
+// no longer prints, and println is a function of std/io.zc, which has to be imported. In a
+// match expression a string arm is the value and still compiles.
+
+fn main() {
+    let n = 2;
+    match n {
+        1 => "one",
+        _ => "other",
+    }
+    let name = match n { 1 => "one", _ => "other" };
+    println(name);
+}

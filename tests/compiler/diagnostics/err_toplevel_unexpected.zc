@@ -4,5 +4,5 @@
 // `fn` and a stray statement vanished without a word.
 
 pub fn main() {
-    println "never reached";
+    println("never reached");
 }

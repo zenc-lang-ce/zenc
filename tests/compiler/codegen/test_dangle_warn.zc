@@ -1,4 +1,5 @@
 // codegen: test_dangle_warn
+import "std/io.zc"
 import "std/option.zc"
 
 fn get_optional_int() -> Option<int> {
@@ -7,5 +8,5 @@ fn get_optional_int() -> Option<int> {
 
 fn main() {
     let n = get_optional_int().unwrap();
-    f"{n}";
+    println(f"{n}");
 }

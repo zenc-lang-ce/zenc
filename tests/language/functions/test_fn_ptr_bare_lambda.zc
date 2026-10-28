@@ -1,4 +1,5 @@
 // language/functions: functions: test_fn_ptr_bare_lambda
+import "std/io.zc"
 trait Greeting {
     fn greet(self);
 }
@@ -10,13 +11,13 @@ struct Person {
 
 impl Greeting for Person {
     fn greet(self) {
-        println f"Trait greet: My name is {self.name}, age {self.age}";
+        println(f"Trait greet: My name is {self.name}, age {self.age}");
     }
 }
 
 impl Person {
     fn speak(self) {
-        println f"Inherent speak: Hello from {self.name}";
+        println(f"Inherent speak: Hello from {self.name}");
     }
 }
 
@@ -29,33 +30,33 @@ test "test_fn_ptr_resolution" {
 
     // Test Trait Method as raw fn*
     let f1: fn*(Person*) = Person::Greeting::greet;
-    println "Calling f1 (trait method)...";
+    println("Calling f1 (trait method)...");
     f1(&p);
 
     // Test Inherent Method as raw fn*
     let f2: fn*(Person*) = Person::speak;
-    println "Calling f2 (inherent method)...";
+    println("Calling f2 (inherent method)...");
     f2(&p);
 
     // Test Non-capturing Lambda as raw fn*
     let f3: fn*(Person*) = fn(ptr: Person*) {
-        println f"Lambda: Person {ptr.name} is here";
+        println(f"Lambda: Person {ptr.name} is here");
     };
-    println "Calling f3 (non-capturing lambda)...";
+    println("Calling f3 (non-capturing lambda)...");
     f3(&p);
 
     // Test within a struct (Runner)
     let r1 = Runner { callback: Person::Greeting::greet };
-    println "Calling r1.callback (trait method)...";
+    println("Calling r1.callback (trait method)...");
     r1.callback(&p);
 
     let r2 = Runner { callback: Person::speak };
-    println "Calling r2.callback (inherent method)...";
+    println("Calling r2.callback (inherent method)...");
     r2.callback(&p);
 
-    let r3 = Runner { callback: fn(ptr: Person*) { println f"Runner Lambda: {ptr.age}"; } };
-    println "Calling r3.callback (lambda)...";
+    let r3 = Runner { callback: fn(ptr: Person*) { println(f"Runner Lambda: {ptr.age}"); } };
+    println("Calling r3.callback (lambda)...");
     r3.callback(&p);
 
-    println "All function pointer tests passed!";
+    println("All function pointer tests passed!");
 }

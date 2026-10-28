@@ -1,11 +1,12 @@
 // stdlib: test_thread
+import "std/io.zc"
 import "std/thread.zc"
 
 test "Thread Spawn and Join" {
-    "Testing thread spawn and join";
+    println("Testing thread spawn and join");
 
     let spawn_result = Thread::spawn(fn(){
-        "Running on a separate thread";
+        println("Running on a separate thread");
     });
     assert(spawn_result.is_ok(), "Thread spawn has failed");
 
@@ -15,10 +16,10 @@ test "Thread Spawn and Join" {
 }
 
 test "Thread Spawn and Detach" {
-    "Testing thread spawn and detach";
+    println("Testing thread spawn and detach");
 
     let spawn_result = Thread::spawn(fn(){
-        "Detached thread, this line might print later.";
+        println("Detached thread, this line might print later.");
     });
     assert(spawn_result.is_ok(), "Thread spawn has failed");
 
@@ -28,10 +29,10 @@ test "Thread Spawn and Detach" {
 }
 
 test "Thread Spawn and Cancel" {
-    "Testing thread spawn and cancel";
+    println("Testing thread spawn and cancel");
 
     let spawn_result = Thread::spawn(fn(){
-        "Thread running indefinitely...";
+        println("Thread running indefinitely...");
         while true {
         }
     });

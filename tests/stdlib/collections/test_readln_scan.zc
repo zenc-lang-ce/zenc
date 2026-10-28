@@ -1,6 +1,7 @@
 // stdlib/collections: test_readln_scan
+import "std/io.zc"
 test "test_readln_scan" {
-    "Testing readln compilation...";
+    println("Testing readln compilation...");
     
     let x: int = 0;
     let f: float = 0.0;
@@ -13,9 +14,7 @@ test "test_readln_scan" {
         
         readln(x, f);
         
-        let count2 = ?"Age? "(x);
-        ?"Coords? "(x, f);
     }
     
-    "Smart readln compiled successfully";
+    println("Smart readln compiled successfully");
 }

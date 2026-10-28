@@ -2,6 +2,7 @@
 // Run with: ./zc run tests/compiler/interop/test_cfg_combinators.zc -DFEATURE_A -DFEATURE_C
 
 // any()  --  include if ANY match
+import "std/io.zc"
 @cfg(any(FEATURE_A, FEATURE_B))
 fn has_feature() -> bool { return true; }
 
@@ -32,5 +33,5 @@ fn main() {
     // any(not(B), Z) -> true because B is NOT defined
     assert(not_b_or_z() == true, "any(not(B), Z) should be true");
 
-    println "All combinator tests passed!";
+    println("All combinator tests passed!");
 }

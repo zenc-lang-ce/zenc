@@ -32,7 +32,7 @@ test "primitives" {
     v = JsonValue::number(123.0);
     s = v.to_string();
     if (strcmp(s, "123") != 0) {
-         println f"{s}";
+         println(f"{s}");
          panic("Number 123 serialization failed");
     }
     free(s);
@@ -49,7 +49,7 @@ test "primitives" {
     v = JsonValue::string("hello");
     s = v.to_string();
     if (strcmp(s, "\"hello\"") != 0) {
-         println f"{s}";
+         println(f"{s}");
          panic("String hello serialization failed");
     }
     free(s);
@@ -58,7 +58,7 @@ test "primitives" {
     v = JsonValue::string("hello \"world\"");
     s = v.to_string();
     if (strcmp(s, "\"hello \\\"world\\\"\"") != 0) {
-         println f"Got: {s}";
+         println(f"Got: {s}");
          panic("String escaped serialization failed");
     }
     free(s);
@@ -72,7 +72,7 @@ test "array" {
     
     let s = v.to_string();
     if (strcmp(s, "[1,true,\"a\"]") != 0) {
-         println f"Got: {s}";
+         println(f"Got: {s}");
          panic("Array serialization failed");
     }
     free(s);
@@ -140,14 +140,14 @@ test "interpolation" {
     obj.set("a", JsonValue::number(1.0));
     let s = format(f"obj={obj}");
     if (strcmp(s, f"obj={{\"a\":1}}") != 0) {
-        println f"Got: {s}";
+        println(f"Got: {s}");
         panic("JsonValue interpolation failed");
     }
 
     let c = Complex::new(3.0, 4.0);
     let cs = format(f"c={c}");
     if (strcmp(cs, "c=3.000000 + 4.000000i") != 0) {
-        println f"Got: {cs}";
+        println(f"Got: {cs}");
         panic("Complex interpolation failed");
     }
 }

@@ -1,20 +1,21 @@
 // language/features/embedding: embedding: test_embed
+import "std/io.zc"
 test "test_embed" {
-    "=> Static File Analyzer";
+    println("=> Static File Analyzer");
     
     let data = embed "std.zc"; // Relative to root if run from root, or use ../../../../std.zc 
     // Actually, std.zc is always searchable from root.
     
-    "Target File: 'std.zc'";
-    f"File Size:   {data.len} bytes";
-    "";
+    println("Target File: 'std.zc'");
+    println(f"File Size:   {data.len} bytes");
+    println("");
     
     let lines: I32 = 1;
     let words: I32 = 0;
     let sum: U64 = 0;
     let in_word: bool = 0;
     
-    "Analyzing content...";
+    println("Analyzing content...");
     
     let i: int = 0;
     while (i < data.len) {
@@ -44,16 +45,16 @@ test "test_embed" {
         i++;
     }
     
-    "";
-    "*** Report ***";
-    f"Total Lines: {lines}";
-    f"Total Words: {words}";
+    println("");
+    println("*** Report ***");
+    println(f"Total Lines: {lines}");
+    println(f"Total Words: {words}");
     
-    f"Checksum:    0x{sum:X} (Simple Sum)"; 
-    f"Average Byte: {sum / data.len}"; 
+    println(f"Checksum:    0x{sum:X} (Simple Sum)"); 
+    println(f"Average Byte: {sum / data.len}"); 
     
-    "";
-    "Analysis successfully completed.";
+    println("");
+    println("Analysis successfully completed.");
 }
 
 test "typed_embed" {
@@ -80,5 +81,5 @@ test "typed_embed" {
     if (raw.len < 5) exit(106);
     if (raw.data[0] != 'H') exit(107);
     
-    println "Typed embed tests passed";
+    println("Typed embed tests passed");
 }

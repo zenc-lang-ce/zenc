@@ -1,4 +1,5 @@
 // fstrings: test_fstring
+import "std/io.zc"
 import "tests/language/features/fstrings/_fstring_mod.zc" as Mod;
 
 test "alias namespace fstring" {
@@ -7,7 +8,7 @@ test "alias namespace fstring" {
     assert(res == "42", "Import namespace in f-string failed");
     
     // Check local string formatting via println (compile check)
-    println f"Val: {Mod::get_val()}";
+    println(f"Val: {Mod::get_val()}");
 }
 
 import "tests/language/features/fstrings/fstring_lib.h" as Lib;
@@ -20,12 +21,12 @@ test "alias C header fstring" {
     assert(res == "99", "C header namespace in f-string failed");
     
     // Verify println (rewrite_expr_methods path)
-    println f"C Val: {Lib::lib_val()}";
+    println(f"C Val: {Lib::lib_val()}");
 }
 test "raw_string_no_interpolation" {
     // Raw string with interpolation characters (should not interpolate)
     // let x = 42;
-    println r"Value of {x} is {x}"; // Should literally print {x}
+    println(r"Value of {x} is {x}"); // Should literally print {x}
 
     // Single-line raw
     let s1 = r"Value: {x}";
@@ -70,13 +71,13 @@ test "negated_struct_interpolation" {
 test "brace_escaping" {
     // Test {{ escapes to {
     let a = f"Open {{ and close }}";
-    println f"Got: {a}";
+    println(f"Got: {a}");
     
     // Test in interpolated string with JSON-style content  
     let b = f"JSON: {{\"key\": \"value\"}}";
-    println f"Got: {b}";
+    println(f"Got: {b}");
     
-    println "  Brace escaping: Success";
+    println("  Brace escaping: Success");
 }
 
 test "implicit_fstring_interpolation" {

@@ -1,0 +1,15 @@
+// ARGS: build
+// RFC 0001: a string on its own no longer prints. During the transition the old forms
+// that would still compile and print nothing are errors that tell how to print: a bare
+// string (println), one followed by `..` (print), and `!` before a string (eprintln, or
+// eprint with `..`).
+
+fn main() {
+    let x = 1;
+    "plain";
+    "no newline"..
+    !"to stderr";
+    !"to stderr, no newline"..
+    let y = !x;
+    (void)y;
+}

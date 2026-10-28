@@ -1,4 +1,5 @@
 // language/features/memory: memory: test_unsafe
+import "std/io.zc"
 raw {
     #define MY_C_CONST 12345
     int legacy_add(int a, int b) { 
@@ -21,11 +22,11 @@ fn counter() -> int {
 }
 
 test "test_raw" {
-    println "Testing Raw C Embedding...";
+    println("Testing Raw C Embedding...");
     let res = legacy_add(10, 20);
     // Expected: 10 + 20 + 12345 = 12375
     assert(res == 12375, "Raw C Code failed");
-    println f"  Raw C Code: Success (Result: {res})";
+    println(f"  Raw C Code: Success (Result: {res})");
 }
 
 test "test_restrict" {

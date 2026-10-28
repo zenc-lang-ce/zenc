@@ -21,12 +21,12 @@ impl Handle<T>{
 }
 test "generic default arguments (int)"{
     let h=Handle<int>::new();
-    f"h.get()={h.get()}";
+    println(f"h.get()={h.get()}");
     h.free();
 }
 test "generic default arguments (pointer)"{
     let h=Handle<int*>::new();
-    f"h.get()={h.get()}";
+    println(f"h.get()={h.get()}");
     h.free();
 }
 struct Point{
@@ -37,8 +37,8 @@ test "generic default arguments (struct)"{
     let h=Handle<Point>::new();
     let p=h.get();
 
-    f"p.x={p.x}";
-    f"p.y={p.y}";
+    println(f"p.x={p.x}");
+    println(f"p.y={p.y}");
 
     h.free();
 }

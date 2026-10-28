@@ -2,6 +2,7 @@
 // An f-string inside a lambda reads captured variables through the lambda's
 // context, whether it is a statement (println) or an expression.
 
+import "std/io.zc"
 test "an f-string returned from a lambda" {
     let k = 7;
     let f = fn() -> string { return f"{k}"; };
@@ -27,7 +28,7 @@ test "an f-string reads a capture by reference" {
 test "println in a lambda" {
     let k = 7;
     let f = fn() -> int {
-        println f"k is {k}";
+        println(f"k is {k}");
         return k;
     };
     assert f() == 7;

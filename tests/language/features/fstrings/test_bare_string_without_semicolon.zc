@@ -2,14 +2,15 @@
 // trailing `;` when the next statement starts on a new line (semicolons are
 // optional), for plain and interpolated strings alike.
 
+import "std/io.zc"
 fn main() {
     let x = 3
-    "plain without semicolon"
-    f"interpolated without semicolon: {x}"
-    f"followed by a declaration: {x}"
+    println("plain without semicolon")
+    println(f"interpolated without semicolon: {x}")
+    println(f"followed by a declaration: {x}")
     let y = x + 1
-    f"y is {y}"
-    "same line"; f"then {y}"
-    f"without newline: {x} "..
-    "last"
+    println(f"y is {y}")
+    println("same line"); println(f"then {y}")
+    print(f"without newline: {x} ")
+    println("last")
 }

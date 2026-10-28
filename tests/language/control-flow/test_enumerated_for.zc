@@ -1,8 +1,9 @@
 // language/control-flow: control-flow: test_enumerated_for
+import "std/io.zc"
 test "enumerated range loop" {
     let sum_idx = 0;
     let sum_val = 0;
-    println "Running test: enumerated range loop";
+    println("Running test: enumerated range loop");
     for i, val in 0..5 {
         sum_idx = sum_idx + i;
         sum_val = sum_val + val;

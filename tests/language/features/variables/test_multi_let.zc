@@ -1,5 +1,6 @@
 // language/features/variables: multi-let declarations with comma syntax
 
+import "std/io.zc"
 test "multi_let_basic" {
     let a = 10, b = 20;
     expect_eq(a, 10, "multi-let first var should be 10");
@@ -16,7 +17,7 @@ test "multi_let_three" {
 test "multi_let_with_types" {
     let a: i32 = 10, b: f64 = 3.14;
     expect_eq(a, 10, "typed multi-let first should be 10");
-    "typed multi-let compiles";
+    println("typed multi-let compiles");
 }
 
 test "multi_let_reassign" {
@@ -36,5 +37,5 @@ test "multi_let_mixed_types" {
     let a: int = 42, b: string = "hello", c: f64 = 3.14;
     expect_eq(a, 42, "mixed-types a should be 42");
     expect_eq(b == "hello", true, "mixed-types b should be hello");
-    "mixed types compile";
+    println("mixed types compile");
 }

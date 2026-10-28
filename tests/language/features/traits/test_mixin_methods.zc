@@ -1,4 +1,5 @@
 // language/features/traits: traits: test_mixin_methods
+import "std/io.zc"
 struct Foo {
     i: i32;
 }
@@ -29,5 +30,5 @@ test "test_mixin_methods" {
     b.set_i(100);
     assert(b.i == 100, "Mixin method set_i() should update i to 100");
     
-    "Mixin method dispatch OK";
+    println("Mixin method dispatch OK");
 }

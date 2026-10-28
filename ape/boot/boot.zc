@@ -1,3 +1,4 @@
+import "std/io.zc"
 #define _COSMO_SOURCE
 #include <libc/cosmo.h>
 #include <string.h>
@@ -30,30 +31,30 @@ fn needs_quote(s: char*) -> bool {
 
 fn print_quoted(s: char*) {
   if !needs_quote(s) {
-    print f"{s}";
+    print(f"{s}");
     return;
   }
 
-  print f"'";
+  print(f"'");
   for (let p = s; *p; ++p) {
     if (*p == '\'') {
-     print f"'\"'\"'";
+     print(f"'\"'\"'");
     } else {
-     print f"{*p:c}";
+     print(f"{*p:c}");
     }
   }
-  print f"'";
+  print(f"'");
 }
 
 fn log_cmd(argv: char**) {
-  print f"$ ";
+  print(f"$ ");
   let i = 0;
   while argv[i] != NULL {
-    if i { print f" " }
+    if i { print(f" ") }
     print_quoted(argv[i]);
     i++;
   }
-  print f"\n";
+  print(f"\n");
 }
 
 fn main(argc: int, argv: string*) {
@@ -67,7 +68,7 @@ fn main(argc: int, argv: string*) {
 
   while i < argc {
     if strcmp(argv[i], delim) {
-      f"Expected '{delim}' before each command, got: {argv[i]}";
+      println(f"Expected '{delim}' before each command, got: {argv[i]}");
       return 2;
     }
     i++;
@@ -77,7 +78,7 @@ fn main(argc: int, argv: string*) {
     let cmd_argc = i - start;
 
     if cmd_argc <= 0 {
-      f"Empty command after '{delim}'";
+      println(f"Empty command after '{delim}'");
       return 2;
     }
 
@@ -85,16 +86,16 @@ fn main(argc: int, argv: string*) {
 
     if !strcmp(argv[start], "system") {
       if cmd_argc != 3 {
-        !f"error: system expects 2 arguments, got {cmd_argc}";
+        eprintln(f"error: system expects 2 arguments, got {cmd_argc}");
         return -4;
       }
 
       if strcmp(argv[start + 1], "-c") {
-        !f"error: system got '{argv[start + 1]}' instead of -c";
+        eprintln(f"error: system got '{argv[start + 1]}' instead of -c");
         return -5;
       }
 
-      f"$ {argv[start + 2]}";
+      println(f"$ {argv[start + 2]}");
       rc = normalize_wait(system(argv[start + 2]));
 
       if rc { return rc }

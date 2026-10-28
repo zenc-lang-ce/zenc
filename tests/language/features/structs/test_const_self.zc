@@ -1,4 +1,5 @@
 // structs: test_const_self
+import "std/io.zc"
 struct Point {
     x: i32;
     y: i32;
@@ -27,5 +28,5 @@ test "const self methods" {
     assert(p.get_x() == 11, "increment failed");
     assert(p.get_sum() == 31, "increment sum failed");
 
-    println f"  Point {p.x}, {p.y} - Const self methods verified";
+    println(f"  Point {p.x}, {p.y} - Const self methods verified");
 }

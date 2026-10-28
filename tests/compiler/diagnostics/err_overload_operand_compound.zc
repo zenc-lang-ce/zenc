@@ -10,5 +10,5 @@ fn append_plain(text: String*) {
 }
 
 fn main() {
-    println "unreachable";
+    println("unreachable");
 }

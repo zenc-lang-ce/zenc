@@ -1,4 +1,5 @@
 // comptime: test_comptime_suite
+import "std/io.zc"
 comptime {
     yield("def GENERATED_VAL = 42;");
 }
@@ -10,17 +11,17 @@ fn double_ct(x: int) -> int {
 
 test "test_comptime_block" {
     assert(GENERATED_VAL == 42, "generated constant works");
-    println "Comptime Test Complete.";
+    println("Comptime Test Complete.");
 }
 
 test "test_comptime_attr" {
     let x = double_ct(21);
     assert(x == 42, "Comptime function failed");
-    println "Comptime function called successfully";
+    println("Comptime function called successfully");
 }
 
 test "test_comptime_fn" {
     comptime {
-        yield("println \"Hello from comptime fn!\";");
+        yield("println(\"Hello from comptime fn!\");");
     }
 }

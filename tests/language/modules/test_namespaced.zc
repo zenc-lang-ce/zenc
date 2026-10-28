@@ -1,4 +1,5 @@
 // language/modules: modules: test_namespaced
+import "std/io.zc"
 import "./test_modules/_math.zc" as math;
 import "./test_modules/_physics.zc" as physics;
 
@@ -12,5 +13,5 @@ test "test_namespaced_imports" {
     assert(len1 == 5, "Math vector length failed");
     assert(len2 == 13.0, "Physics vector magnitude failed");
     
-    "PASS: Namespaced imports work correctly";
+    println("PASS: Namespaced imports work correctly");
 }

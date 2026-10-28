@@ -1,4 +1,5 @@
 // ARGS: run -q
+import "std/io.zc"
 fn check(n: int) {
     if n < 0 {
         panic("n must not be negative");
@@ -7,5 +8,5 @@ fn check(n: int) {
 
 fn main() {
     check(-1);
-    println "after";
+    println("after");
 }

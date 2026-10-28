@@ -1,12 +1,13 @@
 // compiler/analysis: type analysis: test_type_calls
 // Function call validation: arg count, types, @pure, default args
 
+import "std/io.zc"
 fn add(a: i32, b: i32) -> i32 {
     return a + b;
 }
 
 fn greet(name: string) {
-    println f"Hello, {name}!";
+    println(f"Hello, {name}!");
 }
 
 @pure

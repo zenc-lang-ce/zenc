@@ -1,4 +1,5 @@
 // test_string_view_println
+import "std/io.zc"
 import "std/core.zc"
 import "std/vec.zc"
 
@@ -8,13 +9,13 @@ alias MyVec = Vec<char>;
 test "println_robustness_slice" {
     let val = "hello";
     let sv: [char] = Slice_char{data: val, len: (usize)5, cap: (usize)5};
-    println f"{sv}";
+    println(f"{sv}");
 }
 
 test "println_robustness_opaque_alias" {
     let val = "opaque";
     let sv: StringView = Slice_char{data: val, len: (usize)6, cap: (usize)6};
-    println f"{sv}";
+    println(f"{sv}");
 }
 
 test "println_robustness_vec_alias" {
@@ -22,38 +23,38 @@ test "println_robustness_vec_alias" {
     mv.push('a');
     mv.push('b');
     mv.push('c');
-    println f"{mv}";
+    println(f"{mv}");
 }
 
 test "println_robustness_pointer" {
     let val = "pointer";
     let sv: [char] = Slice_char{data: val, len: (usize)7, cap: (usize)7};
     let p = &sv;
-    println f"{p}";
+    println(f"{p}");
 }
 
 test "println_robustness_builtin_slice" {
     let val = "builtin";
     let s: [char] = Slice_char{data: val, len: (usize)7, cap: (usize)7};
-    println f"{s}";
+    println(f"{s}");
 }
 
 test "println_raw_strings" {
     // Single-line raw string
-    println r"This is a raw string in println";
+    println(r"This is a raw string in println");
     
     // Multi-line raw string
-    println r"""
+    println(r"""
 Multi-line
 raw
 string
 in
 println
-""";
+""");
 
     // Raw string with interpolation characters (should not interpolate)
     // let x = 42;
-    println r"Value of {x} is {x}"; // Should literally print {x}
+    println(r"Value of {x} is {x}"); // Should literally print {x}
 }
 
 
