@@ -151,7 +151,7 @@ fn _utf8_seq_len(first_byte: byte) -> usize {
 /// Reads a single rune from stdin.
 fn read_rune() -> rune {
     let std_in = stdin;
-    let c1 = fgetc((FILE*)std_in);
+    let c1: int = fgetc((FILE*)std_in);
     if (c1 == -1) {
         return (rune)0;
     }
