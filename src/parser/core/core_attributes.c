@@ -12,6 +12,98 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
+// `not`, as a word or as `!`, in a @cfg condition.
+static int is_cfg_not(Token t)
+{
+    return t.kind == TOK_NOT ||
+           (t.kind == TOK_IDENT && t.len == 3 && strncmp(t.start, "not", 3) == 0);
+}
+
+// The C test for the define `name`: `defined(ZC_CFG_name)`, or its negation.
+static char *cfg_defined(Token name, int negated)
+{
+    char *cond = xmalloc((size_t)name.len + 32);
+    sprintf(cond, "%sdefined(ZC_CFG_%.*s)", negated ? "!" : "", (int)name.len,
+            name.start); /* safe */
+    return cond;
+}
+
+// `cond` joined to `acc` by `op` (" && ", " || "); just `cond` when `acc` is still empty.
+static char *cfg_join(char *acc, const char *op, const char *cond)
+{
+    if (!acc)
+    {
+        return xstrdup(cond);
+    }
+    char *joined = xmalloc(strlen(acc) + strlen(op) + strlen(cond) + 1);
+    sprintf(joined, "%s%s%s", acc, op, cond); /* safe */
+    zfree(acc);
+    return joined;
+}
+
+// The `(NAME, not(NAME), ...)` of @cfg(any(...)) or @cfg(all(...)), its terms joined by `op`.
+// *out is NULL for an empty list. Returns 0 after reporting an error.
+static int parse_cfg_list(Lexer *l, const char *list, const char *op, char **out)
+{
+    *out = NULL;
+    if (lexer_peek(l).kind != TOK_LPAREN)
+    {
+        zpanic_at(lexer_peek(l), "Expected ( after %s in @cfg(%s(...))", list, list);
+        return 0;
+    }
+    lexer_next(l);
+    char *cond = NULL;
+    while (1)
+    {
+        Token t = lexer_next(l);
+        if (t.kind == TOK_EOF)
+        {
+            break;
+        }
+        if (is_cfg_not(t))
+        {
+            if (lexer_next(l).kind != TOK_LPAREN)
+            {
+                zpanic_at(lexer_peek(l), "Expected ( after not");
+                return 0;
+            }
+            Token name = lexer_next(l);
+            if (name.kind != TOK_IDENT)
+            {
+                zpanic_at(name, "Expected define name");
+                return 0;
+            }
+            cond = cfg_join(cond, op, cfg_defined(name, 1));
+            if (lexer_next(l).kind != TOK_RPAREN)
+            {
+                zpanic_at(lexer_peek(l), "Expected )");
+                return 0;
+            }
+        }
+        else if (t.kind == TOK_IDENT)
+        {
+            cond = cfg_join(cond, op, cfg_defined(t, 0));
+        }
+        else
+        {
+            zpanic_at(t, "Expected define name in @cfg(%s(...))", list);
+            return 0;
+        }
+        if (lexer_peek(l).kind != TOK_COMMA)
+        {
+            break;
+        }
+        lexer_next(l);
+    }
+    if (lexer_next(l).kind != TOK_RPAREN)
+    {
+        zpanic_at(lexer_peek(l), "Expected ) after %s(...)", list);
+        return 0;
+    }
+    *out = cond;
+    return 1;
+}
+
 DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
 {
     (void)ctx;
@@ -207,310 +299,65 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
         }
         else if (0 == strncmp(attr.start, "cfg", 3) && 3 == attr.len)
         {
-            if (lexer_peek(l).kind == TOK_LPAREN)
-            {
-                lexer_next(l);
-                Token cfg_tok = lexer_next(l);
-                if ((cfg_tok.kind == TOK_NOT || (cfg_tok.kind == TOK_IDENT && cfg_tok.len == 3 &&
-                                                 strncmp(cfg_tok.start, "not", 3) == 0)))
-                {
-                    if (lexer_peek(l).kind != TOK_LPAREN)
-                    {
-                        zpanic_at(lexer_peek(l), "Expected ( after not in @cfg(not(...))");
-                        return (DeclarationAttributes){0};
-                        return (DeclarationAttributes){0};
-                    }
-                    lexer_next(l);
-                    Token name_tok = lexer_next(l);
-                    if (name_tok.kind != TOK_IDENT)
-                    {
-                        zpanic_at(name_tok, "Expected define name in @cfg(not(NAME))");
-                        return (DeclarationAttributes){0};
-                        return (DeclarationAttributes){0};
-                    }
-                    char *cfg_name = token_strdup(name_tok);
-                    if (!res.cfg_condition)
-                    {
-                        res.cfg_condition = xmalloc(strlen(cfg_name) + 32);
-                        sprintf(res.cfg_condition, "!defined(ZC_CFG_%s)", cfg_name); /* safe */
-                    }
-                    else
-                    {
-                        char *old = res.cfg_condition;
-                        res.cfg_condition = xmalloc(strlen(old) + strlen(cfg_name) + 32);
-                        sprintf(res.cfg_condition, "%s && !defined(ZC_CFG_%s)", old,
-                                cfg_name); /* safe */
-                        zfree(old);
-                    }
-                    zfree(cfg_name);
-                    if (lexer_next(l).kind != TOK_RPAREN)
-                    {
-                        zpanic_at(lexer_peek(l), "Expected ) after name in @cfg(not(NAME))");
-                        return (DeclarationAttributes){0};
-                        return (DeclarationAttributes){0};
-                    }
-                }
-                else if (cfg_tok.kind == TOK_IDENT && cfg_tok.len == 3 &&
-                         strncmp(cfg_tok.start, "any", 3) == 0)
-                {
-                    if (lexer_peek(l).kind != TOK_LPAREN)
-                    {
-                        zpanic_at(lexer_peek(l), "Expected ( after any in @cfg(any(...))");
-                        return (DeclarationAttributes){0};
-                        return (DeclarationAttributes){0};
-                    }
-                    lexer_next(l);
-                    char *any_cond = NULL;
-                    while (1)
-                    {
-                        Token inner_t = lexer_next(l);
-                        if (inner_t.kind == TOK_EOF)
-                        {
-                            break;
-                        }
-                        if ((inner_t.kind == TOK_NOT ||
-                             (inner_t.kind == TOK_IDENT && inner_t.len == 3 &&
-                              strncmp(inner_t.start, "not", 3) == 0)))
-                        {
-                            if (lexer_next(l).kind != TOK_LPAREN)
-                            {
-                                zpanic_at(lexer_peek(l), "Expected ( after not");
-                                return (DeclarationAttributes){0};
-                                return (DeclarationAttributes){0};
-                            }
-                            Token nt = lexer_next(l);
-                            if (nt.kind != TOK_IDENT)
-                            {
-                                zpanic_at(nt, "Expected define name");
-                                return (DeclarationAttributes){0};
-                                return (DeclarationAttributes){0};
-                            }
-                            char *cfg_name = token_strdup(nt);
-                            if (!any_cond)
-                            {
-                                any_cond = xmalloc(strlen(cfg_name) + 32);
-                                sprintf(any_cond, "!defined(ZC_CFG_%s)", cfg_name); /* safe */
-                            }
-                            else
-                            {
-                                char *old = any_cond;
-                                any_cond = xmalloc(strlen(old) + strlen(cfg_name) + 32);
-                                sprintf(any_cond, "%s || !defined(ZC_CFG_%s)", old,
-                                        cfg_name); /* safe */
-                                zfree(old);
-                            }
-                            zfree(cfg_name);
-                            if (lexer_next(l).kind != TOK_RPAREN)
-                            {
-                                zpanic_at(lexer_peek(l), "Expected )");
-                                return (DeclarationAttributes){0};
-                                return (DeclarationAttributes){0};
-                            }
-                        }
-                        else if (inner_t.kind == TOK_IDENT)
-                        {
-                            char *cfg_name = token_strdup(inner_t);
-                            if (!any_cond)
-                            {
-                                any_cond = xmalloc(strlen(cfg_name) + 32);
-                                sprintf(any_cond, "defined(ZC_CFG_%s)", cfg_name); /* safe */
-                            }
-                            else
-                            {
-                                char *old = any_cond;
-                                any_cond = xmalloc(strlen(old) + strlen(cfg_name) + 32);
-                                sprintf(any_cond, "%s || defined(ZC_CFG_%s)", old,
-                                        cfg_name); /* safe */
-                                zfree(old);
-                            }
-                            zfree(cfg_name);
-                        }
-                        else
-                        {
-                            zpanic_at(inner_t, "Expected define name in @cfg(any(...))");
-                            return (DeclarationAttributes){0};
-                            return (DeclarationAttributes){0};
-                        }
-                        if (lexer_peek(l).kind == TOK_COMMA)
-                        {
-                            lexer_next(l);
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                    if (lexer_next(l).kind != TOK_RPAREN)
-                    {
-                        zpanic_at(lexer_peek(l), "Expected ) after any(...)");
-                        return (DeclarationAttributes){0};
-                        return (DeclarationAttributes){0};
-                    }
-                    if (any_cond)
-                    {
-                        if (!res.cfg_condition)
-                        {
-                            res.cfg_condition = xmalloc(strlen(any_cond) + 32);
-                            sprintf(res.cfg_condition, "(%s)", any_cond); /* safe */
-                        }
-                        else
-                        {
-                            char *old = res.cfg_condition;
-                            res.cfg_condition = xmalloc(strlen(old) + strlen(any_cond) + 32);
-                            sprintf(res.cfg_condition, "%s && (%s)", old, any_cond); /* safe */
-                            zfree(old);
-                        }
-                        zfree(any_cond);
-                    }
-                }
-                else if (cfg_tok.kind == TOK_IDENT && cfg_tok.len == 3 &&
-                         strncmp(cfg_tok.start, "all", 3) == 0)
-                {
-                    if (lexer_peek(l).kind != TOK_LPAREN)
-                    {
-                        zpanic_at(lexer_peek(l), "Expected ( after all in @cfg(all(...))");
-                        return (DeclarationAttributes){0};
-                        return (DeclarationAttributes){0};
-                    }
-                    lexer_next(l);
-                    char *all_cond = NULL;
-                    while (1)
-                    {
-                        Token inner_t = lexer_next(l);
-                        if (inner_t.kind == TOK_EOF)
-                        {
-                            break;
-                        }
-                        if ((inner_t.kind == TOK_NOT ||
-                             (inner_t.kind == TOK_IDENT && inner_t.len == 3 &&
-                              strncmp(inner_t.start, "not", 3) == 0)))
-                        {
-                            if (lexer_next(l).kind != TOK_LPAREN)
-                            {
-                                zpanic_at(lexer_peek(l), "Expected ( after not");
-                                return (DeclarationAttributes){0};
-                                return (DeclarationAttributes){0};
-                            }
-                            Token nt = lexer_next(l);
-                            if (nt.kind != TOK_IDENT)
-                            {
-                                zpanic_at(nt, "Expected define name");
-                                return (DeclarationAttributes){0};
-                                return (DeclarationAttributes){0};
-                            }
-                            char *cfg_name = token_strdup(nt);
-                            if (!all_cond)
-                            {
-                                all_cond = xmalloc(strlen(cfg_name) + 32);
-                                sprintf(all_cond, "!defined(ZC_CFG_%s)", cfg_name); /* safe */
-                            }
-                            else
-                            {
-                                char *old = all_cond;
-                                all_cond = xmalloc(strlen(old) + strlen(cfg_name) + 32);
-                                sprintf(all_cond, "%s && !defined(ZC_CFG_%s)", old,
-                                        cfg_name); /* safe */
-                                zfree(old);
-                            }
-                            zfree(cfg_name);
-                            if (lexer_next(l).kind != TOK_RPAREN)
-                            {
-                                zpanic_at(lexer_peek(l), "Expected )");
-                                return (DeclarationAttributes){0};
-                                return (DeclarationAttributes){0};
-                            }
-                        }
-                        else if (inner_t.kind == TOK_IDENT)
-                        {
-                            char *cfg_name = token_strdup(inner_t);
-                            if (!all_cond)
-                            {
-                                all_cond = xmalloc(strlen(cfg_name) + 32);
-                                sprintf(all_cond, "defined(ZC_CFG_%s)", cfg_name); /* safe */
-                            }
-                            else
-                            {
-                                char *old = all_cond;
-                                all_cond = xmalloc(strlen(old) + strlen(cfg_name) + 32);
-                                sprintf(all_cond, "%s && defined(ZC_CFG_%s)", old,
-                                        cfg_name); /* safe */
-                                zfree(old);
-                            }
-                            zfree(cfg_name);
-                        }
-                        else
-                        {
-                            zpanic_at(inner_t, "Expected define name in @cfg(all(...))");
-                            return (DeclarationAttributes){0};
-                            return (DeclarationAttributes){0};
-                        }
-                        if (lexer_peek(l).kind == TOK_COMMA)
-                        {
-                            lexer_next(l);
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                    if (lexer_next(l).kind != TOK_RPAREN)
-                    {
-                        zpanic_at(lexer_peek(l), "Expected ) after all(...)");
-                        return (DeclarationAttributes){0};
-                        return (DeclarationAttributes){0};
-                    }
-                    if (all_cond)
-                    {
-                        if (!res.cfg_condition)
-                        {
-                            res.cfg_condition = xmalloc(strlen(all_cond) + 32);
-                            sprintf(res.cfg_condition, "(%s)", all_cond); /* safe */
-                        }
-                        else
-                        {
-                            char *old = res.cfg_condition;
-                            res.cfg_condition = xmalloc(strlen(old) + strlen(all_cond) + 32);
-                            sprintf(res.cfg_condition, "%s && (%s)", old, all_cond); /* safe */
-                            zfree(old);
-                        }
-                        zfree(all_cond);
-                    }
-                }
-                else if (cfg_tok.kind == TOK_IDENT)
-                {
-                    char *cfg_name = token_strdup(cfg_tok);
-                    if (!res.cfg_condition)
-                    {
-                        res.cfg_condition = xmalloc(strlen(cfg_name) + 32);
-                        sprintf(res.cfg_condition, "defined(ZC_CFG_%s)", cfg_name); /* safe */
-                    }
-                    else
-                    {
-                        char *old = res.cfg_condition;
-                        res.cfg_condition = xmalloc(strlen(old) + strlen(cfg_name) + 32);
-                        sprintf(res.cfg_condition, "%s && defined(ZC_CFG_%s)", old,
-                                cfg_name); /* safe */
-                        zfree(old);
-                    }
-                    zfree(cfg_name);
-                }
-                else
-                {
-                    zpanic_at(cfg_tok, "Expected define name in @cfg(NAME)");
-                    return (DeclarationAttributes){0};
-                    return (DeclarationAttributes){0};
-                }
-                if (lexer_next(l).kind != TOK_RPAREN)
-                {
-                    zpanic_at(lexer_peek(l), "Expected ) after @cfg(...)");
-                    return (DeclarationAttributes){0};
-                    return (DeclarationAttributes){0};
-                }
-            }
-            else
+            if (lexer_peek(l).kind != TOK_LPAREN)
             {
                 zpanic_at(lexer_peek(l), "@cfg requires a condition: @cfg(NAME)");
                 return (DeclarationAttributes){0};
+            }
+            lexer_next(l);
+            Token cfg_tok = lexer_next(l);
+            int is_any = cfg_tok.kind == TOK_IDENT && cfg_tok.len == 3 &&
+                         strncmp(cfg_tok.start, "any", 3) == 0;
+            int is_all = cfg_tok.kind == TOK_IDENT && cfg_tok.len == 3 &&
+                         strncmp(cfg_tok.start, "all", 3) == 0;
+            if (is_cfg_not(cfg_tok))
+            {
+                if (lexer_peek(l).kind != TOK_LPAREN)
+                {
+                    zpanic_at(lexer_peek(l), "Expected ( after not in @cfg(not(...))");
+                    return (DeclarationAttributes){0};
+                }
+                lexer_next(l);
+                Token name_tok = lexer_next(l);
+                if (name_tok.kind != TOK_IDENT)
+                {
+                    zpanic_at(name_tok, "Expected define name in @cfg(not(NAME))");
+                    return (DeclarationAttributes){0};
+                }
+                res.cfg_condition = cfg_join(res.cfg_condition, " && ", cfg_defined(name_tok, 1));
+                if (lexer_next(l).kind != TOK_RPAREN)
+                {
+                    zpanic_at(lexer_peek(l), "Expected ) after name in @cfg(not(NAME))");
+                    return (DeclarationAttributes){0};
+                }
+            }
+            else if (is_any || is_all)
+            {
+                char *list_cond = NULL;
+                if (!parse_cfg_list(l, is_any ? "any" : "all", is_any ? " || " : " && ",
+                                    &list_cond))
+                {
+                    return (DeclarationAttributes){0};
+                }
+                if (list_cond)
+                {
+                    char *grouped = xmalloc(strlen(list_cond) + 3);
+                    sprintf(grouped, "(%s)", list_cond); /* safe */
+                    res.cfg_condition = cfg_join(res.cfg_condition, " && ", grouped);
+                }
+            }
+            else if (cfg_tok.kind == TOK_IDENT)
+            {
+                res.cfg_condition = cfg_join(res.cfg_condition, " && ", cfg_defined(cfg_tok, 0));
+            }
+            else
+            {
+                zpanic_at(cfg_tok, "Expected define name in @cfg(NAME)");
+                return (DeclarationAttributes){0};
+            }
+            if (lexer_next(l).kind != TOK_RPAREN)
+            {
+                zpanic_at(lexer_peek(l), "Expected ) after @cfg(...)");
                 return (DeclarationAttributes){0};
             }
         }
