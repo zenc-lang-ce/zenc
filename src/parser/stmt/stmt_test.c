@@ -63,10 +63,11 @@ ASTNode *parse_test(ParserContext *ctx, Lexer *l)
 }
 
 // The message of `assert`/`expect`. A string with `{...}` parts is interpolated
-// like any other string: it becomes the C expression that builds the text, and
-// is emitted the way a message variable is (`"%s", expr`), so it is only
+// like any other string: it becomes an f-string node (*fstring, and NULL is
+// returned), emitted the way a message variable is (`"%s", expr`), so it is only
 // evaluated when the check fails.
-static char *parse_check_message_string(ParserContext *ctx, Token st, int *is_literal)
+static char *parse_check_message_string(ParserContext *ctx, Token st, int *is_literal,
+                                        ASTNode **fstring)
 {
     char *content = token_get_string_content(st);
     int has_interpolation = 0;
@@ -82,10 +83,10 @@ static char *parse_check_message_string(ParserContext *ctx, Token st, int *is_li
 
     if (has_interpolation)
     {
-        char *code = process_printf_sugar(ctx, st, content, 0, "stdout", NULL, NULL, 0, 0, 1);
+        *fstring = parse_fstring_parts(ctx, st, content, NULL, NULL, 0);
         zfree(content);
         *is_literal = 0;
-        return code;
+        return NULL;
     }
     zfree(content);
 
@@ -112,13 +113,14 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
 
     char *msg = NULL;
     int is_literal = 0;
+    ASTNode *msg_fstring = NULL;
     if (lexer_peek(l).kind == TOK_COMMA)
     {
         lexer_next(l);
         Token st = lexer_next(l);
         if (st.kind == TOK_STRING || st.kind == TOK_FSTRING)
         {
-            msg = parse_check_message_string(ctx, st, &is_literal);
+            msg = parse_check_message_string(ctx, st, &is_literal, &msg_fstring);
         }
         else if (st.kind == TOK_IDENT)
         {
@@ -148,6 +150,7 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
     n->assert_stmt.condition = cond;
     n->assert_stmt.message = msg;
     n->assert_stmt.message_is_literal = is_literal;
+    n->assert_stmt.message_fstring = msg_fstring;
     return n;
 }
 
@@ -163,13 +166,14 @@ ASTNode *parse_expect(ParserContext *ctx, Lexer *l)
 
     char *msg = NULL;
     int is_literal = 0;
+    ASTNode *msg_fstring = NULL;
     if (lexer_peek(l).kind == TOK_COMMA)
     {
         lexer_next(l);
         Token st = lexer_next(l);
         if (st.kind == TOK_STRING || st.kind == TOK_FSTRING)
         {
-            msg = parse_check_message_string(ctx, st, &is_literal);
+            msg = parse_check_message_string(ctx, st, &is_literal, &msg_fstring);
         }
         else if (st.kind == TOK_IDENT)
         {
@@ -199,6 +203,7 @@ ASTNode *parse_expect(ParserContext *ctx, Lexer *l)
     n->assert_stmt.condition = cond;
     n->assert_stmt.message = msg;
     n->assert_stmt.message_is_literal = is_literal;
+    n->assert_stmt.message_fstring = msg_fstring;
     return n;
 }
 

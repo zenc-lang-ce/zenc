@@ -32,7 +32,12 @@ void handle_node_assert(ParserContext *ctx, ASTNode *node)
 {
     EMIT(ctx, "__zenc_assert(");
     codegen_expression(ctx, node->assert_stmt.condition);
-    if (node->assert_stmt.message)
+    if (node->assert_stmt.message_fstring)
+    {
+        EMIT(ctx, ", \"%%s\", ");
+        codegen_expression(ctx, node->assert_stmt.message_fstring);
+    }
+    else if (node->assert_stmt.message)
     {
         if (node->assert_stmt.message_is_literal)
         {
@@ -54,7 +59,12 @@ void handle_node_expect(ParserContext *ctx, ASTNode *node)
 {
     EMIT(ctx, "__zenc_expect(");
     codegen_expression(ctx, node->assert_stmt.condition);
-    if (node->assert_stmt.message)
+    if (node->assert_stmt.message_fstring)
+    {
+        EMIT(ctx, ", \"%%s\", ");
+        codegen_expression(ctx, node->assert_stmt.message_fstring);
+    }
+    else if (node->assert_stmt.message)
     {
         if (node->assert_stmt.message_is_literal)
         {

@@ -1467,6 +1467,8 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
             copy_ast_replacing(ctx, n->assert_stmt.condition, p, c, os, ns);
         new_node->assert_stmt.message =
             n->assert_stmt.message ? xstrdup(n->assert_stmt.message) : NULL;
+        new_node->assert_stmt.message_fstring =
+            copy_ast_replacing(ctx, n->assert_stmt.message_fstring, p, c, os, ns);
         break;
     case NODE_DEFER:
         new_node->defer_stmt.stmt = copy_ast_replacing(ctx, n->defer_stmt.stmt, p, c, os, ns);
