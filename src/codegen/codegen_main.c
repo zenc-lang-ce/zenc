@@ -829,17 +829,22 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
             StructRef *struct_ref = ctx->parsed_globals_list;
             while (struct_ref)
             {
-                // Check if this global is already in the merged list (by name)
+                // Check if this global is already in the merged list (by name and @cfg
+                // condition: `@cfg(X) let g` and `@cfg(not(X)) let g` are alternatives)
                 int is_duplicate = 0;
                 if (struct_ref->node && (struct_ref->node->kind == NODE_VAR_DECL ||
                                          struct_ref->node->kind == NODE_CONST))
                 {
                     const char *var_name = struct_ref->node->var_decl.name;
+                    const char *var_cfg = struct_ref->node->cfg_condition;
                     ASTNode *check = merged_globals;
                     while (check)
                     {
                         if ((check->kind == NODE_VAR_DECL || check->kind == NODE_CONST) &&
-                            check->var_decl.name && strcmp(check->var_decl.name, var_name) == 0)
+                            check->var_decl.name && strcmp(check->var_decl.name, var_name) == 0 &&
+                            ((check->cfg_condition == NULL && var_cfg == NULL) ||
+                             (check->cfg_condition && var_cfg &&
+                              strcmp(check->cfg_condition, var_cfg) == 0)))
                         {
                             is_duplicate = 1;
                             break;

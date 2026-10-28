@@ -9,6 +9,11 @@ static let s_first = 1, s_second = 2;
 @cfg(not(ZC_NEVER_DEFINED)) let c_first = 3, c_second = 4;
 // Only compiles if the second variable is left out too: its initializer does not exist.
 @cfg(ZC_NEVER_DEFINED) let c_hidden = 1, c_hidden_too = zc_never_declared;
+// Alternatives of one global: the active one is kept, whichever comes first.
+@cfg(ZC_NEVER_DEFINED) let c_mode = 1;
+@cfg(not(ZC_NEVER_DEFINED)) let c_mode = 2;
+@cfg(not(ZC_NEVER_DEFINED)) let c_level = 20;
+@cfg(ZC_NEVER_DEFINED) let c_level = 10;
 
 test "static_global_multi_let" {
     expect_eq(s_first + s_second, 3, "static globals should keep their values");
@@ -29,4 +34,9 @@ test "thread_local_global" {
 
 test "cfg_global_multi_let" {
     expect_eq(c_first + c_second, 7, "every variable of a @cfg multi-let should be kept");
+}
+
+test "cfg_global_alternatives" {
+    expect_eq(c_mode, 2, "the active @cfg alternative of a global should be kept (inactive first)");
+    expect_eq(c_level, 20, "the active @cfg alternative of a global should be kept (active first)");
 }
