@@ -365,6 +365,14 @@ static int compile_program(ZenCompiler *compiler)
     codegen_node(&ctx, root);
     fclose(out_f);
 
+    // A recoverable error found while generating code (e.g. a string as the arm of a match
+    // statement, RFC 0001) fails the build like one found while parsing.
+    if (compiler->error_count > 0)
+    {
+        remove(temp_source_buf);
+        return 1;
+    }
+
     if (compiler->config.mode_transpile)
     {
         if (z_rename_replace(temp_source_buf, compiler->config.output_file) != 0)
