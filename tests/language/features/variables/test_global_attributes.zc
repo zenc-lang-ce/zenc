@@ -1,0 +1,32 @@
+// language/features/variables: static, @thread_local and @cfg on top-level
+// variables, also on every variable of a multi-let.
+
+import "std/thread.zc"
+
+static let s_first = 1, s_second = 2;
+@thread_local let t_plain = 0;
+@thread_local static let t_first = 10, t_second = 20;
+@cfg(not(ZC_NEVER_DEFINED)) let c_first = 3, c_second = 4;
+// Only compiles if the second variable is left out too: its initializer does not exist.
+@cfg(ZC_NEVER_DEFINED) let c_hidden = 1, c_hidden_too = zc_never_declared;
+
+test "static_global_multi_let" {
+    expect_eq(s_first + s_second, 3, "static globals should keep their values");
+}
+
+test "thread_local_global" {
+    t_plain = 5;
+    t_second = 25;
+    let th = Thread::spawn(fn() {
+        t_plain = t_plain + 1;
+        t_second = t_second + 1;
+    }).unwrap();
+    th.join();
+    expect_eq(t_plain, 5, "a @thread_local global should not change in another thread");
+    expect_eq(t_second, 25, "every variable of a @thread_local multi-let should be thread-local");
+    expect_eq(t_first, 10, "a @thread_local global should keep its initializer");
+}
+
+test "cfg_global_multi_let" {
+    expect_eq(c_first + c_second, 7, "every variable of a @cfg multi-let should be kept");
+}
