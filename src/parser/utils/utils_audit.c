@@ -152,16 +152,31 @@ void audit_section_5(ParserContext *ctx, Scope *scope, const char *name, const c
         return;
     }
 
-    if (ctx->config->misra_mode)
+    if (!ctx->config->misra_mode)
     {
-        if (ctx->hook_check_standard_macro_name)
+        // Only shadowing is reported: each symbol of this name in the scopes around this one.
+        if (!ctx->silent_warnings)
         {
-            ctx->hook_check_standard_macro_name(tok, name);
+            for (Scope *p = scope->parent; p; p = p->parent)
+            {
+                for (ZenSymbol *sh = symbol_lookup_local(p, name); sh; sh = sh->next_same_name)
+                {
+                    warn_shadowing(tok, name);
+                }
+            }
         }
+        return;
     }
 
+    if (ctx->hook_check_standard_macro_name)
+    {
+        ctx->hook_check_standard_macro_name(tok, name);
+    }
+
+    // MISRA also compares the name with every symbol in scope, so it walks them all.
     Scope *p = scope;
     int limit = (p == ctx->global_scope) ? 31 : 63;
+    const char *actual_name = link_name ? link_name : name;
 
     while (p)
     {
@@ -170,29 +185,13 @@ void audit_section_5(ParserContext *ctx, Scope *scope, const char *name, const c
         {
             if (p != scope && strcmp(sh->name, name) == 0 && !ctx->silent_warnings)
             {
-                if (ctx->config->misra_mode)
-                {
-                    zerror_at(tok, "MISRA Rule 5.3");
-                }
-                else
-                {
-                    warn_shadowing(tok, name);
-                }
+                zerror_at(tok, "MISRA Rule 5.3");
             }
 
-            if (ctx->config->misra_mode)
+            const char *sh_actual_name = sh->link_name ? sh->link_name : sh->name;
+            if (strcmp(sh_actual_name, actual_name) != 0 && ctx->hook_check_identifier_collision)
             {
-                const char *actual_name = link_name ? link_name : name;
-                const char *sh_actual_name = sh->link_name ? sh->link_name : sh->name;
-
-                if (strcmp(sh_actual_name, actual_name) != 0)
-                {
-                    if (ctx->hook_check_identifier_collision)
-                    {
-                        ctx->hook_check_identifier_collision(tok, sh_actual_name, actual_name,
-                                                             limit);
-                    }
-                }
+                ctx->hook_check_identifier_collision(tok, sh_actual_name, actual_name, limit);
             }
 
             sh = sh->next;
