@@ -493,10 +493,9 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
     if (t.kind == TOK_LPAREN)
     {
         lexer_next(l);
-        char sig[MAX_SHORT_MSG_LEN];
-        sig[0] = 0;
-        const char *type_names[256];
-        int type_count = 0;
+        // The element types, as many as the tuple has
+        zvec_Str type_names = {0};
+        size_t sig_len = 1;
 
         while (1)
         {
@@ -506,20 +505,12 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
                 break;
             }
             char *s = type_to_string(sub);
-            strcat(sig, s);
-            if (type_count < 256)
-            {
-                type_names[type_count++] = s;
-            }
-            else
-            {
-                zfree(s);
-            }
+            zvec_push_Str(&type_names, s);
+            sig_len += strlen(s) + 2;
 
             if (lexer_peek(l).kind == TOK_COMMA)
             {
                 lexer_next(l);
-                strcat(sig, "__");
             }
             else
             {
@@ -532,11 +523,24 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             return NULL;
         }
 
-        register_tuple_with_types(ctx, sig, type_names, type_count);
-        for (int i = 0; i < type_count; i++)
+        // The signature: the element types joined with "__"
+        char *sig = xmalloc(sig_len);
+        sig[0] = 0;
+        for (size_t i = 0; i < type_names.length; i++)
         {
-            zfree((void *)type_names[i]);
+            if (i > 0)
+            {
+                strcat(sig, "__");
+            }
+            strcat(sig, type_names.data[i]);
         }
+
+        register_tuple_with_types(ctx, sig, (const char **)type_names.data, (int)type_names.length);
+        for (size_t i = 0; i < type_names.length; i++)
+        {
+            zfree(type_names.data[i]);
+        }
+        zvec_free_Str(&type_names);
 
         char *clean_sig = sanitize_mangled_name(sig);
         char *tuple_name = xmalloc(strlen(clean_sig) + 8);
