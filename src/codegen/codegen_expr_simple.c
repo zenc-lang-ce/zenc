@@ -65,22 +65,7 @@ void handle_expr_unary(ParserContext *ctx, ASTNode *node)
     }
     else if (node->unary.op && strcmp(node->unary.op, "&_rval") == 0)
     {
-        if (ctx->config->use_cpp)
-        {
-            EMIT(ctx, "({ __typeof__((");
-            codegen_expression(ctx, node->unary.operand);
-            EMIT(ctx, ")) _tmp = ");
-            codegen_expression(ctx, node->unary.operand);
-            EMIT(ctx, "; &_tmp; })");
-        }
-        else
-        {
-            EMIT(ctx, "(__typeof__((");
-            codegen_expression(ctx, node->unary.operand);
-            EMIT(ctx, "))[]){");
-            codegen_expression(ctx, node->unary.operand);
-            EMIT(ctx, "}");
-        }
+        emit_rvalue_address(ctx, node->unary.operand);
     }
     else if (node->unary.op && strcmp(node->unary.op, "?") == 0)
     {

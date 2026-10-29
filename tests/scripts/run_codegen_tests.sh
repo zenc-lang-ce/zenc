@@ -133,6 +133,33 @@ fi
 # Cleanup
 rm -f "${TEST_NAME%.zc}.c" "${TEST_NAME%.zc}" a.out
 
+#
+# Test 5: a temporary that needs an address names its type
+#
+
+TEST_NAME="test_rvalue_address.zc"
+echo -n "Testing $TEST_DIR/$TEST_NAME (Address of a temporary)... "
+
+if ! "$ZC" "$TEST_DIR/$TEST_NAME" --emit-c > /dev/null 2>&1; then
+    echo "FAIL (Compilation error)"
+    ((FAILED++))
+else
+    # Method receiver, index overload and both operands of ==: four copies of make_bag()
+    NAMED=$(grep -c '(Bag\[\]){make_bag()}' "${TEST_NAME%.zc}.c")
+    TYPEOF=$(grep -c '__typeof__((make_bag' "${TEST_NAME%.zc}.c")
+
+    if [ "$NAMED" -eq 4 ] && [ "$TYPEOF" -eq 0 ]; then
+        echo "PASS"
+        ((PASSED++))
+    else
+        echo "FAIL ($NAMED named, $TYPEOF through __typeof__)"
+        ((FAILED++))
+    fi
+fi
+
+# Cleanup
+rm -f "${TEST_NAME%.zc}.c" "${TEST_NAME%.zc}" a.out
+
 echo "----------------------------------------"
 echo "Summary:"
 echo "-> Passed: $PASSED"

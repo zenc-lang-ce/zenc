@@ -69,6 +69,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result);
 
 void emit_var_decl_type(ParserContext *ctx, const char *type_str, const char *var_name);
 void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t);
+void emit_rvalue_address(ParserContext *ctx, ASTNode *expr);
 void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_override);
 int emit_move_invalidation(ParserContext *ctx, ASTNode *node);
 void codegen_expression_with_move(ParserContext *ctx, ASTNode *node);
