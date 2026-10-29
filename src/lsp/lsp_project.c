@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "lsp_project.h"
 #include "lsp_config.h"
+#include "json_rpc.h"
+#include "../utils/string_list.h"
 #include "../utils/utils.h"
 #include "../constants.h"
 #include "../platform/os.h"
@@ -34,7 +36,8 @@ static ZenCompiler *g_server_compiler = NULL;
 // Files parsed by the current workspace indexing, for its summary.
 static int g_indexed_file_count = 0;
 
-static void scan_dir(const char *dir_path);
+static void scan_dir(const char *dir_path, StringList *files);
+static void scan_file(const char *path);
 static void load_ignore_rules(const char *root_path);
 
 /**
@@ -134,8 +137,20 @@ void lsp_project_index_workspace(void)
     double start = z_get_monotonic_time();
     g_indexed_file_count = 0;
     g_is_indexing = 1;
-    scan_dir(g_project->root_path);
+    // The files are collected first, so that the progress shown by the client has a total.
+    StringList files = {0};
+    scan_dir(g_project->root_path, &files);
+    lsp_progress_begin("Indexing Zen C workspace", files.count);
+    for (int i = 0; i < files.count; i++)
+    {
+        scan_file(files.items[i]);
+        lsp_progress_report(i + 1, files.count);
+    }
+    string_list_free(&files);
     g_is_indexing = 0;
+    char summary[64];
+    snprintf(summary, sizeof(summary), "Indexed %d files", g_indexed_file_count);
+    lsp_progress_end(summary);
     fprintf(stderr, "zls: indexed %d files in %.0f ms\n", g_indexed_file_count,
             (z_get_monotonic_time() - start) * 1000.0);
     g_ignore_rules = NULL;
@@ -412,13 +427,6 @@ static const IgnoreRule *is_ignored(const char *path, const char *name, int is_d
 
 static void scan_file(const char *path)
 {
-    // Skip if not .zc
-    const char *ext = (char *)strrchr(path, '.');
-    if (!ext || strcmp(ext, ".zc") != 0)
-    {
-        return;
-    }
-
     char uri[MAX_PATH_LEN + 16];
     snprintf(uri, sizeof(uri), "file://%s", path);
 
@@ -441,7 +449,8 @@ static void scan_file(const char *path)
     zfree(src);
 }
 
-static void scan_dir(const char *dir_path)
+// Collects the .zc files under dir_path that the scan does not skip.
+static void scan_dir(const char *dir_path, StringList *files)
 {
     DIR *d = opendir(dir_path);
     if (!d)
@@ -481,13 +490,14 @@ static void scan_dir(const char *dir_path)
                 }
                 continue;
             }
+            const char *ext = strrchr(dir->d_name, '.');
             if (S_ISDIR(st.st_mode))
             {
-                scan_dir(path);
+                scan_dir(path, files);
             }
-            else if (S_ISREG(st.st_mode))
+            else if (S_ISREG(st.st_mode) && ext && strcmp(ext, ".zc") == 0)
             {
-                scan_file(path);
+                string_list_add(files, path);
             }
         }
     }
