@@ -125,9 +125,8 @@ void lsp_close_file(const char *uri)
     send_json_response(root);
 }
 
-void lsp_check_file(const char *uri, const char *json_src, int id)
+void lsp_check_file(const char *uri, const char *json_src)
 {
-    (void)id;
     if (!g_project)
     {
         const char *root_path = lsp_compiler()->config.root_path;
@@ -224,7 +223,7 @@ void lsp_check_file(const char *uri, const char *json_src, int id)
 
 static char *get_symbol_name(LSPRange *r);
 
-void lsp_goto_definition(const char *uri, int line, int col, int id)
+void lsp_goto_definition(const char *uri, int line, int col, const cJSON *id)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
     LSPIndex *idx = pf ? pf->index : NULL;
@@ -339,9 +338,7 @@ void lsp_goto_definition(const char *uri, int line, int col, int id)
             ? lsp_c_headers_origin_location(&c_origin, c_origin_kind, g_lsp_definition_link_support)
             : NULL;
 
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(root, "id", id);
+    cJSON *root = lsp_response_new(id);
 
     if (c_location)
     {
@@ -576,7 +573,7 @@ static char *get_symbol_name(LSPRange *r)
     return NULL;
 }
 
-void lsp_hover(const char *uri, int line, int col, int id)
+void lsp_hover(const char *uri, int line, int col, const cJSON *id)
 {
     (void)uri;
     ProjectFile *pf = lsp_project_get_file(uri);
@@ -713,9 +710,7 @@ void lsp_hover(const char *uri, int line, int col, int id)
         }
     }
 
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(root, "id", id);
+    cJSON *root = lsp_response_new(id);
 
     if (text)
     {
@@ -870,7 +865,7 @@ static LSPContext lsp_get_completion_context(const char *source, int line, int c
     return CTX_FUNCTION;
 }
 
-void lsp_completion(const char *uri, int line, int col, int id)
+void lsp_completion(const char *uri, int line, int col, const cJSON *id)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
     if (!g_project || !g_project->ctx || !pf)
@@ -878,9 +873,7 @@ void lsp_completion(const char *uri, int line, int col, int id)
         return;
     }
 
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(root, "id", id);
+    cJSON *root = lsp_response_new(id);
 
     // After the alias of a C header (`rl::`), the declarations of that header.
     cJSON *c_items = pf->source ? lsp_c_headers_completion(pf->path, pf->source, line, col) : NULL;
@@ -1689,12 +1682,10 @@ static cJSON *ast_to_symbol(ASTNode *node)
     return item;
 }
 
-void lsp_document_symbol(const char *uri, int id)
+void lsp_document_symbol(const char *uri, const cJSON *id)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(root, "id", id);
+    cJSON *root = lsp_response_new(id);
 
     if (!pf || !pf->ast)
     {
@@ -1776,11 +1767,9 @@ static void add_workspace_symbol(cJSON *items, const char *name, int kind, const
 
 #define MAX_WORKSPACE_SYMBOLS 500
 
-void lsp_workspace_symbol(const char *query, int id)
+void lsp_workspace_symbol(const char *query, const cJSON *id)
 {
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(root, "id", id);
+    cJSON *root = lsp_response_new(id);
     cJSON *items = cJSON_CreateArray();
     int count = 0;
 
@@ -1846,12 +1835,10 @@ void lsp_workspace_symbol(const char *query, int id)
     send_json_response(root);
 }
 
-void lsp_references(const char *uri, int line, int col, int id)
+void lsp_references(const char *uri, int line, int col, const cJSON *id)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(root, "id", id);
+    cJSON *root = lsp_response_new(id);
     cJSON *items = cJSON_CreateArray();
 
     if (pf && pf->index)
@@ -1920,12 +1907,10 @@ void lsp_references(const char *uri, int line, int col, int id)
     send_json_response(root);
 }
 
-void lsp_signature_help(const char *uri, int line, int col, int id)
+void lsp_signature_help(const char *uri, int line, int col, const cJSON *id)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(root, "id", id);
+    cJSON *root = lsp_response_new(id);
 
     if (!g_project || !g_project->ctx || !pf || !pf->source)
     {
@@ -2118,12 +2103,10 @@ static LSPRange *get_symbol_range_at(ProjectFile *pf, int line, int col)
     return NULL;
 }
 
-void lsp_rename(const char *uri, int line, int col, const char *new_name, int id)
+void lsp_rename(const char *uri, int line, int col, const char *new_name, const cJSON *id)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(root, "id", id);
+    cJSON *root = lsp_response_new(id);
 
     LSPRange *r = get_symbol_range_at(pf, line, col);
     if (!r || !r->node)
@@ -2216,7 +2199,7 @@ void lsp_rename(const char *uri, int line, int col, const char *new_name, int id
     send_json_response(root);
 }
 
-void lsp_code_action(const char *uri, cJSON *diagnostics, int id)
+void lsp_code_action(const char *uri, cJSON *diagnostics, const cJSON *id)
 {
     cJSON *actions = cJSON_CreateArray();
 
@@ -2287,9 +2270,7 @@ void lsp_code_action(const char *uri, cJSON *diagnostics, int id)
         }
     }
 
-    cJSON *res_json = cJSON_CreateObject();
-    cJSON_AddStringToObject(res_json, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(res_json, "id", id);
+    cJSON *res_json = lsp_response_new(id);
     cJSON_AddItemToObject(res_json, "result", actions);
 
     char *str = cJSON_PrintUnformatted(res_json);
