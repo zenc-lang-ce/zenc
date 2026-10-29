@@ -10,7 +10,7 @@ Scope *symbol_scope_create(Scope *parent, const char *name)
     Scope *s = xmalloc(sizeof(Scope));
     memset(s, 0, sizeof(Scope));
     s->parent = parent;
-    s->by_name = zmap_init(ScopeIndex, zmap_hash_cstr, zmap_cmp_cstr);
+    s->by_name = zmap_init(SymbolByName, zmap_hash_cstr, zmap_cmp_cstr);
     if (name)
     {
         s->name = xstrdup(name);

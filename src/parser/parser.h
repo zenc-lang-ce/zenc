@@ -422,8 +422,9 @@ struct ParserContext
     int had_error; ///< Set by zpanic_at when fault-tolerant; checked by parser loops to bail out.
 
     // Every symbol seen, for the language server, the MISRA checks and find_symbol_in_all
-    ZenSymbol *all_symbols;       ///< comprehensive list of all symbols seen.
-    zmap_DeclSet all_symbols_set; ///< all_symbols by declaration (kind, name, position).
+    ZenSymbol *all_symbols;                ///< comprehensive list of all symbols seen.
+    zmap_DeclSet all_symbols_set;          ///< all_symbols by declaration (kind, name, position).
+    zmap_SymbolByName all_symbols_by_name; ///< all_symbols by name: the last one registered.
 
     // External C interop: suppress undefined warnings for external symbols
     int has_external_includes;

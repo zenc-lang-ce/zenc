@@ -50,7 +50,7 @@ struct ZenSymbol;
     X(const char *, const char *, FileSet)                                                         \
     X(const char *, struct ImportedPlugin *, PluginMap)                                            \
     X(const struct ZenSymbol *, struct ZenSymbol *, DeclSet)                                       \
-    X(const char *, struct ZenSymbol *, ScopeIndex)
+    X(const char *, struct ZenSymbol *, SymbolByName)
 
 #include "zmap.h"
 

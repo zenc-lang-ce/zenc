@@ -68,10 +68,11 @@ void register_in_all_symbols(ParserContext *ctx, ZenSymbol *s)
     // registered before is found in a set instead of walking all_symbols.
     if (s->name)
     {
-        // Every ParserContext starts zeroed, wherever it is created: the set starts here.
+        // Every ParserContext starts zeroed, wherever it is created: the maps start here.
         if (!ctx->all_symbols_set.hash_func)
         {
             ctx->all_symbols_set = zmap_init(DeclSet, declaration_hash, declaration_cmp);
+            ctx->all_symbols_by_name = zmap_init(SymbolByName, zmap_hash_cstr, zmap_cmp_cstr);
         }
         if (zmap_get(&ctx->all_symbols_set, s))
         {
@@ -98,5 +99,6 @@ void register_in_all_symbols(ParserContext *ctx, ZenSymbol *s)
     if (s->name)
     {
         zmap_put(&ctx->all_symbols_set, lsp_copy, lsp_copy);
+        zmap_put(&ctx->all_symbols_by_name, lsp_copy->name, lsp_copy);
     }
 }

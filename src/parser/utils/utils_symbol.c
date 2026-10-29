@@ -100,16 +100,8 @@ ZenSymbol *find_symbol_entry(ParserContext *ctx, const char *n)
 
 ZenSymbol *find_symbol_in_all(ParserContext *ctx, const char *n)
 {
-    ZenSymbol *sym = ctx->all_symbols;
-    while (sym)
-    {
-        if (sym->name[0] == n[0] && strcmp(sym->name, n) == 0)
-        {
-            return sym;
-        }
-        sym = sym->next;
-    }
-    return NULL;
+    ZenSymbol **last = zmap_get(&ctx->all_symbols_by_name, n);
+    return last ? *last : NULL;
 }
 
 void init_builtins(void)
