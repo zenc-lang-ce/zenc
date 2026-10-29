@@ -13,6 +13,7 @@
 #define SYMBOLS_H
 
 #include "ast.h"
+#include "../utils/zmap_types.h"
 
 struct FuncSig;
 typedef struct FuncSig FuncSig;
@@ -87,7 +88,8 @@ typedef struct ZenSymbol
         } module;
     } data;
 
-    struct ZenSymbol *next; ///< Next symbol in the same scope.
+    struct ZenSymbol *next;           ///< Next symbol in the same scope.
+    struct ZenSymbol *next_same_name; ///< Next (older) symbol of the same name in its scope.
 } ZenSymbol;
 
 /**
@@ -95,10 +97,11 @@ typedef struct ZenSymbol
  */
 typedef struct Scope
 {
-    ZenSymbol *symbols;   ///< Linked list of symbols in this scope.
-    struct Scope *parent; ///< Pointer to the parent scope (NULL for global).
-    char *name;           ///< Optional name for the scope (e.g. "Module::Func").
-    int is_loop;          ///< 1 if this is a loop scope (for break/continue).
+    ZenSymbol *symbols;      ///< Linked list of symbols in this scope.
+    struct Scope *parent;    ///< Pointer to the parent scope (NULL for global).
+    char *name;              ///< Optional name for the scope (e.g. "Module::Func").
+    int is_loop;             ///< 1 if this is a loop scope (for break/continue).
+    zmap_ScopeIndex by_name; ///< Name -> newest symbol of that name, for lookups.
 } Scope;
 
 // ** Symbol Table Utilities **

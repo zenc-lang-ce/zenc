@@ -49,7 +49,8 @@ struct ZenSymbol;
     X(const char *, struct SelectiveImport *, SelMap)                                              \
     X(const char *, const char *, FileSet)                                                         \
     X(const char *, struct ImportedPlugin *, PluginMap)                                            \
-    X(const struct ZenSymbol *, struct ZenSymbol *, DeclSet)
+    X(const struct ZenSymbol *, struct ZenSymbol *, DeclSet)                                       \
+    X(const char *, struct ZenSymbol *, ScopeIndex)
 
 #include "zmap.h"
 

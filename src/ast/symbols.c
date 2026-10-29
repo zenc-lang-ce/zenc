@@ -10,6 +10,7 @@ Scope *symbol_scope_create(Scope *parent, const char *name)
     Scope *s = xmalloc(sizeof(Scope));
     memset(s, 0, sizeof(Scope));
     s->parent = parent;
+    s->by_name = zmap_init(ScopeIndex, zmap_hash_cstr, zmap_cmp_cstr);
     if (name)
     {
         s->name = xstrdup(name);
@@ -32,7 +33,20 @@ ZenSymbol *symbol_add(Scope *s, const char *name, SymbolKind kind)
     sym->next = s->symbols;
     s->symbols = sym;
 
+    // The index keeps the newest symbol of each name; the older ones follow it, newest first.
+    ZenSymbol **newest = zmap_get(&s->by_name, sym->name);
+    sym->next_same_name = newest ? *newest : NULL;
+    zmap_put(&s->by_name, sym->name, sym);
+
     return sym;
+}
+
+// The newest symbol of name in s alone. The global scope holds every symbol of a program and its
+// imports (of a whole workspace, in the language server), so lookups do not walk the list.
+static ZenSymbol *scope_newest(Scope *s, const char *name)
+{
+    ZenSymbol **newest = zmap_get(&s->by_name, name);
+    return newest ? *newest : NULL;
 }
 
 ZenSymbol *symbol_lookup_local(Scope *s, const char *name)
@@ -41,17 +55,7 @@ ZenSymbol *symbol_lookup_local(Scope *s, const char *name)
     {
         return NULL;
     }
-
-    ZenSymbol *curr = s->symbols;
-    while (curr)
-    {
-        if (curr->name && curr->name[0] == name[0] && strcmp(curr->name, name) == 0)
-        {
-            return curr;
-        }
-        curr = curr->next;
-    }
-    return NULL;
+    return scope_newest(s, name);
 }
 
 ZenSymbol *symbol_lookup(Scope *s, const char *name)
@@ -61,15 +65,13 @@ ZenSymbol *symbol_lookup(Scope *s, const char *name)
         return NULL;
     }
 
-    Scope *curr_scope = s;
-    while (curr_scope)
+    for (Scope *curr_scope = s; curr_scope; curr_scope = curr_scope->parent)
     {
-        ZenSymbol *sym = symbol_lookup_local(curr_scope, name);
+        ZenSymbol *sym = scope_newest(curr_scope, name);
         if (sym)
         {
             return sym;
         }
-        curr_scope = curr_scope->parent;
     }
     return NULL;
 }
@@ -81,20 +83,15 @@ ZenSymbol *symbol_lookup_kind(Scope *s, const char *name, SymbolKind kind)
         return NULL;
     }
 
-    Scope *curr_scope = s;
-    while (curr_scope)
+    for (Scope *curr_scope = s; curr_scope; curr_scope = curr_scope->parent)
     {
-        ZenSymbol *sym = curr_scope->symbols;
-        while (sym)
+        for (ZenSymbol *sym = scope_newest(curr_scope, name); sym; sym = sym->next_same_name)
         {
-            if (sym->kind == kind && sym->name && sym->name[0] == name[0] &&
-                strcmp(sym->name, name) == 0)
+            if (sym->kind == kind)
             {
                 return sym;
             }
-            sym = sym->next;
         }
-        curr_scope = curr_scope->parent;
     }
     return NULL;
 }
