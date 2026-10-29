@@ -1,0 +1,31 @@
+// language/features/operators: `x[i]` with a `get` overload on a value that has no address of
+// its own (a call result) goes through a temporary, like a method call on it
+
+struct Bag { n: int; }
+
+impl Bag {
+    fn get(self, i: int) -> int { return self.n + i; }
+}
+
+struct Maker { k: int; }
+
+impl Maker {
+    fn make(self) -> Bag { return Bag { n: self.k }; }
+}
+
+fn make_bag(n: int) -> Bag {
+    return Bag { n: n };
+}
+
+test "index on the result of a function call" {
+    assert(make_bag(200)[1] == 201, "make_bag(200)[1]");
+}
+
+test "index on the result of a method call" {
+    let m = Maker { k: 300 };
+    assert(m.make()[2] == 302, "m.make()[2]");
+}
+
+test "index on a struct literal" {
+    assert((Bag { n: 400 })[3] == 403, "index on a struct literal");
+}
