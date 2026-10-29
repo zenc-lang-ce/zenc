@@ -36,6 +36,11 @@ void print_usage(void);
 void print_command_help(const char *command);
 
 /**
+ * @brief Print one help line: the option, then its description aligned in a column
+ */
+void print_help_item(const char *option, const char *description);
+
+/**
  * @brief Initialize a new argument list
  * @param list The list to initialize
  */
