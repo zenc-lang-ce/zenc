@@ -2,8 +2,8 @@
 // interpolation, so it is a plain literal and can initialize a global, also as
 // a multi-line string.
 
-let braces = "a {{b}} c";
-let script = """
+let braces = f"a {{b}} c";
+let script = f"""
 fn hello() {{
     return;
 }}
@@ -20,9 +20,9 @@ test "global_string_with_escaped_braces" {
 }
 
 test "local_string_with_escaped_braces" {
-    let local = "x {{y}}";
+    let local = f"x {{y}}";
     expect(strcmp(local, r"x {y}") == 0, "same in a local");
     let n = 3;
-    let mixed = "{{n}} = {n}";
+    let mixed = f"{{n}} = {n}";
     expect(strcmp(mixed, r"{n} = 3") == 0, "real interpolation still works");
 }

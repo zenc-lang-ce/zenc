@@ -15,5 +15,5 @@ fn main() {
     let e = 0xFFFFFFFFFFFFFFFF; // FAIL
     let f = 0xFFFFFFFFFFFFFFFFu; // PASS
 
-    println "{a} {b} {c} {d} {e} {f}";
+    println f"{a} {b} {c} {d} {e} {f}";
 }

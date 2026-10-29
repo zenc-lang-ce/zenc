@@ -390,7 +390,7 @@ static int repl_process_line(ReplState *state, char *line_buf, int *brace_depth,
              * produce malformed code; fall back to evaluating as a statement. */
             !strpbrk(raw_input, "\"{}"))
         {
-            strcat(full_code, "println \"{");
+            strcat(full_code, "println f\"{");
             strcat(full_code, raw_input);
             strcat(full_code, "}\";");
         }

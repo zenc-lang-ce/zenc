@@ -16,7 +16,7 @@ test "map_iterator" {
         count = count + 1;
         sum = sum + entry.val;
         
-        println "Key: {entry.key}, Val: {entry.val}";
+        println f"Key: {entry.key}, Val: {entry.val}";
     }
     
     assert(count == 3, "Map iterator count failed");

@@ -4,12 +4,12 @@
 import "std/string.zc"
 
 fn show(text: string) {
-    println "{text}"
+    println f"{text}"
 }
 
 fn main() {
     let s1 = String::new("abc")
     let s2 = s1
-    show("value: {s1.c_str()}")
-    println "{s2.c_str()}"
+    show(f"value: {s1.c_str()}")
+    println f"{s2.c_str()}"
 }

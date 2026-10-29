@@ -70,9 +70,9 @@ impl Complex {
         }
         
         let s = String::from("");
-        s.append_c("{self.real} ");
+        s.append_c(f"{self.real} ");
         s.append_c(sign);
-        s.append_c(" {im}i");
+        s.append_c(f" {im}i");
         
         let out = s.c_str();
         s.forget();

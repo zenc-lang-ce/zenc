@@ -11,7 +11,7 @@ impl Drop for Mover {
 }
 
 fn consume(m: Mover) {
-    println "m.val = {m.val}";
+    println f"m.val = {m.val}";
 }
 
 fn sussy_borrow(m: Mover*) {
@@ -22,6 +22,6 @@ fn main() {
     let m = Mover { val: 1 };
     sussy_borrow(&m);
     m.val++;
-    println "m.val = {m.val}";
+    println f"m.val = {m.val}";
     return 0;
 }

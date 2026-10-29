@@ -76,7 +76,7 @@ test "test_loops" {
 fn print_nums(list: [int]) {
     let i = 0;
     while (i < list.len) {
-        println "Num: {list.data[i]}";
+        println f"Num: {list.data[i]}";
         i++;
     }
 }
@@ -97,7 +97,7 @@ test "test_range_loops_generic" {
     for let i: isize = start; i < end; i++ {
         sum_isize += i;
     }
-    println "isize range (0..5): sum = {sum_isize}";
+    println f"isize range (0..5): sum = {sum_isize}";
     assert(sum_isize == 10, "isize range failed");
     
     // Test with regular int
@@ -105,7 +105,7 @@ test "test_range_loops_generic" {
     for i in 0..5 {
         sum_int += i;
     }
-    println "int range (0..5): sum = {sum_int}";
+    println f"int range (0..5): sum = {sum_int}";
     assert(sum_int == 10, "int range failed");
     
     "-> Range loops work with any integer type!";

@@ -19,5 +19,5 @@ impl Counter {
 
 fn main() {
     let c = Counter { value: 1 };
-    println "{c.get()}";
+    println f"{c.get()}";
 }

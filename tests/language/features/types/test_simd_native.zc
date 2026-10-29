@@ -8,7 +8,7 @@ fn main() {
     // Test vector addition
     let c = a + b;
     let c0 = c[0];
-    println "f32x4 addition result[0]: {c0} (expected 3.0)";
+    println f"f32x4 addition result[0]: {c0} (expected 3.0)";
     assert(c0 == 3.0, "SIMD addition failed");
     
     // Test bitwise ops on integer vectors
@@ -16,13 +16,13 @@ fn main() {
     let y = i32x4{v: 0xF0};
     let z = x & y;
     let z0 = z[0];
-    println "i32x4 bitwise AND result[0]: {z0} (expected 240)";
+    println f"i32x4 bitwise AND result[0]: {z0} (expected 240)";
     assert(z0 == 240, "SIMD bitwise AND failed");
     
     // Test scalar multiplication
     let d = a * b;
     let d0 = d[0];
-    println "f32x4 multiplication result[0]: {d0} (expected 2.0)";
+    println f"f32x4 multiplication result[0]: {d0} (expected 2.0)";
     assert(d0 == 2.0, "SIMD multiplication failed");
     
     println "PASS: SIMD verification successful";

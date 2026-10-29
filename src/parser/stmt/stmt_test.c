@@ -89,10 +89,14 @@ static char *parse_check_message_string(ParserContext *ctx, Token st, int *is_li
     }
     zfree(content);
 
+    // Emitted as a C string literal, as written: without the f of an f"..." (it has no
+    // `{expr}` if it gets here).
+    const char *text = st.kind == TOK_FSTRING ? st.start + 1 : st.start;
+    size_t len = st.kind == TOK_FSTRING ? st.len - 1 : st.len;
     *is_literal = 1;
-    char *msg = xmalloc(st.len + 1);
-    strncpy(msg, st.start, st.len);
-    msg[st.len] = 0;
+    char *msg = xmalloc(len + 1);
+    strncpy(msg, text, len);
+    msg[len] = 0;
     return msg;
 }
 
@@ -112,7 +116,7 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
     {
         lexer_next(l);
         Token st = lexer_next(l);
-        if (st.kind == TOK_STRING)
+        if (st.kind == TOK_STRING || st.kind == TOK_FSTRING)
         {
             msg = parse_check_message_string(ctx, st, &is_literal);
         }
@@ -163,7 +167,7 @@ ASTNode *parse_expect(ParserContext *ctx, Lexer *l)
     {
         lexer_next(l);
         Token st = lexer_next(l);
-        if (st.kind == TOK_STRING)
+        if (st.kind == TOK_STRING || st.kind == TOK_FSTRING)
         {
             msg = parse_check_message_string(ctx, st, &is_literal);
         }

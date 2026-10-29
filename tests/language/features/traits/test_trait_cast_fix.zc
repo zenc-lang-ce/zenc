@@ -9,7 +9,7 @@ struct Human {
 
 impl Greeter for Human {
     fn greet(self) {
-        println "Hello, my name is {self.name}";
+        println f"Hello, my name is {self.name}";
     }
 }
 

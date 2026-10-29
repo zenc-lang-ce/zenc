@@ -5,5 +5,5 @@ import "../../language/generics/_generic_ids.zc"
 
 fn main() {
     let order = OrderId::of(7);
-    println "{user_number(order)}";
+    println f"{user_number(order)}";
 }

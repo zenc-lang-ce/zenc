@@ -114,7 +114,7 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
             int is_ln = (next_type != TOK_DOTDOT);
             char **used_syms = NULL;
             int used_count = 0;
-            char *code = process_printf_sugar(ctx, next, inner, is_ln, "stdout", &used_syms,
+            char *code = process_printf_sugar(ctx, t, inner, is_ln, "stdout", &used_syms,
                                               &used_count, 1, (t.kind == TOK_RAW_STRING), 0);
             if (!code)
             {

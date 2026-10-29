@@ -383,7 +383,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             code = xmalloc(1024);
             sprintf(
                 code,
-                "impl %s { fn to_string(self) -> char* { return \"%s {{ ... }}\"; } }", /* safe */
+                "impl %s { fn to_string(self) -> char* { return f\"%s {{ ... }}\"; } }", /* safe */
                 self_type, name);
         }
         else if (0 == strcmp(trait, "Copy"))

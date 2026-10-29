@@ -85,16 +85,16 @@ fn main(argc: int, argv: string*) {
 
     if !strcmp(argv[start], "system") {
       if cmd_argc != 3 {
-        !"error: system expects 2 arguments, got {cmd_argc}";
+        !f"error: system expects 2 arguments, got {cmd_argc}";
         return -4;
       }
 
       if strcmp(argv[start + 1], "-c") {
-        !"error: system got '{argv[start + 1]}' instead of -c";
+        !f"error: system got '{argv[start + 1]}' instead of -c";
         return -5;
       }
 
-      "$ {argv[start + 2]}";
+      f"$ {argv[start + 2]}";
       rc = normalize_wait(system(argv[start + 2]));
 
       if rc { return rc }

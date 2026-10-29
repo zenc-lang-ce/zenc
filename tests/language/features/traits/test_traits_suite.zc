@@ -10,10 +10,10 @@ struct Robot {
 
 impl Greeter for Robot {
     fn greet(self, msg: string) {
-        println "Robot {self.id} says: {msg}";
+        println f"Robot {self.id} says: {msg}";
     }
     fn shout(self) {
-        println "ROBOT {self.id} ACTIVATED";
+        println f"ROBOT {self.id} ACTIVATED";
     }
 }
 
@@ -57,7 +57,7 @@ struct Point {
 
 
 fn print_shape_info(s: Shape) {
-    println "Shape: {s.name()}, Area: {s.area()}";
+    println f"Shape: {s.name()}, Area: {s.area()}";
 }
 
 test "basic_traits" {
@@ -90,7 +90,7 @@ test "test_derive" {
     
     // Debug
     let s = p1.to_string();
-    assert(strcmp(s, "Point {{ ... }}") == 0, "Debug string matches");
+    assert(strcmp(s, f"Point {{ ... }}") == 0, "Debug string matches");
     
     // Clone
     let p2 = p1.clone();
@@ -115,7 +115,7 @@ test "implicit_trait_cast" {
 let g_def_circle = Circle { radius: 2.0 };
 
 fn print_default_shape(s: Shape = &g_def_circle) {
-    println "Default Shape: {s.name()}";
+    println f"Default Shape: {s.name()}";
 }
 
 test "implicit_trait_cast_default" {

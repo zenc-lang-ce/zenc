@@ -4,5 +4,5 @@
 fn main() {
     let n = 5;
     defer println "deferred";
-    println "body {n}";
+    println f"body {n}";
 }

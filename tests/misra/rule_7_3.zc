@@ -16,5 +16,5 @@ fn main() {
     let i = 123ull;  // FAIL
     let j = 123ULL;  // PASS
     
-    println "{a} {b} {c} {d} {e} {f} {g} {h} {i} {j}";
+    println f"{a} {b} {c} {d} {e} {f} {g} {h} {i} {j}";
 }

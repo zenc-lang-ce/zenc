@@ -70,7 +70,7 @@ test "test_basic_closure" {
     let closure: fn(I32) -> I32 = x -> x + whatever;
     let res = closure(5);
     // "Result: {res}";
-    assert(res == 15, "Closure failed: expected 15, got {res}");
+    assert(res == 15, f"Closure failed: expected 15, got {res}");
 }
 
 test "reference_capture" {
@@ -80,17 +80,17 @@ test "reference_capture" {
     let modify = fn[&]() { val += 1; }; 
     modify();
 
-    assert(val == 11, "Block ref capture failed: val={val} (expected 11)");
+    assert(val == 11, f"Block ref capture failed: val={val} (expected 11)");
     println "  -> Block ref capture: Passed";
     
     let modify_arrow = [&] x -> val += x;
     modify_arrow(5);
-    assert(val == 16, "Arrow ref capture failed: val={val} (expected 16)");
+    assert(val == 16, f"Arrow ref capture failed: val={val} (expected 16)");
     println "  -> Arrow ref capture: Passed";
     
     let sum_into = [&] (a, b) -> val += (a + b);
     sum_into(2, 2);
-    assert(val == 20, "Arrow multi-arg ref capture failed: val={val} (expected 20)");
+    assert(val == 20, f"Arrow multi-arg ref capture failed: val={val} (expected 20)");
     println "  -> Arrow multi-arg ref capture: Passed";
     
     println "All reference capture tests passed!";

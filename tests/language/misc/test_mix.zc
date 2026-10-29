@@ -28,7 +28,7 @@ test "test_pipelines" {
     // 10 |> square() -> 100
     let val = 5 |> add(5) |> square();
     
-    println "Pipeline result: {val}";
+    println f"Pipeline result: {val}";
     assert(val == 100, "Pipeline calculation failed");
 }
 
@@ -38,7 +38,7 @@ test "test_fstrings" {
     
     let s = f"Hello {name}, x = {x}, x * 2 = {x * 2}";
     
-    println "F-String: {s}";
+    println f"F-String: {s}";
     assert(x == 10, "Sanity check");
 }
 

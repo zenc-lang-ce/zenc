@@ -40,7 +40,7 @@ test "test_thread" {
     t1.join();
     t2.join();
     
-    println "Final Count: {c.val} (Expected {2 * N})";
+    println f"Final Count: {c.val} (Expected {2 * N})";
     
     let final_val = c.val;
     

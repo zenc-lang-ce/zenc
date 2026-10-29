@@ -11,5 +11,5 @@ fn may_fall_through(n: int) -> int {
 
 fn main() {
     let r = may_fall_through(3);
-    println "r={r}";
+    println f"r={r}";
 }

@@ -7,5 +7,5 @@ import "../../language/features/opaque-types/_opaque_id_lib.zc"
 fn main() {
     let users = Vec<UserId>::new();
     users.push(ItemId::of(7));
-    println "{users.length()}";
+    println f"{users.length()}";
 }

@@ -1,7 +1,7 @@
 // compiler/interop: _test_2d_slice  --  helper module
 fn twod(a: [[f64]]) {
-    println "{a[0][0]} {a[0][1]}";
-    println "{a[1][0]} {a[1][1]}";
+    println f"{a[0][0]} {a[0][1]}";
+    println f"{a[1][0]} {a[1][1]}";
 }
 
 fn main() {

@@ -223,7 +223,7 @@ quit')
     fi
 
     out=$(run_session 'let x = 5;
-println "x={x}"
+println f"x={x}"
 quit')
     if echo "$out" | grep -qx "x=5"; then
         check "println interpolation" 1
@@ -241,7 +241,7 @@ quit')
 
     out=$(run_session 'struct Point { x: int, y: int }
 let p = Point { x: 3, y: 4 }
-println "p.x={p.x}"
+println f"p.x={p.x}"
 quit')
     if echo "$out" | grep -qx "p.x=3"; then
         check "struct definition + field access" 1

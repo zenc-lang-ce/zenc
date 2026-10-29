@@ -35,7 +35,7 @@ test "derived clone and to_string on a generic struct" {
     let copy = a.clone();
     assert(copy == a, "clone");
     let labelled = Labelled<Red> { value: 1 };
-    assert(strcmp(labelled.to_string(), "Labelled {{ ... }}") == 0, "to_string");
+    assert(strcmp(labelled.to_string(), f"Labelled {{ ... }}") == 0, "to_string");
 }
 
 test "derived eq on a generic enum" {

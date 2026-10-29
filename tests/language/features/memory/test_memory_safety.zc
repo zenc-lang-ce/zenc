@@ -15,14 +15,14 @@ struct Resource {
 
 impl Drop for Resource {
     fn drop(self) {
-        println "Dropping Resource {self.id_val}";
+        println f"Dropping Resource {self.id_val}";
         DROP_COUNT = DROP_COUNT + 1;
     }
 }
 
 fn create_resource(id_val: int) {
     let r = Resource{id_val: id_val};
-    println "Created Resource {r.id_val}";
+    println f"Created Resource {r.id_val}";
 }
 
 struct Point {
@@ -89,7 +89,7 @@ fn release_resource(id_val: int) {
 fn test_defer_logic() {
     println "start test";
     let x = get_resource() defer release_resource(it);
-    println "using resource {x}";
+    println f"using resource {x}";
 }
 
 
@@ -168,11 +168,11 @@ test "test_immutable" {
     let p1 = Point { x: 0, y: 0 };
     let p2 = Point { x: 3, y: 4 };
     let dist = distance(p1, p2);
-    "Distance: {dist}";
+    f"Distance: {dist}";
     let sum = accumulate(10, 5);
-    "Accumulate: {sum}";
+    f"Accumulate: {sum}";
     let p3 = process_point(Point { x: 0, y: 0 });
-    "Processed: ({p3.x}, {p3.y})";
+    f"Processed: ({p3.x}, {p3.y})";
     counter_immut();
 }
 
@@ -182,11 +182,11 @@ test "test_permissions" {
     def EXEC  : U8 = 0b001;
 
     let p1 = Permissions::new(READ);
-    "Start: {p1.mask} (Read)";
+    f"Start: {p1.mask} (Read)";
     
     let p2 = Permissions::new(WRITE);
     let p_rw = p1 | p2; 
-    "Combined: {p_rw.mask} (Read + Write)";
+    f"Combined: {p_rw.mask} (Read + Write)";
 
     if (p_rw.has(EXEC)) { " > Has Execute access"; } 
     else { " > No Execute access"; }
@@ -194,7 +194,7 @@ test "test_permissions" {
     if (p_rw.has(READ)) { " > Has Read access"; }
 
     let p_all = p_rw | Permissions::new(EXEC);
-    "Final: {p_all.mask} (All)";
+    f"Final: {p_all.mask} (All)";
 }
 
 test "test_value_defer" {

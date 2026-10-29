@@ -3,8 +3,8 @@
 // string: interpolation runs at run time, outside any function.
 
 let count = 3;
-let label = "count is {count}";
+let label = f"count is {count}";
 
 fn main() {
-    println "{label}";
+    println f"{label}";
 }

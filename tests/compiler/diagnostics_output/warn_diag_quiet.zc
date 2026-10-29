@@ -8,5 +8,5 @@ fn helper(a: int, unused_param: int) -> int {
 
 fn main() {
     let r = helper(1, 2);
-    println "{r}";
+    println f"{r}";
 }

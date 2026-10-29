@@ -8,13 +8,13 @@ alias MyVec = Vec<char>;
 test "println_robustness_slice" {
     let val = "hello";
     let sv: [char] = Slice_char{data: val, len: (usize)5, cap: (usize)5};
-    println "{sv}";
+    println f"{sv}";
 }
 
 test "println_robustness_opaque_alias" {
     let val = "opaque";
     let sv: StringView = Slice_char{data: val, len: (usize)6, cap: (usize)6};
-    println "{sv}";
+    println f"{sv}";
 }
 
 test "println_robustness_vec_alias" {
@@ -22,20 +22,20 @@ test "println_robustness_vec_alias" {
     mv.push('a');
     mv.push('b');
     mv.push('c');
-    println "{mv}";
+    println f"{mv}";
 }
 
 test "println_robustness_pointer" {
     let val = "pointer";
     let sv: [char] = Slice_char{data: val, len: (usize)7, cap: (usize)7};
     let p = &sv;
-    println "{p}";
+    println f"{p}";
 }
 
 test "println_robustness_builtin_slice" {
     let val = "builtin";
     let s: [char] = Slice_char{data: val, len: (usize)7, cap: (usize)7};
-    println "{s}";
+    println f"{s}";
 }
 
 test "println_raw_strings" {

@@ -1,6 +1,6 @@
 // ARGS: run -q
 test "checks" {
     let n = 3;
-    expect(n == 4, "n is {n}");
+    expect(n == 4, f"n is {n}");
     expect(n == 3, "never shown");
 }

@@ -36,5 +36,5 @@ fn main() {
     let first: Entry* = first_of(&entries);
     let slots = Slots { first: 0, flags: 0, count: 0 };
     let empty = slots.first == NULL;
-    println "{copy.value} {first.size} {empty}";
+    println f"{copy.value} {first.size} {empty}";
 }

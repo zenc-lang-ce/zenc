@@ -3,5 +3,5 @@
 
 fn main() {
     let small = 300 as u8;
-    println "{small}";
+    println f"{small}";
 }

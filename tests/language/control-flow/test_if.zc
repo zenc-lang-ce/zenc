@@ -14,7 +14,7 @@ test "test_if" {
 
     let i = 0;
     while (i < 3) {
-        println "Loop {i}";
+        println f"Loop {i}";
         i++;
     } 
 }

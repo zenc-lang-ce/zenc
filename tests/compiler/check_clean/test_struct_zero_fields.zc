@@ -12,5 +12,5 @@ fn main() {
     let empty = Counter {};
     let named = Counter { name: "visitas" };
     named.history.push(3);
-    println "{empty.hits} {named.hits} {named.history.length()}";
+    println f"{empty.hits} {named.hits} {named.history.length()}";
 }

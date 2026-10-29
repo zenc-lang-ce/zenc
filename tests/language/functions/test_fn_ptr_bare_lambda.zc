@@ -10,13 +10,13 @@ struct Person {
 
 impl Greeting for Person {
     fn greet(self) {
-        println "Trait greet: My name is {self.name}, age {self.age}";
+        println f"Trait greet: My name is {self.name}, age {self.age}";
     }
 }
 
 impl Person {
     fn speak(self) {
-        println "Inherent speak: Hello from {self.name}";
+        println f"Inherent speak: Hello from {self.name}";
     }
 }
 
@@ -39,7 +39,7 @@ test "test_fn_ptr_resolution" {
 
     // Test Non-capturing Lambda as raw fn*
     let f3: fn*(Person*) = fn(ptr: Person*) {
-        println "Lambda: Person {ptr.name} is here";
+        println f"Lambda: Person {ptr.name} is here";
     };
     println "Calling f3 (non-capturing lambda)...";
     f3(&p);
@@ -53,7 +53,7 @@ test "test_fn_ptr_resolution" {
     println "Calling r2.callback (inherent method)...";
     r2.callback(&p);
 
-    let r3 = Runner { callback: fn(ptr: Person*) { println "Runner Lambda: {ptr.age}"; } };
+    let r3 = Runner { callback: fn(ptr: Person*) { println f"Runner Lambda: {ptr.age}"; } };
     println "Calling r3.callback (lambda)...";
     r3.callback(&p);
 

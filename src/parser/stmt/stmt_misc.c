@@ -122,6 +122,7 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
                            const char *target, char ***used_syms, int *count, int check_symbols,
                            int is_raw, int is_expr)
 {
+    reject_implicit_interpolation(ctx, srctoken, content);
     int saved_silent = ctx->silent_warnings;
     ctx->silent_warnings = !check_symbols;
 

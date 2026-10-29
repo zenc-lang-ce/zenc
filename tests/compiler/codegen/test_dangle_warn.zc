@@ -7,5 +7,5 @@ fn get_optional_int() -> Option<int> {
 
 fn main() {
     let n = get_optional_int().unwrap();
-    "{n}";
+    f"{n}";
 }
