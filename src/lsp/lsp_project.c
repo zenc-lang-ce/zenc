@@ -2,6 +2,7 @@
 #include "lsp_project.h"
 #include "lsp_config.h"
 #include "json_rpc.h"
+#include "lsp_main.h"
 #include "../utils/string_list.h"
 #include "../utils/utils.h"
 #include "../constants.h"
@@ -145,6 +146,11 @@ void lsp_project_index_workspace(void)
     {
         scan_file(files.items[i]);
         lsp_progress_report(i + 1, files.count);
+        if (lsp_client_gone())
+        {
+            fprintf(stderr, "zls: the editor exited, stopping\n");
+            exit(0);
+        }
     }
     string_list_free(&files);
     g_is_indexing = 0;

@@ -16,11 +16,29 @@
 int g_lsp_request_is_readonly = 1;
 int g_lsp_definition_link_support = 0;
 
+#ifndef _WIN32
+// The process that started the server, normally the editor.
+static pid_t g_client_pid = 0;
+#endif
+
+int lsp_client_gone(void)
+{
+#ifndef _WIN32
+    // When the editor dies, the system gives the server another parent (init, launchd...).
+    return g_client_pid != 0 && getppid() != g_client_pid;
+#else
+    return 0;
+#endif
+}
+
 // Simple Main Loop for LSP.
 int lsp_main(ZenCompiler *compiler, int argc, char **argv)
 {
     CompilerConfig *cfg = &compiler->config;
     lsp_set_compiler(compiler);
+#ifndef _WIN32
+    g_client_pid = getppid();
+#endif
 
     int verbose = 0;
     for (int i = 1; i < argc; i++)
