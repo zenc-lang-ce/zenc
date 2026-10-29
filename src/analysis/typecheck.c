@@ -475,34 +475,15 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             }
 
             // Pointers must use direct array indexing (base[i]), not the
-            // __index/__get operator overload: taking the address of the
+            // get operator overload: taking the address of the
             // overload's return value is not an lvalue. This matches the
             // parser/codegen policy ("Pointers should use array indexing by
             // default, not operator overload").
             if (t->kind == TYPE_STRUCT && t->name && !is_ptr)
             {
-                size_t tname_len = strlen(t->name);
-                char *mangled_idx = xmalloc(tname_len + sizeof("__index"));
-                snprintf(mangled_idx, tname_len + sizeof("__index"), "%s__index", t->name);
-                char *mangled_get = xmalloc(tname_len + sizeof("__get"));
-                snprintf(mangled_get, tname_len + sizeof("__get"), "%s__get", t->name);
+                char *mangled_get = mangle_method_symbol(t->name, NULL, "get");
 
-                FuncSig *sig = find_func(tc->pctx, mangled_idx);
-                char *method_name = NULL;
-                if (sig)
-                {
-                    method_name = "index";
-                }
-                else
-                {
-                    sig = find_func(tc->pctx, mangled_get);
-                    if (sig)
-                    {
-                        method_name = "get";
-                    }
-                }
-
-                if (method_name)
+                if (find_func(tc->pctx, mangled_get))
                 {
                     ASTNode *array = node->index.array;
                     ASTNode *idx = node->index.index;
@@ -513,18 +494,16 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     ASTNode *callee = ast_create(NODE_EXPR_MEMBER);
                     callee->token = node->token;
                     callee->member.target = array;
-                    callee->member.field = xstrdup(method_name);
+                    callee->member.field = xstrdup("get");
                     callee->member.is_pointer_access = is_ptr;
 
                     node->call.callee = callee;
                     node->call.args = idx;
 
                     check_expr_call(tc, node, depth + 1);
-                    zfree(mangled_idx);
                     zfree(mangled_get);
                     break;
                 }
-                zfree(mangled_idx);
                 zfree(mangled_get);
             }
             // The overload lookup above looks through a pointer to a struct;

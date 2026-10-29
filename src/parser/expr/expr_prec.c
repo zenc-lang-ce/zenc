@@ -1240,31 +1240,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                 if (struct_name)
                 {
-                    char index_raw[MAX_MANGLED_NAME_LEN];
-                    snprintf(index_raw, sizeof(index_raw), "%s__index", struct_name);
-                    char *mangled_index = merge_underscores(index_raw);
-
-                    char get_raw[MAX_MANGLED_NAME_LEN];
-                    snprintf(get_raw, sizeof(get_raw), "%s__get", struct_name);
-                    char *mangled_get = merge_underscores(get_raw);
-
-                    FuncSig *sig = find_func(ctx, mangled_index);
-                    char *resolved_name = NULL;
-                    char *method_name = "index";
-
-                    if (sig)
-                    {
-                        resolved_name = mangled_index;
-                    }
-                    else
-                    {
-                        sig = find_func(ctx, mangled_get);
-                        if (sig)
-                        {
-                            resolved_name = mangled_get;
-                            method_name = "get";
-                        }
-                    }
+                    char *mangled_get = mangle_method_symbol(struct_name, NULL, "get");
+                    FuncSig *sig = find_func(ctx, mangled_get);
 
                     // Fallback for Generics (e.g. Vec<T> -> Vec)
                     int is_generic_template = 0;
@@ -1281,33 +1258,12 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             if (strcmp(it->struct_name, base) == 0)
                             {
                                 ASTNode *m = it->impl_node->impl.methods;
-
-                                char idx_raw[MAX_MANGLED_NAME_LEN];
-                                snprintf(idx_raw, sizeof(idx_raw), "%s__index", base); /* safe */
-                                char *mangled_idx = merge_underscores(idx_raw);
-
-                                char g_raw[MAX_MANGLED_NAME_LEN];
-                                snprintf(g_raw, sizeof(g_raw), "%s__get", base); /* safe */
-                                char *mangled_g = merge_underscores(g_raw);
+                                char *mangled_g = mangle_method_symbol(base, NULL, "get");
 
                                 while (m)
                                 {
-                                    int found_idx =
-                                        m->func.name && strcmp(m->func.name, mangled_idx) == 0;
-                                    int found_get =
-                                        m->func.name && strcmp(m->func.name, mangled_g) == 0;
-
-                                    if (found_idx || found_get)
+                                    if (m->func.name && strcmp(m->func.name, mangled_g) == 0)
                                     {
-                                        if (found_idx)
-                                        {
-                                            method_name = "index";
-                                        }
-                                        else
-                                        {
-                                            method_name = "get";
-                                        }
-
                                         is_generic_template = 1;
 
                                         // Construct temporary signature for checking
@@ -1344,14 +1300,14 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             // can re-resolve the correct concrete function name.
                             callee = ast_create(NODE_EXPR_MEMBER);
                             callee->member.target = lhs;
-                            callee->member.field = xstrdup(method_name);
+                            callee->member.field = xstrdup("get");
                             callee->member.is_pointer_access = is_ptr;
                             // Just a hint, logic below handles adjustments
                         }
                         else
                         {
                             callee = ast_create(NODE_EXPR_VAR);
-                            callee->var_ref.name = xstrdup(resolved_name);
+                            callee->var_ref.name = xstrdup(mangled_get);
                         }
 
                         callee->token = t;
@@ -1414,11 +1370,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         }
 
                         lhs = call;
-                        zfree(mangled_index);
                         zfree(mangled_get);
                         continue;
                     }
-                    zfree(mangled_index);
                     zfree(mangled_get);
                 }
 
