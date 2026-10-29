@@ -155,31 +155,6 @@ typedef struct GenericImplTemplate
     struct GenericImplTemplate *next;
 } GenericImplTemplate;
 
-// ---------------------------------------------------------------------------
-// zmap.h allocator overrides & type registration (must precede zmap.h include)
-// ---------------------------------------------------------------------------
-#define ZMAP_MALLOC(sz) xmalloc(sz)
-#define ZMAP_CALLOC(n, sz) xcalloc(n, sz)
-#define ZMAP_FREE(p) ((void)(p))
-
-static inline uint32_t zmap_hash_cstr(const char *k, uint32_t seed)
-{
-    // FNV-1a inline (avoids dependency on ZMAP_HASH_STR being defined yet)
-    uint32_t hash = 2166136261u ^ seed;
-    const uint8_t *data = (const uint8_t *)k;
-    while (*data)
-    {
-        hash ^= *data++;
-        hash *= 16777619;
-    }
-    return hash;
-}
-static inline int zmap_cmp_cstr(const char *a, const char *b)
-{
-    return strcmp(a, b);
-}
-// ---------------------------------------------------------------------------
-
 /**
  * @brief Tracks a concrete instantiation of a generic template.
  */
@@ -320,15 +295,7 @@ typedef struct TypeAlias
     char *defined_in_file;
 } TypeAlias;
 
-// zmap type registration (generates type-safe hash maps)
-#define REGISTER_ZMAP_TYPES(X)                                                                     \
-    X(const char *, Module *, ModMap)                                                              \
-    X(const char *, SelectiveImport *, SelMap)                                                     \
-    X(const char *, const char *, FileSet)                                                         \
-    X(const char *, ImportedPlugin *, PluginMap)                                                   \
-    X(const ZenSymbol *, ZenSymbol *, DeclSet)
-
-#include "../utils/zmap.h"
+#include "../utils/zmap_types.h"
 
 /**
  * @brief Module/import state container (extracted from ParserContext god struct).
