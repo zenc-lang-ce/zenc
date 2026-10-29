@@ -519,6 +519,8 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         }
         if (lexer_next(l).kind != TOK_RPAREN)
         {
+            // The language server recovers from the error: the list is in the C heap
+            zvec_free_Str(&type_names);
             zpanic_at(lexer_peek(l), "Expected ) in tuple");
             return NULL;
         }
