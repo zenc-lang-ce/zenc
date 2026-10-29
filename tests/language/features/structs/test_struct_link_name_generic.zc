@@ -1,0 +1,38 @@
+// structs: a type with @link_name used as a generic argument, in sizeof and in a cast
+// Inside a generic instance (Vec<Point>), T is written with the C name of the type, and so are
+// sizeof(T) and the casts to T* in its methods; outside generics, sizeof and casts too.
+import "std/vec.zc"
+
+include <stdlib.h>
+
+@link_name("c_point")
+struct Point { x: int; }
+
+@link_name("app_color")
+enum Color { Red, Green(int) }
+
+test "generic_instance_of_link_name_struct" {
+    let v = Vec<Point>::new();
+    v.push(Point { x: 1 });
+    v.push(Point { x: 2 });
+    v.insert(0, Point { x: 3 });
+    assert(v.length() == 3, "three points");
+    assert(v.get(0).x == 3, "inserted first");
+    v.free();
+}
+
+test "generic_instance_of_link_name_enum" {
+    let v = Vec<Color>::new();
+    v.push(Color::Red);
+    v.push(Color::Green(4));
+    assert(v.length() == 2, "two colors");
+    v.free();
+}
+
+test "sizeof_and_cast_of_link_name_struct" {
+    let p = (Point*)malloc(sizeof(Point));
+    p.x = 5;
+    let q: Point* = (Point*)p;
+    assert(q.x == 5, "cast keeps the value");
+    free(p);
+}
