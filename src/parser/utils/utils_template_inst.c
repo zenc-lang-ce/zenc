@@ -745,7 +745,7 @@ static void register_enum_constructor(ParserContext *ctx, const char *m, const c
                                       int tag_id, Type *payload, Token token, int is_export)
 {
     char *mangled_var = mangle_variant_symbol(m, var_name);
-    register_enum_variant(ctx, var_name, m, tag_id);
+    register_enum_variant(ctx, var_name, m, NULL, tag_id);
 
     Type *ret_t = type_new(TYPE_ENUM);
     ret_t->name = xstrdup(m);

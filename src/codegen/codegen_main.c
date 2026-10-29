@@ -281,6 +281,12 @@ static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
                     dep_name = nodes[j]->enm.name;
                 }
 
+                // deps hold the types as written in C: a type with a link_name is found by it.
+                if (nodes[j]->link_name)
+                {
+                    dep_name = nodes[j]->link_name;
+                }
+
                 if (dep_name && node_deps_match(&deps[i], dep_name))
                 {
                     can_emit = 0;
