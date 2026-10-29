@@ -1,11 +1,12 @@
 // generics: test_sizeof_template
+import "std/io.zc"
 struct Struct<T> {
     val: T;
 }
 
 fn hello<T>() {
     let s = sizeof(Struct<T>);
-    println f"size: {s}";
+    println(f"size: {s}");
 }
 
 test "sizeof template" {
@@ -22,9 +23,9 @@ struct Mixed<T> {
 
 test "sizeof mixed" {
    let s1 = sizeof(Mixed<i32>);
-   println f"i32 mixed: {s1}";
+   println(f"i32 mixed: {s1}");
    let s2 = sizeof(Mixed<f64>);
-   println f"f64 mixed: {s2}";
+   println(f"f64 mixed: {s2}");
 }
 
 @packed
@@ -35,7 +36,7 @@ struct PackedMixed<T> {
 
 test "sizeof packed mixed" {
    let s1 = sizeof(PackedMixed<i32>);
-   println f"i32 packed mixed: {s1}";
+   println(f"i32 packed mixed: {s1}");
    let s2 = sizeof(PackedMixed<f64>);
-   println f"f64 packed mixed: {s2}";
+   println(f"f64 packed mixed: {s2}");
 }

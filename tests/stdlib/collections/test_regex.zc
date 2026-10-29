@@ -1,173 +1,174 @@
 // stdlib: test_regex
+import "std/io.zc"
 import "std/regex.zc"
 
 fn test_basic_matching() {
-    "testing: basic matching";
+    println("testing: basic matching");
     let re = Regex::compile("abc");
 
-    if (re.match("abc")) { "literal match works"; } else { "FAILED: literal match"; }
-    if (re.match("abcdef")) { "substring match works"; } else { "FAILED: substring match"; }
-    if (!re.match("xyz")) { "not matching correctly returns false"; } else { "FAILED: mismatching"; }
+    if (re.match("abc")) { println("literal match works"); } else { println("FAILED: literal match"); }
+    if (re.match("abcdef")) { println("substring match works"); } else { println("FAILED: substring match"); }
+    if (!re.match("xyz")) { println("not matching correctly returns false"); } else { println("FAILED: mismatching"); }
 
     re.destroy();
-    "";
+    println("");
 }
 
 fn test_anchors() {
-    "testing: anchors";
+    println("testing: anchors");
     let re = Regex::compile("^start");
 
-    if (re.match("start here")) { " ^ anchor works for start"; } else { "FAILED: ^ anchor start"; }
-    if (!re.match("no start")) { " ^ anchor rejects non-start"; } else { "FAILED: ^ anchor reject"; }
+    if (re.match("start here")) { println(" ^ anchor works for start"); } else { println("FAILED: ^ anchor start"); }
+    if (!re.match("no start")) { println(" ^ anchor rejects non-start"); } else { println("FAILED: ^ anchor reject"); }
 
     re.destroy();
 
     let re2 = Regex::compile("end$");
-    if (re2.match("the end")) { " $ anchor works for end"; } else { "FAILED: $ anchor end"; }
-    if (!re2.match("end here")) { " $ anchor rejects non-end"; } else { "FAILED: $ anchor reject"; }
+    if (re2.match("the end")) { println(" $ anchor works for end"); } else { println("FAILED: $ anchor end"); }
+    if (!re2.match("end here")) { println(" $ anchor rejects non-end"); } else { println("FAILED: $ anchor reject"); }
 
     re2.destroy();
-    "";
+    println("");
 }
 
 fn test_wildcards() {
-    "testing: wild cards";
+    println("testing: wild cards");
     let re = Regex::compile("a.c");
 
-    if (re.match("abc")) { " . matches single char"; } else { "FAILED: . match 1"; }
-    if (re.match("axc")) { " . matches different char"; } else { "FAILED: . match 2"; }
-    if (!re.match("ac")) { " . requires exactly one char"; } else { "FAILED: . match 3"; }
+    if (re.match("abc")) { println(" . matches single char"); } else { println("FAILED: . match 1"); }
+    if (re.match("axc")) { println(" . matches different char"); } else { println("FAILED: . match 2"); }
+    if (!re.match("ac")) { println(" . requires exactly one char"); } else { println("FAILED: . match 3"); }
 
     re.destroy();
-    "";
+    println("");
 }
 
 fn test_quantifiers() {
-    "testing: quantifiers";
+    println("testing: quantifiers");
     let re1 = Regex::compile("a*b");
-    if (re1.match("b")) { " * matches zero occurrences"; } else { "FAILED: * 0"; }
-    if (re1.match("ab")) { " * matches one occurrence"; } else { "FAILED: * 1"; }
-    if (re1.match("aaab")) { " * matches multiple occurrences"; } else { "FAILED: * many"; }
+    if (re1.match("b")) { println(" * matches zero occurrences"); } else { println("FAILED: * 0"); }
+    if (re1.match("ab")) { println(" * matches one occurrence"); } else { println("FAILED: * 1"); }
+    if (re1.match("aaab")) { println(" * matches multiple occurrences"); } else { println("FAILED: * many"); }
     re1.destroy();
 
     let re2 = Regex::compile("a+b");
-    if (!re2.match("b")) { " + requires at least one"; } else { "FAILED: + 0"; }
-    if (re2.match("ab")) { " + matches one occurrence"; } else { "FAILED: + 1"; }
-    if (re2.match("aaab")) { " + matches multiple occurrences"; } else { "FAILED: + many"; }
+    if (!re2.match("b")) { println(" + requires at least one"); } else { println("FAILED: + 0"); }
+    if (re2.match("ab")) { println(" + matches one occurrence"); } else { println("FAILED: + 1"); }
+    if (re2.match("aaab")) { println(" + matches multiple occurrences"); } else { println("FAILED: + many"); }
     re2.destroy();
 
     let re3 = Regex::compile("colou?r");
-    if (re3.match("color")) { " ? matches with char"; } else { "FAILED: ? with"; }
-    if (re3.match("colour")) { " ? matches without char"; } else { "FAILED: ? without"; }
+    if (re3.match("color")) { println(" ? matches with char"); } else { println("FAILED: ? with"); }
+    if (re3.match("colour")) { println(" ? matches without char"); } else { println("FAILED: ? without"); }
     re3.destroy();
-    "";
+    println("");
 }
 
 fn test_character_classes() {
-    "testing: character class stuff"
+    println("testing: character class stuff")
     let re = Regex::compile("[0-9]+");
 
-    if (re.match("123")) { " [0-9] matches digits"; } else { "FAILED: [0-9] match"; }
-    if (re.match("abc123")) { " [0-9] finds digits in string"; } else { "FAILED: [0-9] find"; }
-    if (!re.match("abc")) { " [0-9] rejects non-digits"; } else { "FAILED: [0-9] reject"; }
+    if (re.match("123")) { println(" [0-9] matches digits"); } else { println("FAILED: [0-9] match"); }
+    if (re.match("abc123")) { println(" [0-9] finds digits in string"); } else { println("FAILED: [0-9] find"); }
+    if (!re.match("abc")) { println(" [0-9] rejects non-digits"); } else { println("FAILED: [0-9] reject"); }
 
     re.destroy();
-    "";
+    println("");
 }
 
 fn test_alternation() {
-    "test: alternation";
+    println("test: alternation");
     let re = Regex::compile("cat|dog");
 
-    if (re.match("cat")) { " | matches first alternative"; } else { "FAILED: | match 1"; }
-    if (re.match("dog")) { " | matches second alternative"; } else { "FAILED: | match 2"; }
-    if (!re.match("bird")) { " | rejects non-matching"; } else { "FAILED: | reject"; }
+    if (re.match("cat")) { println(" | matches first alternative"); } else { println("FAILED: | match 1"); }
+    if (re.match("dog")) { println(" | matches second alternative"); } else { println("FAILED: | match 2"); }
+    if (!re.match("bird")) { println(" | rejects non-matching"); } else { println("FAILED: | reject"); }
 
     re.destroy();
-    "";
+    println("");
 }
 
 fn test_word_boundaries() {
-    "testing: word matching";
+    println("testing: word matching");
     let re = Regex::compile("[a-zA-Z]+");
 
-    if (re.match("hello")) { " letter class matches words"; } else { "FAILED: letter match"; }
-    if (re.match("hello123")) { " letter class finds word part"; } else { "FAILED: letter part"; }
-    if (!re.match("123")) { " letter class rejects non-letters"; } else { "FAILED: letter reject"; }
+    if (re.match("hello")) { println(" letter class matches words"); } else { println("FAILED: letter match"); }
+    if (re.match("hello123")) { println(" letter class finds word part"); } else { println("FAILED: letter part"); }
+    if (!re.match("123")) { println(" letter class rejects non-letters"); } else { println("FAILED: letter reject"); }
 
     re.destroy();
-    "";
+    println("");
 }
 
 fn test_is_valid() {
-    "testing: patern validation"
+    println("testing: patern validation")
 
-    if (Regex::is_valid_pattern("^[a-z]+$")) { " valid pattern accepted"; } else { "FAILED: pattern validation 1"; }
-    if (Regex::is_valid_pattern("(hello|world)")) { " complex pattern accepted"; } else { "FAILED: pattern validation 2"; }
+    if (Regex::is_valid_pattern("^[a-z]+$")) { println(" valid pattern accepted"); } else { println("FAILED: pattern validation 1"); }
+    if (Regex::is_valid_pattern("(hello|world)")) { println(" complex pattern accepted"); } else { println("FAILED: pattern validation 2"); }
 
-    "";
+    println("");
 }
 
 fn test_find() {
-    "testing: find functionality";
+    println("testing: find functionality");
     let re = Regex::compile("[0-9]+");
     let m = re.find("abc123def456");
 
-    if (m.is_some()) { " find locates match"; } else { "FAILED: find match"; }
+    if (m.is_some()) { println(" find locates match"); } else { println("FAILED: find match"); }
 
     re.destroy();
-    "";
+    println("");
 }
 
 fn test_count() {
-    "testing: count";
+    println("testing: count");
     let re = Regex::compile("[0-9]+");
     let count = re.count("123 456 789");
 
-    if (count >= 1) { " count finds matches"; } else { "FAILED: count matches"; }
+    if (count >= 1) { println(" count finds matches"); } else { println("FAILED: count matches"); }
 
     re.destroy();
-    "";
+    println("");
 }
 
 fn test_convenience_functions() {
-    "testing: just some other functions and stuff";
+    println("testing: just some other functions and stuff");
 
-    if (regex_match("^test", "testing")) { " regex_match works"; } else { "FAILED: regex_match"; }
-    if (regex_count("a", "banana") >= 1) { " regex_count works"; } else { "FAILED: regex_count"; }
+    if (regex_match("^test", "testing")) { println(" regex_match works"); } else { println("FAILED: regex_match"); }
+    if (regex_count("a", "banana") >= 1) { println(" regex_count works"); } else { println("FAILED: regex_count"); }
 
     let m = regex_find("[0-9]+", "id: 42");
-    if (m.is_some()) { " regex_find works"; } else { "FAILED: regex_find"; }
+    if (m.is_some()) { println(" regex_find works"); } else { println("FAILED: regex_find"); }
 
-    "";
+    println("");
 }
 
 fn test_email_pattern() {
-    "test: email pattern stuff"
+    println("test: email pattern stuff")
     let email_re = Regex::compile("^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z][a-zA-Z]+$");
 
-    if (email_re.match("swag@swag.com")) { " valid email accepted"; } else { "FAILED: valid email"; }
-    if (email_re.match("swag.swag@swag.swag.swag")) { " complex email accepted"; } else { "FAILED: complex email"; }
-    if (!email_re.match("invalid.email")) { " invalid email rejected"; } else { "FAILED: invalid email reject"; }
+    if (email_re.match("swag@swag.com")) { println(" valid email accepted"); } else { println("FAILED: valid email"); }
+    if (email_re.match("swag.swag@swag.swag.swag")) { println(" complex email accepted"); } else { println("FAILED: complex email"); }
+    if (!email_re.match("invalid.email")) { println(" invalid email rejected"); } else { println("FAILED: invalid email reject"); }
 
     email_re.destroy();
-    "";
+    println("");
 }
 
 fn test_url_pattern() {
-    "testing: url pattern stuff"
+    println("testing: url pattern stuff")
     let url_re = Regex::compile("https?://[a-zA-Z0-9.-]+");
 
-    if (url_re.match("http://example.com")) { " http url matched matched"; } else { "FAILED: http url"; }
-    if (url_re.match("https://secure.example.com")) { " https url  matched"; } else { "FAILED: https url"; }
-    if (!url_re.match("ftp://something.com")) { " ftp url rejected"; } else { "FAILED: ftp url reject"; }
+    if (url_re.match("http://example.com")) { println(" http url matched matched"); } else { println("FAILED: http url"); }
+    if (url_re.match("https://secure.example.com")) { println(" https url  matched"); } else { println("FAILED: https url"); }
+    if (!url_re.match("ftp://something.com")) { println(" ftp url rejected"); } else { println("FAILED: ftp url reject"); }
 
     url_re.destroy();
-    "";
+    println("");
 }
 
 fn main() {
-    "testing....";
+    println("testing....");
 
     test_basic_matching();
     test_anchors();
@@ -183,6 +184,6 @@ fn main() {
     test_email_pattern();
     test_url_pattern();
 
-    "all tests worked... (hopefully.. look around for \"FAILED\" messages)";
-    "";
+    println("all tests worked... (hopefully.. look around for \"FAILED\" messages)");
+    println("");
 }

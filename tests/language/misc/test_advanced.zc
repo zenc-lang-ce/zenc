@@ -13,7 +13,7 @@ fn test_recursion() {
     
     assert(fib10 == 55, "fibonacci(10) should be 55");
     
-    println "  -> Recursive function works";
+    println("  -> Recursive function works");
 }
 
 fn add_three(a: int, b: int, c: int) -> int {
@@ -25,7 +25,7 @@ fn test_multi_params() {
     
     assert(result == 6, "add_three(1,2,3) should be 6");
     
-    println "  -> Multi-parameter function works";
+    println("  -> Multi-parameter function works");
 }
 
 fn double_val(x: int) -> int {
@@ -37,7 +37,7 @@ fn test_nested_calls() {
     
     assert(result == 16, "nested calls failed");
     
-    println "  -> Nested function calls work";
+    println("  -> Nested function calls work");
 }
 
 struct Counter {
@@ -66,7 +66,7 @@ fn test_struct_methods() {
     
     assert(c.get() == 3, "Counter should be 3");
     
-    println "  -> Struct methods work";
+    println("  -> Struct methods work");
 }
 
 fn test_casting() {
@@ -80,7 +80,7 @@ fn test_casting() {
     
     assert(f2 >= 41.9 && f2 <= 42.1, "int to float cast failed");
     
-    println "  -> Type casting works";
+    println("  -> Type casting works");
 }
 
 fn test_bitwise() {
@@ -97,7 +97,7 @@ fn test_bitwise() {
     
     assert(xor_result == 6, "bitwise XOR failed");
     
-    println "  -> Bitwise operations work";
+    println("  -> Bitwise operations work");
 }
 
 fn test_shift() {
@@ -111,7 +111,7 @@ fn test_shift() {
     
     assert(right == 8, "right shift failed");
     
-    println "  -> Shift operations work";
+    println("  -> Shift operations work");
 }
 
 fn test_modulo() {
@@ -121,7 +121,7 @@ fn test_modulo() {
     
     assert(result == 2, "modulo operation failed");
     
-    println "  -> Modulo operator works";
+    println("  -> Modulo operator works");
 }
 
 fn test_compound_expr() {
@@ -134,7 +134,7 @@ fn test_compound_expr() {
     
     assert(result == 40, "compound expression failed");
     
-    println "  -> Compound expressions work";
+    println("  -> Compound expressions work");
 }
 
 fn test_increment_style() {
@@ -146,11 +146,11 @@ fn test_increment_style() {
     x = x - 1;
     assert(x == 5, "decrement style failed");
     
-    print "  -> Increment/decrement style works";
+    print("  -> Increment/decrement style works");
 }
 
 test "test_advanced" {
-    println "Running function and advanced tests...";
+    println("Running function and advanced tests...");
     
     test_recursion();
     test_multi_params();
@@ -163,5 +163,5 @@ test "test_advanced" {
     test_compound_expr();
     test_increment_style();
     
-    println "All function and advanced tests passed!";
+    println("All function and advanced tests passed!");
 }

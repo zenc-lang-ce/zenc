@@ -1,18 +1,19 @@
 // stdlib/networking: test_net
 //> link: -lpthread
 
+import "std/io.zc"
 import "std/net/tcp.zc"
 import "std/fs.zc"
 import "std/thread.zc"
 import "std/result.zc"
 
 test "test_net" {
-    "Testing Networking...";
+    println("Testing Networking...");
     
     let t = Thread::spawn(fn() {
         let listener = TcpListener::bind("127.0.0.1", 9090);
         if (listener.is_err()) {
-            !"Server bind failed"; 
+            eprintln("Server bind failed"); 
             return;
         }
         
@@ -20,7 +21,7 @@ test "test_net" {
         
         let client_res = l.accept();
         if (client_res.is_err()) {
-            !"Accept failed";
+            eprintln("Accept failed");
             l.close();
             return;
         }
@@ -58,11 +59,11 @@ test "test_net" {
     
     if (n2_res.is_ok()) {
         buf2[n2_res.unwrap()] = 0;
-        f"Client Received: {buf2}";
+        println(f"Client Received: {buf2}");
     }
     free(buf2);
     
     stream.close();
     
-    "Net Test Done";   
+    println("Net Test Done");   
 }

@@ -1,5 +1,6 @@
 //> cflags: -masm=intel
 
+import "std/io.zc"
 fn add_five_intel(x: int) -> int {
     let result: int;
     asm {
@@ -13,7 +14,7 @@ fn add_five_intel(x: int) -> int {
 
 test "test_intel" {
     let val = add_five_intel(10);
-    f"Sum Intel: 10 + 5 = {val}";
+    println(f"Sum Intel: 10 + 5 = {val}");
 
     match val {
         15 => printf("-> Success!\n")

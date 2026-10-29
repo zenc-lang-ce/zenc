@@ -1,6 +1,7 @@
 // language/features/functions: functions: test_purity
+import "std/io.zc"
 fn impure_func() {
-    println "I am impure";
+    println("I am impure");
 }
 
 @pure

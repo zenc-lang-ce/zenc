@@ -1,0 +1,23 @@
+   Compiling tests/compiler/diagnostics_output/err_print_codegen.zc...
+error: a string on its own no longer prints
+  --> tests/compiler/diagnostics_output/err_print_codegen.zc:9:14
+   |
+9  |         1 => "one",
+   |              ^ here
+   |
+   = help: print it with println("..."), from std/io.zc
+error: a string on its own no longer prints
+  --> tests/compiler/diagnostics_output/err_print_codegen.zc:10:14
+   |
+10 |         _ => "other",
+   |              ^ here
+   |
+   = help: print it with println("..."), from std/io.zc
+error: 'println' is a function of std/io.zc, which is not imported
+  --> tests/compiler/diagnostics_output/err_print_codegen.zc:13:5
+   |
+13 |     println(name);
+   |     ^ here
+   |
+   = help: add import "std/io.zc"
+[exit 1]

@@ -6,5 +6,5 @@
 const LIMIT: u8 = 1;
 
 fn main() {
-    println f"{LIMIT}";
+    println(f"{LIMIT}");
 }

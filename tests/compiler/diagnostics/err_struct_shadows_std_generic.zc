@@ -8,5 +8,5 @@ struct Box { id: int; }
 
 fn main() {
     let b = Box { id: 1 };
-    println f"{b.id}";
+    println(f"{b.id}");
 }

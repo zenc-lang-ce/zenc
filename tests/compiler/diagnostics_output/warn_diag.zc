@@ -1,6 +1,7 @@
 // ARGS: build
 // zwarn_diag: filtered warnings (unused variable and parameter)
 
+import "std/io.zc"
 fn helper(a: int, unused_param: int) -> int {
     let unused_local = 5;
     return a;
@@ -8,5 +9,5 @@ fn helper(a: int, unused_param: int) -> int {
 
 fn main() {
     let r = helper(1, 2);
-    println f"{r}";
+    println(f"{r}");
 }

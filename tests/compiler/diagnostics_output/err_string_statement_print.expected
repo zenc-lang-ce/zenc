@@ -1,0 +1,30 @@
+   Compiling tests/compiler/diagnostics_output/err_string_statement_print.zc...
+error: a string on its own no longer prints
+  --> tests/compiler/diagnostics_output/err_string_statement_print.zc:9:5
+   |
+9  |     "plain";
+   |     ^ here
+   |
+   = help: print it with println("..."), from std/io.zc
+error: a string on its own no longer prints
+  --> tests/compiler/diagnostics_output/err_string_statement_print.zc:10:5
+   |
+10 |     "no newline"..
+   |     ^ here
+   |
+   = help: print it with print("..."), from std/io.zc
+error: '!"..."' no longer prints to stderr
+  --> tests/compiler/diagnostics_output/err_string_statement_print.zc:11:6
+   |
+11 |     !"to stderr";
+   |      ^ here
+   |
+   = help: print it with eprintln("..."), from std/io.zc
+error: '!"..."' no longer prints to stderr
+  --> tests/compiler/diagnostics_output/err_string_statement_print.zc:12:6
+   |
+12 |     !"to stderr, no newline"..
+   |      ^ here
+   |
+   = help: print it with eprint("..."), from std/io.zc
+[exit 1]

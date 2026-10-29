@@ -1,14 +1,15 @@
 // language/misc: misc: test_chained
+import "std/io.zc"
 import "std/string.zc"
 
 test "test_chained" {
     let s = String::from("hello");
     let opt = s.find('e');
     if opt.is_some() {
-        f"Found at index: {opt.unwrap()}";
+        println(f"Found at index: {opt.unwrap()}");
     }
     
     if s.find('l').is_some() {
-        "Chained call works!";
+        println("Chained call works!");
     }
 }

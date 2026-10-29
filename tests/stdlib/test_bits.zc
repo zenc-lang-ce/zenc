@@ -1,10 +1,11 @@
 // test_bits
+import "std/io.zc"
 import "std/bits.zc"
 import "std/core.zc"
 
 @cfg(not(__TINYC__))
 test "bits_u128" {
-    println "Testing u128 rots...";
+    println("Testing u128 rots...");
     let a128: u128 = (((u128)0x8000000000000000) << 64) | 0x1;
     let b128: u128 = 0x3;
     let c128: u128 = (((u128)0xC000000000000000) << 64);
@@ -16,11 +17,11 @@ test "bits_u128" {
 
 @cfg(__TINYC__)
 test "bits_u128_skip" {
-    println "Skipping u128 tests (not supported by TCC)";
+    println("Skipping u128 tests (not supported by TCC)");
 }
 
 test "bits_rotations" {
-    println "Testing rots...";
+    println("Testing rots...");
     // --- Rotations ---
     let a8: u8 = 0b10000001;
     assert(Bits::rotl8(a8, 1) == 0b00000011, "u8 rotl failed");
@@ -72,6 +73,6 @@ test "bits_reverse" {
 }
 
 test "z_final" {
-    println "Bits tests passed successfully!";
+    println("Bits tests passed successfully!");
 }
 

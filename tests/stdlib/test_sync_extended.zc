@@ -77,7 +77,7 @@ struct BarrierTestData {
 }
 
 test "test_barrier" {
-    println "Testing Barrier...";
+    println("Testing Barrier...");
     
     let data = (BarrierTestData*)malloc(sizeof(BarrierTestData));
     data.barrier = Barrier::new(3);
@@ -114,5 +114,5 @@ test "test_barrier" {
     data.m.free();
     free(data.counter);
     free(data);
-    println "Barrier Test Passed!";
+    println("Barrier Test Passed!");
 }

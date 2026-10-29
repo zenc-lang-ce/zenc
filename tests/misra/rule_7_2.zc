@@ -3,6 +3,7 @@
 // EXPECT: MISRA Rule 7.2
 // EXPECT: MISRA Rule 7.2
 
+import "std/io.zc"
 fn main() {
     let a = 0x80000000;    // FAIL (unsigned hex constant without 'u')
     let b = 0x80000000u;   // PASS
@@ -15,5 +16,5 @@ fn main() {
     let e = 0xFFFFFFFFFFFFFFFF; // FAIL
     let f = 0xFFFFFFFFFFFFFFFFu; // PASS
 
-    println f"{a} {b} {c} {d} {e} {f}";
+    println(f"{a} {b} {c} {d} {e} {f}");
 }

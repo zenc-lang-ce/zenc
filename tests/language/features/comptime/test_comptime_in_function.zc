@@ -1,9 +1,10 @@
 // comptime inside a function body emits statements, not top-level declarations
+import "std/io.zc"
 fn bump(n: int) -> int {
     let x = n;
     comptime {
         code("x += 1;\n");
-        code("println \"generated statement ran\";\n");
+        code("println(\"generated statement ran\");\n");
     }
     return x;
 }

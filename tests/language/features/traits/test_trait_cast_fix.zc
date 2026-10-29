@@ -1,4 +1,5 @@
 // traits: test_trait_cast_fix
+import "std/io.zc"
 trait Greeter {
     fn greet(self);
 }
@@ -9,7 +10,7 @@ struct Human {
 
 impl Greeter for Human {
     fn greet(self) {
-        println f"Hello, my name is {self.name}";
+        println(f"Hello, my name is {self.name}");
     }
 }
 
@@ -38,9 +39,9 @@ fn test_pointer_to_trait_cast() {
 }
 
 fn main() {
-    println "Running trait cast tests...";
+    println("Running trait cast tests...");
     test_implicit_conversion();
     test_explicit_cast();
     test_pointer_to_trait_cast();
-    println "All trait cast tests passed!";
+    println("All trait cast tests passed!");
 }

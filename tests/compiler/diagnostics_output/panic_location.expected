@@ -1,2 +1,2 @@
-tests/compiler/diagnostics_output/panic_location.zc:4: Panic: n must not be negative
+tests/compiler/diagnostics_output/panic_location.zc:5: Panic: n must not be negative
 [exit 1]

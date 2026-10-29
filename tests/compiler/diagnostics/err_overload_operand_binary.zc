@@ -10,5 +10,5 @@ fn join_plain(text: String) -> String {
 }
 
 fn main() {
-    println "unreachable";
+    println("unreachable");
 }

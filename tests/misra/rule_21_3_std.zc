@@ -19,7 +19,7 @@ fn main() {
     m.put("key1", 100);
     m.put("key2", 200);
     
-    println "MISRA Stdlib Test Complete";
+    println("MISRA Stdlib Test Complete");
     
     // In MISRA mode, free calls are no-ops, but we call them anyway
     v.free();

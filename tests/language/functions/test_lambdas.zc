@@ -1,4 +1,5 @@
 // language/functions: functions: test_lambdas
+import "std/io.zc"
 fn apply_twice(f: fn(I32) -> I32, x: I32) -> I32 {
     return f(f(x));
 }
@@ -9,58 +10,58 @@ fn make_adder(n: I32) -> fn(I32) -> I32 {
 }
 
 test "test_complex_lambdas" {
-    println "Testing complex lambda scenarios...";
+    println("Testing complex lambda scenarios...");
     
     // Lambda with multiple parameters
     let add_three = (a, b, c) -> a + b + c;
     let res1 = add_three(1, 2, 3);
     assert(res1 == 6, "Multi-param lambda: Failed");
-    println "  -> Multi-param lambda: Passed";
+    println("  -> Multi-param lambda: Passed");
     
     // Higher-order function
     let res2 = apply_twice(x -> x * 2, 5);
     assert(res2 == 20, "Higher-order function: Failed");
-    println "  -> Higher-order function: Passed";
+    println("  -> Higher-order function: Passed");
     
     // Returning a lambda (closure)
     let add10 = make_adder(10);
     let res3 = add10(5);
     assert(res3 == 15, "Returned lambda: Failed");
-    println "  -> Returned lambda: Passed";
+    println("  -> Returned lambda: Passed");
     
     // Lambda composition
     let doubler = x -> x * 2;
     let add5 = x -> x + 5;
     let res4 = add5(doubler(10));
     assert(res4 == 25, "Lambda composition: Failed");
-    println "  -> Lambda composition: Passed";
+    println("  -> Lambda composition: Passed");
     
     // Nested application
     let res5 = apply_twice(x -> x + 1, apply_twice(x -> x * 2, 3));
     // (3 * 2) * 2 = 12, then (12 + 1) + 1 = 14
     assert(res5 == 14, "Nested application: Failed");
-    println "  -> Nested application: Passed";
+    println("  -> Nested application: Passed");
 
     // Lambda with "fn" syntax (eg. block lambda)
     let factor = 2;
     let full = fn(x: int) -> int { return x * factor };
 
     assert(full(3) == 6, "Lambda fn syntax: Failed");
-    println "  -> Lambda fn syntax: Passed";
+    println("  -> Lambda fn syntax: Passed");
 
     // Lambda with "fn" syntax (eg. block lambda) + multiple params
     let addition = fn(sum1: int, sum2: int) -> int { return sum1 + sum2 };
 
     assert(addition(100, 505) == 605, "Lambda fn syntax: Failed");
-    println "  -> Lambda fn syntax: Passed";
+    println("  -> Lambda fn syntax: Passed");
 
     // Lambda with "fn" syntax (eg. block lambda) + named args
     let substract = fn(arg1: int, arg2: int) -> int { return arg1 - arg2 };
 
     assert(substract(arg1: 500, arg2: 100) == 400, "Lambda fn syntax: Failed");
-    println "  -> Lambda fn syntax: Passed";
+    println("  -> Lambda fn syntax: Passed");
     
-    println "All complex lambda tests passed!";
+    println("All complex lambda tests passed!");
     
 
 }
@@ -74,24 +75,24 @@ test "test_basic_closure" {
 }
 
 test "reference_capture" {
-    println "Testing reference_capture...";
+    println("Testing reference_capture...");
     
     let val = 10;
     let modify = fn[&]() { val += 1; }; 
     modify();
 
     assert(val == 11, f"Block ref capture failed: val={val} (expected 11)");
-    println "  -> Block ref capture: Passed";
+    println("  -> Block ref capture: Passed");
     
     let modify_arrow = [&] x -> val += x;
     modify_arrow(5);
     assert(val == 16, f"Arrow ref capture failed: val={val} (expected 16)");
-    println "  -> Arrow ref capture: Passed";
+    println("  -> Arrow ref capture: Passed");
     
     let sum_into = [&] (a, b) -> val += (a + b);
     sum_into(2, 2);
     assert(val == 20, f"Arrow multi-arg ref capture failed: val={val} (expected 20)");
-    println "  -> Arrow multi-arg ref capture: Passed";
+    println("  -> Arrow multi-arg ref capture: Passed");
     
-    println "All reference capture tests passed!";
+    println("All reference capture tests passed!");
 }

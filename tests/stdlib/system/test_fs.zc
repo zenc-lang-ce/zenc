@@ -4,9 +4,9 @@ import "std/path.zc"
 import "std/fs.zc"
 
 test "test_std_fs_extended" {
-    "Testing FS Extension...";
+    println("Testing FS Extension...");
     
-    "Testing Path...";
+    println("Testing Path...");
     let p = Path::new("/let/log");
     let p2 = p.join("syslog");
     assert(strcmp(p2.c_str(), "/let/log/syslog") == 0, "Join failed");
@@ -25,21 +25,21 @@ test "test_std_fs_extended" {
     assert(fname.is_some(), "Filename missed");
     assert(strcmp(fname.unwrap_ref().c_str(), "gcc") == 0, "Wrong filename");
     
-    "Testing FS...";
+    println("Testing FS...");
     let test_dir = "tests/test_fs_sandbox";
     
     if (File::exists(test_dir)) {
         File::remove_dir(test_dir); 
     }
     
-    "Create Dir";
+    println("Create Dir");
     let res = File::create_dir(test_dir);
     if (res.is_err()) {
-        "Dir create failed";
+        println("Dir create failed");
     }
     assert(File::exists(test_dir), "Dir create failed");
     
-    "Write File";
+    println("Write File");
     let tmp_path = Path::new(test_dir);
     let p_file = tmp_path.join("hello.txt");
     let fpath = p_file.c_str();
@@ -51,7 +51,7 @@ test "test_std_fs_extended" {
     
     assert(File::exists(fpath), "File exists check failed");
     
-    "Metadata";
+    println("Metadata");
     let meta_res = File::metadata(fpath);
     assert(meta_res.is_ok(), "Metadata failed");
     let meta = meta_res.unwrap();
@@ -59,7 +59,7 @@ test "test_std_fs_extended" {
     assert(!meta.is_dir, "Is dir check failed");
     assert(meta.size == 11, "Size check failed");
     
-    "Read Dir";
+    println("Read Dir");
     let list_res = File::read_dir(test_dir);
     assert(list_res.is_ok(), "Read dir failed");
     
@@ -73,11 +73,11 @@ test "test_std_fs_extended" {
     }
     assert(found_idx == 1, "File not found in dir listing");
     
-    "Cleanup";
+    println("Cleanup");
     File::remove_file(fpath);
     assert(!File::exists(fpath), "File remove failed");
     File::remove_dir(test_dir);
     assert(!File::exists(test_dir), "Dir remove failed");
 
-    "FS Extension Tests Passed!";
+    println("FS Extension Tests Passed!");
 }

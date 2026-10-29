@@ -1,4 +1,5 @@
 // compiler/interop: interop: test_c_macros
+import "std/io.zc"
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define DEBUG_MODE 1
 
@@ -8,10 +9,10 @@ test "test_c_macros" {
     assert(x == 20, "MAX(10, 20) should be 20");
 
     #ifdef DEBUG_MODE
-        println "Debug mode active";
+        println("Debug mode active");
     #endif
 
     #ifndef INVALID_MACRO
-        println "Conditionals working";
+        println("Conditionals working");
     #endif
 }

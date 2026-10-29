@@ -1,10 +1,11 @@
 // compiler/interop: _test_2d_syntax  --  helper module
+import "std/io.zc"
 fn twod_known(a: f64[2][2]) {
-    println "known";
+    println("known");
 }
 
 fn twod_unknown_outer(a: f64[][2]) {
-    println "unknown outer";
+    println("unknown outer");
 }
 
 fn main() {

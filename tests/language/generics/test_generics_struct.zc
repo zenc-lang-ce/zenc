@@ -1,4 +1,5 @@
 // language/generics: generics: test_generics_struct
+import "std/io.zc"
 struct Wrapper<T> {
     item: T;
     id: int;
@@ -10,7 +11,7 @@ test "test_generics_struct" {
     w1.id = 1;
     w1.item = 500;
     
-    println f"Wrapper Int: {w1.item} (ID: {w1.id})";    
+    println(f"Wrapper Int: {w1.item} (ID: {w1.id})");    
 }
 
 struct RcInner<T> {

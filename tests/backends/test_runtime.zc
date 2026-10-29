@@ -1,5 +1,6 @@
 // Runtime test for all executable backends.
 // Expected stdout: exactly "PASS" followed by newline.
+import "std/io.zc"
 fn main() {
-    println "PASS";
+    println("PASS");
 }

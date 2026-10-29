@@ -1,9 +1,10 @@
 // ARGS: build
 // zwarn_at plus a note printed outside the diagnostics module
 
+import "std/io.zc"
 fn main() {
     let x = 1;
     if (x = 2) {
-        println f"{x}";
+        println(f"{x}");
     }
 }

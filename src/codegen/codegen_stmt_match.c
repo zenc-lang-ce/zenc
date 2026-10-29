@@ -562,12 +562,12 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
         {
             if (is_string_literal)
             {
-                char *inner = body->literal.string_val;
-                char *code =
-                    process_printf_sugar(ctx, body->token, inner, 1, "stdout", NULL, NULL, 0, 0, 0);
-
-                EMIT(ctx, "%s;", code);
-                zfree(code);
+                // RFC 0001: a string as the arm of a match statement no longer prints. For one
+                // release it is an error that tells how to print it; afterwards it is an unused
+                // expression, which would compile and print nothing. Only codegen knows whether
+                // the match is a statement: in a match expression the string is its value.
+                const char *hints[] = {"print it with println(\"...\"), from std/io.zc", NULL};
+                zerror_with_hints(body->token, "a string on its own no longer prints", hints);
             }
             else
             {

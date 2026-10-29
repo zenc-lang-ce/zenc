@@ -105,6 +105,34 @@ fi
 # Cleanup
 rm -f "${TEST_NAME%.zc}.c" "${TEST_NAME%.zc}" a.out
 
+#
+# Test 4: println(f"...") written straight to the stream
+#
+
+TEST_NAME="test_direct_print.zc"
+echo -n "Testing $TEST_DIR/$TEST_NAME (Direct println)... "
+
+if ! "$ZC" "$TEST_DIR/$TEST_NAME" --emit-c > /dev/null 2>&1; then
+    echo "FAIL (Compilation error)"
+    ((FAILED++))
+else
+    # The println(f"...") line writes to stdout without a buffer; the f-string value uses one
+    DIRECT_STREAM=$(grep '"direct "' "${TEST_NAME%.zc}.c" | grep -c 'fprintf(stdout')
+    DIRECT_BUFFER=$(grep '"direct "' "${TEST_NAME%.zc}.c" | grep -c '_fs_buf')
+    VALUE_BUFFER=$(grep '"value "' "${TEST_NAME%.zc}.c" | grep -c '_fs_buf')
+
+    if [ "$DIRECT_STREAM" -gt 0 ] && [ "$DIRECT_BUFFER" -eq 0 ] && [ "$VALUE_BUFFER" -gt 0 ]; then
+        echo "PASS"
+        ((PASSED++))
+    else
+        echo "FAIL (direct: $DIRECT_STREAM stream, $DIRECT_BUFFER buffer; value: $VALUE_BUFFER buffer)"
+        ((FAILED++))
+    fi
+fi
+
+# Cleanup
+rm -f "${TEST_NAME%.zc}.c" "${TEST_NAME%.zc}" a.out
+
 echo "----------------------------------------"
 echo "Summary:"
 echo "-> Passed: $PASSED"

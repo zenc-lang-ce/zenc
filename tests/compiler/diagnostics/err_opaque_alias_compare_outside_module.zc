@@ -5,5 +5,5 @@ import "../../language/features/opaque-types/_opaque_id_lib.zc"
 
 fn main() {
     let user = UserId::of(7);
-    println f"{user == 7}";
+    println(f"{user == 7}");
 }

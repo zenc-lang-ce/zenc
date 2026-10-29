@@ -52,6 +52,86 @@ static int string_statement_ends_at_newline(Token str, Token next)
     }
 }
 
+// RFC 0001: `println(f"...");` calling the println of std/io.zc (also print, eprint and
+// eprintln) writes each piece of the f-string straight to the stream, as the old keyword
+// did. The output is the same as building the string and printing it, without the buffer
+// of an f-string value or its size limit. Returns NULL, consuming nothing, for anything
+// else: another argument, or a print function that is not the one of std/io.zc.
+// Pending refactor: It belongs in codegen, as a choice of how to emit the call: it is
+// in the parser only because f-strings are still turned into C here
+// (process_printf_sugar), so their pieces exist only in the parser. It moves to codegen
+// when f-strings do.
+static ASTNode *parse_direct_print(ParserContext *ctx, Lexer *l, Token name)
+{
+    static const char *const names[] = {"print", "println", "eprint", "eprintln"};
+    int which = -1;
+    for (int i = 0; i < 4; i++)
+    {
+        if (name.len == strlen(names[i]) && strncmp(name.start, names[i], name.len) == 0)
+        {
+            which = i;
+        }
+    }
+    if (which < 0)
+    {
+        return NULL;
+    }
+
+    Lexer la = *l;
+    lexer_next(&la); // the name
+    if (lexer_next(&la).kind != TOK_LPAREN)
+    {
+        return NULL;
+    }
+    Token str = lexer_next(&la);
+    if (str.kind != TOK_FSTRING || lexer_next(&la).kind != TOK_RPAREN)
+    {
+        return NULL;
+    }
+    ZenTokenType after = lexer_peek(&la).kind;
+    if (after != TOK_SEMICOLON && after != TOK_RBRACE)
+    {
+        return NULL;
+    }
+
+    FuncSig *sig = find_func(ctx, names[which]);
+    const char *file = sig ? sig->decl_token.file : NULL;
+    size_t flen = file ? strlen(file) : 0;
+    if (!file || flen < 9 || strcmp(file + flen - 9, "std/io.zc") != 0)
+    {
+        return NULL;
+    }
+
+    *l = la;
+    if (after == TOK_SEMICOLON)
+    {
+        lexer_next(l);
+    }
+    int newline = (which == 1 || which == 3);
+    const char *target = (which >= 2) ? "stderr" : "stdout";
+    char *inner = token_get_string_content(str);
+    char **used_syms = NULL;
+    int used_count = 0;
+    char *code =
+        process_printf_sugar(ctx, str, inner, newline, target, &used_syms, &used_count, 1, 0, 0);
+    zfree(inner);
+    if (!code)
+    {
+        return NULL;
+    }
+
+    ASTNode *n = ast_create(NODE_RAW_STMT);
+    n->token = str;
+    char *stmt_code = xmalloc(strlen(code) + 2);
+    sprintf(stmt_code, "%s;", code); /* safe */
+    zfree(code);
+    n->raw_stmt.content = stmt_code;
+    n->raw_stmt.used_symbols = used_syms;
+    n->raw_stmt.used_symbol_count = used_count;
+    take_fstring_exprs(ctx, n);
+    return n;
+}
+
 ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
 {
     int prev_emit = l->emit_comments;
@@ -109,17 +189,14 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
             string_statement_ends_at_newline(tk, next))
         {
             Token t = lexer_next(l); // consume string
-            char *inner = token_get_string_content(t);
-
-            int is_ln = (next_type != TOK_DOTDOT);
-            char **used_syms = NULL;
-            int used_count = 0;
-            char *code = process_printf_sugar(ctx, t, inner, is_ln, "stdout", &used_syms,
-                                              &used_count, 1, (t.kind == TOK_RAW_STRING), 0);
-            if (!code)
-            {
-                return NULL;
-            }
+            // RFC 0001: a string on its own no longer prints. For one release it is an error
+            // that tells how to print it; afterwards it is an unused expression (or a block
+            // value), which would compile and print nothing.
+            const char *hints[] = {next_type == TOK_DOTDOT
+                                       ? "print it with print(\"...\"), from std/io.zc"
+                                       : "print it with println(\"...\"), from std/io.zc",
+                                   NULL};
+            zerror_with_hints(t, "a string on its own no longer prints", hints);
 
             if (next_type == TOK_SEMICOLON)
             {
@@ -134,18 +211,8 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
                 }
             }
             // If TOK_RBRACE, do not consume it, so parse_block can see it and terminate loop.
-
-            ASTNode *n = ast_create(NODE_RAW_STMT);
-            n->token = tk;
-            // Append semicolon to Statement Expression to make it a valid statement
-            char *stmt_code = xmalloc(strlen(code) + 2);
-            sprintf(stmt_code, "%s;", code); /* safe */
-            zfree(code);
-            n->raw_stmt.content = stmt_code;
-            n->raw_stmt.used_symbols = used_syms;
-            n->raw_stmt.used_symbol_count = used_count;
-            take_fstring_exprs(ctx, n);
-            zfree(inner);
+            ASTNode *n = ast_create(NODE_ERRONEOUS);
+            n->token = t;
             return n;
         }
     }
@@ -717,61 +784,16 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
                 }
             }
         }
+    }
 
-        if ((strncmp(tk.start, "print", 5) == 0 && tk.len == 5) ||
-            (strncmp(tk.start, "println", 7) == 0 && tk.len == 7) ||
-            (strncmp(tk.start, "eprint", 6) == 0 && tk.len == 6) ||
-            (strncmp(tk.start, "eprintln", 8) == 0 && tk.len == 8))
+    // `println(f"...")` of std/io.zc: written straight to the stream (see parse_direct_print,
+    // which is here and not in codegen only while f-strings are turned into C by the parser).
+    if (tk.kind == TOK_IDENT)
+    {
+        ASTNode *direct = parse_direct_print(ctx, l, tk);
+        if (direct)
         {
-
-            // Revert: User requested print without newline
-            int is_ln = (tk.len == 7 || tk.len == 8);
-            // int is_ln = (tk.len == 7 || tk.len == 8);
-            int is_err = (tk.start[0] == 'e');
-            char *target = is_err ? "stderr" : "stdout";
-
-            lexer_next(l); // eat keyword
-
-            Token t = lexer_next(l);
-            if (t.kind != TOK_STRING && t.kind != TOK_FSTRING && t.kind != TOK_RAW_STRING)
-            {
-                if (t.kind == TOK_LPAREN)
-                {
-                    zpanic_at(t,
-                              "Expected string literal after '%.*s'. Note: '%.*s' is a keyword and "
-                              "does NOT use parentheses ().",
-                              (int)tk.len, tk.start, (int)tk.len, tk.start);
-                }
-                zpanic_at(t, "Expected string literal after print/eprint");
-            }
-
-            char *inner = token_get_string_content(t);
-            char **used_syms = NULL;
-            int used_count = 0;
-            char *code = process_printf_sugar(ctx, t, inner, is_ln, target, &used_syms, &used_count,
-                                              1, (t.kind == TOK_RAW_STRING), 0);
-            zfree(inner);
-            if (!code)
-            {
-                return NULL;
-            }
-
-            if (lexer_peek(l).kind == TOK_SEMICOLON)
-            {
-                lexer_next(l);
-            }
-
-            ASTNode *n = ast_create(NODE_RAW_STMT);
-            n->token = t;
-            // Append semicolon to Statement Expression to make it a valid statement
-            char *stmt_code = xmalloc(strlen(code) + 2);
-            sprintf(stmt_code, "%s;", code); /* safe */
-            zfree(code);
-            n->raw_stmt.content = stmt_code;
-            n->raw_stmt.used_symbols = used_syms;
-            n->raw_stmt.used_symbol_count = used_count;
-            take_fstring_exprs(ctx, n);
-            return n;
+            return direct;
         }
     }
 

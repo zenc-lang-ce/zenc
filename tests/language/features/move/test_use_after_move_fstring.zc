@@ -6,6 +6,6 @@ import "std/string.zc"
 fn main() {
     let s1 = String::new("abc")
     let s2 = s1
-    println f"{s1.c_str()}"
-    println f"{s2.c_str()}"
+    println(f"{s1.c_str()}")
+    println(f"{s2.c_str()}")
 }

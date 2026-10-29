@@ -1,8 +1,9 @@
 // keyword-ident: test_self_valid
+import "std/io.zc"
 struct Foo {}
 impl Foo {
     fn bar(self) {
-        println "self is valid here";
+        println("self is valid here");
     }
 }
 fn main() {

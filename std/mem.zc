@@ -28,8 +28,7 @@ impl StaticArena {
         if (aligned + size > self.capacity) {
             // In MISRA mode, we panic on exhaustion rather than returning NULL
             // to ensure deterministic failure.
-            !"Panic: MISRA Static Arena exhausted!";
-            exit(1);
+            panic("MISRA Static Arena exhausted!");
         }
         let ptr: void* = (byte*)self.data + aligned;
         self.used = aligned + size;

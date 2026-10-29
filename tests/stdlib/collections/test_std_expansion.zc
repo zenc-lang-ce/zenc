@@ -2,9 +2,9 @@
 import "std.zc"
 
 test "test_std_expansion" {
-    "Testing Standard Library Expansion...";
+    println("Testing Standard Library Expansion...");
     
-    "Testing Map...";
+    println("Testing Map...");
     let m = Map<int>::new();
     m.put("one", 1);
     m.put("two", 2);
@@ -17,24 +17,24 @@ test "test_std_expansion" {
     m.remove("one");
     assert(!m.contains("one"), "Map remove failed");
     
-    "Testing Time...";
+    println("Testing Time...");
     let t1 = Time::now();
     Time::sleep_ms(10);
     let t2 = Time::now();
     assert(t2 >= t1, "Time went backwards!");
-    f"Time passed: {t2 - t1} ms";
+    println(f"Time passed: {t2 - t1} ms");
     
-    "Testing FS...";
+    println("Testing FS...");
     let content_res = File::read_all("tests/test_0.zc");
     if (content_res.is_ok()) {
-        "Read file successfully.";
+        println("Read file successfully.");
     } else {
-        f"FS Error: {content_res.err}";
+        println(f"FS Error: {content_res.err}");
     }
     
-    "Testing JSON...";
+    println("Testing JSON...");
     let j = JsonValue::string("hello");
     assert(j.kind == JsonType::JSON_STRING(), "Json string kind failed");
     
-    "All expansion tests passed!";
+    println("All expansion tests passed!");
 }

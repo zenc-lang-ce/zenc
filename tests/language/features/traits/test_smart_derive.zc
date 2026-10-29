@@ -1,4 +1,5 @@
 // language/features/traits: traits: test_smart_derive
+import "std/io.zc"
 @derive(Eq)
 struct Container {
     val: int;
@@ -27,7 +28,7 @@ test "eq_moves" {
     c2.val = 20;
     assert(c2.val == 20, "c2 invalid");
     
-    println "Smart Derive Eq Works!";
+    println("Smart Derive Eq Works!");
 }
 
 // Ensure eq is derived correctly on opaque structs also
@@ -48,5 +49,5 @@ test "eq_moves_opaque" {
     c2.val = 20;
     assert(c2.val == 20, "c2 invalid in opaque struct");
     
-    println "Smart Derive Eq Works in opaque struct!";
+    println("Smart Derive Eq Works in opaque struct!");
 }

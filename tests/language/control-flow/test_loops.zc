@@ -1,6 +1,7 @@
 // language/control-flow: control-flow: test_loops
+import "std/io.zc"
 test "test_loops" {
-    println "Testing loop constructs...";
+    println("Testing loop constructs...");
     
     // for-in range
     let sum1 = 0;
@@ -8,7 +9,7 @@ test "test_loops" {
         sum1 += i;
     }
     assert(sum1 == 10, "for-in range (0..5) failed");
-    println "  -> for-in range (0..5): Passed";
+    println("  -> for-in range (0..5): Passed");
     
     // for-in with step
     let sum2 = 0;
@@ -16,7 +17,7 @@ test "test_loops" {
         sum2 += i;
     }
     assert(sum2 == 20, "for-in with step failed");
-    println "  -> for-in with step: Passed";
+    println("  -> for-in with step: Passed");
     
     // Repeat n times
     let count = 0;
@@ -24,7 +25,7 @@ test "test_loops" {
         count++;
     }
     assert(count == 7, "repeat 7 failed");
-    println "  -> repeat 7: Passed";
+    println("  -> repeat 7: Passed");
     
     // loop with break
     let i = 0;
@@ -35,7 +36,7 @@ test "test_loops" {
         }
     }
     assert(i == 5, "loop with break failed");
-    println "  -> loop with break: Passed";
+    println("  -> loop with break: Passed");
     
     // While loop
     let j = 0;
@@ -43,7 +44,7 @@ test "test_loops" {
         j++;
     }
     assert(j == 3, "while loop failed");
-    println "  -> while loop: Passed";
+    println("  -> while loop: Passed");
     
     // C-style for loop
     let sum3 = 0;
@@ -51,7 +52,7 @@ test "test_loops" {
         sum3 += k;
     }
     assert(sum3 == 6, "C-style for loop failed");
-    println "  -> C-style for loop: Passed";
+    println("  -> C-style for loop: Passed");
     
     // loop with continue
     let sum4 = 0;
@@ -67,16 +68,16 @@ test "test_loops" {
         sum4 += m;
     }
     assert(sum4 == 12, "loop with continue failed");
-    println "  -> loop with continue: Passed";
+    println("  -> loop with continue: Passed");
     
-    println "All loop tests passed!";
+    println("All loop tests passed!");
     
 }
 
 fn print_nums(list: [int]) {
     let i = 0;
     while (i < list.len) {
-        println f"Num: {list.data[i]}";
+        println(f"Num: {list.data[i]}");
         i++;
     }
 }
@@ -88,7 +89,7 @@ test "test_arrays_loop" {
 }
 
 test "test_range_loops_generic" {
-    println "Testing range loops with different types...";
+    println("Testing range loops with different types...");
     
     // Test with isize variables
     let sum_isize: isize = 0;
@@ -97,7 +98,7 @@ test "test_range_loops_generic" {
     for let i: isize = start; i < end; i++ {
         sum_isize += i;
     }
-    println f"isize range (0..5): sum = {sum_isize}";
+    println(f"isize range (0..5): sum = {sum_isize}");
     assert(sum_isize == 10, "isize range failed");
     
     // Test with regular int
@@ -105,10 +106,10 @@ test "test_range_loops_generic" {
     for i in 0..5 {
         sum_int += i;
     }
-    println f"int range (0..5): sum = {sum_int}";
+    println(f"int range (0..5): sum = {sum_int}");
     assert(sum_int == 10, "int range failed");
     
-    "-> Range loops work with any integer type!";
+    println("-> Range loops work with any integer type!");
 }
 
 test "inclusive range basic" {

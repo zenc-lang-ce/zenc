@@ -1,7 +1,8 @@
 //> link: -lm
+import "std/io.zc"
 import "math.h" as c_math;
 
 fn main() {
 	let x = c_math::cos(3.14159);
-	println f"{x}";
+	println(f"{x}");
 }

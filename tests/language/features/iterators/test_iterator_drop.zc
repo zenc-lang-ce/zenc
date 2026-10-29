@@ -1,4 +1,5 @@
 // iterators: test_iterator_drop
+import "std/io.zc"
 import "std/iter.zc"
 import "std/mem.zc"
 
@@ -21,7 +22,7 @@ impl DropIter {
 impl Drop for DropIter {
     fn drop(self) {
         DROP_CALLED = 1;
-        println "Iterator dropped";
+        println("Iterator dropped");
     }
 }
 

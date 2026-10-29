@@ -1,19 +1,20 @@
 // functions: test_implicit_return
+import "std/io.zc"
 test "test_implicit_return" {
     // Adds newline
-    "Hello Implicit"; 
+    println("Hello Implicit"); 
 
     // Adds newline
-    println "Hello Explicit";
+    println("Hello Explicit");
 
     // No newline
-    print "Loading";
-    print ".";
-    print ".";
-    println " Done!";
+    print("Loading");
+    print(".");
+    print(".");
+    println(" Done!");
     
     // With variables
     let x = 42;
-    print "Value is: ";
-    println f"{x}";
+    print("Value is: ");
+    println(f"{x}");
 }

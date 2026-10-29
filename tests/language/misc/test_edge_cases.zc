@@ -11,7 +11,7 @@ fn test_empty_struct() {
     
     assert(e1.eq(&e2), "Empty struct eq failed");
     
-    println "  -> Empty struct with @derive(Eq) works";
+    println("  -> Empty struct with @derive(Eq) works");
 }
 
 // Struct with many fields (stress @derive(Eq))
@@ -36,7 +36,7 @@ fn test_many_fields() {
     
     assert(!m1.eq(&m3), "different structs detected as equal");
     
-    println "  -> ManyFields @derive(Eq) works correctly";
+    println("  -> ManyFields @derive(Eq) works correctly");
 }
 
 // Pointer to struct equality (should use ==, not _eq)
@@ -58,7 +58,7 @@ fn test_pointer_equality() {
     // Different pointers (even to equal values) should not be pointer-equal
     assert(ptr1 != ptr3, "different pointers compare equal");
     
-    print "  -> Pointer equality uses == not _eq";
+    print("  -> Pointer equality uses == not _eq");
 }
 
 // Very long string
@@ -67,7 +67,7 @@ fn test_long_string() {
     
     assert(s.length() >= 100, "long string length incorrect");
     
-    print "  -> Long string handling works";
+    print("  -> Long string handling works");
 }
 
 // Null pointer handling
@@ -76,7 +76,7 @@ fn test_null_pointer() {
     
     assert(ptr == NULL, "NULL pointer check failed");
     
-    println "  -> NULL pointer handling works";
+    println("  -> NULL pointer handling works");
 }
 
 // Numeric edge cases
@@ -88,7 +88,7 @@ fn test_numeric_edges() {
     
     assert(min_int < 0, "min_int is wrong");
     
-    println "  -> Numeric edge cases work";
+    println("  -> Numeric edge cases work");
 }
 
 // Boolean operations
@@ -100,11 +100,11 @@ fn test_boolean_ops() {
     
     assert(a || b, "boolean OR failed");
     
-    println "  -> Boolean operations work\n";
+    println("  -> Boolean operations work\n");
 }
 
 test "test_edge_cases" {
-    println "Running edge case tests...";
+    println("Running edge case tests...");
     
     test_empty_struct();
     test_many_fields();
@@ -114,5 +114,5 @@ test "test_edge_cases" {
     test_numeric_edges();
     test_boolean_ops();
     
-    println "All edge case tests passed!";
+    println("All edge case tests passed!");
 }

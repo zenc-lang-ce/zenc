@@ -152,6 +152,54 @@ int is_command(const char *buf, const char *cmd)
     return next == 0 || isspace(next);
 }
 
+// A line that is only a string literal (with an f or r prefix, or none) and an optional `;`.
+// The REPL prints such a line when it is entered; replaying it with the history would be a
+// string on its own, an error since RFC 0001, and its output is suppressed there anyway.
+static int is_lone_string_line(const char *line)
+{
+    const char *p = line;
+    while (isspace((unsigned char)*p))
+    {
+        p++;
+    }
+    int raw = (*p == 'r');
+    if ((*p == 'f' || *p == 'r') && p[1] == '"')
+    {
+        p++;
+    }
+    if (*p != '"')
+    {
+        return 0;
+    }
+    if (strncmp(p, "\"\"\"", 3) == 0)
+    {
+        const char *end = strstr(p + 3, "\"\"\"");
+        if (!end)
+        {
+            return 0;
+        }
+        p = end + 3;
+    }
+    else
+    {
+        p++;
+        while (*p && *p != '"')
+        {
+            p += (*p == '\\' && !raw && p[1]) ? 2 : 1;
+        }
+        if (*p != '"')
+        {
+            return 0;
+        }
+        p++;
+    }
+    while (isspace((unsigned char)*p) || *p == ';')
+    {
+        p++;
+    }
+    return *p == 0;
+}
+
 void repl_get_code(char **history, int len, char **out_global, char **out_main)
 {
     size_t total_len = 0;
@@ -167,6 +215,10 @@ void repl_get_code(char **history, int len, char **out_global, char **out_main)
     for (int i = 0; i < len; i++)
     {
         char *line = history[i];
+        if (brace_depth == 0 && is_lone_string_line(line))
+        {
+            continue;
+        }
         if (brace_depth == 0 && is_header_line(line))
         {
             strcat(global_buf, line);
@@ -426,16 +478,19 @@ char *repl_generate_plot_code(const char *expr)
 {
     size_t sz = strlen(expr) + 3072;
     char *code = malloc(sz);
-    snprintf(
-        code, sz,
-        "{\n    let _z_data = %s;\n    let _z_max = 1;\n    let _z_count = 0;\n    for val in "
-        "_z_data {\n        if val > _z_max { _z_max = val; }\n        _z_count = _z_count + "
-        "1;\n    }\n    println f\"\\n  Visualizing: %s ({_z_count} values)\";\n    println \" "
-        " ----------------------------------------\";\n    for val in _z_data {\n        let "
-        "bar_len = (val * 40) / _z_max;\n        print f\"  {val} | \";\n        for j in "
-        "0..bar_len { print \"#\"; }\n        println \"\";\n    }\n    println \"  "
-        "----------------------------------------\\n\";\n}\n",
-        expr, expr);
+    // Printed with puts and fputs, from C: the program of :plot does not import std/io.zc
+    // (see bug 94).
+    snprintf(code, sz,
+             "{\n    let _z_data = %s;\n    let _z_max = 1;\n    let _z_count = 0;\n"
+             "    for val in _z_data {\n        if val > _z_max { _z_max = val; }\n"
+             "        _z_count = _z_count + 1;\n    }\n"
+             "    puts(f\"\\n  Visualizing: %s ({_z_count} values)\");\n"
+             "    puts(\"  ----------------------------------------\");\n"
+             "    for val in _z_data {\n        let bar_len = (val * 40) / _z_max;\n"
+             "        fputs(f\"  {val} | \", stdout);\n"
+             "        for j in 0..bar_len { fputs(\"#\", stdout); }\n        puts(\"\");\n    }\n"
+             "    puts(\"  ----------------------------------------\\n\");\n}\n",
+             expr, expr);
 
     return code;
 }

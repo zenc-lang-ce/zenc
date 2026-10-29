@@ -1,4 +1,5 @@
 // language/features/functions: functions: test_default_args
+import "std/io.zc"
 struct Point {
     x: int;
     y: int;
@@ -19,7 +20,7 @@ fn main() -> i32 {
     let p1 = Point { x: 5, y: 5 };
     let res1 = add_points(p1);
     
-    println f"res1.x: {res1.x}, res1.y: {res1.y}";
+    println(f"res1.x: {res1.x}, res1.y: {res1.y}");
     assert(res1.x == 15, "result is not 15");
     assert(res1.y == 15, "result is not 15");
 
@@ -27,14 +28,14 @@ fn main() -> i32 {
     let p3 = Point { x: 5, y: 5 };
     let res2 = add_points(p3, p2);
     
-    println f"res2.x: {res2.x}, res2.y: {res2.y}";
+    println(f"res2.x: {res2.x}, res2.y: {res2.y}");
     assert(res2.x == 6, "result is not 6");
     assert(res2.y == 6, "result is not 6");
     
-    println f"operation(10): {operation(10)}";
+    println(f"operation(10): {operation(10)}");
     assert(operation(10) == 20, "result is not 20");
     
-    println f"operation(10, 5): {operation(10, 5)}";
+    println(f"operation(10, 5): {operation(10, 5)}");
     assert(operation(10, 5) == 15, "result is not 15");
     return 0;
 }

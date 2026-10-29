@@ -97,19 +97,19 @@
     },
     {
         "name": "println",
-        "doc": "println f\"format string {expr}\"\n  Prints to stdout with newline. Auto-formats {expr} values."
+        "doc": "fn println(s: const char*)\n  Prints s and a newline to stdout (std/io.zc). Interpolate with an f-string: println(f\"x = {x}\")."
     },
     {
         "name": "print",
-        "doc": "print f\"format string {expr}\"\n  Prints to stdout without newline."
+        "doc": "fn print(s: const char*)\n  Prints s to stdout without a newline (std/io.zc)."
     },
     {
         "name": "eprintln",
-        "doc": "eprintln \"format string\"\n  Prints to stderr with newline."
+        "doc": "fn eprintln(s: const char*)\n  Prints s and a newline to stderr (std/io.zc)."
     },
     {
         "name": "eprint",
-        "doc": "eprint \"format string\"\n  Prints to stderr without newline."
+        "doc": "fn eprint(s: const char*)\n  Prints s to stderr without a newline (std/io.zc)."
     },
     {
         "name": "guard",

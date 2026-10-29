@@ -380,19 +380,40 @@ static int repl_process_line(ReplState *state, char *line_buf, int *brace_depth,
         pctx.suppress_errors = 1;
         Lexer l;
         lexer_init(&l, check_buf, pctx.config, pctx.current_filename);
-        ASTNode *node = parse_statement(&pctx, &l);
+
+        // A string literal on its own: the REPL shows it, as it shows the value of an
+        // expression (in a file it is an error since RFC 0001). It is printed as written, so an
+        // f-string still interpolates.
+        Lexer peek = l;
+        Token first = lexer_next(&peek);
+        Token after = lexer_next(&peek);
+        ZenTokenType rest = lexer_peek(&peek).kind;
+        int is_lone_string = (first.kind == TOK_STRING || first.kind == TOK_FSTRING ||
+                              first.kind == TOK_RAW_STRING) &&
+                             after.kind == TOK_SEMICOLON &&
+                             (rest == TOK_EOF || rest == TOK_SEMICOLON);
+
+        ASTNode *node = is_lone_string ? NULL : parse_statement(&pctx, &l);
         zfree(check_buf);
 
-        if (node &&
-            ((node->kind >= NODE_EXPR_BINARY && node->kind <= NODE_EXPR_SLICE) ||
-             node->kind == NODE_TERNARY || node->kind == NODE_LAMBDA) &&
-            /* Splicing quotes or braces into the "{...}" string literal would
-             * produce malformed code; fall back to evaluating as a statement. */
-            !strpbrk(raw_input, "\"{}"))
+        if (is_lone_string)
         {
-            strcat(full_code, "println f\"{");
+            strcat(full_code, "puts(");
+            strncat(full_code, first.start, first.len);
+            strcat(full_code, ");");
+        }
+        else if (node &&
+                 ((node->kind >= NODE_EXPR_BINARY && node->kind <= NODE_EXPR_SLICE) ||
+                  node->kind == NODE_TERNARY || node->kind == NODE_LAMBDA) &&
+                 /* Splicing quotes or braces into the "{...}" string literal would
+                  * produce malformed code; fall back to evaluating as a statement. */
+                 !strpbrk(raw_input, "\"{}"))
+        {
+            // The value is printed with puts, from C: the session does not import std/io.zc
+            // (see bug 94). The f-string evaluates the expression once and formats it by type.
+            strcat(full_code, "puts(f\"{");
             strcat(full_code, raw_input);
-            strcat(full_code, "}\";");
+            strcat(full_code, "}\");");
         }
         else
         {

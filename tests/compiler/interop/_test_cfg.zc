@@ -2,6 +2,7 @@
 // Run with: ./zc run tests/compiler/interop/test_cfg.zc -DUSE_BACKEND_A
 // Or:       ./zc run tests/compiler/interop/test_cfg.zc -DUSE_BACKEND_B
 
+import "std/io.zc"
 @cfg(USE_BACKEND_A)
 fn get_backend_name() -> char* {
     return "Backend A";
@@ -20,6 +21,6 @@ fn get_backend_name() -> char* {
 
 fn main() {
     let name = get_backend_name();
-    println f"Backend: {name}";
-    println "cfg test passed";
+    println(f"Backend: {name}");
+    println("cfg test passed");
 }
