@@ -457,8 +457,9 @@ void emit_impl_vtables(ParserContext *ctx)
     {
         char *trait;
         char *strct;
-    } emitted[MAX_ERROR_MSG_LEN];
+    } *emitted = NULL;
     int count = 0;
+    int capacity = 0;
 
     while (ref)
     {
@@ -543,6 +544,12 @@ void emit_impl_vtables(ParserContext *ctx)
             {
                 ref = ref->next;
                 continue;
+            }
+
+            if (count >= capacity)
+            {
+                capacity = capacity ? capacity * 2 : 64;
+                emitted = xrealloc(emitted, sizeof(*emitted) * (size_t)capacity);
             }
 
             emitted[count].trait = trait;
