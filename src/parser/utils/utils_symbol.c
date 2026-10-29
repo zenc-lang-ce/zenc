@@ -50,7 +50,7 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Typ
     s->decl_token = tok;
     s->is_export = is_export;
 
-    register_symbol_to_lsp(ctx, s);
+    register_in_all_symbols(ctx, s);
 }
 
 Type *find_symbol_type_info(ParserContext *ctx, const char *n)
@@ -186,7 +186,7 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
         sym->link_name = f->link_name;
     }
 
-    register_symbol_to_lsp(ctx, sym);
+    register_in_all_symbols(ctx, sym);
 
     Type *ft = type_new(TYPE_FUNCTION);
     ft->count = count;

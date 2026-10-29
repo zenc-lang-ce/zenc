@@ -57,7 +57,7 @@ static uint32_t declaration_hash(const ZenSymbol *s, uint32_t seed)
     return h;
 }
 
-void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s)
+void register_in_all_symbols(ParserContext *ctx, ZenSymbol *s)
 {
     if (!ctx || !s)
     {

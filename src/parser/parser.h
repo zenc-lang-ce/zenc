@@ -454,7 +454,7 @@ struct ParserContext
     int suppress_errors;   ///< 1 to swallow parser errors silently (probe parses).
     int had_error; ///< Set by zpanic_at when fault-tolerant; checked by parser loops to bail out.
 
-    // LSP: Flat symbol list (persists after parsing for LSP queries)
+    // Every symbol seen, for the language server, the MISRA checks and find_symbol_in_all
     ZenSymbol *all_symbols;       ///< comprehensive list of all symbols seen.
     zmap_DeclSet all_symbols_set; ///< all_symbols by declaration (kind, name, position).
 
@@ -965,7 +965,8 @@ void struct_hash_insert(ParserContext *ctx, const char *name, ASTNode *node);
 void struct_registry_changed(ParserContext *ctx);
 /** @brief Starts caching the names find_struct_def does not find (used by codegen). */
 void struct_miss_cache_enable(ParserContext *ctx);
-void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s);
+/** @brief Adds a copy of s to ctx->all_symbols, unless its declaration is already there. */
+void register_in_all_symbols(ParserContext *ctx, ZenSymbol *s);
 
 // core/ declarations
 // Rejects a name `@derive` does not know, listing the ones it does.

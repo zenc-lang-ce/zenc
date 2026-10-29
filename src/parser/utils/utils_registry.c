@@ -222,7 +222,7 @@ void register_type_alias(ParserContext *ctx, const char *alias, const char *orig
     sym->is_export = is_export;
     sym->data.alias.original_type = xstrdup(original);
     sym->type_info = type_info;
-    register_symbol_to_lsp(ctx, sym);
+    register_in_all_symbols(ctx, sym);
 }
 
 const char *find_type_alias(ParserContext *ctx, const char *alias)
@@ -509,7 +509,7 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
 
     audit_section_5(ctx, ctx->global_scope, name, sym->link_name, sym->decl_token);
 
-    register_symbol_to_lsp(ctx, sym);
+    register_in_all_symbols(ctx, sym);
 }
 
 ASTNode *find_struct_def(ParserContext *ctx, const char *name)
