@@ -545,9 +545,7 @@ ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait,
         if (check_impl(ctx, clean_trait, clean_struct_type))
         {
             char *code = xmalloc(512);
-            char v_buf[MAX_MANGLED_NAME_LEN];
-            snprintf(v_buf, sizeof(v_buf), "%s__%s__VTable", clean_struct_type, clean_trait);
-            char *v_mangled = merge_underscores(v_buf);
+            char *v_mangled = mangle_vtable_symbol(clean_struct_type, clean_trait);
 
             if (source_expr->kind == NODE_EXPR_UNARY && strcmp(source_expr->unary.op, "&") == 0)
             {

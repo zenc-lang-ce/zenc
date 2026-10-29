@@ -161,17 +161,13 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                 else
                 {
                     // Zen module: Use module base name as prefix
-                    size_t mer_sz = strlen(mod->base_name) + strlen(resolved_suffix) + 3;
-                    merged = xmalloc(mer_sz);
-                    snprintf(merged, mer_sz, "%s__%s", mod->base_name, resolved_suffix);
+                    merged = mangle_module_symbol(mod->base_name, resolved_suffix);
                 }
             }
             else
             {
                 // Regular namespace or enum variant
-                size_t mer_sz = strlen(name) + strlen(resolved_suffix) + 3;
-                merged = xmalloc(mer_sz);
-                snprintf(merged, mer_sz, "%s__%s", name, resolved_suffix);
+                merged = mangle_module_symbol(name, resolved_suffix);
             }
 
             zfree(name);
@@ -305,9 +301,7 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                 // Resolve to the actual struct name which was prefixed during module
                 // parsing
                 zfree(name);
-                name = xmalloc(strlen(si->source_module) + strlen(si->symbol) + 3);
-                snprintf(name, strlen(si->source_module) + strlen(si->symbol) + 3, "%s__%s",
-                         si->source_module, si->symbol);
+                name = mangle_module_symbol(si->source_module, si->symbol);
             }
         }
 
@@ -328,10 +322,7 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                 // Auto-prefix struct name if in module context (unless it's a known
                 // primitive/generic or an imported type)
                 char *prefixed_name =
-                    xmalloc(strlen(ctx->imports.current_module_prefix) + strlen(name) + 3);
-                snprintf(prefixed_name,
-                         strlen(ctx->imports.current_module_prefix) + strlen(name) + 3, "%s__%s",
-                         ctx->imports.current_module_prefix, name);
+                    mangle_module_symbol(ctx->imports.current_module_prefix, name);
                 zfree(name);
                 name = prefixed_name;
             }
@@ -449,11 +440,7 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                 }
                 zfree(unmangled_arg);
 
-                char *clean_arg = sanitize_mangled_name(first_arg_str);
-                size_t mangled_sz = strlen(name) + strlen(clean_arg) + 3;
-                char *mangled = xmalloc(mangled_sz);
-                snprintf(mangled, mangled_sz, "%s__%s", name, clean_arg);
-                zfree(clean_arg);
+                char *mangled = mangle_generic_name(name, &first_arg_str, 1);
 
                 zfree(ty->name);
                 ty->name = mangled;

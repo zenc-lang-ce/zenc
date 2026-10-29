@@ -180,12 +180,13 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
     {
         if (is_enum)
         {
-            EMIT(ctx, "; if (_try.tag == %s__None_Tag) return (%s__None()); _try.data.Some; })",
-                 ret_name, ret_name);
+            char *none = mangle_variant_symbol(ret_name, "None");
+            EMIT(ctx, "; if (_try.tag == %s_Tag) return (%s()); _try.data.Some; })", none, none);
         }
         else
         {
-            EMIT(ctx, "; if (!_try.is_some) return %s__None(); _try.val; })", ret_name);
+            EMIT(ctx, "; if (!_try.is_some) return %s(); _try.val; })",
+                 mangle_method_symbol(ret_name, NULL, "None"));
         }
     }
     else if (is_enum)

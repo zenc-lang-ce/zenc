@@ -1,0 +1,10 @@
+// language/modules: test_module_names_with_leading_underscores
+// A module function whose name starts with `__` is called through the module
+// alias: the call must build the same C name as the declaration
+// (util____counter_start), not one with its underscores merged.
+import "./test_modules/_internal_names.zc" as util;
+
+test "module_name_with_leading_underscores" {
+    assert(util::__counter_start() == 7, "__counter_start through the alias");
+    assert(util::twice(util::__counter_start()) == 14, "nested call");
+}

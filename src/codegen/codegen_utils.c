@@ -87,7 +87,6 @@ static void emit_c_decl(ParserContext *ctx, const char *type_str, const char *na
     }
     else if (generic && (!bracket || generic < bracket))
     {
-        char mangled_candidate[MAX_MANGLED_NAME_LEN];
         char *gt = (char *)strchr(generic, '>');
         int success = 0;
 
@@ -95,18 +94,18 @@ static void emit_c_decl(ParserContext *ctx, const char *type_str, const char *na
         {
             ptrdiff_t base_len = generic - type_str;
             ptrdiff_t arg_len = gt - generic - 1;
+            char *base = xmalloc((size_t)base_len + 1);
+            memcpy(base, type_str, (size_t)base_len);
+            base[base_len] = '\0';
+            char *arg_list = xmalloc((size_t)arg_len + 1);
+            memcpy(arg_list, generic + 1, (size_t)arg_len);
+            arg_list[arg_len] = '\0';
 
-            // Limit check
-            if (base_len + arg_len + 2 < 256)
+            char *mangled_candidate = mangle_generic_name_from_arg_list(base, arg_list);
+            if (find_struct_def(ctx, mangled_candidate))
             {
-                snprintf(mangled_candidate, 256, "%.*s__%.*s", (int)base_len, type_str,
-                         (int)arg_len, generic + 1);
-
-                if (find_struct_def(ctx, mangled_candidate))
-                {
-                    EMIT(ctx, "%s %s", mangled_candidate, name);
-                    success = 1;
-                }
+                EMIT(ctx, "%s %s", mangled_candidate, name);
+                success = 1;
             }
         }
 

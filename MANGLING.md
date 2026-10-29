@@ -56,12 +56,19 @@ called from C.
 
 ## Where mangling happens
 
-Method symbols are produced by `mangle_method_symbol()` in
-`src/parser/struct/struct_shared.c`, used by method registration
-(`src/parser/struct/struct_impl.c`) and method resolution
-(`src/parser/expr/expr_prec.c`). Generic method instantiation
-(`src/parser/utils/utils_template_inst.c`) re-mangles the method name with the
-concrete type arguments, preserving any leading underscore of the method name.
+Every C name of a Zen C symbol is built in `src/utils/mangle.c` (declared in
+`src/utils/mangle.h`), whether the parser, the typechecker or codegen needs it:
 
-If you add a new place that constructs a `Struct__Method`-style symbol, use
-`mangle_method_symbol()` so the injectivity rule stays consistent everywhere.
+| Function | Symbol | Rule |
+|---|---|---|
+| `mangle_method_symbol(type, trait, method)` | `Type__method`, `Type__Trait__method` | merges runs of four or more `_`, except when the method starts with `_` |
+| `mangle_module_symbol(prefix, name)` | `prefix__name` | no merging: the name the declaration registers |
+| `mangle_variant_symbol(enum_c_name, variant)` | `Enum__Variant` (tag: `Enum__Variant_Tag`) | merges; `enum_c_name` is the enum's `link_name` if it has one |
+| `mangle_generic_name(base, args, count)` | `Base__Arg1__Arg2` | each argument through `sanitize_mangled_name` (`int*` -> `intPtr`), trailing `_` of the base dropped, no merging |
+| `mangle_generic_name_from_arg_list(base, "K, V")` | same | splits the list at its top-level commas first |
+| `mangle_vtable_symbol(type, trait)` | `Type__Trait__VTable` | no merging: the name codegen defines |
+
+If you add a new place that builds one of these names, call the function instead
+of formatting `"%s__%s"`, so a lookup always builds the name the declaration
+registered. The keys of `match` patterns (`Enum__Variant`, spelled from the
+source path) are not C names and do not go through these functions.

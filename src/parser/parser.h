@@ -11,6 +11,7 @@
 #include "compiler.h"
 #include "../diagnostics/diagnostics.h"
 #include "../utils/emitter.h"
+#include "../utils/mangle.h"
 
 // Operator precedence for expression parsing
 
@@ -803,7 +804,6 @@ void sync_all_link_names(ParserContext *ctx, ASTNode *root);
  */
 void register_builtins(ParserContext *ctx);
 void register_comptime_builtins(ParserContext *ctx);
-char *sanitize_mangled_name(const char *s);
 void register_tuple_with_types(ParserContext *ctx, const char *sig, const char **types, int count);
 ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, const char *type_name, ASTNode *expr);
 
@@ -854,14 +854,6 @@ void check_c_identifier(Token t);
  * @brief Main loop to parse top-level nodes in a file.
  */
 ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l);
-
-/**
- * @brief Collapses runs of four or more underscores into a double underscore.
- *        A run of exactly three is preserved: it encodes the "__" separator
- *        plus an identifier that begins with "_" (e.g. `Struct::_method`), so
- *        collapsing it would make distinct symbols collide.
- */
-char *merge_underscores(const char *name);
 
 // --- Parser function declarations (needed to avoid implicit declarations) ---
 ASTNode *parse_statement(ParserContext *ctx, Lexer *l);
@@ -987,8 +979,6 @@ void replace_it_with_var(ASTNode *node, char *var_name);
 // struct/ declarations
 void load_std_module(ParserContext *ctx, const char *path);
 void auto_import_std_mem(ParserContext *ctx);
-char *mangle_method_symbol(const char *struct_name, const char *trait_name,
-                           const char *method_name);
 void patch_and_fix_self(ParserContext *ctx, ASTNode *f, const char *full_struct_name);
 Type *parse_type_obj(ParserContext *ctx, Lexer *l);
 

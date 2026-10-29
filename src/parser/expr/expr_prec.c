@@ -1938,9 +1938,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                     if (struct_name)
                     {
-                        char buf[MAX_ERROR_MSG_LEN];
-                        snprintf(buf, sizeof(buf), "%s__%s", struct_name, node->member.field);
-                        full_name = merge_underscores(buf);
+                        full_name = mangle_method_symbol(struct_name, NULL, node->member.field);
 
                         // Join types
                         size_t ac_sz = 1024, au_sz = 1024;
@@ -2307,9 +2305,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                 if (struct_name)
                 {
-                    char buf_m[MAX_ERROR_MSG_LEN];
-                    snprintf(buf_m, sizeof(buf_m), "%s__%s", struct_name, inner_method);
-                    char *mangled = merge_underscores(buf_m);
+                    char *mangled = mangle_method_symbol(struct_name, NULL, inner_method);
                     FuncSig *sig = find_func(ctx, mangled);
                     if (sig)
                     {

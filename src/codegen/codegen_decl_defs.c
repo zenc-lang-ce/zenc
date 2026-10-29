@@ -245,7 +245,8 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
 
                         if (tuple_def)
                         {
-                            EMIT(ctx, "%s %s__%s(", final_name, final_name, v->variant.name);
+                            EMIT(ctx, "%s %s(", final_name,
+                                 mangle_variant_symbol(final_name, v->variant.name));
                             ASTNode *f = tuple_def->strct.fields;
                             int i = 0;
                             while (f)
@@ -261,14 +262,15 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
                         {
                             char *tstr =
                                 type_to_c_string(v->variant.payload, ctx->config->misra_mode);
-                            EMIT(ctx, "%s %s__%s(%s v);\n", final_name, final_name, v->variant.name,
-                                 tstr);
+                            EMIT(ctx, "%s %s(%s v);\n", final_name,
+                                 mangle_variant_symbol(final_name, v->variant.name), tstr);
                             zfree(tstr);
                         }
                     }
                     else
                     {
-                        EMIT(ctx, "%s %s__%s();\n", final_name, final_name, v->variant.name);
+                        EMIT(ctx, "%s %s();\n", final_name,
+                             mangle_variant_symbol(final_name, v->variant.name));
                     }
                     v = v->next;
                 }

@@ -736,8 +736,7 @@ void re_export_propagated(ParserContext *ctx, const char *alias, const char *par
     {
         return;
     }
-    char combined[MAX_PATH_LEN];
-    snprintf(combined, sizeof(combined), "%s__%s", parent_prefix, alias);
+    char *combined = mangle_module_symbol(parent_prefix, alias);
 
     if (!zmap_get(&ctx->imports.modules, combined))
     {

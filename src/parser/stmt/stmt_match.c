@@ -372,9 +372,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                         }
                         else
                         {
-                            size_t csz = strlen(base) + strlen(pattern) + 3;
-                            ctor = xmalloc(csz);
-                            sprintf(ctor, "%s__%s", base, pattern); /* safe */
+                            ctor = mangle_method_symbol(base, NULL, pattern);
                         }
                         GenericFuncTemplate *ft = find_func_template(ctx, ctor);
                         zfree(ctor);

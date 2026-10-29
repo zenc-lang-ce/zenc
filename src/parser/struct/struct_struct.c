@@ -290,9 +290,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     if (ctx->imports.current_module_prefix && gp_count == 0 && !is_extern &&
         !is_extern_symbol(ctx, name))
     { // Don't prefix generic templates
-        size_t pref_len = strlen(ctx->imports.current_module_prefix) + strlen(name) + 3;
-        char *prefixed_name = xmalloc(pref_len);
-        snprintf(prefixed_name, pref_len, "%s__%s", ctx->imports.current_module_prefix, name);
+        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name);
         zfree(name);
         name = prefixed_name;
     }

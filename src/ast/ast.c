@@ -909,26 +909,12 @@ static char *type_to_string_impl(Type *t)
     {
         if (t->count > 0 && t->name && strstr(t->name, "__") == NULL)
         {
-            char *base = t->name;
-            size_t base_len = strlen(base);
-            char *res = xmalloc((size_t)(base_len + 1));
-            strcpy(res, base);
-
+            char **args = xmalloc((size_t)t->count * sizeof(char *));
             for (int i = 0; i < t->count; i++)
             {
-                char *arg = type_to_string(t->args[i]);
-                char *clean_arg = sanitize_mangled_name(arg);
-
-                size_t new_len = strlen(res) + strlen(clean_arg) + 3;
-                char *new_res = xmalloc((size_t)(new_len));
-                sprintf(new_res, "%s__%s", res, clean_arg); /* safe */
-
-                zfree(res);
-                res = new_res;
-                zfree(arg);
-                zfree(clean_arg);
+                args[i] = type_to_string(t->args[i]);
             }
-            return res;
+            return mangle_generic_name(t->name, args, t->count);
         }
         return xstrdup(t->name);
     }
@@ -1404,10 +1390,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
                     base += 7;
                 }
 
-                char func_base[MAX_MANGLED_NAME_LEN];
-                snprintf(func_base, sizeof(func_base), "%s__%s", base,
-                         node->call.callee->member.field);
-                char *func_name = merge_underscores(func_base);
+                char *func_name = mangle_method_symbol(base, NULL, node->call.callee->member.field);
 
                 FuncSig *sig = find_func(ctx, func_name);
 

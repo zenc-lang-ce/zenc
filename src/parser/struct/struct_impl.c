@@ -335,10 +335,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         // Auto-prefix struct name if in module context
         if (ctx->imports.current_module_prefix && !gen_param && !is_extern_symbol(ctx, name1))
         {
-            char *prefixed_name =
-                xmalloc(strlen(ctx->imports.current_module_prefix) + strlen(name1) + 3);
-            snprintf(prefixed_name, strlen(ctx->imports.current_module_prefix) + strlen(name1) + 3,
-                     "%s__%s", ctx->imports.current_module_prefix, name1);
+            char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name1);
             zfree(name1);
             name1 = prefixed_name;
         }

@@ -70,7 +70,9 @@ void handle_expr_member(ParserContext *ctx, ASTNode *node)
             ASTNode *def = find_struct_def(ctx, node->member.target->var_ref.name);
             if (def && def->kind == NODE_ENUM)
             {
-                EMIT(ctx, "%s__%s", node->member.target->var_ref.name, node->member.field);
+                const char *enum_c_name =
+                    def->link_name ? def->link_name : node->member.target->var_ref.name;
+                EMIT(ctx, "%s", mangle_variant_symbol(enum_c_name, node->member.field));
                 return;
             }
         }

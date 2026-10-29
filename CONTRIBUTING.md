@@ -24,7 +24,7 @@ concern, applied everywhere. When changing compiler code, follow these.
 ### Symbol mangling
 
 - The one canonical mangler is `mangle_method_symbol(base, trait, method)` in
-  `src/parser/struct/struct_shared.c`. Use it everywhere; never re-implement
+  `src/utils/mangle.c`. Use it everywhere; never re-implement
   `%s__%s` + `merge_underscores` inline.
 - A method beginning with `_` keeps its triple underscore (`Struct___method`)
   so it cannot collide with `Struct__method`.

@@ -785,9 +785,8 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             ASTNode *def = find_struct_def(ctx, mangled_type);
             if (def && def->kind == NODE_ENUM)
             {
-                char mangled[MAX_MANGLED_NAME_LEN];
                 const char *ename_for_mangling = (def->link_name) ? def->link_name : mangled_type;
-                snprintf(mangled, sizeof(mangled), "%s__%s", ename_for_mangling, method);
+                char *mangled = mangle_method_symbol(ename_for_mangling, NULL, method);
                 FuncSig *sig = find_func(ctx, mangled);
                 if (sig)
                 {
@@ -863,7 +862,6 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
 
             const char *normalized = normalize_type_name(base);
             char *mangled_base = (char *)normalized;
-            char base_buf[MAX_ERROR_MSG_LEN];
 
             char *lt = (char *)strchr(base, '<');
             if (lt)
@@ -880,12 +878,6 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                     strncpy(prefix, base, (size_t)(prefix_len));
                     prefix[prefix_len] = 0;
 
-                    char *p_end = prefix + strlen(prefix);
-                    while (p_end > prefix && *(p_end - 1) == '_')
-                    {
-                        *(--p_end) = '\0';
-                    }
-
                     char *args_ptr = xstrdup(lt + 1);
                     char *args_end = (char *)strrchr(args_ptr, '>');
                     if (args_end)
@@ -893,12 +885,8 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                         *args_end = 0;
                     }
 
-                    char *clean_arg = sanitize_mangled_name(args_ptr);
-                    snprintf(base_buf, sizeof(base_buf), "%s__%s", prefix, clean_arg);
-                    mangled_base = base_buf;
-
+                    mangled_base = mangle_generic_name_from_arg_list(prefix, args_ptr);
                     zfree(args_ptr);
-                    zfree(clean_arg);
                 }
             }
 
@@ -913,7 +901,6 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                     mangled_base = type_mangled;
                 }
 
-                char type_buf[MAX_ERROR_MSG_LEN];
                 char *t_lt = (char *)strchr(type, '<');
 
                 if (t_lt)
@@ -930,12 +917,6 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                         strncpy(prefix, type, (size_t)(p_len));
                         prefix[p_len] = 0;
 
-                        char *p_end = prefix + strlen(prefix);
-                        while (p_end > prefix && *(p_end - 1) == '_')
-                        {
-                            *(--p_end) = '\0';
-                        }
-
                         char *args_ptr = xstrdup(t_lt + 1);
                         char *args_end = (char *)strrchr(args_ptr, '>');
                         if (args_end)
@@ -943,12 +924,8 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                             *args_end = 0;
                         }
 
-                        char *clean_arg = sanitize_mangled_name(args_ptr);
-                        snprintf(type_buf, sizeof(type_buf), "%s__%s", prefix, clean_arg);
-                        type_mangled = type_buf;
-
+                        type_mangled = mangle_generic_name_from_arg_list(prefix, args_ptr);
                         zfree(args_ptr);
-                        zfree(clean_arg);
                     }
                 }
 
@@ -982,9 +959,7 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                 char *call_base = mangled_base;
 
                 int need_cast = 0;
-                char mixin_func_base[MAX_MANGLED_NAME_LEN * 2];
-                snprintf(mixin_func_base, sizeof(mixin_func_base), "%s__%s", call_base, method);
-                char *mixin_func_name_ptr = merge_underscores(mixin_func_base);
+                char *mixin_func_name_ptr = mangle_method_symbol(call_base, NULL, method);
                 char mixin_func_name[MAX_MANGLED_NAME_LEN * 2];
                 strncpy(mixin_func_name, mixin_func_name_ptr, sizeof(mixin_func_name) - 1);
                 mixin_func_name[sizeof(mixin_func_name) - 1] = 0;
@@ -999,10 +974,7 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                     {
                         if (strcmp(ta->original_type, call_base) == 0)
                         {
-                            char alias_func_base[MAX_ERROR_MSG_LEN];
-                            snprintf(alias_func_base, sizeof(alias_func_base), "%s__%s", ta->alias,
-                                     method);
-                            char *alias_func_name = merge_underscores(alias_func_base);
+                            char *alias_func_name = mangle_method_symbol(ta->alias, NULL, method);
                             if (find_func(ctx, alias_func_name))
                             {
                                 zfree(alias_func_name);
@@ -1018,16 +990,12 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                         if (ref->node && ref->node->kind == NODE_IMPL_TRAIT &&
                             strcmp(ref->node->impl_trait.target_type, base) == 0)
                         {
-                            char trait_base[MAX_MANGLED_NAME_LEN];
-                            snprintf(trait_base, sizeof(trait_base), "%s__%s__%s", base,
-                                     ref->node->impl_trait.trait_name, method);
-                            char *trait_mangled = merge_underscores(trait_base);
+                            char *trait_mangled = mangle_method_symbol(
+                                base, ref->node->impl_trait.trait_name, method);
                             if (find_func(ctx, trait_mangled))
                             {
-                                char suffix_base[MAX_MANGLED_NAME_LEN];
-                                snprintf(suffix_base, sizeof(suffix_base), "%s__%s",
-                                         ref->node->impl_trait.trait_name, method);
-                                resolved_method_suffix = merge_underscores(suffix_base);
+                                resolved_method_suffix = mangle_method_symbol(
+                                    ref->node->impl_trait.trait_name, NULL, method);
                                 zfree(trait_mangled);
                                 break;
                             }
@@ -1045,16 +1013,11 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                             if (it->impl_node && it->impl_node->kind == NODE_IMPL_TRAIT)
                             {
                                 tname = it->impl_node->impl_trait.trait_name;
-                                char trait_base[MAX_ERROR_MSG_LEN];
-                                snprintf(trait_base, sizeof(trait_base), "%s__%s__%s", base, tname,
-                                         method);
-                                char *trait_mangled = merge_underscores(trait_base);
+                                char *trait_mangled = mangle_method_symbol(base, tname, method);
                                 if (find_func(ctx, trait_mangled))
                                 {
-                                    char suffix_base[MAX_ERROR_MSG_LEN];
-                                    snprintf(suffix_base, sizeof(suffix_base), "%s__%s", tname,
-                                             method);
-                                    resolved_method_suffix = merge_underscores(suffix_base);
+                                    resolved_method_suffix =
+                                        mangle_method_symbol(tname, NULL, method);
                                     zfree(trait_mangled);
                                     break;
                                 }
@@ -1075,10 +1038,8 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                         {
                             for (int k = 0; k < def->strct.used_struct_count; k++)
                             {
-                                char mixin_base[MAX_ERROR_MSG_LEN];
-                                snprintf(mixin_base, sizeof(mixin_base), "%s__%s",
-                                         def->strct.used_structs[k], method);
-                                char *mixin_check = merge_underscores(mixin_base);
+                                char *mixin_check =
+                                    mangle_method_symbol(def->strct.used_structs[k], NULL, method);
                                 if (find_func(ctx, mixin_check))
                                 {
                                     call_base = def->strct.used_structs[k];
