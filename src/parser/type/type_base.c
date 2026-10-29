@@ -50,6 +50,26 @@ Type *type_from_name(ParserContext *ctx, const char *name)
     return t;
 }
 
+// The `>` that closes a list of generic arguments. A `>>` (two lists closing together, as in
+// `Vec<Vec<int>>`) is split: its first `>` is consumed and the second is left for the outer
+// list. Returns 0 when neither comes next.
+static int consume_generic_close(Lexer *l)
+{
+    Token t = lexer_peek(l);
+    if (t.kind == TOK_RANGLE)
+    {
+        lexer_next(l);
+        return 1;
+    }
+    if (t.kind == TOK_OP && t.len == 2 && strncmp(t.start, ">>", 2) == 0)
+    {
+        l->pos += 1;
+        l->col += 1;
+        return 1;
+    }
+    return 0;
+}
+
 Type *parse_type_base(ParserContext *ctx, Lexer *l)
 {
     RECURSION_GUARD(ctx, l, type_new(TYPE_UNKNOWN));
@@ -363,21 +383,10 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                     zfree(arg_str);
                 }
 
-                // Consume >
-                next_tok = lexer_peek(l);
-                if (next_tok.kind == TOK_RANGLE)
-                {
-                    lexer_next(l);
-                }
-                else if (next_tok.kind == TOK_OP && next_tok.len == 2 &&
-                         strncmp(next_tok.start, ">>", 2) == 0)
-                {
-                    l->pos += 1;
-                    l->col += 1;
-                }
-                else
+                if (!consume_generic_close(l))
                 {
                     zpanic_at(t, "Expected > after generic");
+                    RECURSION_EXIT(ctx);
                     return NULL;
                 }
 
@@ -422,21 +431,11 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
             }
             else
             {
-                // Single-arg case - PRESERVE ORIGINAL FLOW EXACTLY
-                if (next_tok.kind == TOK_RANGLE)
-                {
-                    lexer_next(l); // Consume >
-                }
-                else if (next_tok.kind == TOK_OP && next_tok.len == 2 &&
-                         strncmp(next_tok.start, ">>", 2) == 0)
-                {
-                    // Split >> into two > tokens
-                    l->pos += 1;
-                    l->col += 1;
-                }
-                else
+                // Single-arg case
+                if (!consume_generic_close(l))
                 {
                     zpanic_at(t, "Expected > after generic");
+                    RECURSION_EXIT(ctx);
                     return NULL;
                 }
 

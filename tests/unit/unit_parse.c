@@ -7,11 +7,12 @@
 static ZenCompiler compiler;
 static ParserContext ctx;
 
-ASTNode *parse_source(const char *src)
+static ASTNode *parse_with(const char *src, int keep_comments)
 {
     memset(&compiler, 0, sizeof(compiler));
     memset(&ctx, 0, sizeof(ctx));
     compiler.config.quiet = 1;
+    compiler.config.keep_comments = keep_comments;
     ctx.compiler = &compiler;
     ctx.config = &compiler.config;
     ctx.current_filename = "test.zc";
@@ -33,6 +34,16 @@ ASTNode *parse_source(const char *src)
         fclose(ctx.cg.hoist_out);
     }
     return root;
+}
+
+ASTNode *parse_source(const char *src)
+{
+    return parse_with(src, 0);
+}
+
+ASTNode *parse_source_keeping_comments(const char *src)
+{
+    return parse_with(src, 1);
 }
 
 ParserContext *parse_source_context(void)

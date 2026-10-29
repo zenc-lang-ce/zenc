@@ -12,6 +12,114 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
+// The methods of an impl body, after its `{`, up to and including its `}`. Each method is
+// named Type__method (Type__Trait__method in a trait impl), takes `self` as `self_type`, and
+// is registered: as a template of the impl's generic parameter `template_param`, as a
+// template of its own generic parameters, or as a function.
+static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *type_name,
+                                   const char *trait_name, const char *self_type,
+                                   const char *template_param)
+{
+    ASTNode *h = NULL;
+    ASTNode *tl = NULL;
+    while (1)
+    {
+        ctx->current_impl_methods = h;
+        skip_comments(l);
+        if (lexer_peek(l).kind == TOK_RBRACE)
+        {
+            lexer_next(l);
+            break;
+        }
+        if (lexer_peek(l).kind == TOK_EOF)
+        {
+            zpanic_at(lexer_peek(l), "Unexpected end of file in impl body");
+            break;
+        }
+        DeclarationAttributes attrs = {0};
+        if (lexer_peek(l).kind == TOK_AT)
+        {
+            attrs = parse_attributes(ctx, l);
+        }
+
+        if (lexer_peek(l).kind == TOK_IDENT && lexer_peek(l).len == 5 &&
+            strncmp(lexer_peek(l).start, "async", 5) == 0)
+        {
+            zerror_at(lexer_peek(l), "'async' was removed; call the method directly");
+            lexer_next(l);
+            continue;
+        }
+        if (lexer_peek(l).kind != TOK_IDENT || strncmp(lexer_peek(l).start, "fn", 2) != 0)
+        {
+            lexer_next(l);
+            continue;
+        }
+
+        ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0);
+        if (!f)
+        {
+            continue;
+        }
+        ATTACH_DOC_COMMENT(ctx, f);
+        char *mangled = mangle_method_symbol(type_name, trait_name, f->func.name);
+        zfree(f->func.name);
+        f->func.name = mangled;
+
+        patch_and_fix_self(ctx, f, self_type);
+
+        if (attrs.cfg_condition)
+        {
+            f->cfg_condition = attrs.cfg_condition;
+        }
+        f->func.pure = attrs.is_pure;
+        f->func.unused = attrs.is_unused;
+        f->link_name = attrs.link_name;
+
+        if (template_param)
+        {
+            register_func_template(ctx, f->func.name, template_param, f);
+
+            // `self` is a Type<T>*.
+            if (f->func.count > 0 && f->func.param_names &&
+                strcmp(f->func.param_names[0], "self") == 0)
+            {
+                Type *t_struct = type_new(TYPE_STRUCT);
+                t_struct->name = xstrdup(type_name);
+                t_struct->count = 1;
+                t_struct->args = xmalloc(sizeof(Type *));
+                t_struct->args[0] = type_new(TYPE_GENERIC);
+                t_struct->args[0]->name = xstrdup(template_param);
+
+                Type *t_ptr = type_new(TYPE_POINTER);
+                t_ptr->inner = t_struct;
+
+                f->func.arg_types[0] = t_ptr;
+            }
+        }
+        else if (f->func.generic_params)
+        {
+            register_func_template(ctx, f->func.name, f->func.generic_params, f);
+        }
+        else
+        {
+            register_func(ctx, ctx->current_scope, f->func.name, f->func.count, f->func.defaults,
+                          f->func.arg_types, f->func.ret_type_info, f->func.is_varargs,
+                          f->func.pure, f->link_name, f->token, 0);
+        }
+
+        if (!h)
+        {
+            h = f;
+        }
+        else
+        {
+            tl->next = f;
+        }
+        tl = f;
+    }
+    return h;
+}
+
 ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 {
 
@@ -158,7 +266,6 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         ctx->current_impl_struct = name2;
 
         lexer_next(l);
-        ASTNode *h = 0, *tl = 0;
 
         char *full_target_name = name2;
         if (target_gen_param)
@@ -172,84 +279,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             full_target_name = xstrdup(name2);
         }
 
-        while (1)
-        {
-            ctx->current_impl_methods = h;
-            skip_comments(l);
-            if (lexer_peek(l).kind == TOK_RBRACE)
-            {
-                lexer_next(l);
-                break;
-            }
-            if (lexer_peek(l).kind == TOK_EOF)
-            {
-                zpanic_at(lexer_peek(l), "Unexpected end of file in impl body");
-                break;
-            }
-            DeclarationAttributes attrs = {0};
-            if (lexer_peek(l).kind == TOK_AT)
-            {
-                attrs = parse_attributes(ctx, l);
-            }
-
-            if (lexer_peek(l).kind == TOK_IDENT && strncmp(lexer_peek(l).start, "fn", 2) == 0)
-            {
-                ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0);
-                if (!f)
-                {
-                    continue;
-                }
-                ATTACH_DOC_COMMENT(ctx, f);
-                // Mangle: Type_Trait_Method
-                {
-                    char *tmp = mangle_method_symbol(name2, name1, f->func.name);
-                    zfree(f->func.name);
-                    f->func.name = tmp;
-                }
-
-                patch_and_fix_self(ctx, f, full_target_name);
-
-                if (attrs.cfg_condition)
-                {
-                    f->cfg_condition = attrs.cfg_condition;
-                }
-                f->func.pure = attrs.is_pure;
-                f->func.unused = attrs.is_unused;
-                f->link_name = attrs.link_name;
-
-                // Register function for lookup
-                if (f->func.generic_params)
-                {
-                    register_func_template(ctx, f->func.name, f->func.generic_params, f);
-                }
-                else
-                {
-                    register_func(ctx, ctx->current_scope, f->func.name, f->func.count,
-                                  f->func.defaults, f->func.arg_types, f->func.ret_type_info,
-                                  f->func.is_varargs, f->func.pure, f->link_name, f->token, 0);
-                }
-
-                if (!h)
-                {
-                    h = f;
-                }
-                else
-                {
-                    tl->next = f;
-                }
-                tl = f;
-            }
-            else if (lexer_peek(l).kind == TOK_IDENT && lexer_peek(l).len == 5 &&
-                     strncmp(lexer_peek(l).start, "async", 5) == 0)
-            {
-                zerror_at(lexer_peek(l), "'async' was removed; call the method directly");
-                lexer_next(l);
-            }
-            else
-            {
-                lexer_next(l);
-            }
-        }
+        ASTNode *h = parse_impl_methods(ctx, l, name2, name1, full_target_name, NULL);
 
         if (target_gen_param)
         {
@@ -339,92 +369,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             snprintf(full_struct_name, strlen(name1) + strlen(gen_param) + 3, "%s<%s>", name1,
                      gen_param);
 
-            ASTNode *h = 0, *tl = 0;
-            ctx->current_impl_methods = NULL;
-            while (1)
-            {
-                ctx->current_impl_methods = h;
-                skip_comments(l);
-                if (lexer_peek(l).kind == TOK_RBRACE)
-                {
-                    lexer_next(l);
-                    break;
-                }
-                if (lexer_peek(l).kind == TOK_EOF)
-                {
-                    zpanic_at(lexer_peek(l), "Unexpected end of file in impl body");
-                    break;
-                }
-                DeclarationAttributes attrs = {0};
-                if (lexer_peek(l).kind == TOK_AT)
-                {
-                    attrs = parse_attributes(ctx, l);
-                }
-
-                if (lexer_peek(l).kind == TOK_IDENT && strncmp(lexer_peek(l).start, "fn", 2) == 0)
-                {
-                    ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0);
-                    if (!f)
-                    {
-                        continue;
-                    }
-                    ATTACH_DOC_COMMENT(ctx, f);
-                    {
-                        char *tmp = mangle_method_symbol(name1, NULL, f->func.name);
-                        zfree(f->func.name);
-                        f->func.name = tmp;
-                    }
-
-                    patch_and_fix_self(ctx, f, full_struct_name);
-
-                    if (attrs.cfg_condition)
-                    {
-                        f->cfg_condition = attrs.cfg_condition;
-                    }
-                    f->func.pure = attrs.is_pure;
-                    f->func.unused = attrs.is_unused;
-                    f->link_name = attrs.link_name;
-
-                    register_func_template(ctx, f->func.name, gen_param, f);
-
-                    // Manual Type construction for self: Foo<T>*
-                    if (f->func.count > 0 && f->func.param_names &&
-                        strcmp(f->func.param_names[0], "self") == 0)
-                    {
-                        Type *t_struct = type_new(TYPE_STRUCT);
-                        t_struct->name = xstrdup(name1);
-                        t_struct->count = 1;
-                        t_struct->args = xmalloc(sizeof(Type *));
-                        t_struct->args[0] = type_new(TYPE_GENERIC);
-                        t_struct->args[0]->name = xstrdup(gen_param);
-
-                        Type *t_ptr = type_new(TYPE_POINTER);
-                        t_ptr->inner = t_struct;
-
-                        f->func.arg_types[0] = t_ptr;
-                    }
-
-                    if (!h)
-                    {
-                        h = f;
-                    }
-                    else
-                    {
-                        tl->next = f;
-                    }
-                    tl = f;
-                }
-                else if (lexer_peek(l).kind == TOK_IDENT && lexer_peek(l).len == 5 &&
-                         strncmp(lexer_peek(l).start, "async", 5) == 0)
-                {
-                    zerror_at(lexer_peek(l), "'async' was removed; call the method directly");
-                    lexer_next(l);
-                }
-                else
-                {
-                    lexer_next(l);
-                }
-            }
+            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, full_struct_name, gen_param);
             zfree(full_struct_name);
             // Register Template
             ASTNode *n = ast_create(NODE_IMPL);
@@ -443,84 +388,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         {
             // REGULAR IMPL
             lexer_next(l);
-            ASTNode *h = 0, *tl = 0;
-            while (1)
-            {
-                ctx->current_impl_methods = h;
-                skip_comments(l);
-                if (lexer_peek(l).kind == TOK_RBRACE)
-                {
-                    lexer_next(l);
-                    break;
-                }
-                if (lexer_peek(l).kind == TOK_EOF)
-                {
-                    zpanic_at(lexer_peek(l), "Unexpected end of file in impl body");
-                    break;
-                }
-
-                DeclarationAttributes attrs = {0};
-                if (lexer_peek(l).kind == TOK_AT)
-                {
-                    attrs = parse_attributes(ctx, l);
-                }
-
-                if (lexer_peek(l).kind == TOK_IDENT && strncmp(lexer_peek(l).start, "fn", 2) == 0)
-                {
-                    ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0);
-                    if (!f)
-                    {
-                        return NULL;
-                    }
-
-                    {
-                        char *tmp = mangle_method_symbol(name1, NULL, f->func.name);
-                        zfree(f->func.name);
-                        f->func.name = tmp;
-                    }
-
-                    patch_and_fix_self(ctx, f, name1);
-
-                    if (attrs.cfg_condition)
-                    {
-                        f->cfg_condition = attrs.cfg_condition;
-                    }
-                    f->func.pure = attrs.is_pure;
-                    f->func.unused = attrs.is_unused;
-                    f->link_name = attrs.link_name;
-
-                    if (f->func.generic_params)
-                    {
-                        register_func_template(ctx, f->func.name, f->func.generic_params, f);
-                    }
-                    else
-                    {
-                        register_func(ctx, ctx->current_scope, f->func.name, f->func.count,
-                                      f->func.defaults, f->func.arg_types, f->func.ret_type_info,
-                                      f->func.is_varargs, f->func.pure, f->link_name, f->token, 0);
-                    }
-
-                    if (!h)
-                    {
-                        h = f;
-                    }
-                    else
-                    {
-                        tl->next = f;
-                    }
-                    tl = f;
-                }
-                else if (lexer_peek(l).kind == TOK_IDENT && lexer_peek(l).len == 5 &&
-                         strncmp(lexer_peek(l).start, "async", 5) == 0)
-                {
-                    zerror_at(lexer_peek(l), "'async' was removed; call the method directly");
-                    lexer_next(l);
-                }
-                else
-                {
-                    lexer_next(l);
-                }
-            }
+            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, name1, NULL);
             ctx->current_impl_struct = NULL;
             ASTNode *n = ast_create(NODE_IMPL);
             n->impl.struct_name = name1;

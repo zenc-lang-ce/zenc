@@ -1,0 +1,34 @@
+// language/features/operators: a unary operator (-x, !x, ~x) overloaded by the method of a
+// trait impl. The parser only looked for a method of the type itself, so -v on a value
+// whose neg came from `impl Trait for V` was emitted as C negation of a struct.
+
+@derive(Copy)
+struct V { x: int; }
+
+trait Negate {
+    fn neg(self) -> V;
+}
+
+impl Negate for V {
+    fn neg(self) -> V { return V { x: 0 - self.x }; }
+}
+
+trait Inverse {
+    fn bitnot(self) -> V;
+}
+
+impl Inverse for V {
+    fn bitnot(self) -> V { return V { x: ~self.x }; }
+}
+
+test "unary minus from a trait impl" {
+    let a = V { x: 5 };
+    let b = -a;
+    expect_eq(b.x, -5, "-a calls neg of impl Negate for V");
+}
+
+test "bitwise not from a trait impl" {
+    let a = V { x: 0 };
+    let b = ~a;
+    expect_eq(b.x, -1, "~a calls bitnot of impl Inverse for V");
+}
