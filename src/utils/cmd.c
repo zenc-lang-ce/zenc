@@ -163,11 +163,6 @@ void print_command_help(const char *command)
         printf("usage: zc debug <file> [<args>]\n\n");
         printf("Compile and run with full debug information and GDB/LLDB support.\n");
     }
-    else if (strcmp(command, "repl") == 0)
-    {
-        printf("usage: zc repl\n\n");
-        printf("Start an interactive Read-Eval-Print Loop session.\n");
-    }
     else if (strcmp(command, "lsp") == 0)
     {
         printf("usage: zc lsp\n\n");
