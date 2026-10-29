@@ -1,0 +1,38 @@
+// backends/cpp: a method, an index overload and an overloaded == on a temporary
+// In C++ the receiver goes through _z_rval, so the copy lives until the end of the full
+// expression and the method can use self during the call.
+
+@derive(Eq)
+struct Bag { n: int; }
+
+impl Bag {
+    fn get(self, i: int) -> int { return self.n + i; }
+    fn bump(self) -> int {
+        self.n = self.n + 1;
+        return self.n;
+    }
+}
+
+struct Box<T> { v: T; }
+
+impl Box<T> {
+    fn value(self) -> T { return self.v; }
+}
+
+impl int {
+    fn plus_one(self) -> int { return *self + 1; }
+}
+
+fn make_bag(n: int) -> Bag { return Bag { n: n }; }
+fn make_box() -> Box<int> { return Box<int> { v: 7 }; }
+
+fn main() {
+    let b = Bag { n: 1 };
+    assert make_bag(1).get(1) == 2;
+    assert make_bag(1)[2] == 3;
+    assert make_bag(1).bump() == 2;
+    assert make_bag(1) == b;
+    assert b == make_bag(1);
+    assert make_box().value() == 7;
+    assert 10.plus_one() == 11;
+}

@@ -117,6 +117,11 @@ void emit_preamble(ParserContext *ctx)
             EMIT(ctx, "%s",
                  "inline const char* _z_arg(bool b)             { return _z_bool_str(b); }\n");
             EMIT(ctx, "%s", "template<typename T> inline T _z_arg(T x)     { return x; }\n");
+            // Address of a temporary for a method call: it lives until the end of the full
+            // expression, unlike a variable declared in a statement expression.
+            EMIT(ctx, "%s",
+                 "template<typename T> inline T *_z_rval(const T &x) { return const_cast<T *>(&x); "
+                 "}\n");
             EMIT(ctx, "%s", "inline const char* _z_str(char)               { return \"%c\"; }\n");
             EMIT(ctx, "%s", "inline const char* _z_str(signed char)        { return \"%d\"; }\n");
             EMIT(ctx, "%s", "inline const char* _z_str(unsigned char)      { return \"%u\"; }\n");

@@ -171,7 +171,7 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
 }
 
 // The C name of the type of expr when it can be written as a whole before a declarator
-// (`T[]` in C, `T _tmp` in C++), or NULL when it is unknown or is itself a declarator
+// (`T[]` in a compound literal), or NULL when it is unknown or is itself a declarator
 // (a function pointer or an array).
 static char *rvalue_type_name(ParserContext *ctx, ASTNode *expr)
 {
@@ -189,18 +189,20 @@ static char *rvalue_type_name(ParserContext *ctx, ASTNode *expr)
 
 // Emits a pointer to a copy of expr, for a value that has no address of its own (a call
 // result, a literal): a one-element compound literal in C, which lives until the end of the
-// enclosing block, or a statement expression in C++.
+// enclosing block, or _z_rval in C++, which keeps the temporary until the end of the full
+// expression.
 void emit_rvalue_address(ParserContext *ctx, ASTNode *expr)
 {
-    char *type = rvalue_type_name(ctx, expr);
     if (ctx->config->use_cpp)
     {
-        EMIT(ctx, "({ ");
+        EMIT(ctx, "_z_rval(");
+        codegen_expression(ctx, expr);
+        EMIT(ctx, ")");
+        return;
     }
-    else
-    {
-        EMIT(ctx, "(");
-    }
+
+    char *type = rvalue_type_name(ctx, expr);
+    EMIT(ctx, "(");
 
     if (type)
     {
@@ -213,18 +215,9 @@ void emit_rvalue_address(ParserContext *ctx, ASTNode *expr)
         EMIT(ctx, "))");
     }
 
-    if (ctx->config->use_cpp)
-    {
-        EMIT(ctx, " _tmp = ");
-        codegen_expression(ctx, expr);
-        EMIT(ctx, "; &_tmp; })");
-    }
-    else
-    {
-        EMIT(ctx, "[]){");
-        codegen_expression(ctx, expr);
-        EMIT(ctx, "}");
-    }
+    EMIT(ctx, "[]){");
+    codegen_expression(ctx, expr);
+    EMIT(ctx, "}");
 }
 
 // Emit function signature using Type info for correct C codegen

@@ -907,13 +907,10 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
 
                 emit_mangled_name(ctx, mangled_base, method);
                 EMIT(ctx, "(");
+                // C names the instance just mangled; C++ needs no type (_z_rval)
                 if (ctx->config->use_cpp)
                 {
-                    EMIT(ctx, "({ __typeof__((");
-                    codegen_expression(ctx, target);
-                    EMIT(ctx, ")) _tmp = ");
-                    codegen_expression(ctx, target);
-                    EMIT(ctx, "; &_tmp; })");
+                    emit_rvalue_address(ctx, target);
                 }
                 else
                 {
