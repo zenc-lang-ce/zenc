@@ -248,6 +248,14 @@ quit')
     else
         check "struct definition + field access" 0
     fi
+
+    out=$(run_session ':plot [1, 5, 3]
+quit')
+    if echo "$out" | grep -qF "5 | ########################################"; then
+        check ":plot draws a bar chart" 1
+    else
+        check ":plot draws a bar chart" 0
+    fi
 fi
 
 echo "----------------------------------------"
