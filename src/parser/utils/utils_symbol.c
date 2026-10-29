@@ -314,7 +314,8 @@ void add_instantiated_func(ParserContext *ctx, ASTNode *fn)
     ctx->instantiated_funcs = fn;
 }
 
-void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag)
+void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename,
+                           const char *link_name, int tag)
 {
     if (ctx->config->mode_lsp)
     {
@@ -330,10 +331,20 @@ void register_enum_variant(ParserContext *ctx, const char *vname, const char *en
 
     EnumVariantReg *r = xcalloc(1, sizeof(EnumVariantReg));
     r->enum_name = ename ? xstrdup(ename) : NULL;
+    r->link_name = link_name ? xstrdup(link_name) : NULL;
     r->variant_name = vname ? xstrdup(vname) : NULL;
     r->tag_id = tag;
     r->next = ctx->enum_variants;
     ctx->enum_variants = r;
+}
+
+// A variant symbol may name its enum as written in Zen C (`Color__Red`) or by its
+// C name (`app_color__Red` for `@link_name("app_color") enum Color`): the parser
+// builds the second one, the name the constructor is declared with.
+static int variant_reg_is_of(EnumVariantReg *r, const char *enum_name)
+{
+    return (r->enum_name && strcmp(r->enum_name, enum_name) == 0) ||
+           (r->link_name && strcmp(r->link_name, enum_name) == 0);
 }
 
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name)
@@ -360,7 +371,7 @@ EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name)
     {
         if (strcmp(r->variant_name, vname) == 0)
         {
-            if (!ename || strcmp(r->enum_name, ename) == 0)
+            if (!ename || variant_reg_is_of(r, ename))
             {
                 if (ename)
                 {
@@ -391,8 +402,8 @@ EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,
     EnumVariantReg *r = ctx->enum_variants;
     while (r)
     {
-        if (r->variant_name && r->enum_name && strcmp(r->variant_name, variant_name) == 0 &&
-            strcmp(r->enum_name, enum_name) == 0)
+        if (r->variant_name && strcmp(r->variant_name, variant_name) == 0 &&
+            variant_reg_is_of(r, enum_name))
         {
             return r;
         }

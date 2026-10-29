@@ -9,39 +9,43 @@
 #include <ctype.h>
 #include "analysis/const_fold.h"
 
-static void sync_type_linkage_depth(ParserContext *ctx, Type *t, int depth)
+// Returns whether it gave a link_name to the type or to a type inside it.
+static int sync_type_linkage_depth(ParserContext *ctx, Type *t, int depth)
 {
     if (!t)
     {
-        return;
+        return 0;
     }
     // Guard against cyclic / pathologically deep type graphs (fuzz inputs can
     // construct self-referential or deeply nested generic types).
     if (depth > 512)
     {
-        return;
+        return 0;
     }
+    int changed = 0;
     if ((t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && !t->link_name && t->name)
     {
         ASTNode *def = find_struct_def(ctx, t->name);
         if (def && def->link_name)
         {
             t->link_name = xstrdup(def->link_name);
+            changed = 1;
         }
     }
     if (t->inner)
     {
-        sync_type_linkage_depth(ctx, t->inner, depth + 1);
+        changed |= sync_type_linkage_depth(ctx, t->inner, depth + 1);
     }
     for (int i = 0; t->args && i < t->count; i++)
     {
-        sync_type_linkage_depth(ctx, t->args[i], depth + 1);
+        changed |= sync_type_linkage_depth(ctx, t->args[i], depth + 1);
     }
+    return changed;
 }
 
-static void sync_type_linkage(ParserContext *ctx, Type *t)
+static int sync_type_linkage(ParserContext *ctx, Type *t)
 {
-    sync_type_linkage_depth(ctx, t, 0);
+    return sync_type_linkage_depth(ctx, t, 0);
 }
 
 static void sync_link_names_recursive_depth(ParserContext *ctx, ASTNode *node, int depth)
@@ -53,9 +57,17 @@ static void sync_link_names_recursive_depth(ParserContext *ctx, ASTNode *node, i
 
     for (; node; node = node->next)
     {
-        if (node->type_info)
+        if (node->type_info && sync_type_linkage(ctx, node->type_info) && node->kind == NODE_FIELD)
         {
-            sync_type_linkage(ctx, node->type_info);
+            // Codegen declares a field from the text of its type, written when the field was
+            // parsed, before the type had its link_name.
+            node->field.type = type_to_c_string(node->type_info, ctx->config->misra_mode);
+        }
+
+        // The data of a variant, also the parameter of its constructor (the same Type).
+        if (node->kind == NODE_ENUM_VARIANT && node->variant.payload)
+        {
+            sync_type_linkage(ctx, node->variant.payload);
         }
 
         if (node->kind == NODE_FUNCTION)
@@ -71,6 +83,13 @@ static void sync_link_names_recursive_depth(ParserContext *ctx, ASTNode *node, i
                     sync_type_linkage(ctx, node->func.arg_types[i]);
                 }
             }
+        }
+
+        // An imported module's tree is not a child: it hangs from the first import of its file
+        // only, so it is walked once.
+        if (node->kind == NODE_IMPORT)
+        {
+            sync_link_names_recursive_depth(ctx, node->import_stmt.module_root, depth + 1);
         }
 
         ASTChildren children = ast_children(node);

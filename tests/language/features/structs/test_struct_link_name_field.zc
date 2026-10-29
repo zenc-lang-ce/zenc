@@ -1,0 +1,60 @@
+// structs: test_struct_link_name_field
+// A field or a variant's data whose type is a struct with @link_name is declared
+// with the C name, also when that struct is declared further down, and the type
+// holding it is emitted after the one it holds.
+
+@link_name("c_size")
+struct Size {
+    w: int;
+    h: int;
+}
+
+struct Window {
+    size: Size;
+    min: Size*;
+}
+
+enum Shape {
+    Empty,
+    Box(Size),
+    Dot(Point),
+}
+
+struct Marker {
+    at: Point;
+}
+
+fn area(s: Shape) -> int {
+    match s {
+        Shape::Box(b) => { return b.w * b.h; },
+        _ => { return 0; },
+    }
+    return 0;
+}
+
+test "field of a struct with link_name" {
+    let min = Size { w: 1, h: 1 };
+    let w = Window { size: Size { w: 2, h: 3 }, min: &min };
+    assert w.size.w * w.size.h == 6;
+    assert w.min.w == 1;
+}
+
+test "variant data of a struct with link_name" {
+    assert area(Shape::Box(Size { w: 4, h: 5 })) == 20;
+    assert area(Shape::Empty) == 0;
+}
+
+test "struct with link_name declared further down" {
+    let m = Marker { at: Point { x: 7 } };
+    assert m.at.x == 7;
+    let d = Shape::Dot(Point { x: 8 });
+    match d {
+        Shape::Dot(p) => { assert p.x == 8; },
+        _ => { assert false; },
+    }
+}
+
+@link_name("c_point")
+struct Point {
+    x: int;
+}

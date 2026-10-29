@@ -249,6 +249,7 @@ typedef struct TupleType
 typedef struct EnumVariantReg
 {
     char *enum_name;    ///< Name of the enum.
+    char *link_name;    ///< Name of the enum in C, from @link_name (NULL if it has none).
     char *variant_name; ///< Name of the variant.
     char *mangled_name; ///< Mangled name (Enum__Variant).
     int tag_id;         ///< Integration tag value.
@@ -921,7 +922,8 @@ void register_type_alias(ParserContext *ctx, const char *alias, const char *orig
 void register_slice(ParserContext *ctx, const char *type);
 void register_lambda(ParserContext *ctx, ASTNode *node);
 void register_template(ParserContext *ctx, const char *name, ASTNode *node);
-void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag);
+void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename,
+                           const char *link_name, int tag);
 void register_plugin(ParserContext *ctx, const char *name, const char *alias);
 void register_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
                                const char *source_module);

@@ -176,7 +176,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             // Register Variant (Mangled name to avoid collisions: Result_Ok)
             char *base_for_mangling = link_name ? (char *)link_name : ename;
             char *mangled = mangle_variant_symbol(base_for_mangling, vname);
-            register_enum_variant(ctx, vname, ename, va->variant.tag_id);
+            register_enum_variant(ctx, vname, ename, link_name, va->variant.tag_id);
 
             // Register Constructor Function Signature
             if (payload && !gp) // Only for non-generic enums for now

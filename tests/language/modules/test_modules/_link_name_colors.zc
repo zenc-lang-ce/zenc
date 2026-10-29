@@ -1,0 +1,20 @@
+@derive(Eq)
+@link_name("c_mod_color")
+enum ModColor {
+    Red,
+    Green(int),
+}
+
+impl ModColor {
+    fn amount(self) -> int {
+        match *self {
+            ModColor::Green(n) => { return n; },
+            _ => { return 0; },
+        }
+        return 0;
+    }
+}
+
+fn mod_green(n: int) -> ModColor {
+    return ModColor::Green(n);
+}

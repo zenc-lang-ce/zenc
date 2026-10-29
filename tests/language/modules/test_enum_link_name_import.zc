@@ -1,0 +1,12 @@
+// language/modules: test_enum_link_name_import
+// The methods of an enum with @link_name declared in an imported module take and
+// return the enum under its C name, like the ones declared in the main file.
+import "./test_modules/_link_name_colors.zc"
+
+test "enum with link_name from a module" {
+    let g = mod_green(3);
+    assert g.amount() == 3;
+    assert ModColor::Green(2).amount() == 2;
+    assert g == ModColor::Green(3);
+    assert ModColor::Red != g;
+}

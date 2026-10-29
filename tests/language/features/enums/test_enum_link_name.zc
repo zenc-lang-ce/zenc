@@ -1,0 +1,73 @@
+// enums: test_enum_link_name
+// An enum with @link_name is emitted under that C name, and so are its variant
+// constructors (c_color__Red): every use of a variant must call them by that
+// name, and every value of the enum must have that C type.
+
+@derive(Eq)
+@link_name("c_color")
+enum Color {
+    Red,
+    Green(int),
+    Mix(int, int),
+}
+
+impl Color {
+    fn is_red(self) -> bool {
+        match *self {
+            Color::Red => { return true; },
+            _ => { return false; },
+        }
+        return false;
+    }
+
+    fn green(n: int) -> Color {
+        return Color::Green(n);
+    }
+}
+
+struct Paint {
+    color: Color;
+}
+
+fn red() -> Color {
+    return Color::Red;
+}
+
+fn amount(c: Color) -> int {
+    match c {
+        Color::Red => { return 0; },
+        Color::Green(n) => { return n; },
+        Color::Mix(a, b) => { return a + b; },
+    }
+    return -1;
+}
+
+test "variants without data" {
+    let a = Color::Red;
+    let b: Color = Color::Red();
+    assert a.is_red();
+    assert b.is_red();
+    assert red().is_red();
+    assert Color::Red.is_red();
+    assert a == Color::Red;
+}
+
+test "variants with data" {
+    let g = Color::Green(3);
+    assert amount(g) == 3;
+    assert amount(Color::Mix(2, 5)) == 7;
+    assert amount(Color::green(4)) == 4;
+    assert g == Color::Green(3);
+    assert g != Color::Green(4);
+}
+
+test "match expression" {
+    let c = Color::Mix(1, 2);
+    let first = match c { Color::Mix(x, _) => x, _ => 0 };
+    assert first == 1;
+}
+
+test "struct field" {
+    let p = Paint { color: Color::Green(6) };
+    assert amount(p.color) == 6;
+}
