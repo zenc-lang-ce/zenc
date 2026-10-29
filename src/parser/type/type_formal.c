@@ -12,9 +12,8 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
-Type *parse_type_formal(ParserContext *ctx, Lexer *l)
+static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
 {
-    RECURSION_GUARD(ctx, l, type_new(TYPE_UNKNOWN));
     int is_restrict = 0;
     int is_const = 0;
 
@@ -123,7 +122,6 @@ Type *parse_type_formal(ParserContext *ctx, Lexer *l)
             fn_type->inner = parse_type_formal(ctx, l);
             if (!fn_type->inner)
             {
-                RECURSION_EXIT(ctx);
                 return NULL;
             }
         }
@@ -140,7 +138,6 @@ Type *parse_type_formal(ParserContext *ctx, Lexer *l)
         t = parse_type_base(ctx, l);
         if (!t)
         {
-            RECURSION_EXIT(ctx);
             return NULL;
         }
     }
@@ -255,6 +252,15 @@ Type *parse_type_formal(ParserContext *ctx, Lexer *l)
         t->is_const = 1;
     }
 
+    return t;
+}
+
+// The depth guard wraps the whole parse, so no return path can leave it raised: the
+// language server keeps one parser context for a session and recovers from errors.
+Type *parse_type_formal(ParserContext *ctx, Lexer *l)
+{
+    RECURSION_GUARD(ctx, l, type_new(TYPE_UNKNOWN));
+    Type *t = parse_type_formal_impl(ctx, l);
     RECURSION_EXIT(ctx);
     return t;
 }
