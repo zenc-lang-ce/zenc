@@ -62,6 +62,66 @@ static int type_has_link_name(Type *t)
     return 0;
 }
 
+static void sync_link_names_recursive_depth(ParserContext *ctx, ASTNode *node, int depth);
+
+// The link names of one node and of everything under it, not of the nodes that follow it.
+static void sync_link_names_node(ParserContext *ctx, ASTNode *node, int depth)
+{
+    if (node->type_info && sync_type_linkage(ctx, node->type_info) && node->kind == NODE_FIELD)
+    {
+        // Codegen declares a field from the text of its type, written when the field was
+        // parsed, before the type had its link_name.
+        node->field.type = type_to_c_string(node->type_info, ctx->config->misra_mode);
+    }
+
+    // The same for a cast. Its Type can be the one of the variable it initializes
+    // (`let p = (T*)q;`), which got the link_name first, so this checks the Type instead.
+    if (node->kind == NODE_EXPR_CAST && type_has_link_name(node->type_info))
+    {
+        node->cast.target_type = type_to_c_string(node->type_info, ctx->config->misra_mode);
+    }
+
+    // sizeof(T) is written from its own Type, not from the node's.
+    if (node->kind == NODE_EXPR_SIZEOF && node->size_of.target_type_info)
+    {
+        sync_type_linkage(ctx, node->size_of.target_type_info);
+    }
+
+    // The data of a variant, also the parameter of its constructor (the same Type).
+    if (node->kind == NODE_ENUM_VARIANT && node->variant.payload)
+    {
+        sync_type_linkage(ctx, node->variant.payload);
+    }
+
+    if (node->kind == NODE_FUNCTION)
+    {
+        if (node->func.ret_type_info)
+        {
+            sync_type_linkage(ctx, node->func.ret_type_info);
+        }
+        if (node->func.arg_types)
+        {
+            for (int i = 0; i < node->func.count; i++)
+            {
+                sync_type_linkage(ctx, node->func.arg_types[i]);
+            }
+        }
+    }
+
+    // An imported module's tree is not a child: it hangs from the first import of its file
+    // only, so it is walked once.
+    if (node->kind == NODE_IMPORT)
+    {
+        sync_link_names_recursive_depth(ctx, node->import_stmt.module_root, depth + 1);
+    }
+
+    ASTChildren children = ast_children(node);
+    for (int i = 0; i < children.count; i++)
+    {
+        sync_link_names_recursive_depth(ctx, *children.slots[i], depth + 1);
+    }
+}
+
 static void sync_link_names_recursive_depth(ParserContext *ctx, ASTNode *node, int depth)
 {
     if (depth > 4096)
@@ -71,59 +131,7 @@ static void sync_link_names_recursive_depth(ParserContext *ctx, ASTNode *node, i
 
     for (; node; node = node->next)
     {
-        if (node->type_info && sync_type_linkage(ctx, node->type_info) && node->kind == NODE_FIELD)
-        {
-            // Codegen declares a field from the text of its type, written when the field was
-            // parsed, before the type had its link_name.
-            node->field.type = type_to_c_string(node->type_info, ctx->config->misra_mode);
-        }
-
-        // The same for a cast. Its Type can be the one of the variable it initializes
-        // (`let p = (T*)q;`), which got the link_name first, so this checks the Type instead.
-        if (node->kind == NODE_EXPR_CAST && type_has_link_name(node->type_info))
-        {
-            node->cast.target_type = type_to_c_string(node->type_info, ctx->config->misra_mode);
-        }
-
-        // sizeof(T) is written from its own Type, not from the node's.
-        if (node->kind == NODE_EXPR_SIZEOF && node->size_of.target_type_info)
-        {
-            sync_type_linkage(ctx, node->size_of.target_type_info);
-        }
-
-        // The data of a variant, also the parameter of its constructor (the same Type).
-        if (node->kind == NODE_ENUM_VARIANT && node->variant.payload)
-        {
-            sync_type_linkage(ctx, node->variant.payload);
-        }
-
-        if (node->kind == NODE_FUNCTION)
-        {
-            if (node->func.ret_type_info)
-            {
-                sync_type_linkage(ctx, node->func.ret_type_info);
-            }
-            if (node->func.arg_types)
-            {
-                for (int i = 0; i < node->func.count; i++)
-                {
-                    sync_type_linkage(ctx, node->func.arg_types[i]);
-                }
-            }
-        }
-
-        // An imported module's tree is not a child: it hangs from the first import of its file
-        // only, so it is walked once.
-        if (node->kind == NODE_IMPORT)
-        {
-            sync_link_names_recursive_depth(ctx, node->import_stmt.module_root, depth + 1);
-        }
-
-        ASTChildren children = ast_children(node);
-        for (int i = 0; i < children.count; i++)
-        {
-            sync_link_names_recursive_depth(ctx, *children.slots[i], depth + 1);
-        }
+        sync_link_names_node(ctx, node, depth);
     }
 }
 
@@ -197,7 +205,18 @@ void sync_all_link_names(ParserContext *ctx, ASTNode *root)
 {
     sync_link_names_recursive(ctx, root);
 
-    // Generic instances (Vec<Point>…) live outside the tree, in their own lists
-    sync_link_names_recursive(ctx, ctx->instantiated_structs);
-    sync_link_names_recursive(ctx, ctx->instantiated_funcs);
+    // Generic instances (Vec<Point>…) live outside the tree, in their own lists. New ones are
+    // added at the head, so only those added since the last pass are walked: the language
+    // server parses every file of a workspace with one context, and walking the whole lists for
+    // each file made indexing quadratic. A compilation runs this pass once and walks them all.
+    for (ASTNode *s = ctx->instantiated_structs; s && s != ctx->link_synced_structs; s = s->next)
+    {
+        sync_link_names_node(ctx, s, 0);
+    }
+    for (ASTNode *f = ctx->instantiated_funcs; f && f != ctx->link_synced_funcs; f = f->next)
+    {
+        sync_link_names_node(ctx, f, 0);
+    }
+    ctx->link_synced_structs = ctx->instantiated_structs;
+    ctx->link_synced_funcs = ctx->instantiated_funcs;
 }

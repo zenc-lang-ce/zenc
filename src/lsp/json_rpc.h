@@ -25,6 +25,12 @@ extern int g_lsp_request_is_readonly;
 /// (`textDocument.definition.linkSupport`), read at initialize.
 extern int g_lsp_definition_link_support;
 
+struct cJSON;
+
+/// A response to a request: `{"jsonrpc":"2.0","id":...}`, with the id copied as the request
+/// sent it (a number or a string).
+struct cJSON *lsp_response_new(const struct cJSON *id);
+
 /// Work done progress shown by the client (`$/progress`), for long work outside a request such
 /// as indexing the workspace. Nothing is sent when the client does not support it. A report is
 /// sent only when the percentage changes.

@@ -103,16 +103,16 @@ typedef enum
 
 // LSP analysis functions (declared here for cross-file visibility)
 void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d);
-void lsp_check_file(const char *uri, const char *src, int id);
+void lsp_check_file(const char *uri, const char *src);
 void lsp_close_file(const char *uri);
-void lsp_goto_definition(const char *uri, int line, int col, int id);
-void lsp_hover(const char *uri, int line, int col, int id);
-void lsp_completion(const char *uri, int line, int col, int id);
-void lsp_document_symbol(const char *uri, int id);
-void lsp_workspace_symbol(const char *query, int id);
-void lsp_references(const char *uri, int line, int col, int id);
-void lsp_signature_help(const char *uri, int line, int col, int id);
-void lsp_rename(const char *uri, int line, int col, const char *new_name, int id);
-void lsp_code_action(const char *uri, struct cJSON *diagnostics, int id);
+void lsp_goto_definition(const char *uri, int line, int col, const struct cJSON *id);
+void lsp_hover(const char *uri, int line, int col, const struct cJSON *id);
+void lsp_completion(const char *uri, int line, int col, const struct cJSON *id);
+void lsp_document_symbol(const char *uri, const struct cJSON *id);
+void lsp_workspace_symbol(const char *query, const struct cJSON *id);
+void lsp_references(const char *uri, int line, int col, const struct cJSON *id);
+void lsp_signature_help(const char *uri, int line, int col, const struct cJSON *id);
+void lsp_rename(const char *uri, int line, int col, const char *new_name, const struct cJSON *id);
+void lsp_code_action(const char *uri, struct cJSON *diagnostics, const struct cJSON *id);
 
 #endif
