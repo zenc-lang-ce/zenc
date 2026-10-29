@@ -141,7 +141,7 @@ Zen C has full native support for Windows (x86_64). You can build using the prov
 build.bat
 ```
 
-This will build the compiler (`zc.exe`). Networking, Filesystem, and Process operations are fully supported via the Platform Abstraction Layer (PAL).
+This will build the compiler (`zc.exe`) and its standalone tools (`zc-lsp.exe`, `zc-format.exe`, `zc-repl.exe` and `zc-doc.exe`), which `zc lsp`, `zc format`, `zc repl` and `zc doc` launch, so keep them next to `zc.exe`. Networking, Filesystem, and Process operations are fully supported via the Platform Abstraction Layer (PAL).
 
 Alternatively, you can use `make` if you have a Unix-like environment (MSYS2, Cygwin, git-bash).
 

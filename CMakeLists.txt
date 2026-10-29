@@ -150,11 +150,46 @@ else()
     set(PLUGIN_EXT ".so")
 endif()
 
-# Add executable
-add_executable(zc ${SRCS})
-target_link_libraries(zc PRIVATE ${PLATFORM_LIBS})
+# Split the sources as the Makefile does: the LSP, REPL and doc generator sources only go into
+# their standalone tools, and the driver only into zc. The rest is compiled once.
+set(LSP_SRCS ${SRCS})
+list(FILTER LSP_SRCS INCLUDE REGEX "^src/lsp/")
+set(REPL_SRCS ${SRCS})
+list(FILTER REPL_SRCS INCLUDE REGEX "^src/repl/")
+set(ZEN_SRCS ${SRCS})
+list(FILTER ZEN_SRCS INCLUDE REGEX "^src/zen/")
+set(DRIVER_SRCS ${SRCS})
+list(FILTER DRIVER_SRCS INCLUDE REGEX "^src/(driver/|main\\.c$)")
+set(BASE_SRCS ${SRCS})
+list(FILTER BASE_SRCS EXCLUDE REGEX "^src/(lsp|repl|zen|driver|tools)/|^src/main\\.c$")
+set(TOOLS_COMMON_SRCS src/tools/tool_common.c)
+
+add_library(zc_base OBJECT ${BASE_SRCS} ${TOOLS_COMMON_SRCS})
 if(NOT "${ZC_COMPILE_FLAGS}" STREQUAL "")
-    target_compile_options(zc PRIVATE ${ZC_COMPILE_FLAGS})
+    target_compile_options(zc_base PRIVATE ${ZC_COMPILE_FLAGS})
+endif()
+
+function(zc_add_program name)
+    add_executable(${name} $<TARGET_OBJECTS:zc_base> ${ARGN})
+    target_link_libraries(${name} PRIVATE ${PLATFORM_LIBS})
+    if(NOT "${ZC_COMPILE_FLAGS}" STREQUAL "")
+        target_compile_options(${name} PRIVATE ${ZC_COMPILE_FLAGS})
+    endif()
+endfunction()
+
+zc_add_program(zc ${DRIVER_SRCS})
+
+# Standalone tools: `zc lsp|repl|doc|format` launch them, so they ship next to zc.
+set(ZC_TOOLS zc-doc)
+zc_add_program(zc-doc ${ZEN_SRCS} src/tools/main_doc.c)
+if(NOT ZC_NO_LSP)
+    zc_add_program(zc-lsp ${LSP_SRCS} src/tools/main_lsp.c)
+    zc_add_program(zc-format ${LSP_SRCS} src/tools/main_format.c)
+    list(APPEND ZC_TOOLS zc-lsp zc-format)
+endif()
+if(NOT ZC_NO_REPL)
+    zc_add_program(zc-repl ${REPL_SRCS} src/tools/main_repl.c)
+    list(APPEND ZC_TOOLS zc-repl)
 endif()
 
 # Build plugins using our newly built zc compiler
@@ -175,7 +210,7 @@ foreach(plugin ${PLUGIN_NAMES})
 endforeach()
 
 # --- Install Rules ---
-install(TARGETS zc DESTINATION bin)
+install(TARGETS zc ${ZC_TOOLS} DESTINATION bin)
 install(FILES std.zc DESTINATION share/zenc)
 install(DIRECTORY std DESTINATION share/zenc)
 install(FILES src/repl/docs.json DESTINATION share/zenc)

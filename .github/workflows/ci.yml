@@ -193,6 +193,18 @@ jobs:
            make CC="${{ matrix.cc }}" ZC_HAS_JIT=$ZC_HAS_JIT
         fi
 
+    - name: Check the standalone tools
+      shell: bash
+      run: |
+        # `zc lsp|repl|doc|format` launch these binaries, so every build must produce them.
+        for t in zc-lsp zc-format zc-repl zc-doc; do
+          if [ ! -f "$t" ] && [ ! -f "$t.exe" ]; then
+            echo "missing: $t"
+            exit 1
+          fi
+        done
+        ./zc help doc > /dev/null
+
     - name: Run Tests
       shell: bash
       run: |
