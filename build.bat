@@ -33,7 +33,17 @@ set CFLAGS=%CFLAGS% -DZC_HAS_CPP_BACKEND=1 -DZC_HAS_CUDA_BACKEND=1 -DZC_HAS_OBJC
 set CFLAGS=%CFLAGS% -DZC_HAS_JSON_BACKEND=1 -DZC_HAS_LISP_BACKEND=1 -DZC_HAS_DOT_BACKEND=1
 set CFLAGS=%CFLAGS% -DZC_HAS_ASTDUMP_BACKEND=1
 
-if "%ZC_HAS_JIT%"=="" set ZC_HAS_JIT=1
+rem The REPL's JIT needs libtcc. Unless ZC_HAS_JIT is given (1 forces it, 0 turns
+rem it off), it is enabled only when a small program using libtcc compiles and links.
+if not "%ZC_HAS_JIT%"=="" goto jit_done
+set ZC_HAS_JIT=0
+set TCC_PROBE=%TEMP%\zc_tcc_probe
+> "%TCC_PROBE%.c" echo #include ^<libtcc.h^>
+>> "%TCC_PROBE%.c" echo int main(void) { tcc_delete(tcc_new()); return 0; }
+%CC% "%TCC_PROBE%.c" -o "%TCC_PROBE%.exe" -ltcc >nul 2>&1 && set ZC_HAS_JIT=1
+del "%TCC_PROBE%.c" "%TCC_PROBE%.exe" >nul 2>&1
+if "%ZC_HAS_JIT%"=="0" echo libtcc not found; building without the REPL JIT.
+:jit_done
 if "%ZC_HAS_JIT%"=="1" (
     set CFLAGS=%CFLAGS% -DZC_HAS_JIT
     set LIBS=-lws2_32 -ltcc
