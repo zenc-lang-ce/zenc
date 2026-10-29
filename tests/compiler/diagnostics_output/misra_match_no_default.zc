@@ -1,0 +1,14 @@
+// ARGS: transpile --misra
+// A match without a default arm reports MISRA Rule 16.4 once.
+
+fn classify(x: int) -> int {
+    let r: int = match x {
+        1 => 10,
+        2 => 20
+    };
+    return r;
+}
+
+fn main() -> int {
+    return classify(1);
+}
