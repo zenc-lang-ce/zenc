@@ -93,7 +93,15 @@
 
 // format(printf) — GCC/Clang attribute for printf-like functions
 // Uses __printf__ to avoid expansion of #define printf zprintf in colors.h
-#if defined(__GNUC__) || defined(__clang__)
+// On MinGW, GCC checks __printf__ against the msvcrt printf, which lacks C99 formats
+// such as %zu; use the format <stdio.h> picks for the C runtime in use instead.
+#ifdef __MINGW32__
+#include <stdio.h>
+#endif
+#ifdef __MINGW_PRINTF_FORMAT
+#define ZEN_FORMAT_PRINTF(fmt_arg, first_vararg)                                                   \
+    __attribute__((format(__MINGW_PRINTF_FORMAT, fmt_arg, first_vararg)))
+#elif defined(__GNUC__) || defined(__clang__)
 #define ZEN_FORMAT_PRINTF(fmt_arg, first_vararg)                                                   \
     __attribute__((format(__printf__, fmt_arg, first_vararg)))
 #else
