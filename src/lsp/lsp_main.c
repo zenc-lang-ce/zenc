@@ -3,11 +3,16 @@
 #include "lsp_main.h"
 #include "lsp_project.h"
 #include "../constants.h"
+#include "../platform/os.h"
 #include "zprep.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#if ZC_OS_WINDOWS
+#include <fcntl.h>
+#endif
 
 #ifndef LSP_REBUILD_MIN_GROWTH
 #define LSP_REBUILD_MIN_GROWTH ((size_t)64 << 20)
@@ -49,13 +54,25 @@ int lsp_main(ZenCompiler *compiler, int argc, char **argv)
         }
     }
 
-    // Redirect stderr to /dev/null unless --verbose is passed.
+#if ZC_OS_WINDOWS
+    // In text mode the C runtime reads "\r\n" as "\n" and writes "\n" as "\r\n": the end of
+    // the headers would never be found, and Content-Length would not count what is sent.
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+
+    // Redirect stderr to the null device unless --verbose is passed.
     // This prevents the stderr pipe buffer from filling up and blocking the
     // LSP's main loop, which previously caused "cannot resume dead coroutine"
     // errors in Neovim's RPC client.
     if (!verbose)
     {
-        if (!freopen("/dev/null", "w", stderr))
+#if ZC_OS_WINDOWS
+        const char *null_device = "NUL";
+#else
+        const char *null_device = "/dev/null";
+#endif
+        if (!freopen(null_device, "w", stderr))
         {
         }
     }
