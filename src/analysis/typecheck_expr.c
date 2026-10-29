@@ -1127,17 +1127,21 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
 {
     // Check if it's an enum variant FIRST, prioritizing value over function constructor if no
     // payload
-    EnumVariantReg *ev = find_enum_variant(tc->pctx, node->var_ref.name);
-    if (ev)
+    EnumVariantReg *enum_variant = find_enum_variant(tc->pctx, node->var_ref.name);
+    if (enum_variant)
     {
         FuncSig *sig = find_func(tc->pctx, node->var_ref.name);
         // If it's a no-payload variant, treat it as an enum value (TYPE_ENUM)
         // If it has payloads, it's a constructor function (TYPE_FUNCTION)
         if (!sig || sig->total_args == 0)
         {
-            Type *et = type_new(TYPE_ENUM);
-            et->name = xstrdup(ev->enum_name);
-            node->type_info = et;
+            Type *enum_type = type_new(TYPE_ENUM);
+            enum_type->name = xstrdup(enum_variant->enum_name);
+            if (enum_variant->link_name)
+            {
+                enum_type->link_name = xstrdup(enum_variant->link_name);
+            }
+            node->type_info = enum_type;
             return;
         }
     }
