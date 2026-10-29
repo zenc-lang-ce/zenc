@@ -45,7 +45,13 @@ void handle_if_expr(ParserContext *ctx, ASTNode *node)
         then_result = node->if_stmt.then_body;
     }
 
-    if (then_result)
+    // By name when it is known: __typeof__ of a string literal is an array, not assignable
+    char *type = then_result ? c_type_name_or_null(ctx, then_result) : NULL;
+    if (type)
+    {
+        EMIT(ctx, "%s _ifval; ", type);
+    }
+    else if (then_result)
     {
         EMIT(ctx, "__typeof__(");
         codegen_expression(ctx, then_result);

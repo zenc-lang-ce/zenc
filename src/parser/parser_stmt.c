@@ -771,7 +771,22 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
     return s;
 }
 
-ASTNode *parse_block(ParserContext *ctx, Lexer *l)
+// A string literal followed by the `}` that closes the block: `{ ... "text" }`.
+static int string_closes_block(Lexer *l)
+{
+    Token tk = lexer_peek(l);
+    if (tk.kind != TOK_STRING && tk.kind != TOK_FSTRING && tk.kind != TOK_RAW_STRING)
+    {
+        return 0;
+    }
+    Lexer lookahead = *l;
+    lexer_next(&lookahead);
+    return lexer_peek(&lookahead).kind == TOK_RBRACE;
+}
+
+// is_value: the block is the value of an expression (a branch of an if expression), so its
+// last expression may be a string literal, which is the value and not a statement.
+static ASTNode *parse_block_impl(ParserContext *ctx, Lexer *l, int is_value)
 {
     z_parse_expect(l, TOK_LBRACE, "Expected '{' to start a block");
     enter_scope(ctx);
@@ -833,7 +848,17 @@ ASTNode *parse_block(ParserContext *ctx, Lexer *l)
         }
 
         Token prev_t = lexer_peek(l);
-        ASTNode *s = parse_statement(ctx, l);
+        ASTNode *s = NULL;
+        if (is_value && string_closes_block(l))
+        {
+            // The value of the block, not a string on its own
+            s = parse_expression(ctx, l);
+        }
+        else
+        {
+            s = parse_statement(ctx, l);
+        }
+
         if (s)
         {
             if (!head)
@@ -906,4 +931,14 @@ ASTNode *parse_block(ParserContext *ctx, Lexer *l)
     b->token = t;
     b->block.statements = head;
     return b;
+}
+
+ASTNode *parse_block(ParserContext *ctx, Lexer *l)
+{
+    return parse_block_impl(ctx, l, 0);
+}
+
+ASTNode *parse_value_block(ParserContext *ctx, Lexer *l)
+{
+    return parse_block_impl(ctx, l, 1);
 }

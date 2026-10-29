@@ -171,9 +171,9 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
 }
 
 // The C name of the type of expr when it can be written as a whole before a declarator
-// (`T[]` in a compound literal), or NULL when it is unknown or is itself a declarator
-// (a function pointer or an array).
-static char *rvalue_type_name(ParserContext *ctx, ASTNode *expr)
+// (`T[]` in a compound literal, `T name` in a declaration), or NULL when it is unknown or
+// is itself a declarator (a function pointer or an array).
+char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr)
 {
     char *type = infer_type(ctx, expr);
     if (!type || strcmp(type, "__auto_type") == 0 || strcmp(type, "unknown") == 0)
@@ -201,7 +201,7 @@ void emit_rvalue_address(ParserContext *ctx, ASTNode *expr)
         return;
     }
 
-    char *type = rvalue_type_name(ctx, expr);
+    char *type = c_type_name_or_null(ctx, expr);
     EMIT(ctx, "(");
 
     if (type)
