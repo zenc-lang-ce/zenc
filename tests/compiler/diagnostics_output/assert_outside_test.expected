@@ -1,2 +1,2 @@
-  tests/compiler/diagnostics_output/assert_outside_test.zc:3: Assertion failed: boom
+  tests/compiler/diagnostics_output/assert_outside_test.zc:4: Assertion failed: boom
 [exit 1]

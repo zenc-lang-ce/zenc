@@ -1,10 +1,11 @@
 //> link: -lm
 
+import "std/io.zc"
 test "test_varargs" {
-    println "Testing Varargs...";
+    println("Testing Varargs...");
     printf("  Direct Printf: %d, %f, %s\n", 42, 3.14, "Hello");
     
     let buf: char* = (char*)malloc(100);
     sprintf(buf, "Formatted: %d", 123);
-    println f"  {buf}";
+    println(f"  {buf}");
 }

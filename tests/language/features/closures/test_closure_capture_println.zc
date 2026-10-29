@@ -1,4 +1,5 @@
 // closures: test_closure_capture_println
+import "std/io.zc"
 fn execute(f: fn()) {
     f();
 }
@@ -10,7 +11,7 @@ test "closure capture in println" {
     // Test reference capture
     execute(fn[&]() {
         count++;
-        println f"Count is {count}, Name is {name}";
+        println(f"Count is {count}, Name is {name}");
         assert count == 43;
     });
     
@@ -19,7 +20,7 @@ test "closure capture in println" {
     // Test value capture
     let x = 10;
     execute(fn[=]() {
-        println f"Value of x is {x}";
+        println(f"Value of x is {x}");
         assert x == 10;
     });
 }

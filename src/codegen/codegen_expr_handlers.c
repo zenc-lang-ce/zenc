@@ -1213,6 +1213,19 @@ skip_callee_gen:
             {
                 const char *name = node->call.callee->var_ref.name;
 
+                // RFC 0001: print, println, eprint and eprintln are functions of std/io.zc, no
+                // longer keywords. Calling one without importing it is an error that says so
+                // (otherwise it reaches the C compiler as an undeclared function).
+                if (strcmp(name, "print") == 0 || strcmp(name, "println") == 0 ||
+                    strcmp(name, "eprint") == 0 || strcmp(name, "eprintln") == 0)
+                {
+                    char msg[MAX_SHORT_MSG_LEN];
+                    snprintf(msg, sizeof(msg),
+                             "'%s' is a function of std/io.zc, which is not imported", name);
+                    const char *hints[] = {"add import \"std/io.zc\"", NULL};
+                    zerror_with_hints(node->call.callee->token, msg, hints);
+                }
+
                 int has_c_interop = ctx->has_external_includes;
 
                 if (!has_c_interop)
@@ -1327,7 +1340,7 @@ skip_callee_gen:
             }
             else
             {
-                if (arg->kind == NODE_RAW_STMT)
+                if (arg->kind == NODE_RAW_STMT || arg->kind == NODE_EXPR_FSTRING)
                 {
                     int is_fmt_arg = 0;
                     if (sig && sig->is_varargs && arg_idx == sig->total_args - 1)

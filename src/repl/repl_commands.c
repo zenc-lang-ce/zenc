@@ -26,8 +26,8 @@ static int cmd_plot(ReplState *state, const char *args)
 
     size_t code_size = strlen(global_code) + strlen(main_code) + strlen(plot_logic) + 256;
     char *full_code = malloc(code_size);
-    snprintf(full_code, code_size, "use std.io;\n%s\nfn main() { %s \n %s }", global_code,
-             main_code, plot_logic);
+    snprintf(full_code, code_size, "%s\nfn main() { %s \n %s }", global_code, main_code,
+             plot_logic);
 
     zfree(global_code);
     zfree(main_code);

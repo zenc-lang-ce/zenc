@@ -7,5 +7,5 @@ import "../../language/generics/_generic_ids.zc"
 fn main() {
     let users = Vec<UserId>::new();
     users.push(OrderId::of(7));
-    println f"{users.length()}";
+    println(f"{users.length()}");
 }

@@ -1,6 +1,7 @@
 // features/move: interpolating values that are not moved, or that were
 // assigned again after a move, still compiles.
 
+import "std/io.zc"
 import "std/string.zc"
 
 test "interpolation of valid values" {
@@ -9,5 +10,5 @@ test "interpolation of valid values" {
     s1 = String::new("again")
     let text = f"{s1.c_str()} {s2.c_str()}"
     assert(strcmp(text, "again abc") == 0, "interpolated values")
-    println f"{s1.c_str()} {s2.length()}"
+    println(f"{s1.c_str()} {s2.length()}")
 }

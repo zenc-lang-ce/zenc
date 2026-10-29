@@ -1,4 +1,5 @@
 
+import "std/io.zc"
 fn main() {
-    "Hello from Zen-C!";
+    println("Hello from Zen-C!");
 }

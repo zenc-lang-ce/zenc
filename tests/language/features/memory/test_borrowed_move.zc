@@ -6,12 +6,12 @@ struct Mover {
 
 impl Drop for Mover {
     fn drop(self) {
-        println "dropping mover";
+        println("dropping mover");
     }
 }
 
 fn consume(m: Mover) {
-    println f"m.val = {m.val}";
+    println(f"m.val = {m.val}");
 }
 
 fn sussy_borrow(m: Mover*) {
@@ -22,6 +22,6 @@ fn main() {
     let m = Mover { val: 1 };
     sussy_borrow(&m);
     m.val++;
-    println f"m.val = {m.val}";
+    println(f"m.val = {m.val}");
     return 0;
 }

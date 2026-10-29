@@ -10,6 +10,6 @@ test "dynamic plugin loading" {
         ++++++++++[>++++++<-]>+++++.
     }
 
-    println "";
+    println("");
     assert(true, "Plugin loaded and executed");
 }

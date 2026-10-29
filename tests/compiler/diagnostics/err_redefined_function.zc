@@ -10,5 +10,5 @@ fn twice() -> int {
 }
 
 fn main() {
-    println f"{twice()}";
+    println(f"{twice()}");
 }

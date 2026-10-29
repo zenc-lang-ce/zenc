@@ -1,12 +1,13 @@
 // language/basic: basic: test_basics
+import "std/io.zc"
 test "test_hello" {
-    println "It works!"; 
+    println("It works!"); 
 }
 
 test "test_vars" {
     let x = 10;
     let y: int = 20;
-    println f"Sum: {x + y}";
+    println(f"Sum: {x + y}");
 }
 
 fn take_const_arg(x: const int) -> int {
@@ -20,5 +21,5 @@ test "test_const_args" {
     let y: const int = 20;
     assert(y == 20, "Failed const let");
     
-    println "Const args work!";
+    println("Const args work!");
 }

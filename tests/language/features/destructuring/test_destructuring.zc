@@ -1,4 +1,5 @@
 // destructuring: test_destructuring
+import "std/io.zc"
 struct Point {
     x: int;
     y: int;
@@ -35,5 +36,5 @@ test "test_destructuring" {
     assert(t1 == 10, "t1 is 10");
     assert(t2 == 20, "t2 is 20");
     
-    println "Destructuring OK";
+    println("Destructuring OK");
 }

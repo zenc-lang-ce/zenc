@@ -27,8 +27,7 @@ impl VecIterResult<T> {
     
     fn unwrap(self) -> T* {
         if (self.ptr == NULL) {
-            !"Panic: unwrap called on null VecIterResult";
-            exit(1);
+            panic("unwrap called on null VecIterResult");
         }
         return self.ptr;
     }
@@ -258,8 +257,7 @@ impl Vec<T> {
     /// Inserts an item at `idx`.
     fn insert(self, idx: usize, item: T) {
         if (idx > self.len) {
-            !"Panic: Insert index out of bounds";
-            exit(1);
+            panic("Insert index out of bounds");
         }
         if (self.len >= self.cap) {
             self.grow();
@@ -275,8 +273,7 @@ impl Vec<T> {
     /// Removes and returns the last item (0 if empty).
     fn pop(self) -> T {
         if (self.len == 0) {
-            !"Panic: pop called on empty Vec";
-            exit(1);
+            panic("pop called on empty Vec");
         }
         self.len = self.len - 1;
         return self.data[self.len];
@@ -294,8 +291,7 @@ impl Vec<T> {
     /// Removes and returns the item at `idx`.
     fn remove(self, idx: usize) -> T {
         if (idx >= self.len) {
-             !"Panic: Remove index out of bounds";
-             exit(1);
+             panic("Remove index out of bounds");
         }
         let item = self.data[idx];
         // Shift elements left
@@ -320,8 +316,7 @@ impl Vec<T> {
     /// Returns a copy of the item at `idx`.
     fn get(self, idx: usize) -> T {
         if (idx >= self.len) {
-            !"Panic: Index out of bounds";
-            exit(1);
+            panic("Index out of bounds");
         }
         return self.data[idx];
     }
@@ -333,16 +328,14 @@ impl Vec<T> {
     /// Returns a pointer to the item at `idx`.
     fn get_ref(self, idx: usize) -> T* {
         if (idx >= self.len) {
-            !"Panic: Index out of bounds";
-            exit(1);
+            panic("Index out of bounds");
         }
         return &self.data[idx];
     }
 
     fn last(self) -> T {
         if (self.len == 0) {
-            !"Panic: last called on empty Vec";
-            exit(1);
+            panic("last called on empty Vec");
         }
         return self.data[self.len - 1];
     }
@@ -384,8 +377,7 @@ impl Vec<T> {
     
     fn first(self) -> T {
         if (self.len == 0) {
-            !"Panic: first called on empty Vec";
-            exit(1);
+            panic("first called on empty Vec");
         }
         return self.data[0];
     }
@@ -393,8 +385,7 @@ impl Vec<T> {
     /// Writes an item at `idx`.
     fn set(self, idx: usize, item: T) {
         if (idx >= self.len) {
-            !"Panic: set index out of bounds";
-            exit(1);
+            panic("set index out of bounds");
         }
         self.data[idx] = item;
     }

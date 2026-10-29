@@ -9,7 +9,7 @@ impl Drop for Mover {
 }
 
 fn consume(m: Mover) {
-  println f"m.val = {m.val}"
+  println(f"m.val = {m.val}")
 }
 
 fn main() {

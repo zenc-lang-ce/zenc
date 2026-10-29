@@ -25,7 +25,7 @@ test "copy_trait" {
     assert(p1.x == 10, "p1 changed after p2 modification");
     assert(p2.x == 30, "p2 modification failed");
     
-    println "Copy Trait Works!";
+    puts("Copy Trait Works!");
 }
 
 test "move_default" {

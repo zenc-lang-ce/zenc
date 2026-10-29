@@ -109,17 +109,14 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
             string_statement_ends_at_newline(tk, next))
         {
             Token t = lexer_next(l); // consume string
-            char *inner = token_get_string_content(t);
-
-            int is_ln = (next_type != TOK_DOTDOT);
-            char **used_syms = NULL;
-            int used_count = 0;
-            char *code = process_printf_sugar(ctx, t, inner, is_ln, "stdout", &used_syms,
-                                              &used_count, 1, (t.kind == TOK_RAW_STRING), 0);
-            if (!code)
-            {
-                return NULL;
-            }
+            // RFC 0001: a string on its own no longer prints. For one release it is an error
+            // that tells how to print it; afterwards it is an unused expression (or a block
+            // value), which would compile and print nothing.
+            const char *hints[] = {next_type == TOK_DOTDOT
+                                       ? "print it with print(\"...\"), from std/io.zc"
+                                       : "print it with println(\"...\"), from std/io.zc",
+                                   NULL};
+            zerror_with_hints(t, "a string on its own no longer prints", hints);
 
             if (next_type == TOK_SEMICOLON)
             {
@@ -134,18 +131,8 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
                 }
             }
             // If TOK_RBRACE, do not consume it, so parse_block can see it and terminate loop.
-
-            ASTNode *n = ast_create(NODE_RAW_STMT);
-            n->token = tk;
-            // Append semicolon to Statement Expression to make it a valid statement
-            char *stmt_code = xmalloc(strlen(code) + 2);
-            sprintf(stmt_code, "%s;", code); /* safe */
-            zfree(code);
-            n->raw_stmt.content = stmt_code;
-            n->raw_stmt.used_symbols = used_syms;
-            n->raw_stmt.used_symbol_count = used_count;
-            take_fstring_exprs(ctx, n);
-            zfree(inner);
+            ASTNode *n = ast_create(NODE_ERRONEOUS);
+            n->token = t;
             return n;
         }
     }
@@ -716,62 +703,6 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
                     return n;
                 }
             }
-        }
-
-        if ((strncmp(tk.start, "print", 5) == 0 && tk.len == 5) ||
-            (strncmp(tk.start, "println", 7) == 0 && tk.len == 7) ||
-            (strncmp(tk.start, "eprint", 6) == 0 && tk.len == 6) ||
-            (strncmp(tk.start, "eprintln", 8) == 0 && tk.len == 8))
-        {
-
-            // Revert: User requested print without newline
-            int is_ln = (tk.len == 7 || tk.len == 8);
-            // int is_ln = (tk.len == 7 || tk.len == 8);
-            int is_err = (tk.start[0] == 'e');
-            char *target = is_err ? "stderr" : "stdout";
-
-            lexer_next(l); // eat keyword
-
-            Token t = lexer_next(l);
-            if (t.kind != TOK_STRING && t.kind != TOK_FSTRING && t.kind != TOK_RAW_STRING)
-            {
-                if (t.kind == TOK_LPAREN)
-                {
-                    zpanic_at(t,
-                              "Expected string literal after '%.*s'. Note: '%.*s' is a keyword and "
-                              "does NOT use parentheses ().",
-                              (int)tk.len, tk.start, (int)tk.len, tk.start);
-                }
-                zpanic_at(t, "Expected string literal after print/eprint");
-            }
-
-            char *inner = token_get_string_content(t);
-            char **used_syms = NULL;
-            int used_count = 0;
-            char *code = process_printf_sugar(ctx, t, inner, is_ln, target, &used_syms, &used_count,
-                                              1, (t.kind == TOK_RAW_STRING), 0);
-            zfree(inner);
-            if (!code)
-            {
-                return NULL;
-            }
-
-            if (lexer_peek(l).kind == TOK_SEMICOLON)
-            {
-                lexer_next(l);
-            }
-
-            ASTNode *n = ast_create(NODE_RAW_STMT);
-            n->token = t;
-            // Append semicolon to Statement Expression to make it a valid statement
-            char *stmt_code = xmalloc(strlen(code) + 2);
-            sprintf(stmt_code, "%s;", code); /* safe */
-            zfree(code);
-            n->raw_stmt.content = stmt_code;
-            n->raw_stmt.used_symbols = used_syms;
-            n->raw_stmt.used_symbol_count = used_count;
-            take_fstring_exprs(ctx, n);
-            return n;
         }
     }
 

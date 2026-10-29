@@ -1,4 +1,5 @@
 // Minimal program used by test_backends.sh to validate every output backend.
+import "std/io.zc"
 fn main() {
-    println "Hello, world!";
+    println("Hello, world!");
 }

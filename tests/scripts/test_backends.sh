@@ -33,8 +33,9 @@ with open('$out') as f:
 assert d.get('node') == 'ROOT', 'root should be ROOT'
 c = d.get('children', [])
 assert len(c) >= 1, 'root should have children'
-fn = c[0]
-assert fn.get('node') == 'FUNCTION', 'first child should be FUNCTION'
+fns = [x for x in c if x.get('node') == 'FUNCTION']
+assert fns, 'root should have a FUNCTION'
+fn = fns[0]
 assert fn.get('name') == 'main', 'function should be named main'
 bd = fn.get('body', [])
 if isinstance(bd, list):

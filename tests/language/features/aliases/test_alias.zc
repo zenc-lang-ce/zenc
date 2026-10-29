@@ -1,4 +1,5 @@
 // language/features/aliases: test_alias
+import "std/io.zc"
 struct Point {
     x: int;
     y: int;
@@ -70,7 +71,7 @@ test "alias generic struct" {
 test "alias fstring" {
     let v = Vec2f{x: 3.14, y: 6.28};
     // This tests that f-string interpolation correctly resolves the alias
-    println f"v.x = {v.x}, v.y = {v.y}";
+    println(f"v.x = {v.x}, v.y = {v.y}");
 }
 
 test "alias function pointer" {
@@ -100,7 +101,7 @@ test "alias static methods" {
     let v1 = Vec2f::zero();
     assert(v1.x == 0.0, "Direct static call on alias failed");
 
-    println f"Static call in f-string: {Vec2f::zero().x}";
+    println(f"Static call in f-string: {Vec2f::zero().x}");
 
     let v2 = Vec2<f32>::zero();
     assert(v2.x == 0.0, "Direct static call on generic failed");

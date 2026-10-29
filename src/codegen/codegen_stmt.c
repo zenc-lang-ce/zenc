@@ -861,7 +861,11 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     default:
     {
         char *discard_type = discarded_drop_type(ctx, node);
-        if (discard_type)
+        if (emit_direct_print(ctx, node))
+        {
+            EMIT(ctx, ";\n");
+        }
+        else if (discard_type)
         {
             // The result is never bound to a name: drop it right away.
             int id = ctx->cg.tmp_counter++;

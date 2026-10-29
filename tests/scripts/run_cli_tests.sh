@@ -90,7 +90,7 @@ fi
 
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
-printf 'fn main() {\n    println "cli-smoke-ok"\n}\n' > "$workdir/smoke.zc"
+printf 'import "std/io.zc"\nfn main() {\n    println("cli-smoke-ok")\n}\n' > "$workdir/smoke.zc"
 
 out=$("$ZC" run "$workdir/smoke.zc" -o "$workdir/smoke" 2>&1)
 if echo "$out" | grep -q "cli-smoke-ok"; then
@@ -125,11 +125,12 @@ output_check() {
     fi
 }
 
-output_check "bare strings print without semicolons" 'fn main() {
+output_check "statements print without semicolons" 'import "std/io.zc"
+fn main() {
     let x = 3
-    "first"
-    f"x is {x}"
-    "last"
+    println("first")
+    println(f"x is {x}")
+    println("last")
 }' "" "first
 x is 3
 last"
@@ -153,7 +154,7 @@ fi
 # an absolute path to zc.
 zc_abs="$(cd "$(dirname "$ZC")" && pwd)/$(basename "$ZC")"
 mkdir -p "$workdir/own_c"
-printf 'fn main() {\n    println "own-c-ok"\n}\n' > "$workdir/own_c/foo.zc"
+printf 'import "std/io.zc"\nfn main() {\n    println("own-c-ok")\n}\n' > "$workdir/own_c/foo.zc"
 printf '// user code\n' > "$workdir/own_c/foo.c"
 printf '// user code\n' > "$workdir/own_c/app.c"
 (cd "$workdir/own_c" && "$zc_abs" build -w foo.zc >/dev/null 2>&1)
@@ -212,27 +213,31 @@ robust_check() {
     fi
 }
 
-robust_check "20-arg ?() scan does not crash" 'fn main() {
+robust_check "20-arg ?() scan does not crash" 'import "std/io.zc"
+fn main() {
     let x = ?("prompt", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20);
-    println "x";
+    println("x");
 }'
 
 long_ident=$(python3 -c "print('A' * 1500)")
-robust_check "very long qualified identifier does not crash" "fn main() {
+robust_check "very long qualified identifier does not crash" "import \"std/io.zc\"
+fn main() {
     let x = Foo::$long_ident;
-    println \"x\";
+    println(\"x\");
 }"
 
-robust_check "enum variant with 40 type args does not crash" "fn gen_enum() {
+robust_check "enum variant with 40 type args does not crash" "import \"std/io.zc\"
+fn gen_enum() {
     return 0;
 }
 enum E { V(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) }
 fn main() {
     let e = E::V(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40);
-    println \"e\";
+    println(\"e\");
 }"
 
-robust_check "@derive on a struct with many long fields does not crash" "fn gen_derive() {
+robust_check "@derive on a struct with many long fields does not crash" "import \"std/io.zc\"
+fn gen_derive() {
     return 0;
 }
 @derive(Eq)
@@ -269,16 +274,17 @@ struct S {
     field_29_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: int;
 }
 fn main() {
-    println \"ok\";
+    println(\"ok\");
 }"
 
 garg=$(python3 -c "print('B' * 1500)")
-robust_check "generic call with a very long type argument does not crash" "fn f<T>(x: T) -> T {
+robust_check "generic call with a very long type argument does not crash" "import \"std/io.zc\"
+fn f<T>(x: T) -> T {
     return x;
 }
 fn main() {
     let y = f<$garg>(1);
-    println \"y\";
+    println(\"y\");
 }"
 
 # --- Diagnostics: errors reported by Zen C, not by the C compiler ------------
@@ -299,20 +305,22 @@ diag_check() {
     fi
 }
 
-diag_check "redefined function is a Zen C error" 'fn twice() -> int { return 1; }
+diag_check "redefined function is a Zen C error" 'import "std/io.zc"
+fn twice() -> int { return 1; }
 fn twice() -> int { return 2; }
-fn main() { println f"{twice()}"; }' "Redefinition of function 'twice'"
+fn main() { println(f"{twice()}"); }' "Redefinition of function 'twice'"
 
-diag_check "redefined method is a Zen C error" 'struct Counter { value: int; }
+diag_check "redefined method is a Zen C error" 'import "std/io.zc"
+struct Counter { value: int; }
 impl Counter { fn get(self) -> int { return 1; } }
 impl Counter { fn get(self) -> int { return 2; } }
-fn main() { let c = Counter { value: 0 }; println f"{c.get()}"; }' "Redefinition of method 'Counter::get'"
+fn main() { let c = Counter { value: 0 }; println(f"{c.get()}"); }' "Redefinition of method 'Counter::get'"
 
 # --- Imported files: diagnostics and #line name the imported file -----------
 
 mkdir -p "$workdir/imported"
 printf 'fn make() -> int {\n    let x: int = "text";\n    return 1;\n}\n' > "$workdir/imported/broken.zc"
-printf 'import "imported/broken.zc"\nfn main() {\n    println f"{make()}";\n}\n' > "$workdir/imported_main.zc"
+printf 'import "std/io.zc"\nimport "imported/broken.zc"\nfn main() {\n    println(f"{make()}");\n}\n' > "$workdir/imported_main.zc"
 out=$("$ZC" build "$workdir/imported_main.zc" -o "$workdir/imported_out" 2>&1)
 if echo "$out" | grep -q "imported/broken.zc:2:" && ! echo "$out" | grep -q "imported_main.zc:"; then
     check "error in an imported file is reported at its own path" 1
@@ -322,7 +330,7 @@ fi
 
 mkdir -p "$workdir/lib"
 printf 'struct Counter { hits: int; }\nimpl Counter {\n    fn bump(self) { self.hits = self.hits + 1; }\n}\n' > "$workdir/lib/counter.zc"
-printf 'import "lib/counter.zc"\nfn main() {\n    let c = Counter { hits: 0 };\n    c.bump();\n    println f"{c.hits}";\n}\n' > "$workdir/lib_main.zc"
+printf 'import "std/io.zc"\nimport "lib/counter.zc"\nfn main() {\n    let c = Counter { hits: 0 };\n    c.bump();\n    println(f"{c.hits}");\n}\n' > "$workdir/lib_main.zc"
 "$ZC" build --emit-c "$workdir/lib_main.zc" -o "$workdir/lib_out" >/dev/null 2>&1
 line=$(awk '/#line/{l=$0} /^ZC_FUNC void Counter__bump\(Counter\* self\)$/{print l; exit}' "$workdir/lib_out.c" 2>/dev/null)
 if echo "$line" | grep -q 'lib/counter.zc"'; then
@@ -343,7 +351,7 @@ mkdir -p "$prefix/bin" "$prefix/share/zenc"
 cp "$ZC" "$prefix/bin/zc"
 ln -s "$repo_root/std" "$prefix/share/zenc/std"
 ln -s "$repo_root/std.zc" "$prefix/share/zenc/std.zc"
-printf 'import "std/vec.zc"\nfn main() {\n    let v = Vec<int>::new();\n    v.push(7);\n    println f"installed-std-ok {v.len}";\n}\n' > "$workdir/uses_std.zc"
+printf 'import "std/io.zc"\nimport "std/vec.zc"\nfn main() {\n    let v = Vec<int>::new();\n    v.push(7);\n    println(f"installed-std-ok {v.len}");\n}\n' > "$workdir/uses_std.zc"
 out=$(cd "$workdir" && env -u ZC_ROOT "$prefix/bin/zc" run uses_std.zc -o uses_std 2>&1)
 if echo "$out" | grep -q "installed-std-ok 1"; then
     check "installed zc finds its stdlib in PREFIX/share/zenc" 1

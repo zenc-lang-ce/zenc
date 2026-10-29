@@ -1,4 +1,5 @@
 // asm: test_asm_clobber
+import "std/io.zc"
 fn add(a: int, b: int) -> int {
     let result: int;
     asm {
@@ -14,5 +15,5 @@ fn add(a: int, b: int) -> int {
 test "asm_clobber" {
     let res = add(10, 20);
     assert(res == 30, f"Failed: Expected 30, got {res}");
-    println "Success: asm with clobber works properly";
+    println("Success: asm with clobber works properly");
 }

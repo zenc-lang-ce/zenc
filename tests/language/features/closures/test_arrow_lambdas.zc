@@ -1,4 +1,5 @@
 // closures: test_arrow_lambdas
+import "std/io.zc"
 fn test_no_args() {
     let f1 = () -> 42;
     assert(f1() == 42);
@@ -47,5 +48,5 @@ fn main() {
     test_explicit_args();
     test_unparenthesized_explicit_args();
     test_explicit_args_with_capture();
-    println "OK";
+    println("OK");
 }

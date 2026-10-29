@@ -2,6 +2,7 @@
 // A lambda captures an outer variable wherever its body uses it, not only
 // inside the statements the capture analysis used to list.
 
+import "std/io.zc"
 struct Point {
     k: int;
 }
@@ -50,7 +51,7 @@ test "a struct literal field named like the capture is not a local" {
 
 test "capture used only inside println" {
     let k = 7;
-    let f = fn(x: int) -> int { println f"{k}"; return x; };
+    let f = fn(x: int) -> int { println(f"{k}"); return x; };
     assert f(1) == 1;
 }
 
@@ -58,7 +59,7 @@ test "a comptime block in a lambda is not searched for captures" {
     let k = 7;
     let f = fn() -> int {
         comptime {
-            yield("println \"generated\";");
+            yield("println(\"generated\");");
         }
         return k;
     };

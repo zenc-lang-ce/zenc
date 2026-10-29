@@ -1,4 +1,5 @@
 // language/misc: misc: test_mix
+import "std/io.zc"
 enum Result {
     Ok(int),
     Err(int)
@@ -28,7 +29,7 @@ test "test_pipelines" {
     // 10 |> square() -> 100
     let val = 5 |> add(5) |> square();
     
-    println f"Pipeline result: {val}";
+    println(f"Pipeline result: {val}");
     assert(val == 100, "Pipeline calculation failed");
 }
 
@@ -38,17 +39,17 @@ test "test_fstrings" {
     
     let s = f"Hello {name}, x = {x}, x * 2 = {x * 2}";
     
-    println f"F-String: {s}";
+    println(f"F-String: {s}");
     assert(x == 10, "Sanity check");
 }
 
 test "test_defer" {
-    println "  [Defer] 1. Start";
+    println("  [Defer] 1. Start");
     
-    defer { println "  [Defer] 4. Cleanup B"; }
-    defer { println "  [Defer] 3. Cleanup A"; }
+    defer { println("  [Defer] 4. Cleanup B"); }
+    defer { println("  [Defer] 3. Cleanup A"); }
     
-    println "  [Defer] 2. End";
+    println("  [Defer] 2. End");
 }
 
 test "test_hex_binary" {

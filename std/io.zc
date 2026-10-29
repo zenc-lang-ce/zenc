@@ -6,6 +6,8 @@ import "./string.zc"
 include <stdio.h>
 include <stdarg.h>
 
+extern struct FILE;
+
 /// Formats into a thread-local buffer (ring of buffers for nesting).
 fn format(fmt: char*, ...) -> char* {
     // A small ring of thread-local buffers so nested format() calls (e.g.
@@ -66,22 +68,27 @@ fn format_new(fmt: char*, ...) -> char* {
 }
 
 /// Prints formatted output to stdout.
-fn print(fmt: char*, ...) -> c_int {
-    let ap: va_list;
-    va_start(ap, fmt);
-    let ret = vprintf(fmt, ap);
-    va_end(ap);
-    return ret;
+/// Prints a string to stdout, as text: a `%` in it is printed as is.
+fn print(s: const char*) {
+    fputs(s, stdout);
+    fflush(stdout);
 }
 
-/// Prints formatted output to stdout followed by a newline.
-fn println(fmt: char*, ...) -> c_int {
-    let ap: va_list;
-    va_start(ap, fmt);
-    let ret = vprintf(fmt, ap);
-    va_end(ap);
-    puts("");
-    return ret + 1;
+/// Prints a string to stdout followed by a newline.
+fn println(s: const char*) {
+    fputs(s, stdout);
+    fputc('\n', stdout);
+}
+
+/// Prints a string to stderr.
+fn eprint(s: const char*) {
+    fputs(s, stderr);
+}
+
+/// Prints a string to stderr followed by a newline.
+fn eprintln(s: const char*) {
+    fputs(s, stderr);
+    fputc('\n', stderr);
 }
 
 /// Reads a line from stdin (caller frees).
@@ -144,7 +151,7 @@ fn _utf8_seq_len(first_byte: byte) -> usize {
 /// Reads a single rune from stdin.
 fn read_rune() -> rune {
     let std_in = stdin;
-    let c1 = fgetc((FILE*)std_in);
+    let c1: int = fgetc((FILE*)std_in);
     if (c1 == -1) {
         return (rune)0;
     }

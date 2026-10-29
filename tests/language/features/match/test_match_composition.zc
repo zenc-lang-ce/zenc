@@ -1,4 +1,5 @@
 // language/features/match: test_match_composition
+import "std/io.zc"
 struct Inner {
     value: int;
 }
@@ -59,7 +60,7 @@ test "match_binding_mixin_fstring" {
     
     match result {
         MixinResult::Ok(w) => {
-            println f"{w.value}";
+            println(f"{w.value}");
             assert(w.value == 88, "F-string with mixin failed");
         },
         MixinResult::Err(e) => assert(false, "Should not be Err")

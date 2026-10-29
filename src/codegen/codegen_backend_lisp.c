@@ -404,6 +404,16 @@ static void lemit_expr(ParserContext *ctx, ASTNode *node, int depth)
         {
             fname = "_z_exit";
         }
+        // print and println (std/io.zc) are also Common Lisp symbols, which SBCL will not redefine
+        else if (!is_member_call &&
+                 (strcmp(fname, "print") == 0 || strcmp(fname, "println") == 0 ||
+                  strcmp(fname, "eprint") == 0 || strcmp(fname, "eprintln") == 0))
+        {
+            fname = strcmp(fname, "print") == 0     ? "_z_print"
+                    : strcmp(fname, "println") == 0 ? "_z_println"
+                    : strcmp(fname, "eprint") == 0  ? "_z_eprint"
+                                                    : "_z_eprintln";
+        }
         else if (strcmp(fname, "memset") == 0)
         {
             fname = "_z_memset";
@@ -1401,6 +1411,27 @@ static int lisp_func_emitted(ParserContext *ctx, const char *name, const char **
     return 0;
 }
 
+// std/io.zc is written in terms of C stdio (FILE*, fputs, its own `format`, which SBCL refuses to
+// redefine): its functions are not transpiled. Calls to print, println, eprint and eprintln go to
+// the native _z_ versions defined in lemit_program.
+static int is_std_io_import(ASTNode *node)
+{
+    if (node->kind != NODE_IMPORT || !node->import_stmt.path)
+    {
+        return 0;
+    }
+    const char *path = node->import_stmt.path;
+    const char *suffix = "std/io.zc";
+    size_t len = strlen(path);
+    size_t slen = strlen(suffix);
+    if (len < slen || strcmp(path + len - slen, suffix) != 0)
+    {
+        return 0;
+    }
+    // "std/io.zc" itself, or a resolved path ending in "/std/io.zc"
+    return len == slen || path[len - slen - 1] == '/';
+}
+
 static void lemit_root(ParserContext *ctx, ASTNode *root, int depth)
 {
     if (!root || root->kind != NODE_ROOT)
@@ -1435,7 +1466,7 @@ static void lemit_root(ParserContext *ctx, ASTNode *root, int depth)
     // Functions from imported files (via IMPORT nodes)
     for (ASTNode *c = root->root.children; c; c = c->next)
     {
-        if (c->kind == NODE_IMPORT && c->import_stmt.module_root)
+        if (c->kind == NODE_IMPORT && c->import_stmt.module_root && !is_std_io_import(c))
         {
             // module_root is a linked list of parsed nodes (not wrapped in NODE_ROOT)
             int inner_first = 1;
@@ -1540,6 +1571,11 @@ static void lemit_program(ParserContext *ctx, ASTNode *root)
     emitter_printf(&ctx->cg.emitter,
                    "(defun _z_memset (ptr val n) (declare (ignore ptr val n)) nil)\n");
     emitter_printf(&ctx->cg.emitter, "(defun _z_run_tests () nil)\n");
+    emitter_printf(&ctx->cg.emitter, "(defun _z_print (s) (princ s))\n");
+    emitter_printf(&ctx->cg.emitter, "(defun _z_println (s) (princ s) (terpri))\n");
+    emitter_printf(&ctx->cg.emitter, "(defun _z_eprint (s) (princ s *error-output*))\n");
+    emitter_printf(&ctx->cg.emitter,
+                   "(defun _z_eprintln (s) (princ s *error-output*) (terpri *error-output*))\n");
     lemit_root(ctx, root, 0);
     emitter_printf(&ctx->cg.emitter, "\n");
 }

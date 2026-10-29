@@ -1,2 +1,2 @@
-tests/compiler/diagnostics_output/array_bounds_location.zc:5: Index out of bounds: 5 (limit 3)
+tests/compiler/diagnostics_output/array_bounds_location.zc:6: Index out of bounds: 5 (limit 3)
 [exit 1]

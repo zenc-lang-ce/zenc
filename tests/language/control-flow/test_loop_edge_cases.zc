@@ -1,6 +1,7 @@
 // language/control-flow: control-flow: test_loop_edge_cases
+import "std/io.zc"
 test "test_loop_edge_cases" {
-    println "Testing loop edge cases...";
+    println("Testing loop edge cases...");
     
     // Empty range (0..0 should not iterate)
     let count1 = 0;
@@ -60,5 +61,5 @@ test "test_loop_edge_cases" {
     }
     assert(count7 == 4, "large step value (step 25) should iterate 4 times");
     
-    println "All loop edge cases passed!";
+    println("All loop edge cases passed!");
 }

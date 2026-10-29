@@ -4,6 +4,7 @@
 // EXPECT: MISRA Rule 7.3
 // EXPECT: MISRA Rule 7.3
 
+import "std/io.zc"
 fn main() {
     let a = 123l;    // FAIL
     let b = 123L;    // PASS
@@ -16,5 +17,5 @@ fn main() {
     let i = 123ull;  // FAIL
     let j = 123ULL;  // PASS
     
-    println f"{a} {b} {c} {d} {e} {f} {g} {h} {i} {j}";
+    println(f"{a} {b} {c} {d} {e} {f} {g} {h} {i} {j}");
 }

@@ -12,8 +12,10 @@ char *format_expression_as_c(struct ParserContext *ctx, struct ASTNode *node)
         return NULL;
     }
 
-    emitter_push(&ctx->cg.emitter);
-    emitter_init_buffer(&ctx->cg.emitter);
+    if (!emitter_push_buffer(&ctx->cg.emitter))
+    {
+        return NULL;
+    }
     codegen_expression(ctx, node);
     char *result = emitter_take_string(&ctx->cg.emitter);
     emitter_pop(&ctx->cg.emitter);

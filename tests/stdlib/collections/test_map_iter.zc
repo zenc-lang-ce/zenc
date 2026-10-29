@@ -1,4 +1,5 @@
 // stdlib: test_map_iter
+import "std/io.zc"
 import "std/map.zc"
 import "std/string.zc"
 
@@ -16,7 +17,7 @@ test "map_iterator" {
         count = count + 1;
         sum = sum + entry.val;
         
-        println f"Key: {entry.key}, Val: {entry.val}";
+        println(f"Key: {entry.key}, Val: {entry.val}");
     }
     
     assert(count == 3, "Map iterator count failed");

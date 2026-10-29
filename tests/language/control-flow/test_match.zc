@@ -1,4 +1,5 @@
 // language/control-flow: control-flow: test_match
+import "std/io.zc"
 fn classify_number(n: int) -> int {
     match n {
         0 => { return 100; },
@@ -35,7 +36,7 @@ fn classify_extended(n: int) -> int {
 }
 
 test "test_match" {
-    println "Testing match expressions...";
+    println("Testing match expressions...");
     
     // Match with exact value (0)
     let res1 = classify_number(0);
@@ -87,6 +88,6 @@ test "test_match" {
     let r16 = classify_extended(16);  // Should NOT match
     assert(r10 == 400 && r15 == 400 && r16 == -1, "range inclusive (10..=15) should match 10,15 and not 16");
     
-    println "All match tests passed!";
+    println("All match tests passed!");
     
 }

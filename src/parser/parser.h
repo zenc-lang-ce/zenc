@@ -471,6 +471,7 @@ struct ParserContext
         ASTNode *global_user_structs; ///< List of user defined structs.
         char *current_impl_type;      ///< Type currently being implemented (in impl block).
         int tmp_counter;              ///< Counter for temporary variables.
+        int fstring_counter;          ///< Counter for the buffers of f-string values.
         ASTNode *defer_stack[1024];   ///< Stack of deferred nodes (max 1024).
         int defer_count;              ///< Counter for defer statements in current scope.
         ASTNode *current_lambda;      ///< Current lambda being generated.
@@ -490,10 +491,6 @@ struct ParserContext
     int is_speculative;     ///< Flag to suppress side effects during speculative parsing.
     int silent_warnings;    ///< Suppress warnings (e.g., during codegen interpolation).
     char *last_doc_comment; ///< Last seen doc-comment (for association).
-
-    // `{...}` expressions parsed by the last process_printf_sugar call (take_fstring_exprs).
-    ASTNode **last_fstring_exprs;
-    int last_fstring_expr_count;
 
     // Flow Analysis (Move Semantics)
     struct MoveState *move_state;
@@ -820,23 +817,14 @@ char *replace_type_str(const char *src, const char *param, const char *concrete,
 char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out,
                                     char **allocated_out);
 /**
- * @brief Expands an interpolated string literal into a C expression.
+ * @brief Parses the pieces of an f-string into a NODE_EXPR_FSTRING.
  *
- * With `is_expr` == 0 it prints each piece to `target` (println/print and a string
- * literal used as a statement). With `is_expr` != 0 it builds the text as a value.
- *
- * Limitations of the value form:
- * - The text goes into one `static char[8192]` per call site, not per evaluation, so
- *   two results of the same f-string share their contents (#339).
- * - Most branches format each piece with `sprintf` into a `char[2048]` and append it
- *   with `strcat` without checking sizes: a piece longer than 2047 characters, or a
- *   result longer than 8191, overflows the buffer.
+ * Text pieces keep their characters (braces unescaped); each `{expr[:fmt]}` is parsed and
+ * typed with the current scope, with warnings silenced. No C is built here: the codegen
+ * decides how each piece is written and where (a buffer for a value, a stream for a direct
+ * print). Returns NULL after reporting an error.
  */
-char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *content, int newline,
-                           const char *target, char ***used_syms, int *count, int check_symbols,
-                           int is_raw, int is_expr);
-/** @brief Moves the expressions of the last process_printf_sugar call into a NODE_RAW_STMT. */
-void take_fstring_exprs(ParserContext *ctx, ASTNode *node);
+ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *content);
 
 /** @brief Rejects a plain "..." that interpolates or escapes braces (RFC 0001: only f"..."). */
 void reject_implicit_interpolation(ParserContext *ctx, Token t, const char *content);

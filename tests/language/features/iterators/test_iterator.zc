@@ -1,4 +1,5 @@
 // iterators: test_iterator
+import "std/io.zc"
 import "std/iter.zc"
 import "std/option.zc"
 
@@ -38,7 +39,7 @@ test "iterator_desugaring" {
 
     // This loop should be desugared by the compiler
     for i in range {
-        println f"Got: {i}"; // Verification print
+        println(f"Got: {i}"); // Verification print
         sum += i;
     }
 

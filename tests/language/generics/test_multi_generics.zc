@@ -1,4 +1,5 @@
 // language/generics: generics: test_multi_generics
+import "std/io.zc"
 struct Pair<A, B> {
     first: A;
     second: B;
@@ -25,18 +26,18 @@ test "multi-type generics basic" {
     p.first = 42;
     p.second = 3.14;
     assert(p.first == 42, "First field failed");
-    println "Multi-type generics test passed!";
+    println("Multi-type generics test passed!");
 }
 
 test "generic function with 2 params" {
     let p = make_pair<int, float>(100, 2.5);
     assert(p.first == 100, "Pair first failed");
-    println "2-param generic function passed!";
+    println("2-param generic function passed!");
 }
 
 test "generic function with 3 params" {
     let t = make_triple<int, float, bool>(42, 3.14, true);
     assert(t.first == 42, "Triple first failed");
     assert(t.third == true, "Triple third failed");
-    println "3-param generic function passed!";
+    println("3-param generic function passed!");
 }
