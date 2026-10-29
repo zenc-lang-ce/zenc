@@ -43,6 +43,7 @@ struct Module;
 struct SelectiveImport;
 struct ImportedPlugin;
 struct ZenSymbol;
+struct FuncSig;
 
 #define REGISTER_ZMAP_TYPES(X)                                                                     \
     X(const char *, struct Module *, ModMap)                                                       \
@@ -50,7 +51,8 @@ struct ZenSymbol;
     X(const char *, const char *, FileSet)                                                         \
     X(const char *, struct ImportedPlugin *, PluginMap)                                            \
     X(const struct ZenSymbol *, struct ZenSymbol *, DeclSet)                                       \
-    X(const char *, struct ZenSymbol *, SymbolByName)
+    X(const char *, struct ZenSymbol *, SymbolByName)                                              \
+    X(const char *, struct FuncSig *, FuncByName)
 
 #include "zmap.h"
 

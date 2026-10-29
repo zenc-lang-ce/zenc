@@ -356,6 +356,7 @@ struct ParserContext
     Scope *current_scope;   ///< Current lexical scope for variable lookup.
     FuncSig *func_registry; ///< Registry of declared function signatures (DEPRECATED: moved to
                             ///< global_scope).
+    zmap_FuncByName func_registry_by_name; ///< func_registry by name: the one registered last.
 
     // Lambdas
     LambdaRef *global_lambdas; ///< All lambdas generated during parsing, in creation order.

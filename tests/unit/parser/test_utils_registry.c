@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Unit tests of src/parser/utils/utils_registry.c: the cache of the names that
 // find_struct_def did not find. A cached miss must not hide a struct or enum
-// registered after it.
+// registered after it. And find_func, which finds a function in the current scopes or else
+// in the registry of every function declared.
 #include "unit_parse.h"
+#include <stdio.h>
+#include <time.h>
 #include "unit_test.h"
 
 static ASTNode *new_struct(const char *name)
@@ -93,4 +96,63 @@ UTEST(struct_miss_cache, is_off_until_enabled)
     direct->next = ctx->instantiated_structs;
     ctx->instantiated_structs = direct;
     ASSERT_TRUE(find_struct_def(ctx, "Direct") == direct);
+}
+
+static void register_function(ParserContext *ctx, Scope *scope, const char *name, int count)
+{
+    register_func(ctx, scope, name, count, NULL, NULL, NULL, 0, 0, NULL, TOKEN_UNKNOWN, 0);
+}
+
+UTEST(find_func, finds_a_registered_function)
+{
+    parse_source("");
+    ParserContext *ctx = parse_source_context();
+    register_function(ctx, NULL, "alpha", 2);
+    FuncSig *sig = find_func(ctx, "alpha");
+    ASSERT_TRUE(sig != NULL);
+    ASSERT_EQ(sig->total_args, 2);
+    ASSERT_TRUE(find_func(ctx, "missing") == NULL);
+}
+
+// A function registered in a scope that is not one of the current ones (a method, an import)
+// is found in the registry, the one registered last first.
+UTEST(find_func, finds_a_function_of_another_scope_in_the_registry)
+{
+    parse_source("");
+    ParserContext *ctx = parse_source_context();
+    Scope *other = symbol_scope_create(NULL, NULL);
+    register_function(ctx, other, "beta", 3);
+    ASSERT_EQ(find_func(ctx, "beta")->total_args, 3);
+    register_function(ctx, other, "beta", 4);
+    ASSERT_EQ(find_func(ctx, "beta")->total_args, 4);
+}
+
+// Codegen asks find_func for many names that are no function: such a miss must not walk every
+// function of the program. 30,000 misses among 30,000 functions take milliseconds when each
+// costs the same, and seconds when each walks the registry.
+UTEST(find_func, a_miss_takes_constant_time)
+{
+    parse_source("");
+    ParserContext *ctx = parse_source_context();
+    Scope *other = symbol_scope_create(NULL, NULL);
+    enum
+    {
+        FUNCTION_COUNT = 30000
+    };
+    char name[32];
+    for (int i = 0; i < FUNCTION_COUNT; i++)
+    {
+        snprintf(name, sizeof(name), "fn_%d", i);
+        register_function(ctx, other, name, 0);
+    }
+    int found = 0;
+    clock_t start = clock();
+    for (int i = 0; i < FUNCTION_COUNT; i++)
+    {
+        snprintf(name, sizeof(name), "fn_missing_%d", i);
+        found += find_func(ctx, name) != NULL;
+    }
+    double seconds = (double)(clock() - start) / CLOCKS_PER_SEC;
+    ASSERT_EQ(found, 0);
+    ASSERT_LT(seconds, 1.0);
 }

@@ -953,14 +953,11 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
         return sym->data.sig;
     }
 
-    FuncSig *c = ctx->func_registry;
-    while (c)
+    // Every function declared, the one registered last first, as func_registry lists them.
+    FuncSig **registered = zmap_get(&ctx->func_registry_by_name, name);
+    if (registered)
     {
-        if (c->name[0] == name[0] && strcmp(c->name, name) == 0)
-        {
-            return c;
-        }
-        c = c->next;
+        return *registered;
     }
 
     if (ctx->current_impl_methods)
