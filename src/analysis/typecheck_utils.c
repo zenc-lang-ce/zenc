@@ -46,6 +46,7 @@ int tc_expr_has_side_effects(ASTNode *node)
         return tc_expr_has_side_effects(node->unary.operand);
 
     case NODE_RAW_STMT:
+    case NODE_EXPR_FSTRING:
         // Inline assembly always has potential side effects
         return 1;
 

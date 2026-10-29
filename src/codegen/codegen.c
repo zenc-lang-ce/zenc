@@ -59,6 +59,7 @@ void codegen_expression(ParserContext *ctx, ASTNode *node)
         [NODE_EXPR_ARRAY_LITERAL] = handle_expr_array_literal,
         [NODE_EXPR_TUPLE_LITERAL] = handle_expr_tuple_literal,
         [NODE_TERNARY] = handle_ternary,
+        [NODE_EXPR_FSTRING] = handle_expr_fstring,
     };
 
     if (node->kind < 256 && handlers[node->kind])

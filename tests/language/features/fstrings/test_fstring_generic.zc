@@ -1,0 +1,26 @@
+// language/features/fstrings: in a generic function, the format of an `{expr}` of type
+// T is chosen for the type T stands for. It was chosen once, for T unknown, when the
+// template was parsed: a struct with to_string was given to "%s" as it was, and a
+// pointer was not written as an address.
+
+struct Point { x: int; y: int; }
+
+impl Point {
+    fn to_string(self) -> string { return "P"; }
+}
+
+fn show<T>(v: T) -> string {
+    return f"[{v}]";
+}
+
+test "a struct with to_string" {
+    let p = Point { x: 1, y: 2 };
+    assert(strcmp(show<Point>(p), "[P]") == 0, "written with to_string");
+}
+
+test "a pointer and a number" {
+    let p = Point { x: 1, y: 2 };
+    let pp = &p;
+    assert(strcmp(show<Point*>(pp), f"[{pp}]") == 0, "an address, as outside a generic");
+    assert(strcmp(show<int>(7), "[7]") == 0, "a number");
+}

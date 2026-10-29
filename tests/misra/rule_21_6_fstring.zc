@@ -1,0 +1,13 @@
+// EXPECT: Rule 21.6
+// An f-string is formatted with snprintf (as a value) or fprintf (printed): the
+// standard input/output functions that Rule 21.6 bans.
+
+fn main() -> int {
+    let x: int = 3;
+    let s: string = f"x is {x}";
+    let r: int = 0;
+    if (s[0] == 'x') {
+        r = 1;
+    }
+    return r;
+}

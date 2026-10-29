@@ -96,6 +96,8 @@ void misra_check_preprocessor_expression_parser(struct ParserContext *ctx, Token
 void misra_check_plugin_block(ParserContext *ctx, Token token);
 void misra_check_reserved_identifier(ParserContext *ctx, const char *name, Token token);
 void misra_check_banned_function(ParserContext *ctx, const char *name, Token tok);
+// Rule 21.6: an f-string is written with snprintf (as a value) or fprintf (printed).
+void misra_check_fstring(ParserContext *ctx, Token tok);
 void misra_check_file_dereference(ParserContext *ctx, struct Type *type, Token tok);
 void misra_check_tuple_size(ParserContext *ctx, struct Type *ret_type, Token token);
 void misra_check_string_compare(ParserContext *ctx, struct Type *left, struct Type *right,

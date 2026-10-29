@@ -201,17 +201,14 @@ static void find_var_refs(ASTNode *node, char ***refs, int *ref_count)
         add_name(refs, ref_count, node->var_ref.name);
     }
 
-    // A println lists the symbols it uses; an f-string in an expression keeps its
-    // expressions in an array, which ast_children() leaves out.
-    if (node->kind == NODE_RAW_STMT)
+    // The expressions of an f-string are not children (ast_children() leaves them out).
+    if (node->kind == NODE_EXPR_FSTRING)
     {
-        for (int i = 0; i < node->raw_stmt.used_symbol_count; i++)
+        ASTNode *part = node->fstring.parts;
+        while (part)
         {
-            add_name(refs, ref_count, node->raw_stmt.used_symbols[i]);
-        }
-        for (int i = 0; i < node->raw_stmt.interp_expr_count; i++)
-        {
-            find_var_refs(node->raw_stmt.interp_exprs[i], refs, ref_count);
+            find_var_refs(part->fstring_part.expr, refs, ref_count);
+            part = part->next;
         }
         return;
     }
