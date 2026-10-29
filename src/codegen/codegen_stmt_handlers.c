@@ -104,8 +104,10 @@ void handle_node_block(ParserContext *ctx, ASTNode *node)
     int saved = ctx->cg.defer_count;
     EMIT(ctx, "{\n");
     emitter_indent(&ctx->cg.emitter);
+    enter_scope(ctx);
     codegen_walker(ctx, node->block.statements);
     emit_defers_down_to(ctx, saved);
+    exit_scope(ctx);
     ctx->cg.defer_count = saved;
     emitter_dedent(&ctx->cg.emitter);
     EMIT(ctx, "}\n");
@@ -518,6 +520,21 @@ void handle_node_destruct_var(ParserContext *ctx, ASTNode *node)
     }
 }
 
+// Records the type of a local for infer_type. The parser already audited the declaration
+// (shadowing, MISRA names), so this does not go through add_symbol.
+static void add_symbol_local(ParserContext *ctx, const char *name, const char *type_name,
+                             Type *type_info)
+{
+    ZenSymbol *sym = symbol_add(ctx->current_scope, name, SYM_VARIABLE);
+    if (!sym)
+    {
+        return;
+    }
+    sym->is_local = (ctx->current_scope != ctx->global_scope);
+    sym->type_name = type_name ? xstrdup(type_name) : NULL;
+    sym->type_info = type_info;
+}
+
 void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 {
     int saved_closure_frees = ctx->cg.pending_closure_free_count;
@@ -599,7 +616,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             }
 
             emit_var_decl_type(ctx, tname, node->var_decl.name);
-            add_symbol(ctx, node->var_decl.name, tname, node->type_info, 0);
+            add_symbol_local(ctx, node->var_decl.name, tname, node->type_info);
 
             if (node->var_decl.init_expr)
             {
@@ -707,7 +724,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 }
 
                 emit_var_decl_type(ctx, inferred, node->var_decl.name);
-                add_symbol(ctx, node->var_decl.name, inferred, NULL, 0);
+                add_symbol_local(ctx, node->var_decl.name, inferred, NULL);
                 EMIT(ctx, " = ");
                 if (ctx->config->use_cpp && inferred &&
                     (strchr(inferred, '*') || is_enum_type_name(ctx, inferred)))
@@ -733,10 +750,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 emit_auto_type(ctx, node->var_decl.init_expr, node->token);
                 EMIT(ctx, " %s", node->var_decl.name);
 
-                if (inferred)
-                {
-                    add_symbol(ctx, node->var_decl.name, inferred, NULL, 0);
-                }
+                add_symbol_local(ctx, node->var_decl.name, inferred, NULL);
 
                 EMIT(ctx, " = ");
                 codegen_expression(ctx, node->var_decl.init_expr);
