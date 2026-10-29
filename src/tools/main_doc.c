@@ -6,9 +6,29 @@
 #include "../token.h"
 #include "../diagnostics/diagnostics.h"
 #include "../utils/utils.h"
+#include "../utils/cmd.h"
 #include "../zen/zen_doc.h"
 #include <stdio.h>
 #include <string.h>
+
+#define DOC_OPT_VERBOSE_SHORT "-v"
+#define DOC_OPT_VERBOSE "--verbose"
+#define DOC_OPT_RECURSIVE "--recursive-doc"
+#define DOC_OPT_NORECURSIVE "--no-recursive-doc"
+#define DOC_OPT_HELP_SHORT "-h"
+#define DOC_OPT_HELP "--help"
+
+static void print_help(void)
+{
+    printf("usage: zc-doc [options] <file>\n\n");
+    printf("Generate Markdown documentation for a Zen C source file and its imports.\n\n");
+    printf("options:\n");
+    print_help_item(DOC_OPT_RECURSIVE, "Traverse and document imported modules (default)");
+    print_help_item(DOC_OPT_NORECURSIVE, "Only document the primary input file");
+    print_help_item(DOC_OPT_VERBOSE_SHORT ", " DOC_OPT_VERBOSE,
+                    "Show all granular compilation phases");
+    print_help_item(DOC_OPT_HELP_SHORT ", " DOC_OPT_HELP, "Show this help");
+}
 
 int main(int argc, char **argv)
 {
@@ -26,17 +46,23 @@ int main(int argc, char **argv)
     const char *input = NULL;
     for (int i = 1; i < argc; i++)
     {
-        if (strcmp(argv[i], "--recursive-doc") == 0)
+        if (strcmp(argv[i], DOC_OPT_RECURSIVE) == 0)
         {
             cfg->recursive_doc = 1;
         }
-        else if (strcmp(argv[i], "--no-recursive-doc") == 0)
+        else if (strcmp(argv[i], DOC_OPT_NORECURSIVE) == 0)
         {
             cfg->recursive_doc = 0;
         }
-        else if (strcmp(argv[i], "--verbose") == 0 || strcmp(argv[i], "-v") == 0)
+        else if (strcmp(argv[i], DOC_OPT_VERBOSE) == 0 ||
+                 strcmp(argv[i], DOC_OPT_VERBOSE_SHORT) == 0)
         {
             cfg->verbose = 1;
+        }
+        else if (strcmp(argv[i], DOC_OPT_HELP) == 0 || strcmp(argv[i], DOC_OPT_HELP_SHORT) == 0)
+        {
+            print_help();
+            return 0;
         }
         else if (argv[i][0] != '-' && !input)
         {
@@ -52,7 +78,8 @@ int main(int argc, char **argv)
     if (!input)
     {
         fprintf(stderr, "error: no input file specified\n");
-        fprintf(stderr, "usage: zc-doc [--recursive-doc|--no-recursive-doc] <file.zc>\n");
+        fprintf(stderr, "usage: zc-doc [options] <file>\n");
+        fprintf(stderr, "Run 'zc-doc " DOC_OPT_HELP "' to see the options.\n");
         return 1;
     }
 

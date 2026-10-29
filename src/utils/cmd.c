@@ -61,7 +61,7 @@ static int get_visible_length(const char *str)
     return len;
 }
 
-static void print_help_item(const char *option, const char *description)
+void print_help_item(const char *option, const char *description)
 {
     printf("  %s", option);
     int visible_len = get_visible_length(option) + 2; // +2 for the leading spaces
@@ -172,16 +172,6 @@ void print_command_help(const char *command)
     {
         printf("usage: zc lsp\n\n");
         printf("Start the Language Server for IDE integration.\n");
-    }
-    else if (strcmp(command, "doc") == 0)
-    {
-        printf("usage: zc doc [options] <file>\n\n");
-        printf("Generate Markdown documentation for a Zen C source file and its imports.\n\n");
-        printf("options:\n");
-        print_help_item("--recursive-doc", "Traverse and document imported modules (default)");
-        print_help_item("--no-recursive-doc", "Only document the primary input file");
-        print_help_item("--no-check", "Skip semantic analysis to reduce build noise (default)");
-        print_help_item("--check", "Enable semantic analysis for full type resolution");
     }
     else
     {
