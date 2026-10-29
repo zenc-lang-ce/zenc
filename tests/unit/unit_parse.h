@@ -10,6 +10,10 @@
 // parser context.
 ASTNode *parse_source(const char *src);
 
+// parse_source keeping the comments, as zc-doc does: doc comments are attached to their
+// declarations (node->doc_comment).
+ASTNode *parse_source_keeping_comments(const char *src);
+
 // The parser context of the last parse_source call, to query its registries.
 ParserContext *parse_source_context(void);
 

@@ -1,0 +1,33 @@
+// language/features/fstrings: an f-string used as a value never writes past its
+// buffer. A piece longer than 2047 characters overflowed a temporary on the stack,
+// and a text longer than the buffer (8191 characters) was written past its end,
+// over the result of other f-strings. Each piece is now written straight into the
+// buffer, and cut when it does not fit.
+
+fn filled(n: int) -> char* {
+    let text = (char*)malloc((usize)n + 1);
+    memset(text, 'x', (usize)n);
+    text[n] = 0;
+    return text;
+}
+
+fn label(n: int) -> string {
+    return f"item {n}";
+}
+
+test "a long interpolated piece" {
+    let text = filled(3000);
+    let s = f"<{text}>";
+    assert(strlen(s) == 3002, "the whole piece is kept");
+    assert(s[0] == '<' && s[3001] == '>', "and the text around it");
+    free(text);
+}
+
+test "a text longer than the buffer is cut" {
+    let first = label(1);
+    let text = filled(2000);
+    let big = f"{text}{text}{text}{text}{text}";
+    assert(strlen(big) == 8191, "cut to the size of the buffer");
+    assert(strcmp(first, "item 1") == 0, "the result of another f-string is intact");
+    free(text);
+}
