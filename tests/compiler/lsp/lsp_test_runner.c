@@ -1571,6 +1571,60 @@ static void test_semantic_tokens()
     free(resp);
 }
 
+// The semantic token of type `type` at line:col, or 0. `data` is the LSP's relative encoding:
+// five numbers per token, the line and column relative to the previous token.
+static int has_token_at(cJSON *data, int line, int col, int type)
+{
+    int count = cJSON_GetArraySize(data);
+    int cur_line = 0;
+    int cur_col = 0;
+    for (int i = 0; i + 4 < count; i += 5)
+    {
+        int delta_line = cJSON_GetArrayItem(data, i)->valueint;
+        int delta_col = cJSON_GetArrayItem(data, i + 1)->valueint;
+        cur_col = delta_line ? delta_col : cur_col + delta_col;
+        cur_line += delta_line;
+        if (cur_line == line && cur_col == col && cJSON_GetArrayItem(data, i + 3)->valueint == type)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void test_semantic_tokens_skip_text(void)
+{
+    printf("Running test_semantic_tokens_skip_text...\n");
+    // A keyword inside a comment or a string is text, not a keyword token (type 3).
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_text.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"fn main() {\\n    // match this\\n    let s = \\\"return if\\\";\\n}\\n\"}}}");
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 51, \"method\": \"textDocument/semanticTokens/full\", "
+        "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_text.zc\"}}}");
+    char *resp = wait_for_response(51);
+    cJSON *json = resp ? cJSON_Parse(resp) : NULL;
+    cJSON *data = cJSON_GetObjectItem(cJSON_GetObjectItem(json, "result"), "data");
+    if (!data)
+    {
+        fail("No semantic tokens for a file with a comment and a string");
+    }
+    const int keyword = 3;
+    if (!has_token_at(data, 0, 0, keyword) || !has_token_at(data, 2, 4, keyword))
+    {
+        fail("`fn` and `let` must be keyword tokens");
+    }
+    if (has_token_at(data, 1, 7, keyword) || has_token_at(data, 2, 13, keyword) ||
+        has_token_at(data, 2, 20, keyword))
+    {
+        fail("`match` in a comment and `return if` in a string must not be keyword tokens");
+    }
+    cJSON_Delete(json);
+    free(resp);
+    printf("PASS: test_semantic_tokens_skip_text\n");
+}
+
 static void test_definition()
 {
     printf("Running test_definition...\n");
@@ -2012,6 +2066,7 @@ int main()
     test_diagnostics();
     test_diagnostic_hints();
     test_semantic_tokens();
+    test_semantic_tokens_skip_text();
     test_definition();
     test_declaration();
     test_references();
