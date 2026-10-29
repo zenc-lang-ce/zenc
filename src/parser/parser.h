@@ -325,7 +325,8 @@ typedef struct TypeAlias
     X(const char *, Module *, ModMap)                                                              \
     X(const char *, SelectiveImport *, SelMap)                                                     \
     X(const char *, const char *, FileSet)                                                         \
-    X(const char *, ImportedPlugin *, PluginMap)
+    X(const char *, ImportedPlugin *, PluginMap)                                                   \
+    X(const ZenSymbol *, ZenSymbol *, DeclSet)
 
 #include "../utils/zmap.h"
 
@@ -454,7 +455,8 @@ struct ParserContext
     int had_error; ///< Set by zpanic_at when fault-tolerant; checked by parser loops to bail out.
 
     // LSP: Flat symbol list (persists after parsing for LSP queries)
-    ZenSymbol *all_symbols; ///< comprehensive list of all symbols seen.
+    ZenSymbol *all_symbols;       ///< comprehensive list of all symbols seen.
+    zmap_DeclSet all_symbols_set; ///< all_symbols by declaration (kind, name, position).
 
     // External C interop: suppress undefined warnings for external symbols
     int has_external_includes;
