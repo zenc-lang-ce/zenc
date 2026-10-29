@@ -23,7 +23,7 @@ char *parse_type(ParserContext *ctx, Lexer *l)
     return type_to_string(t);
 }
 
-char *parse_array_literal(ParserContext *ctx, Lexer *l, const char *st)
+char *parse_array_literal(ParserContext *ctx, Lexer *l, const char *slice_type)
 {
     (void)ctx;
     lexer_next(l);
@@ -88,34 +88,30 @@ char *parse_array_literal(ParserContext *ctx, Lexer *l, const char *st)
         n++;
     }
 
-    char rt[64];
-    if (st && strncmp(st, "Slice__", 7) == 0)
+    const char *real_type = "int";
+    if (slice_type && strncmp(slice_type, "Slice__", 7) == 0)
     {
-        strcpy(rt, st + 7);
-    }
-    else
-    {
-        strcpy(rt, "int");
+        real_type = slice_type + 7;
     }
 
     int in_func = (ctx->current_scope != ctx->global_scope);
-    size_t st_len = st ? strlen(st) : 0;
-    size_t o_sz = strlen(c) + st_len + strlen(rt) + 256;
+    size_t slice_type_len = slice_type ? strlen(slice_type) : 0;
+    size_t o_sz = strlen(c) + slice_type_len + strlen(real_type) + 256;
     char *o = xmalloc((size_t)(o_sz));
-    if (st)
+    if (slice_type)
     {
         if (ctx->config->use_cpp && in_func)
         {
-            snprintf(o, o_sz, "({ static const %s __tmp[] = {%s}; (%s){( %s *)__tmp, %d, %d}; })",
-                     rt, c, st, rt, n, n);
+            snprintf(o, o_sz, "({ static const %s __tmp[] = {%s}; (%s){( %s *)__tmp, %d}; })",
+                     real_type, c, slice_type, real_type, n);
         }
         else if (ctx->config->use_cpp)
         {
-            snprintf(o, o_sz, "(%s){(%s[]){%s}, %d, %d}", st, rt, c, n, n);
+            snprintf(o, o_sz, "(%s){(%s[]){%s}, %d}", slice_type, real_type, c, n);
         }
         else
         {
-            snprintf(o, o_sz, "(%s){.data=(%s[]){%s}, .len=%d, .cap=%d}", st, rt, c, n, n);
+            snprintf(o, o_sz, "(%s){.data=(%s[]){%s}, .len=%d}", slice_type, real_type, c, n);
         }
     }
     else
@@ -123,21 +119,21 @@ char *parse_array_literal(ParserContext *ctx, Lexer *l, const char *st)
         if (ctx->config->use_cpp && in_func)
         {
             snprintf(o, o_sz,
-                     "({ static const int __tmp[] = {%s}; (Slice__int){(int*)__tmp, %d, %d}; })", c,
-                     n, n);
+                     "({ static const int __tmp[] = {%s}; (Slice__int){(int*)__tmp, %d}; })", c, n);
         }
         else if (ctx->config->use_cpp)
         {
-            snprintf(o, o_sz, "(Slice__int){(int[]){%s}, %d, %d}", c, n, n);
+            snprintf(o, o_sz, "(Slice__int){(int[]){%s}, %d}", c, n);
         }
         else
         {
-            snprintf(o, o_sz, "(Slice__int){.data=(int[]){%s}, .len=%d, .cap=%d}", c, n, n);
+            snprintf(o, o_sz, "(Slice__int){.data=(int[]){%s}, .len=%d}", c, n);
         }
     }
     zfree(c);
     return o;
 }
+
 char *parse_tuple_literal(ParserContext *ctx, Lexer *l, const char *tn)
 {
     (void)ctx; // suppress unused parameter warning
