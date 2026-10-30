@@ -605,6 +605,25 @@ static void test_unknown_method(void)
     printf("PASS: test_unknown_method\n");
 }
 
+static void test_string_id(void)
+{
+    printf("Running test_string_id...\n");
+    // A response carries the id of its request as the client sent it: a string stays a string
+    // (it used to come back as 0, and the alarm turns waiting for it into a failure).
+    signal(SIGALRM, on_unanswered_request);
+    alarm(5);
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": \"4242\", \"method\": \"workspace/symbol\", "
+                 "\"params\": {\"query\": \"\"}}");
+    char *response = wait_for_response(4242);
+    alarm(0);
+    if (!response || !strstr(response, "\"id\":\"4242\""))
+    {
+        fail("A string id must come back as the same string");
+    }
+    free(response);
+    printf("PASS: test_string_id\n");
+}
+
 static void test_declaration(void)
 {
     printf("Running test_declaration...\n");
@@ -1882,6 +1901,7 @@ int main()
     test_code_action();
     test_completion_prefix();
     test_unknown_method();
+    test_string_id();
     test_workspace_symbol();
     test_did_close();
     test_c_header_symbols();

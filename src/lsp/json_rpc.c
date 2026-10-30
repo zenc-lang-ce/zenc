@@ -75,6 +75,21 @@ static void get_params(cJSON *root, char **uri, int *line, int *col)
     }
 }
 
+cJSON *lsp_response_new(const cJSON *id)
+{
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "jsonrpc", "2.0");
+    if (id)
+    {
+        cJSON_AddItemToObject(response, "id", cJSON_Duplicate(id, 1));
+    }
+    else
+    {
+        cJSON_AddNullToObject(response, "id");
+    }
+    return response;
+}
+
 void handle_request(const char *json_str)
 {
     cJSON *json = cJSON_Parse(json_str);
@@ -83,12 +98,8 @@ void handle_request(const char *json_str)
         return;
     }
 
-    int id = 0;
+    // A number or a string: responses copy it as it is (lsp_response_new)
     cJSON *id_item = cJSON_GetObjectItem(json, "id");
-    if (id_item)
-    {
-        id = id_item->valueint;
-    }
 
     cJSON *method_item = cJSON_GetObjectItem(json, "method");
     if (!method_item || !method_item->valuestring)
@@ -155,8 +166,8 @@ void handle_request(const char *json_str)
             zfree(root);
         }
 
-        const char *response =
-            "{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{"
+        const char *result_text =
+            "{"
             "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\": \"1.0.0\"},"
             "\"capabilities\":{\"textDocumentSync\":{\"openClose\":true,\"change\":1},"
             "\"definitionProvider\":true,\"declarationProvider\":true,\"hoverProvider\":true,"
@@ -173,17 +184,16 @@ void handle_request(const char *json_str)
             "\"declaration\",\"definition\",\"readonly\","
             "\"static\",\"deprecated\",\"abstract\",\"async\",\"modification\",\"documentation\","
             "\"defaultLibrary\"]},\"full\":true}"
-            "}}}";
+            "}}";
 
-        // Dynamically construct response with correct ID
-        cJSON *res_json = cJSON_Parse(response);
-        if (!res_json)
+        cJSON *result = cJSON_Parse(result_text);
+        if (!result)
         {
             fprintf(stderr, "zls: Failed to construct initialize response\n");
             return;
         }
-        cJSON_DeleteItemFromObject(res_json, "id");
-        cJSON_AddNumberToObject(res_json, "id", id);
+        cJSON *res_json = lsp_response_new(id_item);
+        cJSON_AddItemToObject(res_json, "result", result);
 
         char *str = cJSON_PrintUnformatted(res_json);
         fprintf(stdout, "Content-Length: %zu\r\n\r\n%s", strlen(str), str);
@@ -223,7 +233,7 @@ void handle_request(const char *json_str)
                 if (uri && uri->valuestring && text && text->valuestring)
                 {
                     uri_decode(uri->valuestring);
-                    lsp_check_file(uri->valuestring, text->valuestring, id);
+                    lsp_check_file(uri->valuestring, text->valuestring);
                     lsp_project_track_document(uri->valuestring, text->valuestring);
                 }
             }
@@ -249,7 +259,7 @@ void handle_request(const char *json_str)
         get_params(json, &uri, &line, &col);
         if (uri)
         {
-            lsp_goto_definition(uri, line, col, id);
+            lsp_goto_definition(uri, line, col, id_item);
             zfree(uri);
         }
     }
@@ -260,7 +270,7 @@ void handle_request(const char *json_str)
         get_params(json, &uri, &line, &col);
         if (uri)
         {
-            lsp_hover(uri, line, col, id);
+            lsp_hover(uri, line, col, id_item);
             zfree(uri);
         }
     }
@@ -271,7 +281,7 @@ void handle_request(const char *json_str)
         get_params(json, &uri, &line, &col);
         if (uri)
         {
-            lsp_completion(uri, line, col, id);
+            lsp_completion(uri, line, col, id_item);
             zfree(uri);
         }
     }
@@ -282,14 +292,14 @@ void handle_request(const char *json_str)
         get_params(json, &uri, &line, &col);
         if (uri)
         {
-            lsp_document_symbol(uri, id);
+            lsp_document_symbol(uri, id_item);
             zfree(uri);
         }
     }
     else if (strcmp(method, "workspace/symbol") == 0)
     {
         cJSON *query = cJSON_GetObjectItem(cJSON_GetObjectItem(json, "params"), "query");
-        lsp_workspace_symbol(cJSON_IsString(query) ? query->valuestring : "", id);
+        lsp_workspace_symbol(cJSON_IsString(query) ? query->valuestring : "", id_item);
     }
     else if (strcmp(method, "textDocument/references") == 0)
     {
@@ -298,7 +308,7 @@ void handle_request(const char *json_str)
         get_params(json, &uri, &line, &col);
         if (uri)
         {
-            lsp_references(uri, line, col, id);
+            lsp_references(uri, line, col, id_item);
             zfree(uri);
         }
     }
@@ -309,7 +319,7 @@ void handle_request(const char *json_str)
         get_params(json, &uri, &line, &col);
         if (uri)
         {
-            lsp_signature_help(uri, line, col, id);
+            lsp_signature_help(uri, line, col, id_item);
             zfree(uri);
         }
     }
@@ -326,7 +336,7 @@ void handle_request(const char *json_str)
             if (uri && diagnostics)
             {
                 uri_decode(uri->valuestring);
-                lsp_code_action(uri->valuestring, diagnostics, id);
+                lsp_code_action(uri->valuestring, diagnostics, id_item);
             }
         }
     }
@@ -343,9 +353,7 @@ void handle_request(const char *json_str)
                 char *resp = lsp_semantic_tokens_full(uri_item->valuestring);
                 if (resp)
                 {
-                    cJSON *res_json = cJSON_CreateObject();
-                    cJSON_AddStringToObject(res_json, "jsonrpc", "2.0");
-                    cJSON_AddNumberToObject(res_json, "id", id);
+                    cJSON *res_json = lsp_response_new(id_item);
                     cJSON *result = cJSON_Parse(resp);
                     if (result)
                     {
@@ -379,7 +387,7 @@ void handle_request(const char *json_str)
 
         if (uri && new_name)
         {
-            lsp_rename(uri, line, col, new_name, id);
+            lsp_rename(uri, line, col, new_name, id_item);
             zfree(uri);
         }
     }
@@ -399,9 +407,7 @@ void handle_request(const char *json_str)
                     char *formatted = lsp_format_source(pf->source);
                     if (formatted)
                     {
-                        cJSON *res_json = cJSON_CreateObject();
-                        cJSON_AddStringToObject(res_json, "jsonrpc", "2.0");
-                        cJSON_AddNumberToObject(res_json, "id", id);
+                        cJSON *res_json = lsp_response_new(id_item);
 
                         cJSON *result = cJSON_CreateArray();
                         cJSON *edit = cJSON_CreateObject();
@@ -449,9 +455,7 @@ void handle_request(const char *json_str)
     }
     else if (strcmp(method, "shutdown") == 0)
     {
-        cJSON *res_json = cJSON_CreateObject();
-        cJSON_AddStringToObject(res_json, "jsonrpc", "2.0");
-        cJSON_AddNumberToObject(res_json, "id", id);
+        cJSON *res_json = lsp_response_new(id_item);
         cJSON_AddNullToObject(res_json, "result");
 
         char *str = cJSON_PrintUnformatted(res_json);
@@ -469,9 +473,7 @@ void handle_request(const char *json_str)
     {
         // A request the server does not implement still needs an answer, or the client waits
         // for it forever. Unknown notifications (no id) are ignored.
-        cJSON *response = cJSON_CreateObject();
-        cJSON_AddStringToObject(response, "jsonrpc", "2.0");
-        cJSON_AddItemToObject(response, "id", cJSON_Duplicate(id_item, 1));
+        cJSON *response = lsp_response_new(id_item);
         cJSON *error = cJSON_CreateObject();
         cJSON_AddNumberToObject(error, "code", -32601); // MethodNotFound
         char message[256];
