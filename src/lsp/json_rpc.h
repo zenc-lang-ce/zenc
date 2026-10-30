@@ -31,4 +31,11 @@ struct cJSON;
 /// sent it (a number or a string).
 struct cJSON *lsp_response_new(const struct cJSON *id);
 
+/// Work done progress shown by the client (`$/progress`), for long work outside a request such
+/// as indexing the workspace. Nothing is sent when the client does not support it. A report is
+/// sent only when the percentage changes.
+void lsp_progress_begin(const char *title, int total);
+void lsp_progress_report(int done, int total);
+void lsp_progress_end(const char *text);
+
 #endif

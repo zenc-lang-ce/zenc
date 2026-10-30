@@ -10,6 +10,101 @@
 
 // Prototype
 
+// The client shows work done progress (`window.workDoneProgress`), read at initialize.
+static int g_work_done_progress = 0;
+// Each progress gets its own token, which is also the id of the request that creates it.
+static int g_progress_count = 0;
+static char g_progress_token[32];
+// The last percentage sent, so that a report goes out only when it changes.
+static int g_progress_percentage = -1;
+
+// Writes a JSON-RPC message to the client and deletes it.
+static void send_message(cJSON *message)
+{
+    char *str = cJSON_PrintUnformatted(message);
+    fprintf(stdout, "Content-Length: %zu\r\n\r\n%s", strlen(str), str);
+    fflush(stdout);
+    zfree(str);
+    cJSON_Delete(message);
+}
+
+static void send_progress(cJSON *value)
+{
+    cJSON *message = cJSON_CreateObject();
+    cJSON_AddStringToObject(message, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(message, "method", "$/progress");
+    cJSON *params = cJSON_AddObjectToObject(message, "params");
+    cJSON_AddStringToObject(params, "token", g_progress_token);
+    cJSON_AddItemToObject(params, "value", value);
+    send_message(message);
+}
+
+static cJSON *progress_value(const char *kind, const char *text, int percentage)
+{
+    cJSON *value = cJSON_CreateObject();
+    cJSON_AddStringToObject(value, "kind", kind);
+    if (text)
+    {
+        cJSON_AddStringToObject(value, "message", text);
+    }
+    if (percentage >= 0)
+    {
+        cJSON_AddNumberToObject(value, "percentage", percentage);
+    }
+    return value;
+}
+
+void lsp_progress_begin(const char *title, int total)
+{
+    if (!g_work_done_progress)
+    {
+        return;
+    }
+    // The client answers the request that creates the progress; the answer has no method,
+    // so handle_request ignores it.
+    snprintf(g_progress_token, sizeof(g_progress_token), "zc-progress-%d", ++g_progress_count);
+    cJSON *create = cJSON_CreateObject();
+    cJSON_AddStringToObject(create, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(create, "id", g_progress_token);
+    cJSON_AddStringToObject(create, "method", "window/workDoneProgress/create");
+    cJSON_AddStringToObject(cJSON_AddObjectToObject(create, "params"), "token", g_progress_token);
+    send_message(create);
+
+    char text[64];
+    snprintf(text, sizeof(text), "0/%d files", total);
+    cJSON *value = progress_value("begin", text, 0);
+    cJSON_AddStringToObject(value, "title", title);
+    send_progress(value);
+    g_progress_percentage = 0;
+}
+
+void lsp_progress_report(int done, int total)
+{
+    if (!g_work_done_progress || total <= 0)
+    {
+        return;
+    }
+    // At most one report per percent: a large workspace would flood the client otherwise.
+    int percentage = (int)((long long)done * 100 / total);
+    if (percentage == g_progress_percentage)
+    {
+        return;
+    }
+    g_progress_percentage = percentage;
+    char text[64];
+    snprintf(text, sizeof(text), "%d/%d files", done, total);
+    send_progress(progress_value("report", text, percentage));
+}
+
+void lsp_progress_end(const char *text)
+{
+    if (!g_work_done_progress)
+    {
+        return;
+    }
+    send_progress(progress_value("end", text, -1));
+}
+
 // Decode percent-encoded URI in-place (e.g. "file%20name" -> "file name")
 static void uri_decode(char *s)
 {
@@ -118,6 +213,8 @@ void handle_request(const char *json_str)
             cJSON_GetObjectItem(cJSON_GetObjectItem(capabilities, "textDocument"), "definition");
         g_lsp_definition_link_support =
             cJSON_IsTrue(cJSON_GetObjectItem(definition, "linkSupport"));
+        g_work_done_progress = cJSON_IsTrue(
+            cJSON_GetObjectItem(cJSON_GetObjectItem(capabilities, "window"), "workDoneProgress"));
         char *root = NULL;
         if (params)
         {

@@ -1255,6 +1255,75 @@ static void test_index_gitignore(void)
     printf("PASS: test_index_gitignore\n");
 }
 
+static void on_missing_progress(int signal_number)
+{
+    (void)signal_number;
+    const char message[] = "TEST FAIL: indexing did not report its progress to the end\n";
+    write(STDERR_FILENO, message, sizeof(message) - 1);
+    _exit(1);
+}
+
+static void test_index_progress(void)
+{
+    printf("Running test_index_progress...\n");
+    mkdir("/tmp/zc_lsp_progress", 0755);
+    write_index_fixture("/tmp/zc_lsp_progress/a.zc", "fn a() {}\n");
+    write_index_fixture("/tmp/zc_lsp_progress/b.zc", "fn b() {}\n");
+    write_index_fixture("/tmp/zc_lsp_progress/c.zc", "fn c() {}\n");
+
+    // A server of its own, for a client that shows work done progress: indexing the workspace
+    // on `initialized` creates a progress, reports on it and ends it.
+    global_len = 0;
+    global_buf[0] = 0;
+    start_lsp_server();
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 1100, \"method\": \"initialize\", \"params\": "
+                 "{\"rootUri\": \"file:///tmp/zc_lsp_progress\", "
+                 "\"capabilities\": {\"window\": {\"workDoneProgress\": true}}}}");
+    free(wait_for_response(1100));
+    signal(SIGALRM, on_missing_progress);
+    alarm(10);
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"initialized\", \"params\": {}}");
+
+    int created = 0;
+    int begun = 0;
+    int ended = 0;
+    while (!ended)
+    {
+        char *message = read_message();
+        if (!message)
+        {
+            break;
+        }
+        if (strstr(message, "window/workDoneProgress/create"))
+        {
+            created = 1;
+        }
+        else if (strstr(message, "$/progress") && strstr(message, "\"begin\"") &&
+                 strstr(message, "0/3 files"))
+        {
+            begun = 1;
+        }
+        else if (strstr(message, "$/progress") && strstr(message, "\"end\"") &&
+                 strstr(message, "Indexed 3 files"))
+        {
+            ended = 1;
+        }
+        free(message);
+    }
+    alarm(0);
+    if (!created || !begun || !ended)
+    {
+        fail("Indexing must create a progress, begin it with the file count and end it");
+    }
+
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 1101, \"method\": \"shutdown\", \"params\": null}");
+    free(wait_for_response(1101));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
+    waitpid(child_pid, NULL, 0);
+    printf("PASS: test_index_progress\n");
+}
+
 static void test_shutdown()
 {
     printf("Running test_shutdown...\n");
@@ -1969,6 +2038,7 @@ int main()
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
     waitpid(child_pid, NULL, 0);
     test_index_gitignore();
+    test_index_progress();
     test_project_config();
     test_index_exclude();
     test_std_import_in_other_project();
