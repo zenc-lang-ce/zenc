@@ -14,7 +14,8 @@ struct ZenCompiler;
  *
  * @param compiler The compiler of the session (config, error counts).
  * @param self_path Path to the executable/ZC compiler itself.
+ * @param cmd_to_run A single line to run instead of an interactive session, or NULL.
  */
-void run_repl(struct ZenCompiler *compiler, const char *self_path, int argc, char **argv);
+void run_repl(struct ZenCompiler *compiler, const char *self_path, char *cmd_to_run);
 
 #endif

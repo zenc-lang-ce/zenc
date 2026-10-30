@@ -174,20 +174,11 @@ static void repl_load_init_script(ReplState *state)
     fclose(f);
 }
 
-void run_repl(ZenCompiler *compiler, const char *self_path, int argc, char **argv)
+void run_repl(ZenCompiler *compiler, const char *self_path, char *cmd_to_run)
 {
     ReplState state;
     repl_state_init(&state, self_path, compiler);
     repl_load_history(&state);
-
-    char *cmd_to_run = NULL;
-    for (int i = 2; i < argc; i++)
-    {
-        if (strcmp(argv[i], "-c") == 0 && i + 1 < argc)
-        {
-            cmd_to_run = argv[++i];
-        }
-    }
 
     if (cmd_to_run)
     {
