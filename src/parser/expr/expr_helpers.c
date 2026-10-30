@@ -682,7 +682,7 @@ int type_is_unsigned(Type *t)
               0 == strcmp(t->name, "size_t"))));
 }
 
-char *infer_printf_format(ParserContext *ctx, ASTNode **args, int ac)
+char *infer_scan_format(ParserContext *ctx, ASTNode **args, int ac)
 {
     char *fmt = xmalloc(MAX_SHORT_MSG_LEN);
     fmt[0] = 0;
@@ -714,9 +714,16 @@ char *infer_printf_format(ParserContext *ctx, ASTNode **args, int ac)
                 strcat(fmt, "%f");
             }
             else if (inner_t->kind == TYPE_STRING ||
-                     (inner_t->kind == TYPE_ARRAY && inner_t->inner &&
-                      (inner_t->inner->kind == TYPE_CHAR || inner_t->inner->kind == TYPE_U8 ||
-                       inner_t->inner->kind == TYPE_I8)))
+                     (inner_t->kind == TYPE_POINTER && inner_t->inner &&
+                      inner_t->inner->kind == TYPE_CHAR))
+            {
+                // A pointer gets a new string with the word (`_z_scan_helper`
+                // does the `%ms`); a `%s` would write the text over the pointer.
+                strcat(fmt, "%ms");
+            }
+            else if (inner_t->kind == TYPE_ARRAY && inner_t->inner &&
+                     (inner_t->inner->kind == TYPE_CHAR || inner_t->inner->kind == TYPE_U8 ||
+                      inner_t->inner->kind == TYPE_I8))
             {
                 strcat(fmt, "%s");
             }

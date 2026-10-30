@@ -1,0 +1,21 @@
+// stdlib/collections: readln(...) into a `string` or `char*` stores a new string
+// with the word read. It used `%s`, which wrote the text over the pointer itself.
+
+test "test_readln_string" {
+    let path = "test_readln_string.tmp";
+    let f = fopen(path, "w");
+    fputs("Bob 42 Bilbao\n", f);
+    fclose(f);
+    freopen(path, "r", stdin);
+
+    let name: string = "";
+    let age: int = 0;
+    let city: char* = NULL;
+    let n = readln(name, age, city);
+    remove(path);
+
+    assert(n == 3, "three values read");
+    assert(strcmp(name, "Bob") == 0, "name is Bob");
+    assert(age == 42, "age is 42");
+    assert(strcmp(city, "Bilbao") == 0, "city is Bilbao");
+}

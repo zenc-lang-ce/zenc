@@ -54,7 +54,7 @@ void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
                      char **out_var_name);
 ASTNode *find_function_definition(ParserContext *ctx, const char *name);
 int type_is_unsigned(Type *t);
-char *infer_printf_format(ParserContext *ctx, ASTNode **args, int ac);
+char *infer_scan_format(ParserContext *ctx, ASTNode **args, int ac);
 
 // From expr_field.c
 int is_comparison_op(const char *op);
