@@ -924,7 +924,7 @@ void parser_audit_preprocessor(ParserContext *ctx, Token t);
 char *normalize_raw_content(const char *content);
 char *parse_condition_raw(ParserContext *ctx, Lexer *l);
 const char *resolve_plugin(ParserContext *ctx, const char *name_or_alias);
-char *parse_array_literal(ParserContext *ctx, Lexer *l, const char *st);
+char *parse_array_literal(ParserContext *ctx, Lexer *l, const char *slice_type);
 char *parse_tuple_literal(ParserContext *ctx, Lexer *l, const char *tn);
 ASTNode *parse_embed(ParserContext *ctx, Lexer *l);
 ASTNode *parse_macro_call(ParserContext *ctx, Lexer *l, char *macro_name);

@@ -1,0 +1,20 @@
+// stdlib: test_slice_literal
+import "std/slice.zc"
+
+struct SliceLiteralElementTypeWithANameLongerThanTheOldSixtyFourByteBuffer {
+    x: int;
+}
+
+test "slice literal of ints" {
+    let s: Slice<int> = [1, 2, 3];
+    assert(s.len == 3, "slice literal length");
+    assert(s.data[0] == 1 && s.data[2] == 3, "slice literal elements");
+}
+
+test "slice literal whose element type name is longer than 64 characters" {
+    let a = SliceLiteralElementTypeWithANameLongerThanTheOldSixtyFourByteBuffer { x: 1 };
+    let b = SliceLiteralElementTypeWithANameLongerThanTheOldSixtyFourByteBuffer { x: 2 };
+    let s: Slice<SliceLiteralElementTypeWithANameLongerThanTheOldSixtyFourByteBuffer> = [a, b];
+    assert(s.len == 2, "slice literal length");
+    assert(s.data[0].x == a.x && s.data[1].x == b.x, "slice literal elements");
+}
