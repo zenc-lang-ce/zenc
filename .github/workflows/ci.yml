@@ -205,6 +205,25 @@ jobs:
         done
         ./zc help doc > /dev/null
 
+    - name: Check that zc-lsp answers over stdio
+      shell: bash
+      # A server that cannot read the request waits for it forever.
+      timeout-minutes: 2
+      run: |
+        # The LSP tests call the server in the same process: only this goes through the pipes,
+        # whose line endings Windows translates unless the server sets them to binary mode.
+        mkdir -p lsp_smoke
+        body='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootPath":"lsp_smoke","capabilities":{}}}'
+        printf 'Content-Length: %d\r\n\r\n%s' "${#body}" "$body" | ./zc-lsp > lsp_smoke.out
+        if ! grep -q '"capabilities"' lsp_smoke.out; then
+          echo "zc-lsp did not answer initialize"
+          exit 1
+        fi
+        if grep -q $'\r\r' lsp_smoke.out; then
+          echo "zc-lsp wrote its headers in text mode"
+          exit 1
+        fi
+
     - name: Run Tests
       shell: bash
       run: |
