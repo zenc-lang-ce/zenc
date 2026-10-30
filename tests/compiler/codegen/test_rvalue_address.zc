@@ -1,0 +1,23 @@
+// codegen: test_rvalue_address
+// A temporary that needs an address (the receiver of a method, an index overload, an operand
+// of an overloaded ==) is copied into a compound literal that names its type when the
+// compiler knows it, instead of going through __typeof__.
+include <stdio.h>
+
+@derive(Eq)
+struct Bag { n: int; }
+
+impl Bag {
+    fn get(self, i: int) -> int { return self.n + i; }
+}
+
+fn make_bag() -> Bag { return Bag { n: 1 }; }
+
+fn main() {
+    let b = Bag { n: 1 };
+    let by_method = make_bag().get(1);
+    let by_index = make_bag()[2];
+    let left = make_bag() == b;
+    let right = b == make_bag();
+    printf("%d %d %d %d\n", by_method, by_index, left, right);
+}

@@ -170,6 +170,63 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
     }
 }
 
+// The C name of the type of expr when it can be written as a whole before a declarator
+// (`T[]` in C, `T _tmp` in C++), or NULL when it is unknown or is itself a declarator
+// (a function pointer or an array).
+static char *rvalue_type_name(ParserContext *ctx, ASTNode *expr)
+{
+    char *type = infer_type(ctx, expr);
+    if (!type || strcmp(type, "__auto_type") == 0 || strcmp(type, "unknown") == 0)
+    {
+        return NULL;
+    }
+    if (strpbrk(type, "(["))
+    {
+        return NULL;
+    }
+    return type;
+}
+
+// Emits a pointer to a copy of expr, for a value that has no address of its own (a call
+// result, a literal): a one-element compound literal in C, which lives until the end of the
+// enclosing block, or a statement expression in C++.
+void emit_rvalue_address(ParserContext *ctx, ASTNode *expr)
+{
+    char *type = rvalue_type_name(ctx, expr);
+    if (ctx->config->use_cpp)
+    {
+        EMIT(ctx, "({ ");
+    }
+    else
+    {
+        EMIT(ctx, "(");
+    }
+
+    if (type)
+    {
+        EMIT(ctx, "%s", type);
+    }
+    else
+    {
+        EMIT(ctx, "__typeof__((");
+        codegen_expression(ctx, expr);
+        EMIT(ctx, "))");
+    }
+
+    if (ctx->config->use_cpp)
+    {
+        EMIT(ctx, " _tmp = ");
+        codegen_expression(ctx, expr);
+        EMIT(ctx, "; &_tmp; })");
+    }
+    else
+    {
+        EMIT(ctx, "[]){");
+        codegen_expression(ctx, expr);
+        EMIT(ctx, "}");
+    }
+}
+
 // Emit function signature using Type info for correct C codegen
 void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_override)
 {

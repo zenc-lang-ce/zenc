@@ -381,21 +381,9 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, "&");
                 codegen_expression(ctx, node->binary.left);
             }
-            else if (ctx->config->use_cpp)
-            {
-                EMIT(ctx, "({ __typeof__((");
-                codegen_expression(ctx, node->binary.left);
-                EMIT(ctx, ")) _tmp = ");
-                codegen_expression(ctx, node->binary.left);
-                EMIT(ctx, "; &_tmp; })");
-            }
             else
             {
-                EMIT(ctx, "(__typeof__((");
-                codegen_expression(ctx, node->binary.left);
-                EMIT(ctx, "))[]){");
-                codegen_expression(ctx, node->binary.left);
-                EMIT(ctx, "}");
+                emit_rvalue_address(ctx, node->binary.left);
             }
 
             EMIT(ctx, ", ");
@@ -413,21 +401,9 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, "&");
                 codegen_expression(ctx, node->binary.right);
             }
-            else if (needs_ptr && ctx->config->use_cpp)
-            {
-                EMIT(ctx, "({ __typeof__((");
-                codegen_expression(ctx, node->binary.right);
-                EMIT(ctx, ")) _tmp = ");
-                codegen_expression(ctx, node->binary.right);
-                EMIT(ctx, "; &_tmp; })");
-            }
             else if (needs_ptr)
             {
-                EMIT(ctx, "(__typeof__((");
-                codegen_expression(ctx, node->binary.right);
-                EMIT(ctx, "))[]){");
-                codegen_expression(ctx, node->binary.right);
-                EMIT(ctx, "}");
+                emit_rvalue_address(ctx, node->binary.right);
             }
             else
             {

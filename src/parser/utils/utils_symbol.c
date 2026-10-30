@@ -61,11 +61,15 @@ Type *find_symbol_type_info(ParserContext *ctx, const char *n)
         return sym->type_info;
     }
 
-    EnumVariantReg *ev = find_enum_variant(ctx, n);
-    if (ev)
+    EnumVariantReg *enum_variant = find_enum_variant(ctx, n);
+    if (enum_variant)
     {
         Type *t = type_new(TYPE_ENUM);
-        t->name = xstrdup(ev->enum_name);
+        t->name = xstrdup(enum_variant->enum_name);
+        if (enum_variant->link_name)
+        {
+            t->link_name = xstrdup(enum_variant->link_name);
+        }
         return t;
     }
 
