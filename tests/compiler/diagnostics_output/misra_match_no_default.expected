@@ -1,0 +1,9 @@
+   Compiling tests/compiler/diagnostics_output/misra_match_no_default.zc...
+error: MISRA Rule 16.4
+  --> tests/compiler/diagnostics_output/misra_match_no_default.zc:5:18
+   |
+5  |     let r: int = match x {
+   |                  ^ here
+   |
+     error: semantic analysis found 1 error
+[exit 1]

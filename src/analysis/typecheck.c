@@ -410,8 +410,6 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     tc_error_with_hints(tc, node->token,
                                         "Match may not be exhaustive (no default case)", hints);
                 }
-
-                misra_check_match_stmt(tc->pctx, node);
             }
 
             if (match_initial_state && merged_state)
