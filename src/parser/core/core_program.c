@@ -46,6 +46,24 @@ static void check_global_initializers(ASTNode *decls)
     }
 }
 
+// The attributes of a top-level `let` go to every variable it declares
+// (`static let a = 1, b = 2;`), not only to the first one.
+static void apply_global_attributes(ASTNode *decls, int is_static,
+                                    const DeclarationAttributes *attrs)
+{
+    ASTNode *d = decls;
+    while (d)
+    {
+        if (d->kind == NODE_VAR_DECL)
+        {
+            d->var_decl.is_static = is_static;
+            d->var_decl.is_thread_local = attrs->is_thread_local;
+            d->cfg_condition = attrs->cfg_condition;
+        }
+        d = d->next;
+    }
+}
+
 static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
 {
     ASTNode *h = 0, *tl = 0;
@@ -264,14 +282,7 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                 {
                     s = parse_var_decl(ctx, l, attrs.is_export);
                     check_global_initializers(s);
-                    if (s)
-                    {
-                        s->var_decl.is_static = 1;
-                        if (attrs.is_thread_local)
-                        {
-                            s->var_decl.is_thread_local = 1;
-                        }
-                    }
+                    apply_global_attributes(s, 1, &attrs);
                 }
                 else
                 {
@@ -283,6 +294,7 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
             {
                 s = parse_var_decl(ctx, l, attrs.is_export);
                 check_global_initializers(s);
+                apply_global_attributes(s, 0, &attrs);
             }
             else if (t.len == 6 && strncmp(t.start, "extern", 6) == 0)
             {

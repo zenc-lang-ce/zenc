@@ -33,10 +33,22 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
         }
         if (node->kind == NODE_VAR_DECL || node->kind == NODE_CONST)
         {
-            EMIT(ctx, "ZC_GLOBAL ");
             if (node->cfg_condition)
             {
                 EMIT(ctx, "#if %s\n", node->cfg_condition);
+            }
+            // `static` replaces ZC_GLOBAL, which is already `static` with ZC_STATIC_PLUGIN.
+            if (node->var_decl.is_static)
+            {
+                EMIT(ctx, "static ");
+            }
+            else
+            {
+                EMIT(ctx, "ZC_GLOBAL ");
+            }
+            if (node->var_decl.is_thread_local)
+            {
+                EMIT(ctx, "_Thread_local ");
             }
             if (node->kind == NODE_CONST)
             {
