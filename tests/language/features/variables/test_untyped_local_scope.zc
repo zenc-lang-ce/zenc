@@ -1,0 +1,58 @@
+// language/features/variables: a local without a declared type must not take the type of a
+// variable of the same name declared elsewhere (another function, or an enclosing block)
+
+include <stdlib.h>
+
+// An Eq that always says "equal", so a comparison emitted as Always__eq is visible at run time
+struct Always { v: int; }
+
+impl Eq for Always {
+    fn eq(self, other: Always*) -> bool {
+        (void)other;
+        return true;
+    }
+}
+
+// Declared before both_equal on purpose: functions are emitted in reverse order, so its body is
+// generated after the `k` of both_equal
+fn is_minus_one(n: int) -> bool {
+    let k = abs(n);
+    return k == -1;
+}
+
+fn pair() -> (int, int) {
+    return (abs(5), 2);
+}
+
+fn destructured_is_minus_one() -> bool {
+    let (k, j) = pair();
+    (void)j;
+    return k == -1;
+}
+
+fn both_equal() -> bool {
+    let k = Always { v: 1 };
+    let j = Always { v: 2 };
+    return k == j;
+}
+
+fn inner_is_minus_one(n: int) -> bool {
+    let k = Always { v: 1 };
+    let r = false;
+    {
+        let k = abs(n);
+        r = k == -1;
+    }
+    (void)k;
+    return r;
+}
+
+test "untyped local and a struct of the same name in another function" {
+    assert(both_equal(), "Always::eq is always true");
+    assert(!is_minus_one(5), "abs(5) is not -1");
+    assert(!destructured_is_minus_one(), "the first value of pair() is not -1");
+}
+
+test "untyped local shadowing a struct of the same name" {
+    assert(!inner_is_minus_one(5), "abs(5) is not -1");
+}
