@@ -3,6 +3,7 @@
 #include "analysis/const_fold.h"
 #include "../parser/parser.h"
 #include "../ast/symbols.h"
+#include <limits.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -65,29 +66,31 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
             return 0;
         }
 
+        // +, -, * and << work on the unsigned bits: a signed overflow is undefined
+        // in C, an unsigned one wraps around.
         if (strcmp(node->binary.op, "+") == 0)
         {
-            *out_val = left + right;
+            *out_val = (long long)((unsigned long long)left + (unsigned long long)right);
         }
         else if (strcmp(node->binary.op, "-") == 0)
         {
-            *out_val = left - right;
+            *out_val = (long long)((unsigned long long)left - (unsigned long long)right);
         }
         else if (strcmp(node->binary.op, "*") == 0)
         {
-            *out_val = left * right;
+            *out_val = (long long)((unsigned long long)left * (unsigned long long)right);
         }
         else if (strcmp(node->binary.op, "/") == 0)
         {
-            if (right == 0)
+            if (right == 0 || (left == LLONG_MIN && right == -1))
             {
-                return 0; // Division by zero
+                return 0; // Division by zero or overflow
             }
             *out_val = left / right;
         }
         else if (strcmp(node->binary.op, "%") == 0)
         {
-            if (right == 0)
+            if (right == 0 || (left == LLONG_MIN && right == -1))
             {
                 return 0;
             }
@@ -95,10 +98,18 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
         }
         else if (strcmp(node->binary.op, "<<") == 0)
         {
-            *out_val = left << right;
+            if (right < 0 || right >= 64)
+            {
+                return 0; // Shift amount out of range
+            }
+            *out_val = (long long)((unsigned long long)left << right);
         }
         else if (strcmp(node->binary.op, ">>") == 0)
         {
+            if (right < 0 || right >= 64)
+            {
+                return 0;
+            }
             *out_val = left >> right;
         }
         else if (strcmp(node->binary.op, "&") == 0)
@@ -163,7 +174,7 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
 
         if (strcmp(node->unary.op, "-") == 0)
         {
-            *out_val = -operand;
+            *out_val = (long long)(0ULL - (unsigned long long)operand); // -LLONG_MIN overflows
         }
         else if (strcmp(node->unary.op, "+") == 0)
         {
