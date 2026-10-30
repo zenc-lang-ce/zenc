@@ -55,21 +55,57 @@ if "%NO_PLUGINS%"=="1" (
     set CFLAGS=%CFLAGS% -DZC_NO_PLUGINS
 )
 
-rem Source files — read from src-sources.txt (single source of truth)
-set SRCS=
-for /f "usebackq delims=" %%i in ("src-sources.txt") do (
-    if not "%%i"=="" set "SRCS=!SRCS! %%i"
-)
+rem Source files — read from src-sources.txt (single source of truth). Each one is compiled
+rem once into obj\ and listed in the response file of its group, as the Makefile splits them:
+rem the LSP, REPL and doc generator sources only go into their standalone tools, and the
+rem driver only into zc. Response files keep the link commands short.
+if not exist obj mkdir obj
+for %%g in (base common driver lsp repl zen) do type nul > obj\%%g.rsp
 
-rem Build
 echo Building Zen C (%ZEN_VERSION%)...
-%CC% %CFLAGS% %SRCS% -o zc.exe %LIBS%
-if %ERRORLEVEL% NEQ 0 (
-    echo Build failed!
-    exit /b %ERRORLEVEL%
+for /f "usebackq delims=" %%i in ("src-sources.txt") do (
+    if not "%%i"=="" (
+        %CC% %CFLAGS% -c %%i -o obj\%%~ni.o
+        if errorlevel 1 (
+            echo Build failed!
+            exit /b 1
+        )
+        set "SRC=%%i"
+        set GROUP=base
+        if "!SRC:~0,8!"=="src/lsp/" set GROUP=lsp
+        if "!SRC:~0,9!"=="src/repl/" set GROUP=repl
+        if "!SRC:~0,8!"=="src/zen/" set GROUP=zen
+        if "!SRC:~0,10!"=="src/tools/" set GROUP=common
+        if "!SRC:~0,11!"=="src/driver/" set GROUP=driver
+        if "!SRC!"=="src/main.c" set GROUP=driver
+        >> obj\!GROUP!.rsp echo obj/%%~ni.o
+    )
 )
 
+%CC% %CFLAGS% @obj/base.rsp @obj/common.rsp @obj/driver.rsp -o zc.exe %LIBS%
+if errorlevel 1 (
+    echo Build failed!
+    exit /b 1
+)
 echo Build success! zc.exe created.
+
+rem Standalone tools: `zc lsp|repl|doc|format` launch them, so they ship next to zc.exe.
+rem Each entry is the tool, the group of its own sources and its main.
+for %%t in ("zc-lsp lsp main_lsp" "zc-format lsp main_format" "zc-repl repl main_repl" "zc-doc zen main_doc") do (
+    for /f "tokens=1-3" %%a in (%%t) do (
+        %CC% %CFLAGS% -c src/tools/%%c.c -o obj\%%c.o
+        if errorlevel 1 (
+            echo Build failed for %%a.
+            exit /b 1
+        )
+        %CC% %CFLAGS% @obj/base.rsp @obj/common.rsp @obj/%%b.rsp obj/%%c.o -o %%a.exe %LIBS%
+        if errorlevel 1 (
+            echo Build failed for %%a.
+            exit /b 1
+        )
+        echo Build success: %%a.exe created.
+    )
+)
 
 rem Build plugins
 if "%NO_PLUGINS%"=="1" (
