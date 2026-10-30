@@ -1,0 +1,15 @@
+// EXPECT: FAIL
+// compiler/diagnostics: struct patterns are not supported in match. They used to
+// be read as an enum variant: the field values were ignored and the fields bound
+// by position, so `Opt { has: true, val: v }` matched any value (or generated
+// invalid C). Match on a field instead.
+
+struct Opt { has: bool; val: int; }
+
+fn main() {
+    let o = Opt { has: false, val: 7 };
+    match o {
+        Opt { has: true, val: v } => { printf("some %d\n", v); },
+        _ => { printf("none\n"); }
+    }
+}

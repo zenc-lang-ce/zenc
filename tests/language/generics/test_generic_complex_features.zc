@@ -15,8 +15,8 @@ fn test_complex_generics<T>(val: T, condition: bool) -> T {
 
     // 3. Match
     let opt = Option<T>{ has_value: true, val: val };
-    let res = match opt {
-        Option<T>{ has_value: true, val: v } => v,
+    let res = match opt.has_value {
+        true => opt.val,
         _ => val,
     };
 
