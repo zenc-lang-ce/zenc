@@ -34,23 +34,50 @@ void exit_scope(ParserContext *ctx)
     ctx->current_scope = ctx->current_scope->parent;
 }
 
-void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s)
+// all_symbols_set: a declaration is the same when its kind, name and position are.
+static int declaration_cmp(const ZenSymbol *a, const ZenSymbol *b)
+{
+    if (a->kind != b->kind || a->decl_token.line != b->decl_token.line ||
+        a->decl_token.col != b->decl_token.col)
+    {
+        return 1;
+    }
+    return strcmp(a->name, b->name);
+}
+
+static uint32_t declaration_hash(const ZenSymbol *s, uint32_t seed)
+{
+    uint32_t h = zmap_hash_cstr(s->name, seed);
+    h ^= (uint32_t)s->kind;
+    h *= 16777619u;
+    h ^= (uint32_t)s->decl_token.line;
+    h *= 16777619u;
+    h ^= (uint32_t)s->decl_token.col;
+    h *= 16777619u;
+    return h;
+}
+
+void register_in_all_symbols(ParserContext *ctx, ZenSymbol *s)
 {
     if (!ctx || !s)
     {
         return;
     }
 
-    ZenSymbol *curr = ctx->all_symbols;
-    while (curr)
+    // The language server registers every file of a workspace in one context, so a declaration
+    // registered before is found in a set instead of walking all_symbols.
+    if (s->name)
     {
-        if (curr->kind == s->kind && curr->decl_token.line == s->decl_token.line &&
-            curr->decl_token.col == s->decl_token.col && curr->name && s->name &&
-            strcmp(curr->name, s->name) == 0)
+        // Every ParserContext starts zeroed, wherever it is created: the maps start here.
+        if (!ctx->all_symbols_set.hash_func)
+        {
+            ctx->all_symbols_set = zmap_init(DeclSet, declaration_hash, declaration_cmp);
+            ctx->all_symbols_by_name = zmap_init(SymbolByName, zmap_hash_cstr, zmap_cmp_cstr);
+        }
+        if (zmap_get(&ctx->all_symbols_set, s))
         {
             return;
         }
-        curr = curr->next;
     }
 
     ZenSymbol *lsp_copy = xmalloc(sizeof(ZenSymbol));
@@ -68,4 +95,10 @@ void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s)
     }
 
     lsp_copy->is_local = s->is_local;
+
+    if (s->name)
+    {
+        zmap_put(&ctx->all_symbols_set, lsp_copy, lsp_copy);
+        zmap_put(&ctx->all_symbols_by_name, lsp_copy->name, lsp_copy);
+    }
 }

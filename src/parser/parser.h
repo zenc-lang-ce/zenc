@@ -155,31 +155,6 @@ typedef struct GenericImplTemplate
     struct GenericImplTemplate *next;
 } GenericImplTemplate;
 
-// ---------------------------------------------------------------------------
-// zmap.h allocator overrides & type registration (must precede zmap.h include)
-// ---------------------------------------------------------------------------
-#define ZMAP_MALLOC(sz) xmalloc(sz)
-#define ZMAP_CALLOC(n, sz) xcalloc(n, sz)
-#define ZMAP_FREE(p) ((void)(p))
-
-static inline uint32_t zmap_hash_cstr(const char *k, uint32_t seed)
-{
-    // FNV-1a inline (avoids dependency on ZMAP_HASH_STR being defined yet)
-    uint32_t hash = 2166136261u ^ seed;
-    const uint8_t *data = (const uint8_t *)k;
-    while (*data)
-    {
-        hash ^= *data++;
-        hash *= 16777619;
-    }
-    return hash;
-}
-static inline int zmap_cmp_cstr(const char *a, const char *b)
-{
-    return strcmp(a, b);
-}
-// ---------------------------------------------------------------------------
-
 /**
  * @brief Tracks a concrete instantiation of a generic template.
  */
@@ -320,14 +295,7 @@ typedef struct TypeAlias
     char *defined_in_file;
 } TypeAlias;
 
-// zmap type registration (generates type-safe hash maps)
-#define REGISTER_ZMAP_TYPES(X)                                                                     \
-    X(const char *, Module *, ModMap)                                                              \
-    X(const char *, SelectiveImport *, SelMap)                                                     \
-    X(const char *, const char *, FileSet)                                                         \
-    X(const char *, ImportedPlugin *, PluginMap)
-
-#include "../utils/zmap.h"
+#include "../utils/zmap_types.h"
 
 /**
  * @brief Module/import state container (extracted from ParserContext god struct).
@@ -388,6 +356,7 @@ struct ParserContext
     Scope *current_scope;   ///< Current lexical scope for variable lookup.
     FuncSig *func_registry; ///< Registry of declared function signatures (DEPRECATED: moved to
                             ///< global_scope).
+    zmap_FuncByName func_registry_by_name; ///< func_registry by name: the one registered last.
 
     // Lambdas
     LambdaRef *global_lambdas; ///< All lambdas generated during parsing, in creation order.
@@ -453,8 +422,10 @@ struct ParserContext
     int suppress_errors;   ///< 1 to swallow parser errors silently (probe parses).
     int had_error; ///< Set by zpanic_at when fault-tolerant; checked by parser loops to bail out.
 
-    // LSP: Flat symbol list (persists after parsing for LSP queries)
-    ZenSymbol *all_symbols; ///< comprehensive list of all symbols seen.
+    // Every symbol seen, for the language server, the MISRA checks and find_symbol_in_all
+    ZenSymbol *all_symbols;                ///< comprehensive list of all symbols seen.
+    zmap_DeclSet all_symbols_set;          ///< all_symbols by declaration (kind, name, position).
+    zmap_SymbolByName all_symbols_by_name; ///< all_symbols by name: the last one registered.
 
     // External C interop: suppress undefined warnings for external symbols
     int has_external_includes;
@@ -963,7 +934,8 @@ void struct_hash_insert(ParserContext *ctx, const char *name, ASTNode *node);
 void struct_registry_changed(ParserContext *ctx);
 /** @brief Starts caching the names find_struct_def does not find (used by codegen). */
 void struct_miss_cache_enable(ParserContext *ctx);
-void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s);
+/** @brief Adds a copy of s to ctx->all_symbols, unless its declaration is already there. */
+void register_in_all_symbols(ParserContext *ctx, ZenSymbol *s);
 
 // core/ declarations
 // Rejects a name `@derive` does not know, listing the ones it does.

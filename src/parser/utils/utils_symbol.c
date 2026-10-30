@@ -50,7 +50,7 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Typ
     s->decl_token = tok;
     s->is_export = is_export;
 
-    register_symbol_to_lsp(ctx, s);
+    register_in_all_symbols(ctx, s);
 }
 
 Type *find_symbol_type_info(ParserContext *ctx, const char *n)
@@ -100,16 +100,8 @@ ZenSymbol *find_symbol_entry(ParserContext *ctx, const char *n)
 
 ZenSymbol *find_symbol_in_all(ParserContext *ctx, const char *n)
 {
-    ZenSymbol *sym = ctx->all_symbols;
-    while (sym)
-    {
-        if (sym->name[0] == n[0] && strcmp(sym->name, n) == 0)
-        {
-            return sym;
-        }
-        sym = sym->next;
-    }
-    return NULL;
+    ZenSymbol **last = zmap_get(&ctx->all_symbols_by_name, n);
+    return last ? *last : NULL;
 }
 
 void init_builtins(void)
@@ -153,6 +145,12 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
         f->name = xstrdup(name);
         f->next = ctx->func_registry;
         ctx->func_registry = f;
+        // Every ParserContext starts zeroed, wherever it is created: the map starts here.
+        if (!ctx->func_registry_by_name.hash_func)
+        {
+            ctx->func_registry_by_name = zmap_init(FuncByName, zmap_hash_cstr, zmap_cmp_cstr);
+        }
+        zmap_put(&ctx->func_registry_by_name, f->name, f);
     }
 
     f->decl_token = decl_token;
@@ -186,7 +184,7 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
         sym->link_name = f->link_name;
     }
 
-    register_symbol_to_lsp(ctx, sym);
+    register_in_all_symbols(ctx, sym);
 
     Type *ft = type_new(TYPE_FUNCTION);
     ft->count = count;

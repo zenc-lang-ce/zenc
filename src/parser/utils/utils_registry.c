@@ -222,7 +222,7 @@ void register_type_alias(ParserContext *ctx, const char *alias, const char *orig
     sym->is_export = is_export;
     sym->data.alias.original_type = xstrdup(original);
     sym->type_info = type_info;
-    register_symbol_to_lsp(ctx, sym);
+    register_in_all_symbols(ctx, sym);
 }
 
 const char *find_type_alias(ParserContext *ctx, const char *alias)
@@ -509,7 +509,7 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
 
     audit_section_5(ctx, ctx->global_scope, name, sym->link_name, sym->decl_token);
 
-    register_symbol_to_lsp(ctx, sym);
+    register_in_all_symbols(ctx, sym);
 }
 
 ASTNode *find_struct_def(ParserContext *ctx, const char *name)
@@ -953,14 +953,11 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
         return sym->data.sig;
     }
 
-    FuncSig *c = ctx->func_registry;
-    while (c)
+    // Every function declared, the one registered last first, as func_registry lists them.
+    FuncSig **registered = zmap_get(&ctx->func_registry_by_name, name);
+    if (registered)
     {
-        if (c->name[0] == name[0] && strcmp(c->name, name) == 0)
-        {
-            return c;
-        }
-        c = c->next;
+        return *registered;
     }
 
     if (ctx->current_impl_methods)
