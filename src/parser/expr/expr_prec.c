@@ -1320,7 +1320,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             !is_ptr)
                         {
                             ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                            addr->unary.op = xstrdup("&");
+                            addr->unary.op =
+                                expr_is_rvalue(ctx, lhs) ? xstrdup("&_rval") : xstrdup("&");
                             addr->unary.operand = lhs;
                             if (inner_t)
                             {

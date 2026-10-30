@@ -2260,9 +2260,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     if (sig->arg_types && sig->total_args > 0 &&
                         sig->arg_types[0]->kind == TYPE_POINTER && !is_ptr)
                     {
-                        // Needs ptr, have value -> &node
+                        // Needs ptr, have value -> &node (through a temporary if it has no address)
                         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                        addr->unary.op = xstrdup("&");
+                        addr->unary.op =
+                            expr_is_rvalue(ctx, node) ? xstrdup("&_rval") : xstrdup("&");
                         addr->unary.operand = node;
                         addr->type_info = type_new_ptr(st);
                         arg1 = addr;
