@@ -7,14 +7,14 @@ fn apply(f: fn(I32) -> I32, val: I32) -> I32 {
 }
 
 test "lambda basic" {
-    let dbl = x -> x * 2;
+    let dbl = x => x * 2;
     let r = dbl(21);
     assert(r == 42, "lambda basic ok");
 }
 
 // --- Lambda as argument ---
 test "lambda arg" {
-    let r = apply(x -> x + 1, 41);
+    let r = apply(x => x + 1, 41);
     assert(r == 42, "lambda arg ok");
 }
 

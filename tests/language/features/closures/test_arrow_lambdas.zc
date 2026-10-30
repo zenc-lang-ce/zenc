@@ -1,23 +1,23 @@
 // closures: test_arrow_lambdas
 import "std/io.zc"
 fn test_no_args() {
-    let f1 = () -> 42;
+    let f1 = () => 42;
     assert(f1() == 42);
 }
 
 fn test_implicit_args() {
-    let f1 = (a, b) -> a + b;
+    let f1 = (a, b) => a + b;
     assert(f1(10, 20) == 30);
 }
 
 fn test_explicit_args() {
     let n = 1;
 
-    let f1 = (n_ptr: int*) -> (*n_ptr)++;
+    let f1 = (n_ptr: int*) => (*n_ptr)++;
     f1(&n);
     assert(n == 2);
 
-    let f2 = (a: int, b: int) -> a * b;
+    let f2 = (a: int, b: int) => a * b;
     assert(f2(5, 5) == 25);
 }
 
@@ -25,7 +25,7 @@ fn test_explicit_args_with_capture() {
     let base = 10;
     
     // value capture
-    let f1 = [=](ptr: int*) -> {
+    let f1 = [=](ptr: int*) => {
         (*ptr) += base;
     };
     
@@ -37,7 +37,7 @@ fn test_explicit_args_with_capture() {
 fn test_unparenthesized_explicit_args() {
     let n = 1;
 
-    let f1 = n_ptr: int* -> (*n_ptr)++;
+    let f1 = n_ptr: int* => (*n_ptr)++;
     f1(&n);
     assert(n == 2);
 }
