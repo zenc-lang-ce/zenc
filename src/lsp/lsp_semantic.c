@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 
 // Legend indices
 #define TOKEN_TYPE_VARIABLE 0
@@ -130,59 +129,31 @@ static int is_type_name(const char *w, size_t len)
     return 0;
 }
 
-// Lex source for keyword tokens and push them into the builder.
-// This captures keywords that are not represented as separate AST nodes.
-static void emit_keywords(TokenBuilder *b, const char *source)
+// Keywords and built-in type names, which are not nodes of their own in the AST. They come from
+// the compiler's lexer, so a word inside a string or a comment, part of that token, is left out.
+static void emit_keywords(TokenBuilder *b, const char *source, const char *path)
 {
-    if (!source)
+    if (!source || !g_project || !g_project->ctx)
     {
         return;
     }
-    const char *p = source;
-    while (*p)
+    Lexer l;
+    lexer_init(&l, source, g_project->ctx->config, path);
+    for (Token t = lexer_next(&l); t.kind != TOK_EOF; t = lexer_next(&l))
     {
-        // Skip non-word characters
-        if (!isalnum((unsigned char)*p) && *p != '_')
-        {
-            p++;
-            continue;
-        }
-        const char *start = p;
-        while (isalnum((unsigned char)*p) || *p == '_')
-        {
-            p++;
-        }
-        size_t len = (size_t)(p - start);
-
         int token_type = -1;
-        if (is_type_name(start, len))
+        if (is_type_name(t.start, t.len))
         {
             token_type = TOKEN_TYPE_TYPE;
         }
-        else if (is_keyword(start, len))
+        else if (is_keyword(t.start, t.len))
         {
             token_type = TOKEN_TYPE_KEYWORD;
         }
-
         if (token_type >= 0)
         {
-            // Compute line/col by scanning from start of source
-            int line = 0, col = 0;
-            const char *scan = source;
-            while (scan < start)
-            {
-                if (*scan == '\n')
-                {
-                    line++;
-                    col = 0;
-                }
-                else
-                {
-                    col++;
-                }
-                scan++;
-            }
-            builder_push(b, line, col, (int)len, token_type, 0);
+            // Tokens count lines and columns from 1, the LSP from 0
+            builder_push(b, t.line - 1, t.col - 1, (int)t.len, token_type, 0);
         }
     }
 }
@@ -421,7 +392,7 @@ char *lsp_semantic_tokens_full(const char *uri)
     builder_init(&b);
 
     // Emit keyword tokens from source (keywords not captured by AST traversal)
-    emit_keywords(&b, pf->source);
+    emit_keywords(&b, pf->source, pf->path);
 
     ASTNode *root = pf->ast;
     while (root)
