@@ -70,9 +70,8 @@ static int consume_generic_close(Lexer *l)
     return 0;
 }
 
-Type *parse_type_base(ParserContext *ctx, Lexer *l)
+static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
 {
-    RECURSION_GUARD(ctx, l, type_new(TYPE_UNKNOWN));
     Token t = lexer_peek(l);
 
     if (t.kind == TOK_IDENT)
@@ -106,7 +105,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
             if (alias_node->is_opaque)
             {
                 Type *wrapper = opaque_alias_type(ctx, alias_node);
-                RECURSION_EXIT(ctx);
                 return wrapper;
             }
 
@@ -115,10 +113,8 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
             Type *t_res = parse_type_formal(ctx, &tmp);
             if (!t_res)
             {
-                RECURSION_EXIT(ctx);
                 return NULL;
             }
-            RECURSION_EXIT(ctx);
             return t_res;
         }
 
@@ -182,7 +178,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
         {
             zfree(name);
             Type *t_prim = type_new(prim->kind);
-            RECURSION_EXIT(ctx);
             return t_prim;
         }
 
@@ -210,31 +205,26 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                         if (width == 8)
                         {
                             zfree(name);
-                            RECURSION_EXIT(ctx);
                             return type_new(TYPE_I8);
                         }
                         if (width == 16)
                         {
                             zfree(name);
-                            RECURSION_EXIT(ctx);
                             return type_new(TYPE_I16);
                         }
                         if (width == 32)
                         {
                             zfree(name);
-                            RECURSION_EXIT(ctx);
                             return type_new(TYPE_I32);
                         }
                         if (width == 64)
                         {
                             zfree(name);
-                            RECURSION_EXIT(ctx);
                             return type_new(TYPE_I64);
                         }
                         if (width == 128)
                         {
                             zfree(name);
-                            RECURSION_EXIT(ctx);
                             return type_new(TYPE_I128);
                         }
                     }
@@ -243,31 +233,26 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                         if (width == 8)
                         {
                             zfree(name);
-                            RECURSION_EXIT(ctx);
                             return type_new(TYPE_U8);
                         }
                         if (width == 16)
                         {
                             zfree(name);
-                            RECURSION_EXIT(ctx);
                             return type_new(TYPE_U16);
                         }
                         if (width == 32)
                         {
                             zfree(name);
-                            RECURSION_EXIT(ctx);
                             return type_new(TYPE_U32);
                         }
                         if (width == 64)
                         {
                             zfree(name);
-                            RECURSION_EXIT(ctx);
                             return type_new(TYPE_U64);
                         }
                         if (width == 128)
                         {
                             zfree(name);
-                            RECURSION_EXIT(ctx);
                             return type_new(TYPE_U128);
                         }
                     }
@@ -275,7 +260,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                     Type *inner_t = type_new(name[0] == 'u' ? TYPE_UBITINT : TYPE_BITINT);
                     inner_t->array_size = width;
                     zfree(name);
-                    RECURSION_EXIT(ctx);
                     return inner_t;
                 }
             }
@@ -287,7 +271,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
             Type *ty = type_new(TYPE_STRUCT);
             ty->name = name;
             ty->is_explicit_struct = 1;
-            RECURSION_EXIT(ctx);
             return ty;
         }
 
@@ -345,7 +328,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
             Type *first_arg = parse_type_formal(ctx, l);
             if (!first_arg)
             {
-                RECURSION_EXIT(ctx);
                 return NULL;
             }
             char *first_arg_str = type_to_string(first_arg);
@@ -365,7 +347,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                     Type *arg = parse_type_formal(ctx, l);
                     if (!arg)
                     {
-                        RECURSION_EXIT(ctx);
                         return NULL;
                     }
                     char *arg_str = type_to_string(arg);
@@ -377,7 +358,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                 if (!consume_generic_close(l))
                 {
                     zpanic_at(t, "Expected > after generic");
-                    RECURSION_EXIT(ctx);
                     return NULL;
                 }
 
@@ -426,7 +406,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                 if (!consume_generic_close(l))
                 {
                     zpanic_at(t, "Expected > after generic");
-                    RECURSION_EXIT(ctx);
                     return NULL;
                 }
 
@@ -451,7 +430,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
             ty->args = NULL;
             ty->count = 0;
         }
-        RECURSION_EXIT(ctx);
         return ty;
     }
 
@@ -461,7 +439,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
         Type *inner = parse_type_formal(ctx, l);
         if (!inner)
         {
-            RECURSION_EXIT(ctx);
             return NULL;
         }
 
@@ -491,7 +468,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
             Type *arr = type_new(TYPE_ARRAY);
             arr->inner = inner;
             arr->array_size = size;
-            RECURSION_EXIT(ctx);
             return arr;
         }
 
@@ -511,7 +487,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
         Type *arr = type_new(TYPE_ARRAY);
         arr->inner = inner;
         arr->array_size = 0; // 0 means slice, not fixed-size
-        RECURSION_EXIT(ctx);
         return arr;
     }
 
@@ -570,7 +545,6 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
 
         Type *ty = type_new(TYPE_STRUCT);
         ty->name = tuple_name;
-        RECURSION_EXIT(ctx);
         return ty;
     }
 
@@ -584,10 +558,18 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
         Type *ty = type_new(TYPE_STRUCT);
         ty->name = fallback;
         ty->is_explicit_struct = 0;
-        RECURSION_EXIT(ctx);
         return ty;
     }
 
-    RECURSION_EXIT(ctx);
     return type_new(TYPE_UNKNOWN);
+}
+
+// The depth guard wraps the whole parse, so no return path can leave it raised: the
+// language server keeps one parser context for a session and recovers from errors.
+Type *parse_type_base(ParserContext *ctx, Lexer *l)
+{
+    RECURSION_GUARD(ctx, l, type_new(TYPE_UNKNOWN));
+    Type *t = parse_type_base_impl(ctx, l);
+    RECURSION_EXIT(ctx);
+    return t;
 }
