@@ -1,5 +1,7 @@
 // language/control-flow: control-flow: test_if_expr
 import "std/io.zc"
+
+include <string.h>
 test "if_as_expression" {
     // If-expression with blocks
     let x = if (1) { 10 } else { 20 };
@@ -15,4 +17,23 @@ test "if_as_expression" {
     assert(z == 1, "if-expression with comparison should work");
 
     println("  If-expression tests: Success");
+}
+
+fn meridiem(hour: int) -> string {
+    return if hour < 12 { "am" } else { "pm" };
+}
+
+test "if_expression_with_string_branches" {
+    // A string literal that ends a branch is its value, not a string on its own (RFC 0001)
+    let hour = 14;
+    let a = if hour > 12 { "pm" } else { "am" };
+    assert(strcmp(a, "pm") == 0, "string branch should be the value");
+
+    let b = if hour > 20 { let _late = 1; "night" } else { "day" };
+    assert(strcmp(b, "day") == 0, "a string after a statement should be the value");
+
+    let c = if hour > 12 { f"{hour}h" } else { "morning" };
+    assert(strcmp(c, "14h") == 0, "an f-string branch should be the value");
+
+    assert(strcmp(meridiem(9), "am") == 0, "returned if-expression with strings");
 }

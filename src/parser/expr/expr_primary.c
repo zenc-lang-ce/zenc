@@ -124,7 +124,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         ASTNode *then_b = NULL;
         if (lexer_peek(l).kind == TOK_LBRACE)
         {
-            then_b = parse_block(ctx, l);
+            then_b = parse_value_block(ctx, l);
         }
         else
         {
@@ -143,7 +143,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             lexer_next(l); // eat 'else'
             if (lexer_peek(l).kind == TOK_LBRACE)
             {
-                else_b = parse_block(ctx, l);
+                else_b = parse_value_block(ctx, l);
             }
             else
             {

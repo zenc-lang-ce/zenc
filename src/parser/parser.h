@@ -850,6 +850,8 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l);
 // --- Parser function declarations (needed to avoid implicit declarations) ---
 ASTNode *parse_statement(ParserContext *ctx, Lexer *l);
 ASTNode *parse_block(ParserContext *ctx, Lexer *l);
+/** A block that is the value of an expression: its last string literal is the value. */
+ASTNode *parse_value_block(ParserContext *ctx, Lexer *l);
 ASTNode *parse_expression(ParserContext *ctx, Lexer *l);
 ASTNode *parse_expr_prec(ParserContext *ctx, Lexer *l, Precedence min_prec);
 ASTNode *parse_return(ParserContext *ctx, Lexer *l);
