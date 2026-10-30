@@ -1,3 +1,5 @@
 *.zc linguist-language=C
 # Compared byte for byte with zc's output: keep LF on every platform.
 tests/compiler/diagnostics_output/* text eol=lf
+# cmd.exe misreads batch files with LF line endings (labels, goto).
+*.bat text eol=crlf
