@@ -456,6 +456,10 @@ static int compile_program(ZenCompiler *compiler)
         }
 
         arg_list_add(&run_args, exe_path);
+        for (size_t ra = 0; ra < compiler->config.run_args.length; ra++)
+        {
+            arg_list_add(&run_args, compiler->config.run_args.data[ra]);
+        }
         if (!compiler->config.quiet)
         {
             printf(COLOR_BOLD COLOR_GREEN "     Running" COLOR_RESET " %s\n", exe_path);

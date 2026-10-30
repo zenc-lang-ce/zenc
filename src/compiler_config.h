@@ -41,6 +41,7 @@ typedef struct CompilerConfig
 {
     char *input_file;
     zvec_Str extra_files;
+    zvec_Str run_args; // Arguments for the program of `zc run` and `zc debug`
     zvec_Str c_files;
     char *output_file;
 

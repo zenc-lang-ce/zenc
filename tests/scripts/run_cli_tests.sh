@@ -99,6 +99,22 @@ else
     check "zc run executes a program" 0
 fi
 
+# Positional arguments after the file, and everything after `--`, go to the program.
+printf 'fn main(argc: int, argv: char**) {\n    for i in 1..argc {\n        printf("[%%s]", argv[i]);\n    }\n}\n' > "$workdir/args.zc"
+out=$("$ZC" run -q "$workdir/args.zc" -o "$workdir/args" one "two words" -- --version -o 2>&1)
+if [ "$out" = "[one][two words][--version][-o]" ]; then
+    check "zc run passes arguments to the program" 1
+else
+    check "zc run passes arguments to the program" 0
+fi
+
+out=$("$ZC" build "$workdir/args.zc" -o "$workdir/args" -- one 2>&1)
+if [ $? -ne 0 ] && echo "$out" | grep -q "is only for zc run and zc debug"; then
+    check "zc build rejects arguments after --" 1
+else
+    check "zc build rejects arguments after --" 0
+fi
+
 out=$("$ZC" transpile "$workdir/smoke.zc" -o "$workdir/smoke_out.c" 2>&1)
 if [ -s "$workdir/smoke_out.c" ]; then
     check "zc transpile emits C source" 1

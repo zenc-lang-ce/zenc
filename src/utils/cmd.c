@@ -142,6 +142,7 @@ void print_command_help(const char *command)
         print_help_item("-o <file>", "Temp binary name (default: a.out)");
         print_help_item("-O<level>", "Backend optimization level");
         print_help_item("-q, --quiet", "Run without compiler status markers");
+        print_help_item("--", "Pass the rest of the arguments to the program");
     }
     else if (strcmp(command, "check") == 0)
     {
