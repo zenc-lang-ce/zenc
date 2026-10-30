@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 rem Compiler configuration (default to gcc)
 if "%CC%"=="" set CC=gcc
 
-rem Version — try git, then .version file, then "unknown"
+rem Version - try git, then .version file, then "unknown"
 set ZEN_VERSION=unknown
 for /f "delims=" %%i in ('git describe --tags --always --dirty 2^>nul') do set ZEN_VERSION=%%i
 if "!ZEN_VERSION!"=="unknown" (
@@ -55,7 +55,7 @@ if "%NO_PLUGINS%"=="1" (
     set CFLAGS=%CFLAGS% -DZC_NO_PLUGINS
 )
 
-rem Source files — read from src-sources.txt (single source of truth). Each one is compiled
+rem Source files - read from src-sources.txt (single source of truth). Each one is compiled
 rem once into obj\ and listed in the response file of its group, as the Makefile splits them:
 rem the LSP, REPL and doc generator sources only go into their standalone tools, and the
 rem driver only into zc. Response files keep the link commands short.

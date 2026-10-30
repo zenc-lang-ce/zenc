@@ -20,6 +20,17 @@
 #endif
 #endif
 
+#if ZC_OS_WINDOWS
+static UINT orig_output_cp;
+
+// The code page belongs to the console, not to this process: put it back so the
+// shell that ran zc (and the batch files it reads) keep the one they had.
+static void z_restore_terminal(void)
+{
+    SetConsoleOutputCP(orig_output_cp);
+}
+#endif
+
 void z_setup_terminal(void)
 {
 #if ZC_OS_WINDOWS
@@ -35,7 +46,11 @@ void z_setup_terminal(void)
     }
     dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
     SetConsoleMode(hOut, dwMode);
-    SetConsoleOutputCP(CP_UTF8);
+    orig_output_cp = GetConsoleOutputCP();
+    if (orig_output_cp != CP_UTF8 && SetConsoleOutputCP(CP_UTF8))
+    {
+        atexit(z_restore_terminal);
+    }
 
     HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
     if (hErr == INVALID_HANDLE_VALUE)
