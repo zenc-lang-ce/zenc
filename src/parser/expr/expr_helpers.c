@@ -682,6 +682,72 @@ int type_is_unsigned(Type *t)
               0 == strcmp(t->name, "size_t"))));
 }
 
+// The sscanf conversion that writes a value of type `t`: its length modifier
+// must match the size of the variable, or the value overwrites what follows it.
+static const char *scan_conversion(Type *t)
+{
+    if (!t)
+    {
+        return "%d";
+    }
+    switch (t->kind)
+    {
+    case TYPE_BOOL:
+        return "%hhu";
+    case TYPE_CHAR:
+    case TYPE_I8:
+    case TYPE_U8:
+    case TYPE_BYTE:
+    case TYPE_C_CHAR:
+    case TYPE_C_UCHAR:
+        return " %c"; // The space skips whitespace
+    case TYPE_I16:
+    case TYPE_C_SHORT:
+        return "%hd";
+    case TYPE_U16:
+    case TYPE_C_USHORT:
+        return "%hu";
+    case TYPE_U32:
+    case TYPE_UINT:
+    case TYPE_C_UINT:
+        return "%u";
+    case TYPE_I64:
+    case TYPE_C_LONGLONG:
+        return "%lld";
+    case TYPE_U64:
+    case TYPE_C_ULONGLONG:
+        return "%llu";
+    case TYPE_C_LONG:
+        return "%ld";
+    case TYPE_C_ULONG:
+        return "%lu";
+    case TYPE_ISIZE:
+        return "%td";
+    case TYPE_USIZE:
+        return "%zu";
+    case TYPE_F32:
+    case TYPE_FLOAT:
+        return "%f";
+    case TYPE_F64:
+        return "%lf";
+    case TYPE_STRING:
+        // A pointer gets a new string with the word (`_z_scan_helper` does the
+        // `%ms`); a `%s` would write the text over the pointer.
+        return "%ms";
+    case TYPE_POINTER:
+        return t->inner && t->inner->kind == TYPE_CHAR ? "%ms" : "%d";
+    case TYPE_ARRAY:
+        if (t->inner &&
+            (t->inner->kind == TYPE_CHAR || t->inner->kind == TYPE_U8 || t->inner->kind == TYPE_I8))
+        {
+            return "%s";
+        }
+        return "%d";
+    default:
+        return "%d";
+    }
+}
+
 char *infer_scan_format(ParserContext *ctx, ASTNode **args, int ac)
 {
     char *fmt = xmalloc(MAX_SHORT_MSG_LEN);
@@ -693,50 +759,7 @@ char *infer_scan_format(ParserContext *ctx, ASTNode **args, int ac)
         {
             inner_t = find_symbol_type_info(ctx, args[i]->var_ref.name);
         }
-
-        if (!inner_t)
-        {
-            strcat(fmt, "%d"); // Fallback
-        }
-        else
-        {
-            if (inner_t->kind == TYPE_INT || inner_t->kind == TYPE_I32 ||
-                inner_t->kind == TYPE_BOOL)
-            {
-                strcat(fmt, "%d");
-            }
-            else if (inner_t->kind == TYPE_F64)
-            {
-                strcat(fmt, "%lf");
-            }
-            else if (inner_t->kind == TYPE_F32 || inner_t->kind == TYPE_FLOAT)
-            {
-                strcat(fmt, "%f");
-            }
-            else if (inner_t->kind == TYPE_STRING ||
-                     (inner_t->kind == TYPE_POINTER && inner_t->inner &&
-                      inner_t->inner->kind == TYPE_CHAR))
-            {
-                // A pointer gets a new string with the word (`_z_scan_helper`
-                // does the `%ms`); a `%s` would write the text over the pointer.
-                strcat(fmt, "%ms");
-            }
-            else if (inner_t->kind == TYPE_ARRAY && inner_t->inner &&
-                     (inner_t->inner->kind == TYPE_CHAR || inner_t->inner->kind == TYPE_U8 ||
-                      inner_t->inner->kind == TYPE_I8))
-            {
-                strcat(fmt, "%s");
-            }
-            else if (inner_t->kind == TYPE_CHAR || inner_t->kind == TYPE_I8 ||
-                     inner_t->kind == TYPE_U8 || inner_t->kind == TYPE_BYTE)
-            {
-                strcat(fmt, " %c"); // Space skip whitespace
-            }
-            else
-            {
-                strcat(fmt, "%d");
-            }
-        }
+        strcat(fmt, scan_conversion(inner_t));
         if (i < ac - 1)
         {
             strcat(fmt, " ");
