@@ -160,6 +160,33 @@ fi
 # Cleanup
 rm -f "${TEST_NAME%.zc}.c" "${TEST_NAME%.zc}" a.out
 
+#
+# Test 6: in C++, a temporary that needs an address goes through _z_rval
+#
+
+TEST_NAME="test_rvalue_address.zc"
+echo -n "Testing $TEST_DIR/$TEST_NAME (Address of a temporary, C++)... "
+
+if ! "$ZC" "$TEST_DIR/$TEST_NAME" --cpp --emit-c > /dev/null 2>&1; then
+    echo "FAIL (Compilation error)"
+    ((FAILED++))
+else
+    # A variable declared in a statement expression dies before the call that uses it
+    RVAL=$(grep -c '_z_rval(make_bag())' "${TEST_NAME%.zc}.cpp")
+    STMT_EXPR=$(grep -c '&_tmp' "${TEST_NAME%.zc}.cpp")
+
+    if [ "$RVAL" -eq 4 ] && [ "$STMT_EXPR" -eq 0 ]; then
+        echo "PASS"
+        ((PASSED++))
+    else
+        echo "FAIL ($RVAL through _z_rval, $STMT_EXPR through a statement expression)"
+        ((FAILED++))
+    fi
+fi
+
+# Cleanup
+rm -f "${TEST_NAME%.zc}.cpp" "${TEST_NAME%.zc}" a.out
+
 echo "----------------------------------------"
 echo "Summary:"
 echo "-> Passed: $PASSED"
