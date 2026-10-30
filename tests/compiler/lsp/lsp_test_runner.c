@@ -518,11 +518,12 @@ static void test_type_errors_keep_recursion_depth(void)
     char request[512];
     for (int version = 2; version < 1102; version++)
     {
-        snprintf(request, sizeof(request),
-                 "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didChange\", \"params\": "
-                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_recursion.zc\", "
-                 "\"version\": %d}, \"contentChanges\": [{\"text\": \"fn f(x: (int int)) {}\\n\"}]}}",
-                 version);
+        snprintf(
+            request, sizeof(request),
+            "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didChange\", \"params\": "
+            "{\"textDocument\": {\"uri\": \"file:///tmp/test_recursion.zc\", "
+            "\"version\": %d}, \"contentChanges\": [{\"text\": \"fn f(x: (int int)) {}\\n\"}]}}",
+            version);
         send_request(request);
         // Read each answer, or the server blocks once the pipe is full
         free(wait_for_recursion_diagnostics());
@@ -585,22 +586,23 @@ static void test_completion_prefix()
     int fd = open("/tmp/test_prefix.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd >= 0)
     {
-        // Typing 'pr' should filter completions to print/printf/println
-        const char *code = "fn main() { pr }";
+        // Typing 'pr' should filter completions to print/printf/println (the first and the
+        // last are functions of std/io.zc)
+        const char *code = "import \"std/io.zc\"\nfn main() { pr }";
         write(fd, code, strlen(code));
         close(fd);
     }
 
-    send_request(
-        "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
-        "{\"textDocument\": {\"uri\": \"file:///tmp/test_prefix.zc\", \"languageId\": "
-        "\"zenc\", \"version\": 1, \"text\": \"fn main() { pr }\"}}}");
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_prefix.zc\", \"languageId\": "
+                 "\"zenc\", \"version\": 1, \"text\": \"import \\\"std/io.zc\\\"\\nfn main() { pr "
+                 "}\"}}}");
     usleep(100000);
 
-    // Request completion at line 0, character 14 (cursor after 'pr', before ' }')
+    // Request completion at line 1, character 14 (cursor after 'pr', before ' }')
     send_request("{\"jsonrpc\": \"2.0\", \"id\": 110, \"method\": \"textDocument/completion\", "
                  "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_prefix.zc\"}, "
-                 "\"position\": {\"line\": 0, \"character\": 14}}}");
+                 "\"position\": {\"line\": 1, \"character\": 14}}}");
 
     char *resp = wait_for_response(110);
     if (!resp)
@@ -1142,7 +1144,25 @@ static void expect_completion(int id, const char *path, int line, int character,
     {
         printf("Completion at %d:%d without %s (kind %d) or with keywords\n", line, character,
                expected, kind);
-        fail("Wrong completion after a C header alias");
+        fail("Wrong completion");
+    }
+    cJSON_Delete(response);
+}
+
+// Completion at (line, character) must not offer `unwanted`.
+static void expect_no_completion(int id, const char *path, int line, int character,
+                                 const char *unwanted)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *label = cJSON_GetObjectItem(cJSON_GetArrayItem(items, i), "label");
+        if (cJSON_IsString(label) && strcmp(label->valuestring, unwanted) == 0)
+        {
+            printf("Completion at %d:%d offers %s\n", line, character, unwanted);
+            fail("Wrong completion");
+        }
     }
     cJSON_Delete(response);
 }
@@ -1167,6 +1187,43 @@ static void test_c_header_completion(void)
     // A header re-exported by an imported module (use_a.zc, from test_c_header_reexports).
     expect_completion(834, C_TEST_DIR "/use_a.zc", 3, 11, "mod_function", 3);
     printf("PASS: test_c_header_completion\n");
+}
+
+static void test_member_completion(void)
+{
+    printf("Running test_member_completion...\n");
+    const char *path = C_TEST_DIR "/members.zc";
+    open_document(path, "struct Point { x: int; y: int; }\n"
+                        "impl Point {\n"
+                        "    fn origin() -> Point { return Point { x: 0, y: 0 }; }\n"
+                        "    fn len2(self) -> int { return self.x * self.x; }\n"
+                        "}\n"
+                        "struct Holder<T> { val: T; }\n"
+                        "impl Holder<T> {\n"
+                        "    fn get(self) -> T { return self.val; }\n"
+                        "}\n"
+                        "fn main() {\n"
+                        "    let p = Point { x: 1, y: 2 };\n"
+                        "    let h = Holder<int> { val: 1 };\n"
+                        "    p.\n"
+                        "    p.le\n"
+                        "    Point::\n"
+                        "    h.\n"
+                        "    Po\n"
+                        "}\n");
+    // Fields and methods after `value.`, also with part of the name typed.
+    expect_completion(840, path, 12, 6, "x", 5);
+    expect_completion(841, path, 12, 6, "len2", 2);
+    expect_no_completion(842, path, 12, 6, "origin");
+    expect_completion(843, path, 13, 8, "len2", 2);
+    // The functions without `self` after `Type::`.
+    expect_completion(844, path, 14, 11, "origin", 3);
+    expect_no_completion(845, path, 14, 11, "len2");
+    // An instance of a generic takes the methods of its template.
+    expect_completion(846, path, 15, 6, "get", 2);
+    // Not the C name of a method.
+    expect_no_completion(847, path, 16, 6, "Point__len2");
+    printf("PASS: test_member_completion\n");
 }
 
 static void write_index_fixture(const char *path, const char *content)
@@ -1979,8 +2036,7 @@ static void test_std_import_in_other_project(void)
     mkdir("/tmp/zc_lsp_std", 0755);
     write_config_fixture("/tmp/zc_lsp_std/main.zc",
                          "import \"std/vec.zc\"\nfn main() { let v = Vec<int>::new(); }\n");
-    const char *main_src =
-        "import \\\"std/vec.zc\\\"\\nfn main() { let v = Vec<int>::new(); }\\n";
+    const char *main_src = "import \\\"std/vec.zc\\\"\\nfn main() { let v = Vec<int>::new(); }\\n";
 
     // An editor starts the server in the workspace, where "./std" does not exist.
     global_len = 0;
@@ -2089,6 +2145,7 @@ int main()
     test_c_header_symbols();
     test_c_header_reexports();
     test_c_header_completion();
+    test_member_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
     waitpid(child_pid, NULL, 0);

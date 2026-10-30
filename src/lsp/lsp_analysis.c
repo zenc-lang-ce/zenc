@@ -865,6 +865,92 @@ static LSPContext lsp_get_completion_context(const char *source, int line, int c
     return CTX_FUNCTION;
 }
 
+static int has_completion(cJSON *items, const char *label)
+{
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *item_label = cJSON_GetObjectItem(cJSON_GetArrayItem(items, i), "label");
+        if (cJSON_IsString(item_label) && strcmp(item_label->valuestring, label) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Adds the functions of the impl blocks of `type_name` under the name they are called by: the
+// methods that take `self` when `with_self`, the other ones otherwise. A generic, written
+// (`Vec<int>`) or instantiated (`Vec__int32_t`), takes those of its template (`impl Vec<T>`).
+// Returns how many were added.
+static int add_impl_completions(cJSON *items, const char *type_name, int with_self)
+{
+    size_t base_len = strcspn(type_name, "<");
+    int added = 0;
+    StructRef *ref = g_project->ctx->parsed_impls_list;
+    GenericImplTemplate *tmpl = g_project->ctx->impl_templates;
+    while (ref || tmpl)
+    {
+        int from_template = !ref;
+        ASTNode *impl = ref ? ref->node : tmpl->impl_node;
+        if (ref)
+        {
+            ref = ref->next;
+        }
+        else
+        {
+            tmpl = tmpl->next;
+        }
+        if (!impl)
+        {
+            continue;
+        }
+        const char *target = impl->kind == NODE_IMPL         ? impl->impl.struct_name
+                             : impl->kind == NODE_IMPL_TRAIT ? impl->impl_trait.target_type
+                                                             : NULL;
+        size_t target_len = target ? strlen(target) : 0;
+        int same = target && target_len == base_len && strncmp(target, type_name, base_len) == 0;
+        int instance = target && from_template && strncmp(type_name, target, target_len) == 0 &&
+                       strncmp(type_name + target_len, "__", 2) == 0;
+        if (!same && !instance)
+        {
+            continue;
+        }
+        ASTNode *method = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
+        while (method)
+        {
+            int takes_self = method->kind == NODE_FUNCTION && method->func.count > 0 &&
+                             method->func.param_names && method->func.param_names[0] &&
+                             strcmp(method->func.param_names[0], "self") == 0;
+            if (method->kind == NODE_FUNCTION && takes_self == with_self && method->token.start)
+            {
+                // The declaration's name token: `func.name` is the C name (`Point__len2`).
+                char *name = token_strdup(method->token);
+                // The same impl block can be listed more than once, and a trait can repeat a name.
+                if (has_completion(items, name))
+                {
+                    method = method->next;
+                    continue;
+                }
+                cJSON *item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "label", name);
+                cJSON_AddNumberToObject(item, "kind", with_self ? 2 : 3); // Method or Function
+                char detail[MAX_SHORT_MSG_LEN];
+                snprintf(detail, sizeof(detail), "fn %s::%s", target, name);
+                cJSON_AddStringToObject(item, "detail", detail);
+                char snippet[MAX_VAR_NAME_LEN];
+                snprintf(snippet, sizeof(snippet), "%s(%s)", name,
+                         method->func.count > with_self ? "$1" : "");
+                cJSON_AddStringToObject(item, "insertText", snippet);
+                cJSON_AddNumberToObject(item, "insertTextFormat", 2);
+                cJSON_AddItemToArray(items, item);
+                added++;
+            }
+            method = method->next;
+        }
+    }
+    return added;
+}
+
 void lsp_completion(const char *uri, int line, int col, const cJSON *id)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
@@ -957,10 +1043,16 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
 
     int dot_completed = 0;
 
-    if (pf->source && col > 0 && col <= line_len &&
-        (ptr[col - 1] == '.' || (col > 1 && ptr[col - 2] == ':' && ptr[col - 1] == ':')))
+    // A member being typed (`p.le`, `String::fr`) completes like `p.` and `String::`: the
+    // filter by prefix at the end keeps the ones that match.
+    int at = col - prefix_len;
+    int is_scoped =
+        pf->source && at > 1 && at <= line_len && ptr[at - 2] == ':' && ptr[at - 1] == ':';
+    if (pf->source && at > 0 && at <= line_len && (ptr[at - 1] == '.' || is_scoped))
     {
-        int i = col - 2;
+        // After a `.` or a `::`, no keyword or free name fits.
+        dot_completed = 1;
+        int i = at - (is_scoped ? 3 : 2);
         while (i >= 0 && (ptr[i] == ' ' || ptr[i] == '\t'))
         {
             i--;
@@ -989,14 +1081,6 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                 // e.g. "a.b.c" -> parts: "a", "b", "c"
                 char *parts[32];
                 int part_count = 0;
-
-                // Handle Enum::Variant completion
-                int is_scoped = 0;
-                if (len >= 2 && expr_chain[len - 2] == ':' && expr_chain[len - 1] == ':')
-                {
-                    is_scoped = 1;
-                    expr_chain[len - 2] = 0; // Terminate early
-                }
 
                 // Replace '->' with '.' to simplify splitting
                 for (int c = 0; expr_chain[c]; c++)
@@ -1031,7 +1115,7 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                         }
                         ev = ev->next;
                     }
-                    dot_completed = 1;
+                    add_impl_completions(items, parts[0], 0);
                 }
 
                 if (!is_scoped && part_count > 0)
@@ -1153,42 +1237,9 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                     variant = variant->next;
                                 }
                             }
-                            dot_completed = 1;
                         }
 
-                        // Show methods (Struct::Method)
-                        FuncSig *fn_sig = g_project->ctx->func_registry;
-                        char method_prefix[MAX_VAR_NAME_LEN + 4];
-                        snprintf(method_prefix, sizeof(method_prefix), "%s::", clean_name);
-                        while (fn_sig)
-                        {
-                            if (strncmp(fn_sig->name, method_prefix, strlen(method_prefix)) == 0)
-                            {
-                                cJSON *item = cJSON_CreateObject();
-                                const char *method_name = fn_sig->name + strlen(method_prefix);
-                                cJSON_AddStringToObject(item, "label", method_name);
-                                cJSON_AddNumberToObject(item, "kind", 2); // Method
-                                char detail[MAX_SHORT_MSG_LEN];
-                                snprintf(detail, sizeof(detail), "fn %s", fn_sig->name);
-                                cJSON_AddStringToObject(item, "detail", detail);
-
-                                // Snippet format
-                                char snippet[MAX_VAR_NAME_LEN];
-                                if (fn_sig->total_args > 0)
-                                {
-                                    snprintf(snippet, sizeof(snippet), "%s($1)", method_name);
-                                }
-                                else
-                                {
-                                    snprintf(snippet, sizeof(snippet), "%s()", method_name);
-                                }
-                                cJSON_AddStringToObject(item, "insertText", snippet);
-                                cJSON_AddNumberToObject(item, "insertTextFormat", 2);
-
-                                cJSON_AddItemToArray(items, item);
-                            }
-                            fn_sig = fn_sig->next;
-                        }
+                        add_impl_completions(items, clean_name, 1);
                         zfree(type_name);
                     }
                 }
@@ -1290,6 +1341,7 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
         }
 
         // Non-type keywords and builtins
+        // Not the keywords above with a snippet, nor print/println: functions of std/io.zc.
         const char *plain_keywords[] = {"alias",
                                         "and",
                                         "asm",
@@ -1300,29 +1352,22 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                         "__COMPTIME_FILE__",
                                         "__COMPTIME_TARGET__",
                                         "const",
-                                        "def",
-                                        "defer",
                                         "do",
                                         "embed",
-                                        "eprint",
-                                        "eprintln",
                                         "exit",
                                         "expect",
                                         "export",
                                         "extern",
                                         "false",
                                         "fopen",
-                                        "for",
                                         "free",
                                         "goto",
                                         "guard",
-                                        "if",
                                         "import",
                                         "include",
                                         "inline",
                                         "it",
                                         "launch",
-                                        "let",
                                         "loop",
                                         "malloc",
                                         "mkdir",
@@ -1333,16 +1378,13 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                         "opaque",
                                         "or",
                                         "plugin",
-                                        "print",
                                         "printf",
-                                        "println",
                                         "raw",
                                         "realloc",
                                         "ref",
                                         "register",
                                         "repeat",
                                         "restrict",
-                                        "return",
                                         "self",
                                         "sizeof",
                                         "snprintf",
@@ -1364,7 +1406,6 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                         "usleep",
                                         "va_list",
                                         "volatile",
-                                        "while",
                                         "with",
                                         "yield",
                                         NULL};
@@ -1411,20 +1452,29 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
             g = g->next;
         }
 
+        // Names with `__` are C names (`Vec__int32_t`, `Point__len2`, `util__describe`), not
+        // the ones written in Zen C: methods and instances complete after `.` and `::`.
         StructDef *s = g_project->ctx->struct_defs;
-        while (s)
+        for (; s; s = s->next)
         {
+            if (strstr(s->name, "__"))
+            {
+                continue;
+            }
             cJSON *item = cJSON_CreateObject();
             cJSON_AddStringToObject(item, "label", s->name);
             cJSON_AddNumberToObject(item, "kind", 22);
             cJSON_AddStringToObject(item, "sortText", "060");
             cJSON_AddItemToArray(items, item);
-            s = s->next;
         }
 
         FuncSig *f = g_project->ctx->func_registry;
-        while (f)
+        for (; f; f = f->next)
         {
+            if (strstr(f->name, "__"))
+            {
+                continue;
+            }
             cJSON *item = cJSON_CreateObject();
             cJSON_AddStringToObject(item, "label", f->name);
             cJSON_AddNumberToObject(item, "kind", 3); // Function
@@ -1460,7 +1510,6 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
             cJSON_AddNumberToObject(item, "insertTextFormat", 2); // Snippet
 
             cJSON_AddItemToArray(items, item);
-            f = f->next;
         }
 
         if (target_func)
