@@ -157,7 +157,7 @@ void handle_expr_index(ParserContext *ctx, ASTNode *node)
     {
         char *base_type = infer_type(ctx, node->index.array);
         char *struct_name = NULL;
-        char method_name[MAX_MANGLED_NAME_LEN] = {0};
+        char *method_name = NULL;
 
         if (base_type && !strchr(base_type, '*'))
         {
@@ -169,18 +169,10 @@ void handle_expr_index(ParserContext *ctx, ASTNode *node)
                 memmove(clean, clean + 7, strlen(clean + 7) + 1);
             }
 
-            snprintf(method_name, sizeof(method_name), "%s__index", clean);
+            method_name = mangle_method_symbol(clean, NULL, "get");
             if (find_func(ctx, method_name))
             {
                 struct_name = xstrdup(clean);
-            }
-            else
-            {
-                snprintf(method_name, sizeof(method_name), "%s__get", clean);
-                if (find_func(ctx, method_name))
-                {
-                    struct_name = xstrdup(clean);
-                }
             }
         }
 

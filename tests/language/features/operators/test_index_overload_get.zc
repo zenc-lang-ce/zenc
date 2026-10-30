@@ -1,0 +1,44 @@
+// language/features/operators: `x[i]` on a struct calls its `get` method, however `x` is
+// written; a method named `index` is an ordinary method
+
+import "std/vec.zc"
+
+struct Bag { n: int; }
+
+impl Bag {
+    // Declared before get on purpose: it must not be picked for `[]`
+    fn index(self, i: int) -> int { return 100 + i; }
+    fn get(self, i: int) -> int { return 200 + i; }
+}
+
+struct Wrap { bag: Bag; }
+
+struct Grid<T> { v: T; }
+
+impl Grid<T> {
+    fn index(self, i: int) -> T { return self.v; }
+    fn get(self, i: int) -> T { return self.v + (T)i; }
+}
+
+struct Holder { g: Grid<int>; }
+
+test "index operator calls get on a variable and on a field" {
+    let a = Bag { n: 0 };
+    let w = Wrap { bag: Bag { n: 0 } };
+    assert(a[1] == 201, "a[1]");
+    assert(w.bag[1] == 201, "w.bag[1]");
+    assert(a.index(1) == 101, "index stays an ordinary method");
+}
+
+test "index operator calls get on a generic struct" {
+    let g = Grid<int> { v: 10 };
+    let h = Holder { g: Grid<int> { v: 10 } };
+    assert(g[1] == 11, "g[1]");
+    assert(h.g[1] == 11, "h.g[1]");
+}
+
+test "Vec keeps indexing with get" {
+    let v = Vec<int>::new();
+    v.push(7);
+    assert(v[0] == 7, "v[0]");
+}

@@ -2243,16 +2243,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 char *struct_name = (st->kind == TYPE_STRUCT) ? st->name : st->inner->name;
                 int is_ptr = (st->kind == TYPE_POINTER);
 
-                char mangled_raw[MAX_MANGLED_NAME_LEN];
-                snprintf(mangled_raw, sizeof(mangled_raw), "%s____get", struct_name);
-                char *mangled = merge_underscores(mangled_raw);
+                char *mangled = mangle_method_symbol(struct_name, NULL, "get");
                 FuncSig *sig = find_func(ctx, mangled);
-                if (!sig)
-                {
-                    snprintf(mangled_raw, sizeof(mangled_raw), "%s__get", struct_name);
-                    mangled = merge_underscores(mangled_raw);
-                    sig = find_func(ctx, mangled);
-                }
+
                 if (sig)
                 {
                     // Rewrite to Call: node.get(index, ...)
