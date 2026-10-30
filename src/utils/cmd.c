@@ -85,7 +85,7 @@ void print_usage(void)
 {
     printf(
         "usage: zc [-v | -h | -q | -V] [-I | -L | -l | -D <path/macro>] [--cc <c>] [-O<l>] [-g]\n");
-    printf("          [--release] [--json] [--paths] [--zen] <command> [<args>]\n\n");
+    printf("          [--release] [--json] [--paths] <command> [<args>]\n\n");
 
     printf("common commands:\n");
     print_help_item(COLOR_GREEN "build, run" COLOR_RESET,
@@ -108,12 +108,13 @@ void print_usage(void)
     print_help_item(COLOR_CYAN "--json" COLOR_RESET, "Emit structured JSON diagnostics");
 
     printf("\nlanguage & advanced:\n");
-    print_help_item(COLOR_CYAN "--check, --free" COLOR_RESET,
-                    "Borrow checker / No standard library");
+    print_help_item(COLOR_CYAN "-c, --check" COLOR_RESET, "Type check only, like 'zc check'");
+    print_help_item(COLOR_CYAN "--freestanding" COLOR_RESET,
+                    "Freestanding mode (no standard library)");
     print_help_item(COLOR_CYAN "--misra" COLOR_RESET, "Generate strictly MISRA C compliant code");
     print_help_item(COLOR_CYAN "--cpp, --cuda" COLOR_RESET, "C++ or CUDA compatibility modes");
-    print_help_item(COLOR_CYAN "-c, -S, -E, -shared" COLOR_RESET,
-                    "Compile/Asm/Preprocess only / DLL");
+    print_help_item(COLOR_CYAN "-S, -E, -shared" COLOR_RESET,
+                    "To the C compiler: assembly / preprocess only / shared library");
 
     printf("\n'zc -h' for help, 'zc --version' for version. See 'zc help <command>' for info.\n");
 }
@@ -148,7 +149,6 @@ void print_command_help(const char *command)
         printf("Verify syntax and type safety without generating code.\n\n");
         printf("options:\n");
         print_help_item("--json", "Output diagnostics in structured JSON");
-        print_help_item("--check", "Enable advanced borrow/move checking");
     }
     else if (strcmp(command, "transpile") == 0)
     {
