@@ -1,0 +1,23 @@
+// language/features/tuples: a tuple whose signature (its element types joined) is longer than a
+// fixed buffer: the compiler used to crash writing it past the end.
+
+struct VeryLongStructureNameForTheFirstTupleElement { a: int; }
+struct VeryLongStructureNameForTheSecondTupleElement { b: int; }
+struct VeryLongStructureNameForTheThirdTupleElement { c: int; }
+struct VeryLongStructureNameForTheFourthTupleElement { d: int; }
+struct VeryLongStructureNameForTheFifthTupleElement { e: int; }
+struct VeryLongStructureNameForTheSixthTupleElement { f: int; }
+
+fn sum(t: (VeryLongStructureNameForTheFirstTupleElement, VeryLongStructureNameForTheSecondTupleElement, VeryLongStructureNameForTheThirdTupleElement, VeryLongStructureNameForTheFourthTupleElement, VeryLongStructureNameForTheFifthTupleElement, VeryLongStructureNameForTheSixthTupleElement)) -> int {
+    return t.0.a + t.1.b + t.2.c + t.3.d + t.4.e + t.5.f;
+}
+
+test "tuple with a long signature" {
+    let t = (VeryLongStructureNameForTheFirstTupleElement { a: 1 },
+             VeryLongStructureNameForTheSecondTupleElement { b: 2 },
+             VeryLongStructureNameForTheThirdTupleElement { c: 3 },
+             VeryLongStructureNameForTheFourthTupleElement { d: 4 },
+             VeryLongStructureNameForTheFifthTupleElement { e: 5 },
+             VeryLongStructureNameForTheSixthTupleElement { f: 6 });
+    assert(sum(t) == 21, "every element of a tuple with a long signature");
+}

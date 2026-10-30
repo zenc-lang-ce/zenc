@@ -386,13 +386,15 @@ void register_tuple_with_types(ParserContext *ctx, const char *sig, const char *
     n->next = ctx->used_tuples;
     ctx->used_tuples = n;
 
-    char struct_name[MAX_ERROR_MSG_LEN];
+    // As long as the signature: a shorter buffer would cut the name parse_type_base gives it
     char *clean_sig = sanitize_mangled_name(sig);
-    snprintf(struct_name, sizeof(struct_name), "Tuple__%s", clean_sig);
+    size_t name_len = strlen(clean_sig) + sizeof("Tuple__");
+    char *struct_name = xmalloc(name_len);
+    snprintf(struct_name, name_len, "Tuple__%s", clean_sig);
     zfree(clean_sig);
 
     ASTNode *s_def = ast_create(NODE_STRUCT);
-    s_def->strct.name = xstrdup(struct_name);
+    s_def->strct.name = struct_name;
     ASTNode *head = NULL, *tail = NULL;
     for (int fi = 0; fi < count; fi++)
     {
