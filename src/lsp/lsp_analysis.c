@@ -1480,21 +1480,12 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
             cJSON_AddNumberToObject(item, "kind", 3); // Function
             cJSON_AddStringToObject(item, "sortText", "070");
 
-            // Rich detail with signature
-            char detail[1024];
-            size_t used = 0;
-            int fits = str_appendf(detail, sizeof(detail), &used, "fn %s(", f->name);
-            for (int i = 0; fits && i < f->total_args; i++)
+            // The signature as written, as the hover shows it
+            char detail[MAX_SHORT_MSG_LEN * 4];
+            if (lsp_function_signature(f->decl_token, detail, sizeof(detail)))
             {
-                char *tstr = type_to_string(f->arg_types[i]);
-                fits = str_appendf(detail, sizeof(detail), &used, "%s%s", tstr,
-                                   (i < f->total_args - 1) ? ", " : "");
-                zfree(tstr);
+                cJSON_AddStringToObject(item, "detail", detail);
             }
-            char *ret_str = type_to_string(f->ret_type);
-            str_appendf(detail, sizeof(detail), &used, ") -> %s", ret_str);
-            zfree(ret_str);
-            cJSON_AddStringToObject(item, "detail", detail);
 
             // Snippet to jump inside parens
             char snippet[MAX_VAR_NAME_LEN];
@@ -1956,6 +1947,70 @@ void lsp_references(const char *uri, int line, int col, const cJSON *id)
     send_json_response(root);
 }
 
+// The parameters of a signature as written, split at the commas of its parentheses only: a
+// parameter such as `m: Map<K, V>` or `f: fn(int, int) -> int` is one.
+static cJSON *signature_parameters(const char *signature)
+{
+    cJSON *params = cJSON_CreateArray();
+    const char *p = strchr(signature, '(');
+    if (!p)
+    {
+        return params;
+    }
+    const char *start = ++p;
+    int depth = 0;
+    char quote = 0;
+    for (; *p; p++)
+    {
+        if (quote)
+        {
+            if (*p == '\\' && p[1])
+            {
+                p++;
+            }
+            else if (*p == quote)
+            {
+                quote = 0;
+            }
+            continue;
+        }
+        if (*p == '"' || *p == '\'')
+        {
+            quote = *p;
+        }
+        else if (*p == '(' || *p == '[' || *p == '<')
+        {
+            depth++;
+        }
+        else if (depth > 0 && (*p == ')' || *p == ']' || (*p == '>' && p[-1] != '-')))
+        {
+            depth--;
+        }
+        else if (depth == 0 && (*p == ',' || *p == ')'))
+        {
+            while (start < p && *start == ' ')
+            {
+                start++;
+            }
+            if (p > start)
+            {
+                char *param = xmalloc((size_t)(p - start) + 1);
+                memcpy(param, start, (size_t)(p - start));
+                param[p - start] = 0;
+                cJSON *item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "label", param);
+                cJSON_AddItemToArray(params, item);
+            }
+            if (*p == ')')
+            {
+                break;
+            }
+            start = p + 1;
+        }
+    }
+    return params;
+}
+
 void lsp_signature_help(const char *uri, int line, int col, const cJSON *id)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
@@ -2030,69 +2085,17 @@ void lsp_signature_help(const char *uri, int line, int col, const cJSON *id)
                 {
                     if (strcmp(fn->name, func_name) == 0)
                     {
-                        // Found it
+                        // The signature as written, as the hover shows it
+                        char label[MAX_SHORT_MSG_LEN * 4];
+                        if (!lsp_function_signature(fn->decl_token, label, sizeof(label)))
+                        {
+                            break;
+                        }
                         cJSON *result = cJSON_CreateObject();
                         cJSON *sigs = cJSON_CreateArray();
                         cJSON *sig = cJSON_CreateObject();
-
-                        char label[4096];
-                        char params[MAX_ERROR_MSG_LEN] = "";
-                        int first = 1;
-                        for (int i = 0; i < fn->total_args; i++)
-                        {
-                            if (!first)
-                            {
-                                strncat(params, ", ", sizeof(params) - strlen(params) - 1);
-                            }
-                            char *tstr = type_to_string(fn->arg_types[i]);
-                            if (tstr)
-                            {
-                                strncat(params, tstr, sizeof(params) - strlen(params) - 1);
-                                zfree(tstr);
-                            }
-                            else
-                            {
-                                strncat(params, "unknown", sizeof(params) - strlen(params) - 1);
-                            }
-                            first = 0;
-                        }
-                        char *ret_str = type_to_string(fn->ret_type);
-                        snprintf(label, sizeof(label), "fn %s(%s) -> %s", fn->name, params,
-                                 ret_str ? ret_str : "void");
-                        if (ret_str)
-                        {
-                            zfree(ret_str);
-                        }
-
                         cJSON_AddStringToObject(sig, "label", label);
-
-                        cJSON *params_array = cJSON_CreateArray();
-                        char *p_ptr = params;
-                        while (*p_ptr)
-                        {
-                            char *p_end = (char *)strstr(p_ptr, ", ");
-                            char param_label[MAX_VAR_NAME_LEN];
-                            if (p_end)
-                            {
-                                ptrdiff_t p_len = p_end - p_ptr;
-                                if (p_len > 255)
-                                {
-                                    p_len = 255;
-                                }
-                                strncpy(param_label, p_ptr, (size_t)(p_len));
-                                param_label[p_len] = 0;
-                                p_ptr = p_end + 2;
-                            }
-                            else
-                            {
-                                strcpy(param_label, p_ptr);
-                                p_ptr += strlen(p_ptr);
-                            }
-                            cJSON *p_obj = cJSON_CreateObject();
-                            cJSON_AddStringToObject(p_obj, "label", param_label);
-                            cJSON_AddItemToArray(params_array, p_obj);
-                        }
-                        cJSON_AddItemToObject(sig, "parameters", params_array);
+                        cJSON_AddItemToObject(sig, "parameters", signature_parameters(label));
                         cJSON_AddItemToArray(sigs, sig);
 
                         cJSON_AddItemToObject(result, "signatures", sigs);
