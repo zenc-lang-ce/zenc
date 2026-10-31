@@ -180,17 +180,21 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
         int binding_count = 0;
 
         skip_comments(l);
-        if (!is_default && pattern_count == 1 &&
-            (lexer_peek(l).kind == TOK_LPAREN || lexer_peek(l).kind == TOK_LBRACE))
+        if (lexer_peek(l).kind == TOK_LBRACE)
         {
-            int is_brace = (lexer_peek(l).kind == TOK_LBRACE);
+            const char *hints[] = {"match on a field instead: `match value.field { ... }`", NULL};
+            zpanic_with_hints(lexer_peek(l), "Struct patterns are not supported in match", hints);
+            return NULL;
+        }
+        if (!is_default && pattern_count == 1 && lexer_peek(l).kind == TOK_LPAREN)
+        {
             lexer_next(l);
 
             bindings = xcalloc(8, sizeof(char *));
             binding_refs = xcalloc(8, sizeof(int));
             int binding_cap = 8;
 
-            while (lexer_peek(l).kind != TOK_RPAREN && lexer_peek(l).kind != TOK_RBRACE)
+            while (lexer_peek(l).kind != TOK_RPAREN)
             {
                 int is_r = 0;
                 if (lexer_peek(l).kind == TOK_IDENT && lexer_peek(l).len == 3 &&
@@ -214,38 +218,9 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                     binding_refs = xrealloc(binding_refs, sizeof(int) * (size_t)(binding_cap));
                 }
 
-                if (is_brace && lexer_peek(l).kind == TOK_COLON)
-                {
-                    lexer_next(l); // eat :
-                    Token val = lexer_next(l);
-                    if (val.kind == TOK_IDENT)
-                    {
-                        // A boolean literal (`has_value: true`) binds no name.
-                        char *s = token_strdup(val);
-                        if (strcmp(s, "true") == 0 || strcmp(s, "false") == 0)
-                        {
-                            bindings[binding_count] = NULL;
-                        }
-                        else
-                        {
-                            bindings[binding_count] = s;
-                        }
-                    }
-                    else
-                    {
-                        bindings[binding_count] = NULL;
-                    }
-                }
-                else
-                {
-                    bindings[binding_count] = token_strdup(b);
-                }
-
+                bindings[binding_count] = token_strdup(b);
                 binding_refs[binding_count] = is_r;
-                if (bindings[binding_count])
-                {
-                    binding_count++;
-                }
+                binding_count++;
 
                 if (lexer_peek(l).kind == TOK_COMMA)
                 {
@@ -256,12 +231,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
             }
 
             Token end = lexer_next(l);
-            if (is_brace && end.kind != TOK_RBRACE)
-            {
-                zpanic_at(end, "Expected }");
-                return NULL;
-            }
-            else if (!is_brace && end.kind != TOK_RPAREN)
+            if (end.kind != TOK_RPAREN)
             {
                 zpanic_at(end, "Expected )");
                 return NULL;
