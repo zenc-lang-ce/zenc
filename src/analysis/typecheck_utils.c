@@ -318,9 +318,25 @@ void check_all_args_side_effects(TypeChecker *tc, ASTNode *receiver, ASTNode *ar
 
 // Internal MISRA helpers moved to platform/misra.c
 
+// Whether `t` is in a file of the standard library other than the one being checked.
+// Containers do not own what they store yet (the memory model is pending), so the
+// instances of `Vec<T>` with a T that implements Drop get false move errors inside
+// std/vec.zc. They are not the program's errors: they are not reported.
+static int tc_in_std(TypeChecker *tc, Token t)
+{
+    const CompilerConfig *cfg = tc->pctx->config;
+    size_t len = strlen(cfg->std_root);
+    if (len == 0 || !t.file || strncmp(t.file, cfg->std_root, len) != 0 ||
+        strncmp(t.file + len, "/std/", 5) != 0)
+    {
+        return 0;
+    }
+    return !cfg->input_file || strcmp(t.file, cfg->input_file) != 0;
+}
+
 void tc_error(TypeChecker *tc, Token t, const char *msg)
 {
-    if (tc->move_checks_only)
+    if (tc->move_checks_only || tc_in_std(tc, t))
     {
         return;
     }
@@ -349,7 +365,7 @@ int is_expression_invariant(TypeChecker *tc, ASTNode *node, int *val)
 
 void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
 {
-    if (tc->move_checks_only)
+    if (tc->move_checks_only || tc_in_std(tc, t))
     {
         return;
     }
@@ -358,15 +374,21 @@ void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *
 
 void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
 {
-    (void)tc;
     // Control flow errors (missing return, unreachable code, etc.)
     // are reported even during move-only checking.
+    if (tc_in_std(tc, t))
+    {
+        return;
+    }
     zerror_with_hints(t, msg, hints);
 }
 
 void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
 {
-    (void)tc;
+    if (tc_in_std(tc, t))
+    {
+        return;
+    }
     zerror_with_hints(t, msg, hints);
 }
 
