@@ -1343,7 +1343,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
             else
             {
-                char *fmt = infer_printf_format(ctx, args, ac);
+                char *fmt = infer_scan_format(ctx, args, ac);
 
                 node = ast_create(NODE_EXPR_CALL);
                 node->token = t;

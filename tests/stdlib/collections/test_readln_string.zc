@@ -1,0 +1,36 @@
+// stdlib/collections: readln(...) writes each value with a conversion of its own
+// size. A `string` or `char*` gets a new string with the word read (it used `%s`,
+// which wrote the text over the pointer), and `bool`, `u16`, `i64`... are no
+// longer read with `%d`, which wrote 4 bytes whatever their size.
+
+test "test_readln_string" {
+    let path = "test_readln_string.tmp";
+    let f = fopen(path, "w");
+    fputs("Bob 42 Bilbao\n", f);
+    fputs("1 65000 -9000000000 7\n", f);
+    fclose(f);
+    freopen(path, "r", stdin);
+
+    let name: string = "";
+    let age: int = 0;
+    let city: char* = NULL;
+    let n = readln(name, age, city);
+
+    let flag: bool = false;
+    let port: u16 = 0;
+    let big: i64 = 0;
+    let count: usize = 0;
+    let m = readln(flag, port, big, count);
+    remove(path);
+
+    assert(n == 3, "three values read");
+    assert(strcmp(name, "Bob") == 0, "name is Bob");
+    assert(age == 42, "age is 42");
+    assert(strcmp(city, "Bilbao") == 0, "city is Bilbao");
+
+    assert(m == 4, "four values read");
+    assert(flag, "flag is true");
+    assert(port == 65000, "port is 65000");
+    assert(big == -9000000000, "big is -9000000000");
+    assert(count == 7, "count is 7");
+}
