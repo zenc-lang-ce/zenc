@@ -213,8 +213,26 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // Parse args
+    // Everything after `--` goes to the program of `zc run`/`zc debug`, even what
+    // looks like an option of zc.
+    int arg_end = argc;
     for (i = arg_start; i < argc; i++)
+    {
+        if (strcmp(argv[i], "--") == 0)
+        {
+            if (!cfg->mode_run)
+            {
+                fprintf(stderr, COLOR_BOLD COLOR_RED "error" COLOR_RESET
+                                                     ": `--` is only for zc run and zc debug\n");
+                return 1;
+            }
+            arg_end = i;
+            break;
+        }
+    }
+
+    // Parse args
+    for (i = arg_start; i < arg_end; i++)
     {
         char *arg = argv[i];
         if (strcmp(arg, "--emit-c") == 0)
@@ -598,14 +616,22 @@ int main(int argc, char **argv)
             {
                 cfg->input_file = arg;
             }
+            else if (cfg->mode_run)
+            {
+                zvec_push_Str(&cfg->run_args, arg);
+            }
             else
             {
                 zvec_push_Str(&cfg->extra_files, arg);
             }
         }
     }
+    for (i = arg_end + 1; i < argc; i++)
+    {
+        zvec_push_Str(&cfg->run_args, argv[i]);
+    }
 
-    for (i = arg_start; i < argc; i++)
+    for (i = arg_start; i < arg_end; i++)
     {
         char *arg = argv[i];
         if (arg && (strcmp(arg, "--version") == 0 || strcmp(arg, "-V") == 0))
