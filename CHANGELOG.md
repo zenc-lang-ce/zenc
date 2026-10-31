@@ -2,6 +2,8 @@
 
 ## 0.5.0
 
+References such as `#350` and `PR #517` are to zenc-lang/zenc; `CE #28` and `CE PR #90` are to zenc-lang-ce/zenc.
+
 ### Fixed
 - Security:
   - a stack buffer overflow when mangling long or deeply nested generic, enum variant and method names (GHSA-rv74-w6q7-h8xr);
@@ -12,7 +14,12 @@
   - a `match` expression with more than 8 bindings in a pattern (PR #517);
   - `Type::method` on a generic resolved to an instance with a long name (PR #517);
   - a lambda capturing more than 32 variables (PR #511);
-  - `snprintf` results are no longer used as buffer offsets in the language server (PR #526).
+  - `snprintf` results are no longer used as buffer offsets in the language server (PR #526);
+  - an f-string used as a value no longer writes past its buffer (CE PR #4);
+  - a slice literal of a type with a long name (CE #17, CE PR #58);
+  - more than 2048 trait implementations (CE #26, CE PR #57);
+  - a tuple type whose element types add up to more than 256 characters, also in the language server (CE #15, CE PR #83);
+  - undefined behavior in constant folding: `let a: int[1 << 66];` declared 4 elements on arm64. A shift by a negative amount or by 64 or more, and `LLONG_MIN / -1`, are no longer constants, and an overflow wraps around (CE #28, CE PR #90).
 - Function bodies and `test` blocks can use anything declared further down the file, imports included: functions, methods, impls, generics and operators (PR #486).
 - Closures and lambdas:
   - returning a capturing closure keeps its return type and its captured values (#358, #361);
@@ -30,10 +37,11 @@
 - Generics:
   - pointer type arguments: `Option<T*>`, `Map<MyStruct*>` (#350, #328);
   - generic structs with slice fields (`data: T[]`);
-  - generic function bodies can use `match` destructuring, `defer`, `guard`, `unless` and ternaries, and `sizeof`, casts and local types are substituted per instance;
+  - generic function bodies can use `match` destructuring, `defer` and ternaries, and `sizeof`, casts and local types are substituted per instance;
   - a static call on a generic path (`Option<V>::None()`) no longer ties the template to an unrelated instance (`Map<JsonValue>::get` returned `Option<Vec<DirEntry>>`);
   - the annotation of `let x: Foo<int> = make()` selects the instance, and methods of generic `impl` blocks are found as templates;
-  - an instance is no longer accepted where another instance of the same generic is expected (`Id<OrderKind>` for `Id<UserKind>`); through a pointer the program used to build and run with the wrong value (PR #521).
+  - an instance is no longer accepted where another instance of the same generic is expected (`Id<OrderKind>` for `Id<UserKind>`); through a pointer the program used to build and run with the wrong value (PR #521);
+  - `Map<K, V>` instances are named `Map__K__V` everywhere, and a module function whose name starts with `__` can be called (`util::__name()`) (CE PR #2).
 - Enums and `match`:
   - variants shared by several enums call the right constructor, also without `()` on a generic instance (`Maybe<int>::Nothing`) (PR #450);
   - explicit values (`Ok = 200`, hex, negative) reach the C enum and `match` (#399, PR #480);
@@ -41,7 +49,10 @@
   - `Enum::Variant` without `()` used as a value calls the constructor;
   - `match` on a variant whose name contains `_`;
   - `match` bindings on `Result` and `Option` get the payload type, so `Ok(s) => s.length()` works;
-  - enum variants with more than 32 payload types no longer crash the compiler.
+  - enum variants with more than 32 payload types no longer crash the compiler;
+  - a `match` expression is parsed like a `match` statement: its patterns take literals, ranges, `||` and strings, and its bindings are typed. Each arm is emitted as a value, so a nested `match`, an `if` or a string literal can be the value of an arm, and an arm can `return` or `assert`;
+  - a struct pattern (`Opt { has: true, val: v } =>`) is an error: the field values were ignored, so it matched any value, even `None`, or generated invalid C (CE #38, CE PR #93);
+  - enums with `@link_name` use the C name everywhere (CE PR #63).
 - `@derive`:
   - `@derive(Eq)` on an enum with payloads compares the values of the variant, not only the variant: `Just(1) == Just(5)` was `true` (PR #520);
   - `@derive(Eq)`, `Clone`, `Debug`, `FromJson` and `ToJson` work on generic structs and enums; no instance got the methods (PR #520);
@@ -56,7 +67,9 @@
   - overloaded operators pass struct operands by reference and drop temporaries (`text += &other`) (#336, PR #467);
   - `name < index` and `name < *ptr` parse as comparisons (#367, #427, PR #478);
   - `cond ? .a : .b` (the `self` field shorthand) parses as a ternary (#324);
-  - the `?` operator works on `Option`, and builds the `Err` or `None` it returns from the enclosing function's return type.
+  - the `?` operator works on `Option`, and builds the `Err` or `None` it returns from the enclosing function's return type;
+  - `x[i]` on a temporary calls `get` through a temporary variable instead of taking the address of a value that has none (CE #65, CE PR #66);
+  - a unary operator (`-x`, `!x`, `~x`) overloaded in `impl Trait for X` (CE PR #48).
 - Loops:
   - `continue` in `for i, v in arr` advances the index instead of looping forever (#359);
   - method calls on fields of the loop variable over `Vec<T*>` (`o.inner.get()`) (#349, PR #482);
@@ -71,10 +84,8 @@
   - raw strings `r"..."` and `r"""..."""` are not interpolated (#397);
   - non-`char` pointers print with `%p`, and values of unknown type fall back to `%s` instead of failing in C;
   - a `rune` interpolates without importing `std/io.zc`;
-  - moves are checked inside interpolations (`"{a.c_str()}"` after `let b = a;`) (#378, #383, PR #483);
-  - a bare interpolated string statement prints without a `;` (#379, PR #481);
-  - globals can hold strings whose braces are all escaped (`"""` snippets) or an embedded file with braces (#411, PR #477);
-  - `assert` and `expect` interpolate their message (#402, PR #473);
+  - moves are checked inside interpolations (`f"{a.c_str()}"` after `let b = a;`) (#378, #383, PR #483);
+  - `assert` and `expect` interpolate an `f"..."` message (#402, PR #473);
   - several crashes in f-string parsing.
 - Modules and imports:
   - `mod::fn()` and `mod::Type::method()` resolve after a plain `import "mod.zc"`;
@@ -93,7 +104,7 @@
   - arguments are checked like `let`: `UserId` and `ItemId` no longer mix;
   - in their own module, two different aliases are not interchangeable;
   - in their own module, an alias of a number compares with numbers (`*self == 0`).
-- `@link_name` structs: literals, and variables inside loops, methods and `test` blocks, use the C name (PR #501, PR #514).
+- `@link_name` structs: literals, and variables inside loops, methods and `test` blocks, use the C name (PR #501, PR #514), and so do generic instances, casts and `sizeof` of a type with `@link_name` (CE #41, CE PR #73).
 - `def` constants keep their sign and their 64 bits (`def NEG = -1;`, `def BIG: u64 = 0xcbf29ce484222325;`) (#322, PR #472).
 - Drop and moves:
   - `Set` implements `Drop` and no longer leaks (#420);
@@ -103,24 +114,33 @@
 - Generated C:
   - each type is declared before the types that use it (PR #452);
   - indexing through a pointer (`self.rows.data[r].push(v)`) uses plain array indexing instead of the `[]` overload, which produced invalid C;
-  - empty struct initializers are emitted as `{0}`.
+  - empty struct initializers are emitted as `{0}`;
+  - every variable of a top-level `let a = 1, b = 2;` is emitted, `static` and `@thread_local` globals keep their storage class, and `@cfg` alternatives of one global are all kept (CE #18, CE #59, CE #60, CE PR #67);
+  - a local without a declared type no longer takes the type of a variable with the same name in another function (CE #62, CE PR #68);
+  - a string literal can be the value of an `if` expression (CE #39, CE PR #74);
+  - a temporary that needs an address (a method receiver, an index or `==` overload operand) is copied with its type instead of `__typeof__` (CE PR #70), and with `--cpp` it stays alive during the call (CE #69, CE PR #72);
+  - a `defer` right after `let x = v;` is its own statement instead of being read as `let x = v defer …`.
 - `comptime` blocks process escapes in strings, and inside a function their output is parsed as statements (PR #451).
-- `? "prompt" (x)` keeps the answer on the prompt's line, and reading a `string` works on macOS (#416, PR #479).
+- `readln(...)` reads a `string` or `char*` argument into a new string instead of writing over the pointer, and each integer with a conversion of its size: a `bool` or a `u16` overwrote the bytes after it (CE #24, CE PR #91).
+- `zc build foo.zc` without `-o` no longer overwrites, and then deletes, a `foo.c` of the user in the same directory.
 - `zc check` (`--typecheck`):
   - checks method bodies in `trait` and `impl` blocks (#347);
   - methods can call methods defined further down the same `impl`;
   - a `T*` argument assigned to a `T` variable is accepted for `Copy` structs (#356);
   - assigning to a variable captured by value in a lambda is reported (#358);
-  - an infinite loop without `break` counts as returning.
+  - an infinite loop without `break` counts as returning;
+  - errors inside the standard library are not reported: the instances of `Vec<T>` with a `T` that implements `Drop` got false move errors, so every program that imports `std/io.zc` failed (CE #45, CE PR #95).
 - Diagnostics:
   - no unknown-type warning for C type names like `uint32_t` (#365);
   - errors inside lambdas and `match` point at the right line.
-- `--misra` builds a program end to end: every program used to fail with rule 5.10 on the compiler's own `true` and `false`, and the MISRA preamble lacked `ZC_FUNC`, `ZC_GLOBAL` and `string` (PR #519).
+- `--misra` reports Rule 16.4 once for a `match` without a default arm (CE #29, CE PR #55), no longer reports Rule 17.7 for `return f();`, and builds a program end to end: every program used to fail with rule 5.10 on the compiler's own `true` and `false`, and the MISRA preamble lacked `ZC_FUNC`, `ZC_GLOBAL` and `string` (PR #519).
 - `zc transpile -o FILE` no longer overwrites its output with a temporary file, and replaces an existing `FILE` on Windows too (PR #519).
 - Platforms:
   - Windows: UTF-8 console output (#338), `String` case-insensitive comparison without `strcasecmp`, `std/time.zc` no longer redeclares `time()`, built programs link statically, and a failure to run them shows the OS error;
   - `@cfg(apple)` is set on macOS (so `std/sync.zc` barriers work) and `@cfg(windows)` on Windows;
-  - a macro name clash on Termux (PR #447, Yuuki1578).
+  - a macro name clash on Termux (PR #447, Yuuki1578);
+  - Windows: `zc` restores the console code page when it exits (CE #86, CE PR #87), `build.bat` builds without libtcc (CE PR #47) and, like CMake, builds `zc-lsp`, `zc-repl`, `zc-doc` and `zc-format` (CE PR #71);
+  - macOS: `std/sys/info.zc` uses the system's `struct utsname`; `uname()` wrote past the Linux-sized one.
 - The C compiler receives the `-I` paths and the input file's directory, with `-iquote` for relative `#include`s, and no empty `-I`.
 - Installation:
   - an installed `zc` finds its standard library in `PREFIX/share/zenc` without `-I` (PR #524);
@@ -132,15 +152,23 @@
   - with TCC, zig cc and Cosmopolitan (APE);
   - plain `make` works without libtcc (the REPL JIT is enabled only when found) (#437, PR #465);
   - with clang older than 14 (`-Wreturn-stack-address`) (#440, PR #466);
-  - with `ZC_LSP=0` or `ZC_REPL=0`, the tools whose sources it excludes are left out (PR #515).
+  - with `ZC_LSP=0` or `ZC_REPL=0`, the tools whose sources it excludes are left out (PR #515);
+  - with `ZC_NO_PLUGINS` (it failed to link).
 - Embedding the compiler (`driver_compile`): the caller's configuration is used throughout (PR #494, PR #495), and a compilation after one with errors no longer fails (PR #507).
 - LSP:
   - crashes and memory leaks in completion, go to definition, find references and indexing;
   - client timeouts while indexing the workspace;
   - re-analysing a file no longer reports redefinitions from files indexed before;
   - an unresolved import no longer crashes the server (PR #396, robknopf);
-  - the server writes to stderr only with `--verbose`, which broke Neovim ("cannot resume dead coroutine").
-- REPL: Ctrl+C no longer locks multi-line input, crashes are fixed, and `:c`, `:type` and `:run` work on Windows, APE builds and with the standalone `zc-repl`.
+  - the server writes to stderr only with `--verbose`, which broke Neovim ("cannot resume dead coroutine");
+  - each response carries the request's id as the client sent it, a string too (CE #19, CE PR #75);
+  - after about a thousand edits with a type error, every type failed to parse until a restart (CE #16, CE PR #76);
+  - words inside comments and strings are no longer colored as keywords (CE #32, CE PR #81);
+  - on Windows the server answers `initialize` (CE PR #82);
+  - the server stops indexing when the editor has exited, instead of running on (CE PR #79);
+  - methods are offered after `value.` and `Type::`, also on generic instances, and a member being typed completes like the members (CE #88, CE PR #89).
+- REPL: Ctrl+C no longer locks multi-line input, crashes are fixed, `:c`, `:type` and `:run` work on Windows, APE builds and with the standalone `zc-repl`, and `:plot` compiles (CE #43, CE PR #54).
+- `zc -h` lists only the options `zc` parses (CE #21, CE PR #56), and `zc help doc` shows the options of `zc-doc` (CE #31, CE PR #53).
 - The Forth and Befunge plugins accept CRLF line endings.
 
 ### Added
@@ -152,6 +180,7 @@
   - `export import "file.zc"` re-exports a module;
   - `null` in C mode;
   - arrays in `comptime` blocks (declaration, indexing, casts; out-of-bounds indexes are compile errors).
+- A failed `assert` or `expect`, a `panic` and an index out of bounds say where they are in the source (`file:line:`).
 - Escape analysis in `zc check`: returning or storing the address of a local is an error, also through arrays, struct fields, and functions or methods that return one of their pointer arguments (lifetime elision).
 - Clear errors instead of broken C for:
   - top-level `const` (PR #458), and anything else that does not start a top-level declaration (`pub fn`, a stray `}`, `namespace`) (PR #463);
@@ -163,12 +192,13 @@
   - `break` and `continue` outside a loop;
   - an initializer of an unrelated type (`let x: int = "text"`);
   - prefix pointers (`*Type`; Zen C uses `Type*`);
-  - `println(...)` written with parentheses;
-  - leftover tokens in an interpolation (`"{x y}"`, code in a `"""` string) (#368, PR #470);
+  - leftover tokens in an interpolation (`f"{x y}"`, code in an `f"""` string) (#368, PR #470);
   - a C string or number as the operand of an overload that takes a struct (`String += "x"`) (#336, PR #467);
-  - a global initialized with an interpolated string (#411, PR #477);
+  - a global initialized with an f-string (#411, PR #477);
   - an unknown trait in `@derive` (`@derive(Cpy)`) (PR #489);
-  - a function whose closing `}` is missing at the end of the file (`Unclosed '{'`) (PR #486).
+  - a function whose closing `}` is missing at the end of the file (`Unclosed '{'`) (PR #486);
+  - `autofree`, `async`, `await`, `unless`, `guard`, `repeat` and `do … while` (see Removed), with the replacement;
+  - a match arm written with `->`, and `->` used as a lambda arrow (`x -> x * 2`, `(a, b) -> a + b`), with a hint towards `=>` (CE PR #94).
 - Testing:
   - `expect(cond, msg)`, a check that records the failure and goes on;
   - `std/test.zc`, imported in `test` blocks: `expect_eq`, `expect_ne`, `expect_approx_eq`;
@@ -177,10 +207,12 @@
 - `--filcc` builds with Fil-C, the memory-safe C compiler.
 - MISRA:
   - `--misra` checks MISRA C:2012 rules and directives, plus Zen rules (no `raw` or `plugin` blocks, no `#` directives, no `_` arm on enum matches, no shadowing, reserved names, no tuples of 3 or more fields, no `string == string`);
+  - `--profile c11|hosted|misra-c2012` (`--misra` is `misra-c2012`); MISRA output has no `#line` directives (Rule 20.13);
   - `@cfg(misra)`, and `@cfg(freestanding)` with `--freestanding`;
   - `StaticArena`, a fixed buffer used for allocation in MISRA builds.
 - CLI:
   - `zc help` and `zc help <command>`;
+  - `zc run FILE ARGS...` passes the arguments to the program, and so does everything after `--` (CE #30, CE PR #92);
   - `zc` reports an unknown command instead of building silently (`zc test f.zc`) (#409, PR #468);
   - `-W<group>` and `-Wno-<group>` turn Zen C diagnostics on or off (`unused`, `safety`, `logic`, `conversion`, `pedantic`, `interop`); other `-W` flags still go to the C compiler;
   - `--no-suppress-warnings` (see Changed) (#341);
@@ -204,12 +236,13 @@
   - full signatures on hover (PR #461);
   - formatting, and signature help that marks the active parameter;
   - completion of keywords and types, `Enum::Variant`, and members through generics and methods (`a.b.`);
-  - `break` and `continue` offered in every kind of loop, also nested in `unless`, `match` or `guard` (PR #505, PR #506);
+  - `break` and `continue` offered in every kind of loop, also nested in `match` (PR #505, PR #506);
   - hover for built-ins and for plugin blocks;
   - code actions that replace deprecated `var` and `const`;
   - `shutdown` and `exit`;
   - `zenc.server.json` (include paths, `exclude`, `use_gitignore`) and `.gitignore` support when indexing (PR #493);
-  - `--verbose` startup log: version, project root, and what the workspace indexing cost (PR #525).
+  - `--verbose` startup log: version, project root, and what the workspace indexing cost (PR #525);
+  - the progress of indexing the workspace, shown in the editor's status bar (CE PR #78).
 - Build:
   - `make ZC_LSP=0 ZC_REPL=0 ZC_PLUGINS=0 ZC_BACKENDS=0` and the `core`, `lite` and `minimal` targets build a smaller compiler;
   - `make format`, `lint`, `bench`, fuzzing targets, and test targets for MISRA, backends, plugins, the LSP, TCC and Fil-C.
@@ -223,8 +256,13 @@
   - `MANGLING.md`, `STYLE.md` and the compiler conventions in `CONTRIBUTING.md`.
 
 ### Changed
+- Strings (RFC 0001):
+  - only `f"..."` interpolates, and `{{` / `}}` are escapes only there; a plain `"..."` that relies on the old interpolation is an error for this release (CE PR #5);
+  - `print`, `println`, `eprint` and `eprintln` are functions of `std/io.zc` that take one string and print it as text: `println(f"total: {n}")`. They need `import "std/io.zc"`, and the old forms that would compile and print nothing are errors, with the replacement (CE PR #50, CE PR #51, CE PR #61).
+- Lambdas and match arms take `=>`, and `->` is member access through a pointer and the return type arrow: `p->value` reads the field, also when `p` is a plain identifier, where it used to be the lambda `p => value` (CE #46, CE PR #94).
+- `x[i]` calls the `get` method of a struct, and only `get` (CE #33, CE PR #64).
+- A failed `assert` outside a `test` block stops the program with exit code 1, instead of going on and exiting with 0.
 - The LSP, REPL, documentation generator and formatter are separate programs: `zc-lsp`, `zc-repl`, `zc-doc` and `zc-format`. `zc lsp`, `zc repl`, `zc doc` and `zc format` still work but are deprecated, and `--zen` is gone.
-- `async` functions compile to a state machine polled by `await` instead of a thread per call; programs no longer link `-lpthread`.
 - `comptime` blocks run in an interpreter inside the compiler (`let`, loops, `if`, string concatenation, `code()`, `yield()`, `compile_error`, `compile_warn`).
 - `zc check` follows the build's rules: match bindings, aliases, `p[i]`, pointer/value, and omitted struct fields (required only in MISRA mode) (PR #523).
 - Output is shorter by default: `zc` prints only "Compiling FILE"; `-v` shows each phase. `zc --help` is a short usage summary.
@@ -240,15 +278,24 @@
   - `format()` can be nested: it rotates four thread-local buffers, and `itos`, `utos` and `format` are thread-safe;
   - modules use `extern fn`, `@crepr` and `@link` instead of `raw` C blocks (`std/sys`, `time`, `json`, `sha256`, `regex`, `process`);
   - `sort` is a generic quicksort with median-of-three pivots, and `String` building copies with `memcpy`;
-  - `std/net/http` no longer prints "Server listening".
+  - `std/net/http` no longer prints "Server listening";
+  - `Vec::index` is gone; use `get` or `v[i]` (CE PR #64).
 - The DSL plugins (Befunge, Brainfuck, Forth, Lisp, SQL) are written in Zen C, the regex plugin is gone, and plugins can report diagnostics and provide hover text.
 - LSP:
   - memory no longer grows without bound while editing (PR #449);
   - unknown requests get `MethodNotFound` (PR #460);
   - closing a document reverts it to the file on disk (PR #492);
   - a project outside the compiler's tree finds the standard library (PR #516);
-  - go to definition finds variables inside `unless`, ternaries, array literals, `repeat`, lambdas and `do … while` (PR #499).
+  - go to definition finds variables inside ternaries, array literals and lambdas (PR #499).
 - The language reference moved from the README to the documentation site; the installation guide was updated (PR #369, z0rhan).
-- Faster symbol and type lookups (PR #444, apocalypse9949).
+- Faster compilation: symbol and type lookups (PR #444, apocalypse9949); struct ordering and lookups in codegen (a program of 10,000 lines: 33–38 s to about 6 s); name lookups indexed by name (a program of 60 files: 4.6 s to 0.8 s; indexing a workspace of 1,206 files in the language server: 56 s to 6.5 s) (CE PR #80).
 - Building the compiler: C23 (`gnu23`) by default, falling back to `gnu11`; `zc` no longer contains the TRE regex library, which `std/regex.zc` compiles from source.
-- Internal: the compiler source was split into many smaller files with a shared source list, the code generator writes through an emitter, global state moved into the compiler and parser contexts (PR #494, PR #495), typecheck and MISRA checks were separated, the AST walkers share `ast_children()` (PR #499 to PR #505), the C code generator shares its loop and defer scaffolding (PR #518), the driver no longer sets the parser context twice (#436, PR #474), dead code was removed, and CI gained sanitizer, fuzzing, coverage, benchmark and example-build jobs; benchmark noise no longer fails pull requests (PR #502).
+- Internal: the compiler source was split into many smaller files with a shared source list, the code generator writes through an emitter, global state moved into the compiler and parser contexts (PR #494, PR #495), typecheck and MISRA checks were separated, the AST walkers share `ast_children()` (PR #499 to PR #505), the C code generator shares its loop and defer scaffolding (PR #518), the driver no longer sets the parser context twice (#436, PR #474), the C names of symbols are built in one place (CE PR #2), duplicated parser code was merged (CE PR #48), f-strings are an AST node written by codegen (CE PR #51), dead code was removed (CE PR #49), and CI gained sanitizer, fuzzing, coverage, benchmark and example-build jobs; benchmark noise no longer fails pull requests (PR #502).
+
+### Removed
+- These forms are compile errors that name their replacement:
+  - `autofree`: use `defer free(x)` or `Drop`;
+  - `async` and `await`: use `std/thread.zc`;
+  - `unless` and `guard`: use `if` and `if !`;
+  - `repeat` and `do … while`: use `for` and `while`.
+- The `? "prompt" (x)` and `? x, y` input statements, and the `print` and `println` keywords (`println "text"`): use `readln(...)` and `println(f"...")` (CE PR #50).
