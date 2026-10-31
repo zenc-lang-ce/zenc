@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// compiler/diagnostics: lambdas take `=>`. `x -> x * 2` is member access on the
+// int `x`, which is an error that suggests `=>`.
+
+fn main() {
+    let x = 3;
+    let f = x -> x * 2;
+    printf("%d\n", f(2));
+}

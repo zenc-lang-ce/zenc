@@ -575,10 +575,15 @@ Token lexer_next(Lexer *l)
             type = TOK_DOTDOT;
         }
     }
-    else if ((s[0] == '-' && s[1] == '>') || (s[0] == '=' && s[1] == '>'))
+    else if (s[0] == '-' && s[1] == '>')
     {
         len = 2;
         type = TOK_ARROW;
+    }
+    else if (s[0] == '=' && s[1] == '>')
+    {
+        len = 2;
+        type = TOK_FAT_ARROW;
     }
 
     else if ((s[0] == '<' && s[1] == '<') || (s[0] == '>' && s[1] == '>'))

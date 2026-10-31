@@ -34,7 +34,7 @@ Precedence get_token_precedence(Token t)
         return PREC_CALL;
     }
 
-    if (t.kind == TOK_ARROW && t.start[0] == '-')
+    if (t.kind == TOK_ARROW)
     {
         return PREC_CALL;
     }

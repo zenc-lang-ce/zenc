@@ -1,0 +1,13 @@
+// EXPECT: FAIL
+// compiler/diagnostics: lambdas take `=>`. `(a, b) -> a + b` is member access on
+// the tuple `(a, b)`, which is an error that suggests `=>`.
+
+fn apply(f: fn(int, int) -> int) -> int {
+    return f(1, 2);
+}
+
+fn main() {
+    let a = 1;
+    let b = 2;
+    printf("%d\n", apply((a, b) -> a + b));
+}

@@ -6,20 +6,20 @@ fn apply_twice(f: fn(I32) -> I32, x: I32) -> I32 {
 
 fn make_adder(n: I32) -> fn(I32) -> I32 {
     // Returns a lambda that captures 'n'
-    return x -> x + n;
+    return x => x + n;
 }
 
 test "test_complex_lambdas" {
     println("Testing complex lambda scenarios...");
     
     // Lambda with multiple parameters
-    let add_three = (a, b, c) -> a + b + c;
+    let add_three = (a, b, c) => a + b + c;
     let res1 = add_three(1, 2, 3);
     assert(res1 == 6, "Multi-param lambda: Failed");
     println("  -> Multi-param lambda: Passed");
     
     // Higher-order function
-    let res2 = apply_twice(x -> x * 2, 5);
+    let res2 = apply_twice(x => x * 2, 5);
     assert(res2 == 20, "Higher-order function: Failed");
     println("  -> Higher-order function: Passed");
     
@@ -30,14 +30,14 @@ test "test_complex_lambdas" {
     println("  -> Returned lambda: Passed");
     
     // Lambda composition
-    let doubler = x -> x * 2;
-    let add5 = x -> x + 5;
+    let doubler = x => x * 2;
+    let add5 = x => x + 5;
     let res4 = add5(doubler(10));
     assert(res4 == 25, "Lambda composition: Failed");
     println("  -> Lambda composition: Passed");
     
     // Nested application
-    let res5 = apply_twice(x -> x + 1, apply_twice(x -> x * 2, 3));
+    let res5 = apply_twice(x => x + 1, apply_twice(x => x * 2, 3));
     // (3 * 2) * 2 = 12, then (12 + 1) + 1 = 14
     assert(res5 == 14, "Nested application: Failed");
     println("  -> Nested application: Passed");
@@ -68,7 +68,7 @@ test "test_complex_lambdas" {
 
 test "test_basic_closure" {
     let whatever = 10;
-    let closure: fn(I32) -> I32 = x -> x + whatever;
+    let closure: fn(I32) -> I32 = x => x + whatever;
     let res = closure(5);
     // "Result: {res}";
     assert(res == 15, f"Closure failed: expected 15, got {res}");
@@ -84,12 +84,12 @@ test "reference_capture" {
     assert(val == 11, f"Block ref capture failed: val={val} (expected 11)");
     println("  -> Block ref capture: Passed");
     
-    let modify_arrow = [&] x -> val += x;
+    let modify_arrow = [&] x => val += x;
     modify_arrow(5);
     assert(val == 16, f"Arrow ref capture failed: val={val} (expected 16)");
     println("  -> Arrow ref capture: Passed");
     
-    let sum_into = [&] (a, b) -> val += (a + b);
+    let sum_into = [&] (a, b) => val += (a + b);
     sum_into(2, 2);
     assert(val == 20, f"Arrow multi-arg ref capture failed: val={val} (expected 20)");
     println("  -> Arrow multi-arg ref capture: Passed");

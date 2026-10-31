@@ -1,0 +1,42 @@
+// language/features/pointers: `->` is member access through a pointer, also on a
+// plain identifier. `p->value` used to be read as the arrow lambda `p => value`,
+// a closure that captured the variable `value`.
+
+struct P {
+    value: int;
+}
+
+fn make(b: P*) -> P* {
+    return b;
+}
+
+test "test_arrow_member_access" {
+    let b = P { value: 7 };
+    let value = 99;
+    let p = &b;
+    assert(p->value == 7, "p->value reads the field");
+    assert((p)->value == 7, "(p)->value reads the field");
+    assert(make(&b)->value == 7, "a call result reads the field");
+    p->value = 8;
+    assert(b.value == 8, "p->value writes the field");
+    assert(value == 99, "the variable named like the field is untouched");
+}
+
+test "test_fat_arrow_lambdas" {
+    let k = 3;
+    let f = x => x * 2;
+    let g = (a: int, c: int) => a + c;
+    let h = [&](n: int) => n + k;
+    let t = q: int => q + 1;
+    let z = () => 5;
+    assert(f(4) == 8, "x => x * 2");
+    assert(g(1, 2) == 3, "(a: int, c: int) => a + c");
+    assert(h(1) == 4, "[&](n: int) => n + k");
+    assert(t(1) == 2, "q: int => q + 1");
+    assert(z() == 5, "() => 5");
+    let m = match k {
+        3 => 1,
+        _ => 0,
+    };
+    assert(m == 1, "match arms take =>");
+}

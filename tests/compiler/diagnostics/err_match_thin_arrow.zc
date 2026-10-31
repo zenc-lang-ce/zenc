@@ -1,0 +1,11 @@
+// EXPECT: FAIL
+// compiler/diagnostics: match arms take `=>`. `->` is member access through a
+// pointer, and the error says to write the arm with `=>`.
+
+fn main() {
+    let r = match 3 {
+        3 -> 1,
+        _ => 0,
+    };
+    printf("%d\n", r);
+}
