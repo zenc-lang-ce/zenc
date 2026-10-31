@@ -577,8 +577,10 @@ void lsp_project_update_file(const char *uri, const char *src)
     }
     pf->source = xstrdup(src);
 
+    // The tokens point into the text they were read from: the caller's copy may be gone by
+    // the next request, the file's own stays as long as what is parsed from it.
     Lexer l;
-    lexer_init(&l, src, g_project->ctx->config, g_project->ctx->current_filename);
+    lexer_init(&l, pf->source, g_project->ctx->config, g_project->ctx->current_filename);
 
     // Reset parser context globals only for fresh manual updates.
     // During workspace indexing, we want to accumulate definitions.

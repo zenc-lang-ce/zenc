@@ -136,10 +136,10 @@ LSPRange *lsp_find_at(LSPIndex *idx, int line, int col)
 
 // The declaration as written, from the name up to the body: the parsed types are in their C
 // form (int32_t for int, double for f64) and method names are mangled (Rect__area).
-static int function_signature(ASTNode *node, char *out, size_t size)
+int lsp_function_signature(Token name, char *out, size_t size)
 {
-    const char *p = node->token.start;
-    if (!p || node->token.kind != TOK_IDENT)
+    const char *p = name.start;
+    if (!p || name.kind != TOK_IDENT)
     {
         return 0;
     }
@@ -234,7 +234,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
         if (node->kind == NODE_FUNCTION)
         {
             char hover[MAX_SHORT_MSG_LEN * 4];
-            if (!function_signature(node, hover, sizeof(hover)))
+            if (!lsp_function_signature(node->token, hover, sizeof(hover)))
             {
                 const char *name = node->func.name ? node->func.name : "unknown";
                 const char *ret = node->func.ret_type ? node->func.ret_type : "void";

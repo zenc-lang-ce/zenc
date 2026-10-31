@@ -1167,6 +1167,65 @@ static void expect_no_completion(int id, const char *path, int line, int charact
     cJSON_Delete(response);
 }
 
+// Completion and signature help show a function's signature as written, as the hover does: Zen C
+// type names, not the C ones (int8_t, double), and the parameter names.
+static void test_signature_as_written(void)
+{
+    printf("Running test_signature_as_written...\n");
+    const char *path = "/tmp/test_signature_as_written.zc";
+    const char *signature =
+        "fn pick(x: i8, f: fn(int, int) -> int, label: string = \"a, b\") -> f64";
+    open_document(path, "fn pick(x: i8, f: fn(int, int) -> int, label: string = \"a, b\") -> f64\n"
+                        "{\n"
+                        "    return 0.0;\n"
+                        "}\n"
+                        "fn main() {\n"
+                        "    pick(1, \n"
+                        "}\n");
+    usleep(100000);
+
+    cJSON *response = position_request(140, "textDocument/completion", path, 5, 8);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    const char *detail = NULL;
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *item = cJSON_GetArrayItem(items, i);
+        cJSON *label = cJSON_GetObjectItem(item, "label");
+        if (cJSON_IsString(label) && strcmp(label->valuestring, "pick") == 0)
+        {
+            detail = cJSON_GetStringValue(cJSON_GetObjectItem(item, "detail"));
+        }
+    }
+    if (!detail || strcmp(detail, signature) != 0)
+    {
+        printf("Completion detail of pick: %s\n", detail ? detail : "(none)");
+        fail("Completion must show the function signature as written");
+    }
+    cJSON_Delete(response);
+
+    // The commas inside a parameter's type or default value do not split it.
+    const char *parameters[] = {"x: i8", "f: fn(int, int) -> int", "label: string = \"a, b\""};
+    response = position_request(141, "textDocument/signatureHelp", path, 5, 12);
+    cJSON *result = cJSON_GetObjectItem(response, "result");
+    cJSON *sig = cJSON_GetArrayItem(cJSON_GetObjectItem(result, "signatures"), 0);
+    const char *label = cJSON_GetStringValue(cJSON_GetObjectItem(sig, "label"));
+    cJSON *params = cJSON_GetObjectItem(sig, "parameters");
+    int ok = label && strcmp(label, signature) == 0 && cJSON_GetArraySize(params) == 3;
+    for (int i = 0; ok && i < 3; i++)
+    {
+        const char *param =
+            cJSON_GetStringValue(cJSON_GetObjectItem(cJSON_GetArrayItem(params, i), "label"));
+        ok = param && strcmp(param, parameters[i]) == 0;
+    }
+    if (!ok)
+    {
+        printf("Signature help: %s\n", cJSON_PrintUnformatted(result));
+        fail("Signature help must show the function signature as written");
+    }
+    cJSON_Delete(response);
+    printf("PASS: test_signature_as_written\n");
+}
+
 static void test_c_header_completion(void)
 {
     printf("Running test_c_header_completion...\n");
@@ -2145,6 +2204,7 @@ int main()
     test_c_header_symbols();
     test_c_header_reexports();
     test_c_header_completion();
+    test_signature_as_written();
     test_member_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");

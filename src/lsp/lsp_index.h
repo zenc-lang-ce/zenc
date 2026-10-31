@@ -53,6 +53,12 @@ void lsp_index_add_def_range(LSPIndex *idx, Token start, Token end, const char *
 void lsp_index_add_ref(LSPIndex *idx, Token t, Token def_t, ASTNode *node);
 LSPRange *lsp_find_at(LSPIndex *idx, int line, int col);
 
+/**
+ * @brief Writes "fn " and a function's declaration as written in the source, from its name
+ * token up to the body. Returns 0 when the token is not the name in a source.
+ */
+int lsp_function_signature(Token name, char *out, size_t size);
+
 // Walker.
 void lsp_build_index(LSPIndex *idx, ASTNode *root);
 
