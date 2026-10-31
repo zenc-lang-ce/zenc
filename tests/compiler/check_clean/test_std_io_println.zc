@@ -1,0 +1,10 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// Importing std/io.zc instantiates Vec<String> (String implements Drop), whose
+// methods get false move errors while containers do not own what they store.
+// Errors inside the standard library are not reported, so a program that prints
+// passes `zc check`.
+import "std/io.zc"
+
+fn main() {
+    println("hello");
+}
