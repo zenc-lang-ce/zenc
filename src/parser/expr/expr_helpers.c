@@ -110,10 +110,6 @@ int tokens_could_be_generic_args(Lexer *l)
             brackets++;
             break;
         case TOK_ARROW:
-            if (tk.start[0] != '-')
-            {
-                return 0;
-            }
             break;
         case TOK_OP:
             if (token_is_only_stars(tk))

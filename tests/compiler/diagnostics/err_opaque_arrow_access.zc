@@ -1,0 +1,10 @@
+// EXPECT: FAIL
+// compiler/diagnostics: `->` on an opaque struct outside its module is rejected
+// like `.`. `b->value` used to be a lambda, so it was not checked.
+import "../../language/features/opaque-types/_opaque_lib.zc"
+
+fn main() {
+    let box = new_box(5);
+    let b = &box;
+    printf("%d\n", b->value);
+}

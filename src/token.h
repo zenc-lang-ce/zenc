@@ -40,7 +40,8 @@ typedef enum
     TOK_DOTDOT,     ///< ..
     TOK_DOTDOT_EQ,  ///< ..= (inclusive range).
     TOK_DOTDOT_LT,  ///< ..< (exclusive range, explicit).
-    TOK_ARROW,      ///< -> or =>
+    TOK_ARROW,      ///< -> (member access through a pointer, return type).
+    TOK_FAT_ARROW,  ///< => (lambda, match arm).
     TOK_PIPE,       ///< |> (pipe operator).
     TOK_TEST,       ///< 'test' keyword.
     TOK_ASSERT,     ///< 'assert' keyword.

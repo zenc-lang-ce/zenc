@@ -217,7 +217,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         angles--;
                     }
                 }
-                else if (tk.kind == TOK_ARROW && angles == 0)
+                else if (tk.kind == TOK_FAT_ARROW && angles == 0)
                 {
                     found_arrow = 1;
                     break;
@@ -232,10 +232,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     return NULL;
                 }
-                if (lexer_peek(&lookahead).kind == TOK_ARROW)
+                if (lexer_peek(&lookahead).kind == TOK_FAT_ARROW)
                 {
                     *l = lookahead;
-                    lexer_next(l); // consume '->'
+                    lexer_next(l); // consume '=>'
                     char **params = xmalloc(sizeof(char *));
                     Type **param_types = xmalloc(sizeof(Type *));
                     params[0] = ident; // pass ownership of ident
@@ -246,7 +246,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
         }
 
-        if (lexer_peek(l).kind == TOK_ARROW)
+        if (lexer_peek(l).kind == TOK_FAT_ARROW)
         {
             lexer_next(l);
             return parse_arrow_lambda_single(ctx, l, ident, 0);
@@ -1758,7 +1758,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 if (nparams == 0 && lexer_peek(&lookahead).kind == TOK_RPAREN)
                 {
                     lexer_next(&lookahead);
-                    if (lexer_peek(&lookahead).kind == TOK_ARROW)
+                    if (lexer_peek(&lookahead).kind == TOK_FAT_ARROW)
                     {
                         lexer_next(&lookahead);
                         is_lambda = 1;
@@ -1799,7 +1799,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             else if (sep.kind == TOK_RPAREN)
             {
                 lexer_next(&lookahead);
-                if (lexer_peek(&lookahead).kind == TOK_ARROW)
+                if (lexer_peek(&lookahead).kind == TOK_FAT_ARROW)
                 {
                     lexer_next(&lookahead);
                     is_lambda = 1;
@@ -1840,7 +1840,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             else
             {
                 lexer_next(&actual_parse); // consume ')'
-                lexer_next(&actual_parse); // consume '->'
+                lexer_next(&actual_parse); // consume '=>'
             }
             *l = actual_parse;
 
@@ -1985,7 +1985,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     if (next.kind == TOK_IDENT)
                     {
                         lexer_next(&capture_look);
-                        if (lexer_peek(&capture_look).kind == TOK_ARROW)
+                        if (lexer_peek(&capture_look).kind == TOK_FAT_ARROW)
                         {
                             lexer_next(l);
                             lexer_next(l);
@@ -2016,7 +2016,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 depth--;
                                 if (depth == 0)
                                 {
-                                    if (lexer_peek(&scan).kind == TOK_ARROW)
+                                    if (lexer_peek(&scan).kind == TOK_FAT_ARROW)
                                     {
                                         is_arrow = 1;
                                     }
@@ -2076,9 +2076,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 }
                             }
 
-                            if (lexer_next(l).kind != TOK_ARROW)
+                            if (lexer_next(l).kind != TOK_FAT_ARROW)
                             {
-                                zpanic_at(t, "Expected ->");
+                                zpanic_at(t, "Expected =>");
                                 return NULL;
                             }
 

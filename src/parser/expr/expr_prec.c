@@ -643,13 +643,28 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
         }
 
         // Pointer access: ->
-        if (op.kind == TOK_ARROW && op.start[0] == '-')
+        if (op.kind == TOK_ARROW)
         {
             lexer_next(l);
             Token field = lexer_next(l);
+            // `x -> x * 2` and `(a, b) -> a + b` were lambdas before lambdas took `=>`.
+            const char *lambda_hint[] = {"for a lambda, use '=>': `x => x * 2`", NULL};
             if (!token_is_field_name(field))
             {
-                zpanic_at(field, "Expected field name after ->");
+                zpanic_with_hints(field, "Expected field name after ->", lambda_hint);
+                break;
+            }
+            if (lhs->kind == NODE_EXPR_TUPLE_LITERAL)
+            {
+                zpanic_with_hints(op, "'->' needs a pointer to a struct, not a tuple", lambda_hint);
+                break;
+            }
+            if (is_integer_type(lhs->type_info) || is_float_type(lhs->type_info))
+            {
+                char msg[MAX_SHORT_MSG_LEN];
+                snprintf(msg, sizeof(msg), "'->' needs a pointer to a struct, not '%s'",
+                         type_to_string(lhs->type_info));
+                zpanic_with_hints(op, msg, lambda_hint);
                 break;
             }
             ASTNode *node = new_member_node(ctx, lhs, field, 1);

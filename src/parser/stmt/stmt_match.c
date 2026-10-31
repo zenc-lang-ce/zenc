@@ -276,7 +276,14 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
             guard = parse_expression(ctx, l);
         }
 
-        if (lexer_next(l).kind != TOK_ARROW)
+        Token arrow = lexer_next(l);
+        if (arrow.kind == TOK_ARROW)
+        {
+            const char *hints[] = {"write the arm as `pattern => value`", NULL};
+            zpanic_with_hints(arrow, "Match arms use '=>', not '->'", hints);
+            return NULL;
+        }
+        if (arrow.kind != TOK_FAT_ARROW)
         {
             zpanic_at(lexer_peek(l), "Expected => after match pattern");
             return NULL;
