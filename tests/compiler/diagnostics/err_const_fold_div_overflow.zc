@@ -1,0 +1,8 @@
+// EXPECT: FAIL
+// compiler/diagnostics: the smallest i64 divided by -1 overflows, so it is not a
+// constant (the division was undefined behavior inside the compiler).
+
+fn main() {
+    let a: int[(-9223372036854775807 - 1) / -1];
+    printf("%zu\n", sizeof(a) / sizeof(int));
+}

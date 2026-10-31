@@ -1,0 +1,8 @@
+// EXPECT: FAIL
+// compiler/diagnostics: a shift by 64 or more is not a constant. It used to fold
+// with the host CPU's shift, so on arm64 `1 << 66` gave an array of 4 elements.
+
+fn main() {
+    let a: int[1 << 66];
+    printf("%zu\n", sizeof(a) / sizeof(int));
+}
