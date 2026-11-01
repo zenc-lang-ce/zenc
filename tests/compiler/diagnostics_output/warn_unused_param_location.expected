@@ -1,0 +1,10 @@
+   Compiling tests/compiler/diagnostics_output/warn_unused_param_location.zc...
+warning: Unused parameter 'b' in function 'sum'
+  --> tests/compiler/diagnostics_output/warn_unused_param_location.zc:5:8
+   |
+5  |        b: int) -> int {
+   |        ^ here
+   |
+   = note: Consider prefixing with '_' if intentionally unused
+    Finished build in Xs with 0 errors and 1 warnings
+[exit 0]
