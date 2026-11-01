@@ -49,7 +49,7 @@
 Unisciti alla conversazione, condividi delle demo, fai domande o segnala dei bug nel server ufficiale Discord Zen C
 
 - Discord: [Unisciti qui](https://discord.com/invite/q6wEsCmkJP)
-- RFC: [Proponi funzionalità](https://github.com/zenc-lang/rfcs)
+- RFC: [Proponi funzionalità](https://github.com/zenc-lang-ce/zenc-rfcs)
 
 ## Ecosistema
 
@@ -57,12 +57,12 @@ Il progetto Zen C è composto da diversi repository. Di seguito trovi i principa
 
 | Repository | Descrizione | Stato |
 | :--- | :--- | :--- |
-| **[zenc](https://github.com/zenc-lang/zenc)** | Il compilatore core di Zen C (`zc`), CLI e libreria standard. | Sviluppo Attivo |
-| **[docs](https://github.com/zenc-lang/docs)** | La documentazione tecnica ufficiale e la specifica del linguaggio. | Attivo |
-| **[rfcs](https://github.com/zenc-lang/rfcs)** | Il repository delle Request for Comments (RFC). Dai forma al futuro del linguaggio. | Attivo |
-| **[vscode-zenc](https://github.com/zenc-lang/vscode-zenc)** | Estensione ufficiale di VS Code (Sintassi, Snippet). | Alpha |
-| **[www](https://github.com/zenc-lang/www)** | Codice sorgente di `zenc-lang.org`. | Attivo |
-| **[awesome-zenc](https://github.com/zenc-lang/awesome-zenc)** | Una lista curata di fantastici esempi di Zen C. | In crescita |
+| **[zenc](https://github.com/zenc-lang-ce/zenc)** | Il compilatore core di Zen C (`zc`), CLI e libreria standard. | Sviluppo Attivo |
+| **[docs](https://github.com/zenc-lang-ce/zenc-docs)** | La documentazione tecnica ufficiale e la specifica del linguaggio. | Attivo |
+| **[rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | Il repository delle Request for Comments (RFC). Dai forma al futuro del linguaggio. | Attivo |
+| **[vscode-zenc](https://github.com/zenc-lang-ce/zenc-vscode)** | Estensione ufficiale di VS Code (Sintassi, Snippet). | Alpha |
+| **[www](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | Codice sorgente di `zenc-lang-ce.github.io`. | Attivo |
+| **[awesome-zenc](https://github.com/zenc-lang-ce/awesome-zenc)** | Una lista curata di fantastici esempi di Zen C. | In crescita |
 
 ## Vetrina
 
@@ -86,7 +86,7 @@ Dai un'occhiata a questi progetti creati con Zen C:
       <ul>
         <li><a href="#panoramica">Panoramica</a></li>
         <li><a href="#comunità">Community</a></li>
-        <li><a href="https://github.com/zenc-lang/rfcs">RFC</a></li>
+        <li><a href="https://github.com/zenc-lang-ce/zenc-rfcs">RFC</a></li>
         <li><a href="#ecosistema">Ecosistema</a></li>
         <li><a href="#strumenti">Strumenti</a>
           <ul>
@@ -95,7 +95,7 @@ Dai un'occhiata a questi progetti creati con Zen C:
           </ul>
         </li>
         <li><a href="#guida-rapida">Guida Rapida</a></li>
-        <li><a href="https://github.com/zenc-lang/docs">Documentazione</a></li>
+        <li><a href="https://github.com/zenc-lang-ce/zenc-docs">Documentazione</a></li>
         <li><a href="#libreria-standard">Libreria Standard</a></li>
         <li><a href="#tooling">Tooling</a></li>
         <li><a href="#supporto-del-compilatore-e-compatibilità">Supporto del Compilatore</a></li>
@@ -104,7 +104,7 @@ Dai un'occhiata a questi progetti creati con Zen C:
       </ul>
     </td>
     <td valign="top">
-      <p><a href="https://docs.zenc-lang.org/tour/"><b>Browse the Language Reference</b></a></p>
+      <p><a href="https://zenc-lang-ce.github.io/docs/tour/"><b>Browse the Language Reference</b></a></p>
     </td>
   </tr>
 </table>
@@ -116,7 +116,7 @@ Dai un'occhiata a questi progetti creati con Zen C:
 ### Installazione
 
 ```bash
-git clone https://github.com/zenc-lang/zenc.git
+git clone https://github.com/zenc-lang-ce/zenc.git
 cd zenc
 make clean # rimuove i vecchi file di build
 make
@@ -233,7 +233,7 @@ export ZC_ROOT=/path/to/zenc
 
 ## Riferimenti Del Linguaggio
 
-Consulta il [Riferimento del linguaggio](https://docs.zenc-lang.org/tour/01-variables-constants/) ufficiale per maggiori dettagli.
+Consulta il [Riferimento del linguaggio](https://zenc-lang-ce.github.io/docs/tour/01-variables-constants/) ufficiale per maggiori dettagli.
 
 ## Libreria Standard
 
@@ -699,7 +699,7 @@ Questo progetto utilizza librerie esterne. I testi di licenza completi possono e
 * **[zc-ape](https://github.com/OEvgeny/zc-ape)** (Licenza MIT): La versione originale di Actually Portable Executable di Zen-C, realizzata da [Eugene Olonov](https://github.com/OEvgeny).
 * **[Cosmopolitan Libc](https://github.com/jart/cosmopolitan)** (Licenza ISC): La libreria fondamentale che rende possibile APE.
 * **[TRE](https://github.com/laurikari/tre)** (Licenza BSD): Usato per il motore di espressioni regolari nella libreria standard.
-* **[zenc.vim](https://github.com/zenc-lang/zenc.vim)** (Licenza MIT): Il plugin ufficiale per Vim/Neovim, scritto principalmente da **[davidscholberg](https://github.com/davidscholberg)**.
+* **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** (Licenza MIT): Il plugin ufficiale per Vim/Neovim, scritto principalmente da **[davidscholberg](https://github.com/davidscholberg)**.
 * **[TinyCC](https://github.com/TinyCC/tinycc)** (Licenza LGPL): Il motore JIT fondamentale utilizzato per la valutazione REPL ad alte prestazioni.
 
 ---
@@ -711,10 +711,10 @@ Questo progetto utilizza librerie esterne. I testi di licenza completi possono e
   </p>
   <p>
     <a href="https://discord.com/invite/q6wEsCmkJP">Discord</a> •
-    <a href="https://github.com/zenc-lang/zenc">GitHub</a> •
-    <a href="https://github.com/zenc-lang/docs">Documentazione</a> •
-    <a href="https://github.com/zenc-lang/awesome-zenc">Esempi</a> •
-    <a href="https://github.com/zenc-lang/rfcs">RFC</a> •
+    <a href="https://github.com/zenc-lang-ce/zenc">GitHub</a> •
+    <a href="https://github.com/zenc-lang-ce/zenc-docs">Documentazione</a> •
+    <a href="https://github.com/zenc-lang-ce/awesome-zenc">Esempi</a> •
+    <a href="https://github.com/zenc-lang-ce/zenc-rfcs">RFC</a> •
     <a href="CONTRIBUTING_IT.md">Contribuisci</a>
   </p>
 </div>
