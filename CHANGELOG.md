@@ -28,7 +28,7 @@ More than 140 fixes:
 - 59 bugs that kept valid code from compiling, with an error from `zc` or invalid C: generics, closures, traits, modules, enums, `match`, `@derive`, operators and the generated C;
 - 19 bugs where a program compiled but did the wrong thing: `@derive(Eq)` on enums with payloads, `continue` in indexed loops, interpolations lost with `-O2`, leaks and double frees with `Drop`, `readln` into a `string`…;
 - 15 compiler crashes and memory errors, three of them security issues;
-- 19 bugs in diagnostics and `zc check`: false errors, missing errors and wrong locations;
-- 32 fixes in tools and platforms: the LSP, the REPL, the CLI, installation, building the compiler, Windows and macOS.
+- 21 bugs in diagnostics and `zc check`: false errors, missing errors and wrong locations;
+- 33 fixes in tools and platforms: the LSP, the REPL, the CLI, installation, building the compiler, Windows and macOS.
 
 See the [full changelog](https://docs.zenc-lang.org/changelog/) for every fix, addition and change.
