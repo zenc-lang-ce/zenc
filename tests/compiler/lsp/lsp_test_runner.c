@@ -1011,6 +1011,31 @@ static void write_c_header_fixtures(void)
                                              "#include \"fake_nested.h\"\n"
                                              "#endif\n");
     write_file(C_TEST_DIR "/include/fake_nested.h", "int fake_nested(void); // nested\n");
+    write_file(C_TEST_DIR "/include/fields.h", "typedef struct Inner\n"
+                                               "{\n"
+                                               "    float u, v;\n"
+                                               "} Inner;\n"
+                                               "typedef struct Shape\n"
+                                               "{\n"
+                                               "    unsigned char r; // red, in 0..255\n"
+                                               "    char *name, buffer[16];\n"
+                                               "    unsigned int flag : 1;\n"
+                                               "    void (*callback)(int code);\n"
+                                               "    union /* no name */\n"
+                                               "    {\n"
+                                               "        int as_int;\n"
+                                               "        float as_float;\n"
+                                               "    };\n"
+                                               "    struct\n"
+                                               "    {\n"
+                                               "        int depth;\n"
+                                               "    } nested;\n"
+                                               "#ifdef SHAPE_EXTRA\n"
+                                               "    int extra;\n"
+                                               "#endif\n"
+                                               "    Inner inner;\n"
+                                               "} Shape;\n"
+                                               "typedef Shape Figure;\n");
     write_file(C_TEST_DIR "/include_mod/modonly.h", "int mod_function(void); // from the module\n");
 }
 
@@ -1283,6 +1308,64 @@ static void test_member_completion(void)
     // Not the C name of a method.
     expect_no_completion(847, path, 16, 6, "Point__len2");
     printf("PASS: test_member_completion\n");
+}
+
+// Completion at (line, character) must offer the field `name` with the C type `type`.
+static void expect_field(int id, const char *path, int line, int character, const char *name,
+                         const char *type)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    const char *detail = NULL;
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *item = cJSON_GetArrayItem(items, i);
+        const char *label = cJSON_GetStringValue(cJSON_GetObjectItem(item, "label"));
+        if (label && strcmp(label, name) == 0)
+        {
+            detail = cJSON_GetStringValue(cJSON_GetObjectItem(item, "detail"));
+        }
+    }
+    if (!detail || strcmp(detail, type) != 0)
+    {
+        printf("Completion at %d:%d: field %s with type %s, expected %s\n", line, character, name,
+               detail ? detail : "(none)", type);
+        fail("Wrong field of a C struct");
+    }
+    cJSON_Delete(response);
+}
+
+// The fields of a struct from a C header complete after `value.`, in the forms C declares them.
+static void test_c_struct_field_completion(void)
+{
+    printf("Running test_c_struct_field_completion...\n");
+    write_c_header_fixtures();
+    const char *path = C_TEST_DIR "/fields.zc";
+    open_document(path, "//> include: " C_TEST_DIR "/include\n"
+                        "import \"fields.h\";\n"
+                        "fn main() {\n"
+                        "    let s: Shape;\n"
+                        "    let f: Figure;\n"
+                        "    s.\n"
+                        "    s.inner.\n"
+                        "    f.\n"
+                        "}\n");
+    expect_field(850, path, 5, 6, "r", "unsigned char");
+    // Several declarators, a pointer and an array.
+    expect_field(851, path, 5, 6, "name", "char *");
+    expect_field(852, path, 5, 6, "buffer", "char[16]");
+    // A bit-field and a function pointer.
+    expect_field(853, path, 5, 6, "flag", "unsigned int");
+    expect_field(854, path, 5, 6, "callback", "void (*callback)(int code)");
+    // The fields of an anonymous union are the struct's own; a named nested struct is one.
+    expect_field(855, path, 5, 6, "as_float", "float");
+    expect_field(856, path, 5, 6, "nested", "struct");
+    expect_no_completion(857, path, 5, 6, "depth");
+    expect_field(858, path, 5, 6, "inner", "Inner");
+    // Through a field, and through a typedef of another name.
+    expect_field(859, path, 6, 12, "v", "float");
+    expect_field(860, path, 7, 6, "callback", "void (*callback)(int code)");
+    printf("PASS: test_c_struct_field_completion\n");
 }
 
 static void write_index_fixture(const char *path, const char *content)
@@ -2206,6 +2289,7 @@ int main()
     test_c_header_completion();
     test_signature_as_written();
     test_member_completion();
+    test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
     waitpid(child_pid, NULL, 0);

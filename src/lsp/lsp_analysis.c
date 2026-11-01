@@ -1186,6 +1186,16 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                 field = field->next;
                             }
                         }
+                        char c_type[MAX_SHORT_MSG_LEN];
+                        if (!found_field && !struct_node &&
+                            lsp_c_headers_field_type(pf->path, pf->source, clean_name, parts[p],
+                                                     c_type, sizeof(c_type)))
+                        {
+                            // A field of a struct from a C header.
+                            zfree(type_name);
+                            type_name = xstrdup(c_type);
+                            found_field = 1;
+                        }
                         if (!found_field)
                         {
                             zfree(type_name);
@@ -1210,7 +1220,12 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                         *dst = 0;
 
                         ASTNode *struct_node = find_struct_def(g_project->ctx, clean_name);
-                        if (struct_node)
+                        if (!struct_node)
+                        {
+                            // A struct from a C header: its fields as the header declares them.
+                            lsp_c_headers_add_fields(pf->path, pf->source, clean_name, items);
+                        }
+                        else
                         {
                             if (struct_node->kind == NODE_STRUCT)
                             {
