@@ -142,10 +142,17 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         }
     }
 
-    // Validate argument count
+    // Validate argument count, against the registered function or, for a closure or function
+    // pointer held in a variable, against the parameters of its type.
+    int min_args = -1;
+    int max_args = 0;
+    int is_varargs = 0;
+    Type *callee_type = node->call.callee ? node->call.callee->type_info : NULL;
     if (sig)
     {
-        int min_args = sig->total_args;
+        max_args = sig->total_args;
+        is_varargs = sig->is_varargs;
+        min_args = sig->total_args;
         if (sig->defaults)
         {
             min_args = 0;
@@ -157,26 +164,32 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
         }
+    }
+    else if (node->call.callee && node->call.callee->kind == NODE_EXPR_VAR && callee_type &&
+             callee_type->kind == TYPE_FUNCTION)
+    {
+        min_args = max_args = callee_type->count;
+        is_varargs = callee_type->is_varargs;
+    }
 
-        if (count < min_args)
-        {
-            char msg[MAX_SHORT_MSG_LEN];
-            snprintf(msg, sizeof(msg), "Too few arguments: '%s' expects at least %d, got %d",
-                     func_name, min_args, count);
+    if (min_args >= 0 && count < min_args)
+    {
+        char msg[MAX_SHORT_MSG_LEN];
+        snprintf(msg, sizeof(msg), "Too few arguments: '%s' expects at least %d, got %d", func_name,
+                 min_args, count);
 
-            const char *hints[] = {"Check the function signature for required parameters", NULL};
-            tc_ctrl_flow_error(tc, node->token, msg, hints);
-        }
-        else if (count > sig->total_args && !sig->is_varargs)
-        {
-            char msg[MAX_SHORT_MSG_LEN];
-            snprintf(msg, sizeof(msg), "Too many arguments: '%s' expects %d, got %d", func_name,
-                     sig->total_args, count);
+        const char *hints[] = {"Check the function signature for required parameters", NULL};
+        tc_ctrl_flow_error(tc, node->token, msg, hints);
+    }
+    else if (min_args >= 0 && count > max_args && !is_varargs)
+    {
+        char msg[MAX_SHORT_MSG_LEN];
+        snprintf(msg, sizeof(msg), "Too many arguments: '%s' expects %d, got %d", func_name,
+                 max_args, count);
 
-            const char *hints[] = {
-                "Remove extra arguments or check if you meant to call a different function", NULL};
-            tc_ctrl_flow_error(tc, node->token, msg, hints);
-        }
+        const char *hints[] = {
+            "Remove extra arguments or check if you meant to call a different function", NULL};
+        tc_ctrl_flow_error(tc, node->token, msg, hints);
     }
 
     // Check argument types

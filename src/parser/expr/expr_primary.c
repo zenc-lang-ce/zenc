@@ -236,9 +236,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     *l = lookahead;
                     lexer_next(l); // consume '=>'
-                    char **params = xmalloc(sizeof(char *));
+                    Token *params = xmalloc(sizeof(Token));
                     Type **param_types = xmalloc(sizeof(Type *));
-                    params[0] = ident; // pass ownership of ident
+                    params[0] = t;
                     param_types[0] = param_type;
                     return parse_arrow_lambda_multi(ctx, l, params, param_types, 1, 0);
                 }
@@ -249,7 +249,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         if (lexer_peek(l).kind == TOK_FAT_ARROW)
         {
             lexer_next(l);
-            return parse_arrow_lambda_single(ctx, l, ident, 0);
+            return parse_arrow_lambda_single(ctx, l, t, 0);
         }
 
         char *acc = ident;
@@ -1747,7 +1747,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
         Lexer lookahead = *l;
         int is_lambda = 0;
-        char **params = xmalloc(sizeof(char *) * 16);
+        Token *params = xmalloc(sizeof(Token) * 16);
         Type **param_types = xmalloc(sizeof(Type *) * 16);
         int nparams = 0;
 
@@ -1771,7 +1771,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 zpanic_at(lexer_peek(&lookahead), "Too many lambda parameters (max 16)");
                 break;
             }
-            params[nparams] = token_strdup(lexer_next(&lookahead));
+            params[nparams] = lexer_next(&lookahead);
             param_types[nparams] = NULL;
             lookahead.pos = lookahead.pos;
 
@@ -1850,10 +1850,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         }
         else
         {
-            for (int i = 0; i < nparams; i++)
-            {
-                zfree(params[i]);
-            }
             zfree(params);
             zfree(param_types);
         }
@@ -1991,8 +1987,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             lexer_next(l);
                             Token param = lexer_next(l);
                             lexer_next(l);
-                            return parse_arrow_lambda_single(ctx, l, token_strdup(param),
-                                                             default_capture_mode);
+                            return parse_arrow_lambda_single(ctx, l, param, default_capture_mode);
                         }
                     }
                     else if (next.kind == TOK_LPAREN)
@@ -2031,7 +2026,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             lexer_next(l); // consume ']'
 
                             lexer_next(l); // consume '('
-                            char **params = xmalloc(sizeof(char *) * 16);
+                            Token *params = xmalloc(sizeof(Token) * 16);
                             Type **param_types = xmalloc(sizeof(Type *) * 16);
                             int nparams = 0;
                             while (1)
@@ -2045,7 +2040,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                     zpanic_at(lexer_peek(l), "Too many parameters (max 16)");
                                     break;
                                 }
-                                params[nparams] = token_strdup(lexer_next(l));
+                                params[nparams] = lexer_next(l);
                                 param_types[nparams] = NULL;
 
                                 if (lexer_peek(l).kind == TOK_COLON)

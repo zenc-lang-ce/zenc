@@ -1,0 +1,16 @@
+   Compiling tests/compiler/diagnostics_output/err_closure_arg_count.zc...
+error: Too few arguments: 'l' expects at least 1, got 0
+  --> tests/compiler/diagnostics_output/err_closure_arg_count.zc:6:5
+   |
+6  |     l();
+   |     ^ here
+   |
+   = help: Check the function signature for required parameters
+error: Too many arguments: 'l' expects 1, got 2
+  --> tests/compiler/diagnostics_output/err_closure_arg_count.zc:7:5
+   |
+7  |     l(1, 2);
+   |     ^ here
+   |
+   = help: Remove extra arguments or check if you meant to call a different function
+[exit 1]

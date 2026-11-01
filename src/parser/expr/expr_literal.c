@@ -84,6 +84,7 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     Type *t = type_new(TYPE_FUNCTION);
     t->args = xmalloc(sizeof(Type *) * 16);
     char **param_names = xmalloc(sizeof(char *) * 16);
+    Token param_tokens[16];
     char **param_types = xmalloc(sizeof(char *) * 16);
     int count = 0;
 
@@ -114,6 +115,7 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
         }
 
         param_names[count] = token_strdup(name_tok);
+        param_tokens[count] = name_tok;
 
         if (lexer_peek(l).kind != TOK_COLON)
         {
@@ -152,7 +154,7 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
 
     for (int i = 0; i < count; i++)
     {
-        add_symbol(ctx, param_names[i], param_types[i], t->args[i], 0);
+        add_symbol_with_token(ctx, param_names[i], param_types[i], t->args[i], param_tokens[i], 0);
     }
 
     ASTNode *body = NULL;
@@ -188,6 +190,7 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
         register_lambda(ctx, lambda);
     }
     analyze_lambda_captures(ctx, lambda);
+    check_unused_parameters(ctx, ctx->current_scope, NULL);
 
     exit_scope(ctx);
 

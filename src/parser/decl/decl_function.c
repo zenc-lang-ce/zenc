@@ -26,8 +26,9 @@ void push_pending_body(ParserContext *ctx, PendingBody *pending)
     ctx->pending_bodies_tail = pending;
 }
 
-// Warns about the parameters in `scope` that the function body never used.
-static void check_unused_parameters(ParserContext *ctx, Scope *scope, const char *func_name)
+// Warns about the parameters in `scope` that the function body never used. `func_name` is
+// NULL for a lambda.
+void check_unused_parameters(ParserContext *ctx, Scope *scope, const char *func_name)
 {
     ZenSymbol *sym = scope->symbols;
     while (sym)
@@ -35,7 +36,7 @@ static void check_unused_parameters(ParserContext *ctx, Scope *scope, const char
         // Check if unused and not prefixed with `_`
         // also ignore `self` as it's often mandated by traits
         if (!sym->is_used && !ctx->config->misra_mode && sym->name[0] != '_' &&
-            strcmp(sym->name, "self") != 0 && strcmp(func_name, "main") != 0)
+            strcmp(sym->name, "self") != 0 && (!func_name || strcmp(func_name, "main") != 0))
         {
             warn_unused_parameter(sym->decl_token, sym->name, func_name);
         }

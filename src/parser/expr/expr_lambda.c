@@ -8,9 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, char *param_name,
+ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
                                    int default_capture_mode)
 {
+    char *param_name = token_strdup(param);
     ASTNode *lambda = ast_create(NODE_LAMBDA);
     lambda->lambda.count = 1;
     lambda->lambda.default_capture_mode = default_capture_mode;
@@ -32,7 +33,7 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, char *param_nam
 
     // Register parameter in scope for body parsing
     enter_scope(ctx);
-    add_symbol(ctx, param_name, NULL, t->args[0], 0);
+    add_symbol_with_token(ctx, param_name, NULL, t->args[0], param, 0);
 
     // Body parsing...
     ASTNode *body_block = NULL;
@@ -102,13 +103,19 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, char *param_nam
         register_lambda(ctx, lambda);
     }
     analyze_lambda_captures(ctx, lambda);
+    check_unused_parameters(ctx, ctx->current_scope, NULL);
     exit_scope(ctx);
     return lambda;
 }
 
-ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, char **param_names,
-                                  Type **param_types, int count, int default_capture_mode)
+ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, Type **param_types,
+                                  int count, int default_capture_mode)
 {
+    char **param_names = xmalloc(sizeof(char *) * (size_t)(count));
+    for (int i = 0; i < count; i++)
+    {
+        param_names[i] = token_strdup(params[i]);
+    }
     ASTNode *lambda = ast_create(NODE_LAMBDA);
     lambda->lambda.param_names = param_names;
     lambda->lambda.count = count;
@@ -142,11 +149,12 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, char **param_nam
     {
         if (param_types && param_types[i])
         {
-            add_symbol(ctx, param_names[i], lambda->lambda.param_types[i], param_types[i], 0);
+            add_symbol_with_token(ctx, param_names[i], lambda->lambda.param_types[i],
+                                  param_types[i], params[i], 0);
         }
         else
         {
-            add_symbol(ctx, param_names[i], "unknown", t->args[i], 0);
+            add_symbol_with_token(ctx, param_names[i], "unknown", t->args[i], params[i], 0);
         }
     }
 
@@ -173,6 +181,7 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, char **param_nam
         register_lambda(ctx, lambda);
     }
     analyze_lambda_captures(ctx, lambda);
+    check_unused_parameters(ctx, ctx->current_scope, NULL);
     exit_scope(ctx);
     return lambda;
 }

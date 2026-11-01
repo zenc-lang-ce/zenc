@@ -1,0 +1,8 @@
+// ARGS: build
+// A closure is called with as many arguments as it has parameters
+
+fn main() {
+    let l = (x: int) => { return x; };
+    l();
+    l(1, 2);
+}
