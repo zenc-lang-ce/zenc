@@ -104,6 +104,22 @@ struct cJSON *lsp_c_headers_completion(const char *document_path, const char *so
                                        int col);
 
 /**
+ * @brief Adds to `items` a completion item for each field of the C struct or union `name`, as
+ * the headers the document imports declare it, with the field's C type as detail. Follows
+ * typedefs of another name (`typedef struct Tag Name;`, `typedef Vector4 Quaternion;`).
+ * Returns how many it added.
+ */
+int lsp_c_headers_add_fields(const char *document_path, const char *source, const char *name,
+                             struct cJSON *items);
+
+/**
+ * @brief Writes into `type` the C type of the field `field` of the C struct or union `name`.
+ * Returns 0 when there is no such field.
+ */
+int lsp_c_headers_field_type(const char *document_path, const char *source, const char *name,
+                             const char *field, char *type, size_t type_size);
+
+/**
  * @brief LSP `Location[]` pointing at the names of the given declarations.
  */
 struct cJSON *lsp_c_headers_locations(const CHeaderSymbol **symbols, int count);

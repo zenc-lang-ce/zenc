@@ -15,6 +15,8 @@
 // libc heap, not the arena: lookups run in read-only requests, which rewind the arena.
 
 #define MAX_INCLUDE_DEPTH 16
+// Fields read from one C struct or union for completion.
+#define MAX_C_FIELDS 128
 #define MAX_HOVER_LINES 24
 #define MAX_DOC_LENGTH 2048
 #define COMPILER_OUTPUT_SIZE 65536
@@ -1946,6 +1948,56 @@ static int search_reexport(const ModuleHeader *entry, void *data)
     return search->found > 0 || search->qualifier[0];
 }
 
+// The declarations of `name` in the headers a document imports, only those imported as
+// `qualifier` when it is not empty, and then in the ones its imported modules re-export.
+static int find_named(const char *document_path, const char *source, const char *qualifier,
+                      const char *name, const CHeaderSymbol **results, int max_results,
+                      CHeaderOrigin *via)
+{
+    FileImports imports = {0};
+    collect_imports(source, &imports);
+    SearchDirList dirs = {0};
+    collect_search_dirs(source, document_path, &dirs);
+    char document_dir[MAX_PATH_LEN];
+    directory_of(document_path, document_dir, sizeof(document_dir));
+
+    StringList visited = {0};
+    int found = 0;
+    for (int i = 0; i < imports.header_count && found == 0; i++)
+    {
+        const HeaderImport *header = &imports.headers[i];
+        if (qualifier[0] && strcmp(header->alias, qualifier) != 0)
+        {
+            continue;
+        }
+        char *path =
+            find_header(header->name, header->is_system ? NULL : document_dir, &dirs, NULL, 0);
+        if (!path)
+        {
+            fprintf(stderr, "zls: C header '%s' not found\n", header->name);
+            continue;
+        }
+        found = search_header_tree(path, name, &dirs, &visited, results, max_results, 0);
+        libc_free(path);
+    }
+
+    if (found == 0)
+    {
+        // Headers that imported modules re-export (`export import "x.h" as alias`).
+        ReexportSearch search = {qualifier, name, &dirs, &visited, results, max_results, via, 0};
+        StringList visited_modules = {0};
+        walk_module_headers(source, document_path, NULL, 1, 0, &visited_modules, search_reexport,
+                            &search);
+        string_list_free(&visited_modules);
+        found = search.found;
+    }
+
+    string_list_free(&visited);
+    search_dirs_free(&dirs);
+    free_imports(&imports);
+    return found;
+}
+
 int lsp_c_headers_find_at(const char *document_path, const char *source, int line, int col,
                           const CHeaderSymbol **results, int max_results, CHeaderOrigin *via)
 {
@@ -1960,50 +2012,8 @@ int lsp_c_headers_find_at(const char *document_path, const char *source, int lin
     {
         return 0;
     }
-
-    FileImports imports = {0};
-    collect_imports(source, &imports);
-    SearchDirList dirs = {0};
-    collect_search_dirs(source, document_path, &dirs);
-    char document_dir[MAX_PATH_LEN];
-    directory_of(document_path, document_dir, sizeof(document_dir));
-
-    StringList visited = {0};
-    int found = 0;
-    for (int i = 0; i < imports.header_count && found == 0; i++)
-    {
-        const HeaderImport *header = &imports.headers[i];
-        if (cursor.qualifier[0] && strcmp(header->alias, cursor.qualifier) != 0)
-        {
-            continue;
-        }
-        char *path =
-            find_header(header->name, header->is_system ? NULL : document_dir, &dirs, NULL, 0);
-        if (!path)
-        {
-            fprintf(stderr, "zls: C header '%s' not found\n", header->name);
-            continue;
-        }
-        found = search_header_tree(path, cursor.name, &dirs, &visited, results, max_results, 0);
-        libc_free(path);
-    }
-
-    if (found == 0)
-    {
-        // Headers that imported modules re-export (`export import "x.h" as alias`).
-        ReexportSearch search = {cursor.qualifier, cursor.name, &dirs, &visited,
-                                 results,          max_results, via,   0};
-        StringList visited_modules = {0};
-        walk_module_headers(source, document_path, NULL, 1, 0, &visited_modules, search_reexport,
-                            &search);
-        string_list_free(&visited_modules);
-        found = search.found;
-    }
-
-    string_list_free(&visited);
-    search_dirs_free(&dirs);
-    free_imports(&imports);
-    return found;
+    return find_named(document_path, source, cursor.qualifier, cursor.name, results, max_results,
+                      via);
 }
 
 int lsp_c_headers_is_extern_name(const char *source, int line, int col)
@@ -2576,6 +2586,410 @@ struct cJSON *lsp_c_headers_completion(const char *document_path, const char *so
 }
 
 /* --- Locations --- */
+
+/* --- Struct fields --- */
+
+typedef struct
+{
+    char name[MAX_VAR_NAME_LEN];
+    char type[MAX_SHORT_MSG_LEN];
+} CField;
+
+typedef struct
+{
+    CField fields[MAX_C_FIELDS];
+    int count;
+} CFieldList;
+
+// The text of a declaration with its comments and preprocessor lines turned into blanks.
+// Release it with libc_free().
+static char *declaration_text(const CHeaderSymbol *symbol)
+{
+    HeaderFile *header = get_header(symbol->path);
+    if (!header || !header->text || symbol->end_line >= header->line_count)
+    {
+        return NULL;
+    }
+    int start = header->line_offsets[symbol->start_line];
+    int end = symbol->end_line + 1 < header->line_count ? header->line_offsets[symbol->end_line + 1]
+                                                        : (int)strlen(header->text);
+    char *text = copy_text(header->text + start, (size_t)(end - start));
+    if (!text)
+    {
+        return NULL;
+    }
+    for (char *p = text; *p; p++)
+    {
+        if (p[0] == '/' && p[1] == '/')
+        {
+            while (*p && *p != '\n')
+            {
+                *p++ = ' ';
+            }
+        }
+        else if (p[0] == '/' && p[1] == '*')
+        {
+            while (*p && !(p[0] == '*' && p[1] == '/'))
+            {
+                *p = *p == '\n' ? '\n' : ' ';
+                p++;
+            }
+            if (*p)
+            {
+                *p++ = ' ';
+                *p = ' ';
+            }
+        }
+        if (!*p)
+        {
+            break;
+        }
+    }
+    for (char *line = text; line;)
+    {
+        if (*skip_blanks(line) == '#')
+        {
+            while (*line && *line != '\n')
+            {
+                *line++ = ' ';
+            }
+        }
+        line = strchr(line, '\n');
+        line = line ? line + 1 : NULL;
+    }
+    return text;
+}
+
+// The position of the bracket that closes the one at `open`, or -1.
+static int matching_close(const char *text, int open, int length)
+{
+    int depth = 0;
+    for (int i = open; i < length; i++)
+    {
+        if (text[i] == '{' || text[i] == '(' || text[i] == '[')
+        {
+            depth++;
+        }
+        else if ((text[i] == '}' || text[i] == ')' || text[i] == ']') && --depth == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// Copies `text[0..length)` into `out` with each run of whitespace as one space, and none at
+// the ends.
+static void copy_collapsed(const char *text, int length, char *out, size_t out_size)
+{
+    size_t used = 0;
+    int space = 0;
+    for (int i = 0; i < length && used + 1 < out_size; i++)
+    {
+        if (isspace((unsigned char)text[i]))
+        {
+            space = used > 0;
+            continue;
+        }
+        if (space && used + 2 < out_size)
+        {
+            out[used++] = ' ';
+        }
+        space = 0;
+        out[used++] = text[i];
+    }
+    out[used] = '\0';
+}
+
+// Adds the field that `declarator` declares (`*name`, `name[4]`, `name : 3`) with the type
+// written before it, `base`.
+static void add_field(CFieldList *list, const char *base, const char *declarator, int length)
+{
+    int stars = 0;
+    int name = -1;
+    int name_length = 0;
+    int suffix = length;
+    for (int i = 0; i < length; i++)
+    {
+        if (declarator[i] == '*' && name < 0)
+        {
+            stars++;
+        }
+        else if (name < 0 && is_identifier_char(declarator[i]) &&
+                 !isdigit((unsigned char)declarator[i]))
+        {
+            name = i;
+            while (i < length && is_identifier_char(declarator[i]))
+            {
+                i++;
+            }
+            name_length = i - name;
+            i--;
+        }
+        else if (name >= 0 && declarator[i] == '[')
+        {
+            suffix = i;
+            break;
+        }
+        else if (name >= 0 && declarator[i] == ':')
+        {
+            // The width of a bit-field is not part of the type.
+            suffix = length = i;
+            break;
+        }
+    }
+    if (name < 0 || name_length >= MAX_VAR_NAME_LEN || list->count >= MAX_C_FIELDS)
+    {
+        return;
+    }
+    CField *field = &list->fields[list->count++];
+    memcpy(field->name, declarator + name, (size_t)name_length);
+    field->name[name_length] = '\0';
+    char type[MAX_SHORT_MSG_LEN];
+    snprintf(type, sizeof(type), "%s%s%.*s%.*s", base, stars ? " " : "", stars, "**********",
+             length - suffix, declarator + suffix);
+    copy_collapsed(type, (int)strlen(type), field->type, sizeof(field->type));
+}
+
+// Adds a field for each declarator of `text`, separated by top-level commas.
+static void add_declarators(CFieldList *list, const char *base, const char *text, int length)
+{
+    int start = 0;
+    int depth = 0;
+    for (int i = 0; i <= length; i++)
+    {
+        if (i == length || (text[i] == ',' && depth == 0))
+        {
+            add_field(list, base, text + start, i - start);
+            start = i + 1;
+        }
+        else if (text[i] == '[' || text[i] == '(')
+        {
+            depth++;
+        }
+        else if (text[i] == ']' || text[i] == ')')
+        {
+            depth--;
+        }
+    }
+}
+
+static void parse_fields(const char *text, int length, CFieldList *list);
+
+// One member of a struct or union, without its `;`.
+static void parse_member(const char *text, int length, CFieldList *list)
+{
+    char base[MAX_SHORT_MSG_LEN];
+    for (int i = 0; i < length; i++)
+    {
+        if (text[i] == '{')
+        {
+            // struct { ... } name;   or, with no name, a member whose fields are the outer's.
+            int close = matching_close(text, i, length);
+            if (close < 0)
+            {
+                return;
+            }
+            int named = 0;
+            for (int j = close + 1; j < length; j++)
+            {
+                named |= is_identifier_char(text[j]);
+            }
+            if (!named)
+            {
+                parse_fields(text + i + 1, close - i - 1, list);
+                return;
+            }
+            copy_collapsed(text, i, base, sizeof(base));
+            add_declarators(list, base, text + close + 1, length - close - 1);
+            return;
+        }
+        if (text[i] == '(' && *skip_blanks(text + i + 1) == '*')
+        {
+            // void (*callback)(int);   the whole member is the type.
+            int count = list->count;
+            add_field(list, "", text + i + 1, length - i - 1);
+            if (list->count > count)
+            {
+                copy_collapsed(text, length, list->fields[count].type,
+                               sizeof(list->fields[count].type));
+            }
+            return;
+        }
+    }
+
+    // unsigned char r;   float x, y;   char *name, buffer[16];   int flag : 1;
+    // The type ends where the first declarator starts: its name and the `*` before it.
+    int name = -1;
+    for (int i = 0; i < length && text[i] != ',' && text[i] != '[' && text[i] != ':'; i++)
+    {
+        if (is_identifier_char(text[i]) && (i == 0 || !is_identifier_char(text[i - 1])))
+        {
+            name = i;
+        }
+    }
+    int type_end = name;
+    while (type_end > 0 &&
+           (text[type_end - 1] == '*' || isspace((unsigned char)text[type_end - 1])))
+    {
+        type_end--;
+    }
+    if (type_end <= 0)
+    {
+        return;
+    }
+    copy_collapsed(text, type_end, base, sizeof(base));
+    add_declarators(list, base, text + type_end, length - type_end);
+}
+
+// The members between the braces of a struct or union.
+static void parse_fields(const char *text, int length, CFieldList *list)
+{
+    int start = 0;
+    int depth = 0;
+    for (int i = 0; i < length; i++)
+    {
+        if (text[i] == '{')
+        {
+            depth++;
+        }
+        else if (text[i] == '}')
+        {
+            depth--;
+        }
+        else if (text[i] == ';' && depth == 0)
+        {
+            parse_member(text + start, i - start, list);
+            start = i + 1;
+        }
+    }
+}
+
+// The name a body-less typedef stands for: `Tag` in `typedef struct Tag Name;`, `Vector4` in
+// `typedef Vector4 Quaternion;`. Empty when there is none.
+static void typedef_target(const char *text, char *out, size_t out_size)
+{
+    out[0] = '\0';
+    const char *p = strstr(text, "typedef");
+    if (!p)
+    {
+        return;
+    }
+    p += 7;
+    while (*p)
+    {
+        while (isspace((unsigned char)*p))
+        {
+            p++;
+        }
+        const char *word = p;
+        while (is_identifier_char(*p))
+        {
+            p++;
+        }
+        size_t length = (size_t)(p - word);
+        if (length == 0)
+        {
+            return;
+        }
+        if ((length == 6 && strncmp(word, "struct", 6) == 0) ||
+            (length == 5 && strncmp(word, "union", 5) == 0) ||
+            (length == 5 && strncmp(word, "const", 5) == 0))
+        {
+            continue;
+        }
+        copy_trimmed(word, length, out, out_size);
+        return;
+    }
+}
+
+// Reads into `list` the fields of the C struct or union `name` as the headers of a document
+// declare it, following typedefs of another name to the declaration with the body.
+static void struct_fields(const char *document_path, const char *source, const char *name,
+                          CFieldList *list)
+{
+    list->count = 0;
+    char wanted[MAX_VAR_NAME_LEN];
+    snprintf(wanted, sizeof(wanted), "%s", name);
+    for (int hop = 0; hop < 4 && list->count == 0 && wanted[0]; hop++)
+    {
+        const CHeaderSymbol *symbols[8];
+        int found = find_named(document_path, source, "", wanted, symbols, 8, NULL);
+        char target[MAX_VAR_NAME_LEN] = "";
+        for (int i = 0; i < found && list->count == 0; i++)
+        {
+            char *text = declaration_text(symbols[i]);
+            if (!text)
+            {
+                continue;
+            }
+            const char *body = strchr(text, '{');
+            if (body && (strstr(text, "struct") || strstr(text, "union")))
+            {
+                int open = (int)(body - text);
+                int close = matching_close(text, open, (int)strlen(text));
+                if (close > open)
+                {
+                    parse_fields(body + 1, close - open - 1, list);
+                }
+            }
+            else if (!body && !target[0])
+            {
+                typedef_target(text, target, sizeof(target));
+            }
+            libc_free(text);
+        }
+        if (strcmp(target, wanted) == 0)
+        {
+            break;
+        }
+        snprintf(wanted, sizeof(wanted), "%s", target);
+    }
+}
+
+int lsp_c_headers_add_fields(const char *document_path, const char *source, const char *name,
+                             struct cJSON *items)
+{
+    CFieldList *list = libc_malloc(sizeof(CFieldList));
+    if (!list)
+    {
+        return 0;
+    }
+    struct_fields(document_path, source, name, list);
+    int count = list->count;
+    for (int i = 0; i < count; i++)
+    {
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "label", list->fields[i].name);
+        cJSON_AddNumberToObject(item, "kind", 5); // Field
+        cJSON_AddStringToObject(item, "detail", list->fields[i].type);
+        cJSON_AddItemToArray(items, item);
+    }
+    libc_free(list);
+    return count;
+}
+
+int lsp_c_headers_field_type(const char *document_path, const char *source, const char *name,
+                             const char *field, char *type, size_t type_size)
+{
+    CFieldList *list = libc_malloc(sizeof(CFieldList));
+    if (!list)
+    {
+        return 0;
+    }
+    struct_fields(document_path, source, name, list);
+    int found = 0;
+    for (int i = 0; i < list->count && !found; i++)
+    {
+        if (strcmp(list->fields[i].name, field) == 0)
+        {
+            snprintf(type, type_size, "%s", list->fields[i].type);
+            found = 1;
+        }
+    }
+    libc_free(list);
+    return found;
+}
 
 static char *path_to_uri(const char *path)
 {
