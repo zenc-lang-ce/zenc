@@ -23,11 +23,10 @@ jobs:
           token: ${{ secrets.WEBSITE_REPO_TOKEN }}
           path: 'website-repo'
 
-      - name: Update Version in HTML and TOML
+      - name: Update the version in the site configuration
+        # Every page of the site reads it from config.extra.version.
         run: |
           cd website-repo
-          
-          sed -i -E 's/<span class="version">v[0-9]+\.[0-9]+\.[0-9]+<\/span>/<span class="version">'"${{ env.VERSION }}"'<\/span>/g' zenc/index.html
           sed -i -E 's/version = "v[0-9]+\.[0-9]+\.[0-9]+"/version = "'"${{ env.VERSION }}"'"/g' docs.zenc-lang.org/config.toml
 
       - name: Commit and Push to Website Repo
@@ -35,5 +34,5 @@ jobs:
           cd website-repo
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add zenc/index.html docs.zenc-lang.org/config.toml
+          git add docs.zenc-lang.org/config.toml
           git diff --quiet && git diff --staged --quiet || (git commit -m "chore: bump website version to ${{ env.VERSION }}" && git push)
