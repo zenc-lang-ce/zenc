@@ -1,0 +1,13 @@
+// ARGS: build
+// An unused lambda parameter is reported where it is declared, in each lambda syntax
+
+fn main() {
+    let arrow = (x: int) => { return 1; };
+    let single = y => 2;
+    let literal = fn(z: int) -> int { return 3; };
+    let used = (a: int, _b: int) => { return a; };
+    arrow(1);
+    single(1);
+    literal(1);
+    used(1, 2);
+}

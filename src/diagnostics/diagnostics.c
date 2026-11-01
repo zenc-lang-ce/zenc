@@ -333,7 +333,14 @@ void warn_unused_parameter(Token t, const char *param_name, const char *func_nam
         return;
     }
     char msg[MAX_SHORT_MSG_LEN];
-    snprintf(msg, sizeof(msg), "Unused parameter '%s' in function '%s'", param_name, func_name);
+    if (func_name)
+    {
+        snprintf(msg, sizeof(msg), "Unused parameter '%s' in function '%s'", param_name, func_name);
+    }
+    else
+    {
+        snprintf(msg, sizeof(msg), "Unused parameter '%s' in lambda", param_name);
+    }
     zwarn_with_suggestion(t, msg, "Consider prefixing with '_' if intentionally unused");
 }
 
