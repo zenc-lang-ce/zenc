@@ -252,7 +252,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                 }
                 char *type_str = type_to_string(arg_type);
 
-                add_symbol(ctx, name, type_str, arg_type, 0);
+                add_symbol_with_token(ctx, name, type_str, arg_type, param_tok, 0);
                 types[count] = arg_type;
 
                 if (strlen(buf) > 0)

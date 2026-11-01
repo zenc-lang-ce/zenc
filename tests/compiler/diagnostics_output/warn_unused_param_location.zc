@@ -1,0 +1,11 @@
+// ARGS: build
+// An unused parameter is reported where it is declared, not at the start of the file
+
+fn sum(a: int,
+       b: int) -> int {
+    return a;
+}
+
+fn main() {
+    sum(1, 2);
+}
