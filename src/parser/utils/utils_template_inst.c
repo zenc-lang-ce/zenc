@@ -397,21 +397,20 @@ static ASTNode *copy_fields_replacing(ParserContext *ctx, ASTNode *fields, const
     ASTNode *n = ast_create(NODE_FIELD);
     n->field.name = xstrdup(fields->field.name);
 
-    // Replace strings
-    n->field.type = replace_type_str(fields->field.type, param, concrete, NULL, NULL);
-
     // Replace formal types (Deep Copy)
     n->type_info = replace_type_formal(ctx, fields->type_info, param, concrete, NULL, NULL);
 
-    if (n->field.type && strchr(n->field.type, '_'))
+    // An instance names its generic in its mangled name: "MapEntry__int" instantiates MapEntry.
+    char *field_type = n->type_info ? type_to_string(n->type_info) : NULL;
+    if (field_type && strchr(field_type, '_'))
     {
         // Parse potential generic: e.g. "MapEntry_int" -> instantiate("MapEntry",
         // "int")
-        char *underscore = (char *)strrchr(n->field.type, '_');
-        if (underscore && underscore > n->field.type)
+        char *underscore = (char *)strrchr(field_type, '_');
+        if (underscore && underscore > field_type)
         {
             // Remove trailing '*' if present
-            char *type_copy = xstrdup(n->field.type);
+            char *type_copy = xstrdup(field_type);
             char *star = (char *)strchr(type_copy, '*');
             if (star)
             {
@@ -801,9 +800,10 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
         ASTNode *fld = i->strct.fields;
         while (fld)
         {
-            if (fld->field.type && strncmp(fld->field.type, "Slice__", 7) == 0)
+            char *field_type = fld->type_info ? type_to_string(fld->type_info) : NULL;
+            if (field_type && strncmp(field_type, "Slice__", 7) == 0)
             {
-                register_slice(ctx, fld->field.type + 7);
+                register_slice(ctx, field_type + 7);
             }
             fld = fld->next;
         }
@@ -893,10 +893,6 @@ static void free_field_list(ASTNode *fields)
         if (fields->field.name)
         {
             zfree(fields->field.name);
-        }
-        if (fields->field.type)
-        {
-            zfree(fields->field.type);
         }
         zfree(fields);
         fields = next;

@@ -515,8 +515,7 @@ struct ASTNode
 
         struct
         {
-            char *name;
-            char *type;
+            char *name; // The field's type is the node's type_info.
             int bit_width;
         } field;
 

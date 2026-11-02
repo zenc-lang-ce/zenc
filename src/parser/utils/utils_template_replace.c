@@ -1153,7 +1153,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     break;
     case NODE_FIELD:
         new_node->field.name = n->field.name ? xstrdup(n->field.name) : NULL;
-        new_node->field.type = replace_type_str(n->field.type, p, c, os, ns);
         break;
     case NODE_EXPR_LITERAL:
         if (n->literal.kind == LITERAL_STRING)

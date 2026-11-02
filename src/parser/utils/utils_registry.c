@@ -333,17 +333,12 @@ void register_slice(ParserContext *ctx, const char *type)
 
     ASTNode *len_f = ast_create(NODE_FIELD);
     len_f->field.name = xstrdup("len");
-    len_f->field.type = xstrdup("usize");
     len_f->type_info = type_new(TYPE_USIZE);
     ASTNode *cap_f = ast_create(NODE_FIELD);
     cap_f->field.name = xstrdup("cap");
-    cap_f->field.type = xstrdup("usize");
     cap_f->type_info = type_new(TYPE_USIZE);
     ASTNode *data_f = ast_create(NODE_FIELD);
     data_f->field.name = xstrdup("data");
-    char ptr_type[MAX_TYPE_NAME_LEN];
-    snprintf(ptr_type, sizeof(ptr_type), "%s*", type);
-    data_f->field.type = xstrdup(ptr_type);
     data_f->type_info = type_new_ptr(type_from_string_helper(ctx, type));
 
     data_f->next = len_f;
@@ -403,7 +398,6 @@ void register_tuple_with_types(ParserContext *ctx, const char *sig, const char *
         char fname[32];
         snprintf(fname, sizeof(fname), "v%d", fi);
         f->field.name = xstrdup(fname);
-        f->field.type = xstrdup(types[fi]);
         f->type_info = type_from_string_helper(ctx, types[fi]);
         if (!head)
         {

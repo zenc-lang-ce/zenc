@@ -157,13 +157,11 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
                 {
                     return NULL;
                 }
-                char *field_type_str = type_to_string(ft);
                 z_parse_expect(l, TOK_SEMICOLON, "Expected ;");
 
                 ASTNode *nf = ast_create(NODE_FIELD);
                 ATTACH_DOC_COMMENT(ctx, nf);
                 nf->field.name = token_strdup(field_name);
-                nf->field.type = field_type_str;
                 nf->type_info = ft;
 
                 if (!h)
@@ -214,7 +212,6 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
                 {
                     ASTNode *nf = ast_create(NODE_FIELD);
                     nf->field.name = xstrdup(f->field.name);
-                    nf->field.type = xstrdup(f->field.type);
                     nf->type_info = f->type_info;
 
                     if (!h)
@@ -243,12 +240,9 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             {
                 return NULL;
             }
-            char *f_type = type_to_string(ft);
-
             ASTNode *f = ast_create(NODE_FIELD);
             ATTACH_DOC_COMMENT(ctx, f);
             f->field.name = token_strdup(f_name);
-            f->field.type = f_type;
             f->type_info = ft;
             f->field.bit_width = 0;
 
