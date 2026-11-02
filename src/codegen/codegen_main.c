@@ -204,6 +204,32 @@ static void collect_sortable_nodes(ASTNode *head, ASTNode **nodes, int *idx)
     free_visited_modules(visited);
 }
 
+// The C struct of a tuple: a field `v0`, `v1`... for each element.
+static ASTNode *tuple_struct(Type *tuple)
+{
+    ASTNode *def = ast_create(NODE_STRUCT);
+    def->strct.name = type_to_string(tuple);
+    ASTNode *tail = NULL;
+    for (int i = 0; i < tuple->count; i++)
+    {
+        ASTNode *field = ast_create(NODE_FIELD);
+        char name[32];
+        snprintf(name, sizeof(name), "v%d", i);
+        field->field.name = xstrdup(name);
+        field->type_info = tuple->args[i];
+        if (tail)
+        {
+            tail->next = field;
+        }
+        else
+        {
+            def->strct.fields = field;
+        }
+        tail = field;
+    }
+    return def;
+}
+
 // Topologically sort a list of struct/enum nodes.
 static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
 {
@@ -752,32 +778,20 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
             k = k->next;
         }
 
-        // Tuple structs registered for tuple types and multi-value payloads take
-        // part in the ordering: a tuple holding a struct by value must come after
-        // it, and an enum carrying a tuple after the tuple.
-        TupleType *tup = ctx->used_tuples;
-        while (tup)
+        // The structs of the tuples the program uses take part in the ordering: a tuple holding a
+        // struct by value must come after it, and an enum carrying a tuple after the tuple.
+        for (TupleType *tup = ctx->used_tuples; tup; tup = tup->next)
         {
-            char *tuple_name = type_to_string(tup->type);
-            ASTNode *def = find_struct_def(ctx, tuple_name);
-            zfree(tuple_name);
-            if (def && def->kind == NODE_STRUCT)
+            ASTNode *def = tuple_struct(tup->type);
+            if (!merged)
             {
-                ASTNode *copy = xmalloc(sizeof(ASTNode));
-                *copy = *def;
-                copy->next = NULL;
-                if (!merged)
-                {
-                    merged = copy;
-                    merged_tail = copy;
-                }
-                else
-                {
-                    merged_tail->next = copy;
-                    merged_tail = copy;
-                }
+                merged = def;
             }
-            tup = tup->next;
+            else
+            {
+                merged_tail->next = def;
+            }
+            merged_tail = def;
         }
 
         // Topologically sort.

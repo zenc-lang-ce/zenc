@@ -400,28 +400,7 @@ void register_tuple(ParserContext *ctx, Type *tuple)
     n->next = ctx->used_tuples;
     ctx->used_tuples = n;
 
-    ASTNode *s_def = ast_create(NODE_STRUCT);
-    s_def->strct.name = struct_name;
-    ASTNode *head = NULL, *tail = NULL;
-    for (int fi = 0; fi < tuple->count; fi++)
-    {
-        ASTNode *f = ast_create(NODE_FIELD);
-        char fname[32];
-        snprintf(fname, sizeof(fname), "v%d", fi);
-        f->field.name = xstrdup(fname);
-        f->type_info = tuple->args[fi];
-        if (!head)
-        {
-            head = f;
-        }
-        else
-        {
-            tail->next = f;
-        }
-        tail = f;
-    }
-    s_def->strct.fields = head;
-    register_struct_def(ctx, struct_name, s_def);
+    zfree(struct_name);
 }
 
 void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
