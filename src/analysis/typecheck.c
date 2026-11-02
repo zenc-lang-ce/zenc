@@ -15,17 +15,57 @@
 
 // ** Internal Helpers **
 
-// Type of the `index`-th of `count` bindings of a match case, read from the
-// payload of the variant the pattern names. NULL when it cannot be told (not an
-// enum, unknown variant, unresolved generic): the caller keeps UNSAFE_ANY.
-static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *patterns, int index,
-                                int count)
+// The type a match looks at: its subject's, through aliases and pointers (a `ref` match).
+static Type *match_subject_type(Type *scrutinee)
 {
     Type *t = get_inner_type(scrutinee);
     while (t && t->kind == TYPE_POINTER)
     {
         t = get_inner_type(t->inner);
     }
+    return t;
+}
+
+// Type of the binding of an Option or Result case. They are structs in the standard library,
+// as codegen reads them: Some and Ok bind the field `val`, Err binds `err`.
+static Type *option_result_binding_type(TypeChecker *tc, ASTNode *def, const char *variant,
+                                        int count)
+{
+    const char *field_name = NULL;
+    if (strcmp(variant, "Some") == 0 || strcmp(variant, "Ok") == 0)
+    {
+        field_name = "val";
+    }
+    else if (strcmp(variant, "Err") == 0)
+    {
+        field_name = "err";
+    }
+    if (!field_name || count != 1)
+    {
+        return NULL;
+    }
+    for (ASTNode *field = def->strct.fields; field; field = field->next)
+    {
+        if (field->kind == NODE_FIELD && field->field.name &&
+            strcmp(field->field.name, field_name) == 0)
+        {
+            if (!field->type_info && field->field.type)
+            {
+                return type_from_string_helper(tc->pctx, field->field.type);
+            }
+            return field->type_info;
+        }
+    }
+    return NULL;
+}
+
+// Type of the `index`-th of `count` bindings of a match case, read from the
+// payload of the variant the pattern names. NULL when it cannot be told (not an
+// enum, unknown variant, unresolved generic): the caller keeps UNSAFE_ANY.
+static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *patterns, int index,
+                                int count)
+{
+    Type *t = match_subject_type(scrutinee);
     // Bindings come from a single variant: `A || B` gives them no type.
     const char *variant = (patterns && patterns->kind == PATTERN_NAME && !patterns->next)
                               ? patterns->name.name
@@ -35,6 +75,11 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
         return NULL;
     }
     ASTNode *def = find_struct_def(tc->pctx, t->name);
+    if (def && def->kind == NODE_STRUCT &&
+        (str_is_option_type(t->name) || str_is_result_type(t->name)))
+    {
+        return option_result_binding_type(tc, def, variant, count);
+    }
     if (!def || def->kind != NODE_ENUM)
     {
         return NULL;
@@ -378,12 +423,23 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     move_state_merge_into(&merged_state, match_initial_state);
                 }
 
-                if (!tc->pctx->config->misra_mode)
+                Type *subject = match_subject_type(node->match_stmt.expr->type_info);
+                const char *missing =
+                    match_missing_variant(tc->pctx, node, subject ? subject->name : NULL);
+                if (missing && strcmp(missing, "_") == 0 && !tc->pctx->config->misra_mode)
                 {
                     const char *hints[] = {"Add a default '_' case to handle all possibilities",
                                            NULL};
                     tc_error_with_hints(tc, node->token,
                                         "Match may not be exhaustive (no default case)", hints);
+                }
+                else if (missing && strcmp(missing, "_") != 0)
+                {
+                    char msg[MAX_ERROR_MSG_LEN];
+                    snprintf(msg, sizeof(msg), "Match is not exhaustive: missing variant '%s'",
+                             missing);
+                    const char *hints[] = {"Add a case for it, or a default '_' case", NULL};
+                    tc_error_with_hints(tc, node->token, msg, hints);
                 }
             }
 
