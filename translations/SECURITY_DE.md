@@ -6,8 +6,8 @@ In diesem Abschnitt kannst du angeben, welche Versionen deines Projekts aktuell 
 
 | Version | Unterstützt        |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
-| < 0.1   | :x:                |
+| 0.5.x   | :white_check_mark: |
+| < 0.5   | :x:                |
 
 ## Meldung einer Sicherheitslücke
 
@@ -17,7 +17,7 @@ Wir nehmen die Sicherheit von Zen C sehr ernst. Solltest du eine Sicherheitslüc
 
 ### So meldest du Sicherheitslücken
 
-Bitte sende uns eine E-Mail an **security@zenc-lang.org**.
+Kontaktiere die Maintainer auf dem [Zen C Discord-Server](https://discord.com/invite/q6wEsCmkJP) und sende den Bericht als **Direktnachricht**. Poste die Details nicht in öffentlichen Kanälen.
 
 Dein Bericht sollte Folgendes enthalten:
 

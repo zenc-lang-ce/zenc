@@ -6,8 +6,8 @@
 
 | 版本    | 支援               |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
-| < 0.1   | :x:                |
+| 0.5.x   | :white_check_mark: |
+| < 0.5   | :x:                |
 
 ## 報告漏洞
 
@@ -17,7 +17,7 @@
 
 ### 如何報告
 
-請發送電子郵件至 **security@zenc-lang.org**。
+請在 [Zen C 的 Discord 伺服器](https://discord.com/invite/q6wEsCmkJP) 上聯繫維護者，並透過**私訊**發送報告。不要在公開頻道中發布細節。
 
 在您的報告中，請包括：
 

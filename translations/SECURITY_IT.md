@@ -6,8 +6,8 @@ Usa questa sezione per indicare quali versioni del tuo progetto ricevono aggiorn
 
 | Versione | Supportata         |
 | -------- | ------------------ |
-| 0.1.x    | :white_check_mark: |
-| < 0.1    | :x:                |
+| 0.5.x    | :white_check_mark: |
+| < 0.5    | :x:                |
 
 ## Segnalare una Vulnerabilità
 
@@ -17,7 +17,7 @@ Prendiamo molto seriamente la sicurezza di Zen C. Se credi di aver trovato una v
 
 ### Come Segnalare
 
-Per favore inviaci un'email a **security@zenc-lang.org**.
+Contatta i maintainer sul [server Discord di Zen C](https://discord.com/invite/q6wEsCmkJP) e invia la segnalazione con un **messaggio diretto**. Non pubblicare i dettagli nei canali pubblici.
 
 Nella tua segnalazione, per favore includi:
 

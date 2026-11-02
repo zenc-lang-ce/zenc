@@ -58,12 +58,12 @@
 | Репозиторий | Описание | Статус |
 | :--- | :--- | :--- |
 | **[zenc](https://github.com/zenc-lang-ce/zenc)** | Ядро компилятора Zen C (`zc`), CLI и стандартная библиотека. | Активная разработка |
-| **[docs](https://github.com/zenc-lang-ce/zenc-docs)** | Официальная техническая документация и спецификация языка. | Активен |
-| **[rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | Репозиторий запросов на комментарии (RFC). Формируйте будущее языка. | Активен |
-| **[vscode-zenc](https://github.com/zenc-lang-ce/zenc-vscode)** | Официальное расширение VS Code (подсветка синтаксиса, сниппеты). | Alpha |
-| **[www](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | Исходный код `zenc-lang-ce.github.io`. | Активен |
+| **[zenc-docs](https://github.com/zenc-lang-ce/zenc-docs)** | Официальная техническая документация и спецификация языка. | Активен |
+| **[zenc-rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | Репозиторий запросов на комментарии (RFC). Формируйте будущее языка. | Активен |
+| **[zenc-vscode](https://github.com/zenc-lang-ce/zenc-vscode)** | Официальное расширение VS Code (подсветка синтаксиса, сниппеты). | Alpha |
+| **[zenc-lang-ce.github.io](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | Исходный код `zenc-lang-ce.github.io`. | Активен |
 | **[awesome-zenc](https://github.com/zenc-lang-ce/awesome-zenc)** | Курируемый список отличных примеров Zen C. | Растет |
-| **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** | Официальный плагин для Vim/Neovim (Синтаксис, Отступы). | Активен |
+| **[zenc-vim](https://github.com/zenc-lang-ce/zenc-vim)** | Официальный плагин для Vim/Neovim (Синтаксис, Отступы). | Активен |
 
 ## Галерея
 
@@ -692,7 +692,7 @@ cc -I /usr/local/include/zenc my_tool.c -o my_tool
 *   **[zc-ape](https://github.com/OEvgeny/zc-ape)** (MIT License): Оригинальный порт Actually Portable Executable Zen-C от [Eugene Olonov](https://github.com/OEvgeny).
 *   **[Cosmopolitan Libc](https://github.com/jart/cosmopolitan)** (ISC License): Основополагающая библиотека, которая делает APE возможной.
 *   **[TRE](https://github.com/laurikari/tre)** (BSD License): Используется для движка регулярных выражений в стандартной библиотеке.
-*   **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** (Лицензия MIT): Официальный плагин Vim/Neovim, в основном написанный **[davidscholberg](https://github.com/davidscholberg)**.
+*   **[zenc-vim](https://github.com/zenc-lang-ce/zenc-vim)** (Лицензия MIT): Официальный плагин Vim/Neovim, в основном написанный **[davidscholberg](https://github.com/davidscholberg)**.
 *   **[TinyCC](https://github.com/TinyCC/tinycc)** (Лицензия LGPL): Фундаментальный JIT-движок, используемый для высокопроизводительной оценки REPL.
 
 ---

@@ -58,12 +58,12 @@ Das Zen C-Projekt besteht aus mehreren Repositories:
 | Repository | Beschreibung | Status |
 | :--- | :--- | :--- |
 | **[zenc](https://github.com/zenc-lang-ce/zenc)** | Der Kern-Compiler (zc), CLI und Standardbibliothek. | Aktive Entwicklung |
-| **[docs](https://github.com/zenc-lang-ce/zenc-docs)** | Offizielle Dokumentation und Spezifikation. | Aktiv |
-| **[rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | Request for Comments (RFCs). Gestalte die Zukunft mit. | Aktiv |
-| **[vscode-zenc](https://github.com/zenc-lang-ce/zenc-vscode)** | Offizielle VS Code Erweiterung. | Alpha |
-| **[www](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | Quellcode für zenc-lang-ce.github.io.| Aktiv |
+| **[zenc-docs](https://github.com/zenc-lang-ce/zenc-docs)** | Offizielle Dokumentation und Spezifikation. | Aktiv |
+| **[zenc-rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | Request for Comments (RFCs). Gestalte die Zukunft mit. | Aktiv |
+| **[zenc-vscode](https://github.com/zenc-lang-ce/zenc-vscode)** | Offizielle VS Code Erweiterung. | Alpha |
+| **[zenc-lang-ce.github.io](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | Quellcode für zenc-lang-ce.github.io.| Aktiv |
 | **[awesome-zenc](https://github.com/zenc-lang-ce/awesome-zenc)** | Eine sorgfältig zusammengestellte Liste großartiger Zen C-Beispiele. | Wachsend |
-| **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** | Offizielles Vim/Neovim-Plugin (Syntax, Einrückung). | Aktiv |
+| **[zenc-vim](https://github.com/zenc-lang-ce/zenc-vim)** | Offizielles Vim/Neovim-Plugin (Syntax, Einrückung). | Aktiv |
 
 ## Showcase
 
@@ -383,7 +383,7 @@ zc-repl
 Zen C enthält einen integrierten Sprachserver zur Editorintegration.
 
 - **[Installations- und Einrichtungsanleitung](../docs/LSP.md)**
-- **Unterstützte Editoren**: VS Code, Neovim, Vim ([zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)), Zed und alle LSP-fähigen Editoren.
+- **Unterstützte Editoren**: VS Code, Neovim, Vim ([zenc-vim](https://github.com/zenc-lang-ce/zenc-vim)), Zed und alle LSP-fähigen Editoren.
 
 Verwende `zc-lsp`, um den Server zu starten.
 
@@ -736,7 +736,7 @@ Dieses Projekt verwendet Bibliotheken von Drittanbietern. Die vollständigen Liz
 *   **[zc-ape](https://github.com/OEvgeny/zc-ape)** (MIT-Lizenz): Der ursprüngliche Actually Portable Executable Port von Zen C von **[Eugene Olonov](https://github.com/OEvgeny)**.
 *   **[Cosmopolitan Libc](https://github.com/jart/cosmopolitan)** (ISC-Lizenz): Die zugrunde liegende Bibliothek, die APE ermöglicht.
 *   **[TRE](https://github.com/laurikari/tre)** (BSD-Lizenz): Wird für die Regex-Engine der Standardbibliothek verwendet.
-*   **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** (MIT-Lizenz): Das offizielle Vim/Neovim-Plugin, hauptsächlich entwickelt von **[davidscholberg](https://github.com/davidscholberg)**.
+*   **[zenc-vim](https://github.com/zenc-lang-ce/zenc-vim)** (MIT-Lizenz): Das offizielle Vim/Neovim-Plugin, hauptsächlich entwickelt von **[davidscholberg](https://github.com/davidscholberg)**.
 *   **[TinyCC](https://github.com/TinyCC/tinycc)** (LGPL-Lizenz): Die fundamentale JIT-Engine, die für die Hochleistungs-REPL-Auswertung verwendet wird.
 
 ---

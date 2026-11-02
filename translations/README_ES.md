@@ -58,12 +58,12 @@ El proyecto Zen C consta de varios repositorios. A continuación se presentan lo
 | Repositorio | Descripción | Estado |
 | :--- | :--- | :--- |
 | **[zenc](https://github.com/zenc-lang-ce/zenc)** | El compilador central de Zen C (`zc`), la CLI y la biblioteca estándar. | Desarrollo Activo |
-| **[docs](https://github.com/zenc-lang-ce/zenc-docs)** | La documentación técnica oficial y la especificación del lenguaje. | Activo |
-| **[rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | El repositorio de Solicitud de Comentarios (RFC). Dale forma al futuro del lenguaje. | Activo |
-| **[vscode-zenc](https://github.com/zenc-lang-ce/zenc-vscode)** | Extensión oficial de VS Code (Resaltado de sintaxis, Snippets). | Alpha |
-| **[www](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | Código fuente de `zenc-lang-ce.github.io`. | Activo |
+| **[zenc-docs](https://github.com/zenc-lang-ce/zenc-docs)** | La documentación técnica oficial y la especificación del lenguaje. | Activo |
+| **[zenc-rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | El repositorio de Solicitud de Comentarios (RFC). Dale forma al futuro del lenguaje. | Activo |
+| **[zenc-vscode](https://github.com/zenc-lang-ce/zenc-vscode)** | Extensión oficial de VS Code (Resaltado de sintaxis, Snippets). | Alpha |
+| **[zenc-lang-ce.github.io](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | Código fuente de `zenc-lang-ce.github.io`. | Activo |
 | **[awesome-zenc](https://github.com/zenc-lang-ce/awesome-zenc)** | Una lista curada de ejemplos asombrosos de Zen C. | Creciendo |
-| **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** | Plugin oficial para Vim/Neovim (Sintaxis, Sangría). | Activo |
+| **[zenc-vim](https://github.com/zenc-lang-ce/zenc-vim)** | Plugin oficial para Vim/Neovim (Sintaxis, Sangría). | Activo |
 
 ## Proyectos Destacados
 
@@ -729,7 +729,7 @@ Este proyecto utiliza bibliotecas de terceros. Los textos completos de las licen
 *   **[zc-ape](https://github.com/OEvgeny/zc-ape)** (Licencia MIT): El port original de Ejecutable Realmente Portable de Zen-C por [Eugene Olonov](https://github.com/OEvgeny).
 *   **[Cosmopolitan Libc](https://github.com/jart/cosmopolitan)** (Licencia ISC): La biblioteca fundamental que hace posible APE.
 *   **[TRE](https://github.com/laurikari/tre)** (Licencia BSD): Usado para el motor de expresiones regulares en la biblioteca estándar.
-*   **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** (Licencia MIT): El plugin oficial para Vim/Neovim, escrito principalmente por **[davidscholberg](https://github.com/davidscholberg)**.
+*   **[zenc-vim](https://github.com/zenc-lang-ce/zenc-vim)** (Licencia MIT): El plugin oficial para Vim/Neovim, escrito principalmente por **[davidscholberg](https://github.com/davidscholberg)**.
 *   **[TinyCC](https://github.com/TinyCC/tinycc)** (Licencia LGPL): El motor JIT fundamental utilizado para la evaluación de alto rendimiento del REPL.
 
 ---
