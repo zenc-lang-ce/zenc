@@ -1,6 +1,6 @@
 # Changelog
 
-The most significant changes of each release. Every change is listed in the [full changelog](https://docs.zenc-lang.org/changelog/).
+The most significant changes of each release. Every change is listed in the [full changelog](https://zenc-lang-ce.github.io/docs/changelog/).
 
 ## 0.5.0
 
@@ -31,4 +31,4 @@ More than 140 fixes:
 - 21 bugs in diagnostics and `zc check`: false errors, missing errors and wrong locations;
 - 33 fixes in tools and platforms: the LSP, the REPL, the CLI, installation, building the compiler, Windows and macOS.
 
-See the [full changelog](https://docs.zenc-lang.org/changelog/) for every fix, addition and change.
+See the [full changelog](https://zenc-lang-ce.github.io/docs/changelog/) for every fix, addition and change.

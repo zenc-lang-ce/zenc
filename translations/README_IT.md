@@ -58,10 +58,10 @@ Il progetto Zen C è composto da diversi repository. Di seguito trovi i principa
 | Repository | Descrizione | Stato |
 | :--- | :--- | :--- |
 | **[zenc](https://github.com/zenc-lang-ce/zenc)** | Il compilatore core di Zen C (`zc`), CLI e libreria standard. | Sviluppo Attivo |
-| **[docs](https://github.com/zenc-lang-ce/zenc-docs)** | La documentazione tecnica ufficiale e la specifica del linguaggio. | Attivo |
-| **[rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | Il repository delle Request for Comments (RFC). Dai forma al futuro del linguaggio. | Attivo |
-| **[vscode-zenc](https://github.com/zenc-lang-ce/zenc-vscode)** | Estensione ufficiale di VS Code (Sintassi, Snippet). | Alpha |
-| **[www](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | Codice sorgente di `zenc-lang-ce.github.io`. | Attivo |
+| **[zenc-docs](https://github.com/zenc-lang-ce/zenc-docs)** | La documentazione tecnica ufficiale e la specifica del linguaggio. | Attivo |
+| **[zenc-rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | Il repository delle Request for Comments (RFC). Dai forma al futuro del linguaggio. | Attivo |
+| **[zenc-vscode](https://github.com/zenc-lang-ce/zenc-vscode)** | Estensione ufficiale di VS Code (Sintassi, Snippet). | Alpha |
+| **[zenc-lang-ce.github.io](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | Codice sorgente di `zenc-lang-ce.github.io`. | Attivo |
 | **[awesome-zenc](https://github.com/zenc-lang-ce/awesome-zenc)** | Una lista curata di fantastici esempi di Zen C. | In crescita |
 
 ## Vetrina
@@ -699,7 +699,7 @@ Questo progetto utilizza librerie esterne. I testi di licenza completi possono e
 * **[zc-ape](https://github.com/OEvgeny/zc-ape)** (Licenza MIT): La versione originale di Actually Portable Executable di Zen-C, realizzata da [Eugene Olonov](https://github.com/OEvgeny).
 * **[Cosmopolitan Libc](https://github.com/jart/cosmopolitan)** (Licenza ISC): La libreria fondamentale che rende possibile APE.
 * **[TRE](https://github.com/laurikari/tre)** (Licenza BSD): Usato per il motore di espressioni regolari nella libreria standard.
-* **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** (Licenza MIT): Il plugin ufficiale per Vim/Neovim, scritto principalmente da **[davidscholberg](https://github.com/davidscholberg)**.
+* **[zenc-vim](https://github.com/zenc-lang-ce/zenc-vim)** (Licenza MIT): Il plugin ufficiale per Vim/Neovim, scritto principalmente da **[davidscholberg](https://github.com/davidscholberg)**.
 * **[TinyCC](https://github.com/TinyCC/tinycc)** (Licenza LGPL): Il motore JIT fondamentale utilizzato per la valutazione REPL ad alte prestazioni.
 
 ---

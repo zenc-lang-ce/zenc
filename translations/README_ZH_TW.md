@@ -58,10 +58,10 @@ Zen C 項目包含多個倉庫。下面是主要的倉庫列表：
 | 倉庫 | 描述 | 狀態 |
 | :--- | :--- | :--- |
 | **[zenc](https://github.com/zenc-lang-ce/zenc)** | Zen C 核心編譯器 (`zc`)、CLI 和標準庫。 | 活躍開發 |
-| **[docs](https://github.com/zenc-lang-ce/zenc-docs)** | 官方技術文檔與語言規範。 | 活躍 |
-| **[rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | 徵求意見稿 (RFC) 倉庫。塑造語言的未來。 | 活躍 |
-| **[vscode-zenc](https://github.com/zenc-lang-ce/zenc-vscode)** | 官方 VS Code 擴充功能（語法高亮、程式碼片段）。 | Alpha |
-| **[www](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | `zenc-lang-ce.github.io` 的源代碼。 | 活躍 |
+| **[zenc-docs](https://github.com/zenc-lang-ce/zenc-docs)** | 官方技術文檔與語言規範。 | 活躍 |
+| **[zenc-rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | 徵求意見稿 (RFC) 倉庫。塑造語言的未來。 | 活躍 |
+| **[zenc-vscode](https://github.com/zenc-lang-ce/zenc-vscode)** | 官方 VS Code 擴充功能（語法高亮、程式碼片段）。 | Alpha |
+| **[zenc-lang-ce.github.io](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | `zenc-lang-ce.github.io` 的源代碼。 | 活躍 |
 | **[awesome-zenc](https://github.com/zenc-lang-ce/awesome-zenc)** | 精選的 Zen C 範例列表。 | 不斷增加 |
 
 ## 展示
@@ -728,7 +728,7 @@ cc -I /usr/local/include/zenc my_tool.c -o my_tool
 *   **[zc-ape](https://github.com/OEvgeny/zc-ape)** (MIT 許可證)：由 [Eugene Olonov](https://github.com/OEvgeny) 開發的原版 Zen-C 實際上便攜的可執行文件 (APE) 端口。
 *   **[Cosmopolitan Libc](https://github.com/jart/cosmopolitan)** (ISC 許可證)：使 APE 成為可能納基礎庫。
 *   **[TRE](https://github.com/laurikari/tre)** (BSD 許可證)：用於標準庫中的正則表達式引擎。
-*   **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** (MIT 許可證)：官方 Vim/Neovim 插件，主要由 **[davidscholberg](https://github.com/davidscholberg)** 編寫。
+*   **[zenc-vim](https://github.com/zenc-lang-ce/zenc-vim)** (MIT 許可證)：官方 Vim/Neovim 插件，主要由 **[davidscholberg](https://github.com/davidscholberg)** 編寫。
 *   **[TinyCC](https://github.com/TinyCC/tinycc)** (LGPL 許可證)：用於高效能 REPL 評估的基礎 JIT 引擎。
 
 ---

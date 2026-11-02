@@ -58,12 +58,12 @@ Zen C 项目包含多个仓库。下面是主要的仓库列表：
 | 仓库 | 描述 | 状态 |
 | :--- | :--- | :--- |
 | **[zenc](https://github.com/zenc-lang-ce/zenc)** | Zen C 核心编译器 (`zc`)、CLI 和标准库。 | 活跃开发 |
-| **[docs](https://github.com/zenc-lang-ce/zenc-docs)** | 官方技术文档与语言规范。 | 活跃 |
-| **[rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | 征求意见稿 (RFC) 仓库。塑造语言的未来。 | 活跃 |
-| **[vscode-zenc](https://github.com/zenc-lang-ce/zenc-vscode)** | 官方 VS Code 扩展（语法高亮、代码片段）。 | Alpha |
-| **[www](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | `zenc-lang-ce.github.io` 的源代码。 | 活跃 |
+| **[zenc-docs](https://github.com/zenc-lang-ce/zenc-docs)** | 官方技术文档与语言规范。 | 活跃 |
+| **[zenc-rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | 征求意见稿 (RFC) 仓库。塑造语言的未来。 | 活跃 |
+| **[zenc-vscode](https://github.com/zenc-lang-ce/zenc-vscode)** | 官方 VS Code 扩展（语法高亮、代码片段）。 | Alpha |
+| **[zenc-lang-ce.github.io](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | `zenc-lang-ce.github.io` 的源代码。 | 活跃 |
 | **[awesome-zenc](https://github.com/zenc-lang-ce/awesome-zenc)** | 精选的 Zen C 示例列表。 | 不断增加 |
-| **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** | 官方 Vim/Neovim 插件（语法高亮、智能缩进）。 | 活跃 |
+| **[zenc-vim](https://github.com/zenc-lang-ce/zenc-vim)** | 官方 Vim/Neovim 插件（语法高亮、智能缩进）。 | 活跃 |
 
 ## 展示
 
@@ -730,7 +730,7 @@ cc -I /usr/local/include/zenc my_tool.c -o my_tool
 *   **[zc-ape](https://github.com/OEvgeny/zc-ape)** (MIT 许可证)：由 [Eugene Olonov](https://github.com/OEvgeny) 开发的原版 Zen-C 实际上便携的可执行文件 (APE) 端口。
 *   **[Cosmopolitan Libc](https://github.com/jart/cosmopolitan)** (ISC 许可证)：使 APE 成为可能的基础库。
 *   **[TRE](https://github.com/laurikari/tre)** (BSD 许可证): 用于标准库中的正则表达式引擎。
-*   **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** (MIT 许可证)：官方 Vim/Neovim 插件，主要由 **[davidscholberg](https://github.com/davidscholberg)** 编写。
+*   **[zenc-vim](https://github.com/zenc-lang-ce/zenc-vim)** (MIT 许可证)：官方 Vim/Neovim 插件，主要由 **[davidscholberg](https://github.com/davidscholberg)** 编写。
 *   **[TinyCC](https://github.com/TinyCC/tinycc)** (LGPL 许可证)：用于高性能 REPL 评估的基础 JIT 引擎。
 
 ---
