@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/warn_try_value_type.zc...
+warning: Implicit narrowing conversion from 'int64_t' (64-bit) to 'uint8_t' (8-bit)
+  --> tests/compiler/diagnostics_output/warn_try_value_type.zc:12:9
+   |
+12 |     let narrow: u8 = value;
+   |         ^ here
+   |
+[exit 0]

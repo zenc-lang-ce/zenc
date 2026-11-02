@@ -136,6 +136,41 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
     return NULL;
 }
 
+// What `x?` gives: the value an Option or Result holds (the `val` field of the standard
+// library's, the payload of an enum's `Ok` or `Some`), or NULL.
+static Type *try_value_type(ParserContext *ctx, Type *t)
+{
+    t = resolve_alias(t);
+    if (!t || !t->name || (t->kind != TYPE_STRUCT && t->kind != TYPE_ENUM))
+    {
+        return NULL;
+    }
+    ASTNode *def = find_struct_def(ctx, t->name);
+    if (def && def->kind == NODE_STRUCT)
+    {
+        for (ASTNode *field = def->strct.fields; field; field = field->next)
+        {
+            if (field->kind == NODE_FIELD && field->field.name &&
+                strcmp(field->field.name, "val") == 0)
+            {
+                return field->type_info;
+            }
+        }
+    }
+    else if (def && def->kind == NODE_ENUM)
+    {
+        for (ASTNode *variant = def->enm.variants; variant; variant = variant->next)
+        {
+            if (variant->variant.name && (strcmp(variant->variant.name, "Ok") == 0 ||
+                                          strcmp(variant->variant.name, "Some") == 0))
+            {
+                return variant->variant.payload;
+            }
+        }
+    }
+    return NULL;
+}
+
 void check_node(TypeChecker *tc, ASTNode *node, int depth)
 {
     if (!node || !tc)
@@ -677,6 +712,13 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         if (!tc->is_assign_lhs)
         {
             check_use_validity(tc, node);
+        }
+        break;
+    case NODE_TRY:
+        check_node(tc, node->try_stmt.expr, depth + 1);
+        if (!node->type_info && node->try_stmt.expr)
+        {
+            node->type_info = try_value_type(tc->pctx, node->try_stmt.expr->type_info);
         }
         break;
     case NODE_DEFER:
