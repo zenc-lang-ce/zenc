@@ -1055,6 +1055,11 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     }
                 }
 
+                // `Self { ... }` builds the impl's struct, as `Self` names it in a type.
+                if (strcmp(acc, "Self") == 0 && ctx->current_impl_struct)
+                {
+                    acc = xstrdup(ctx->current_impl_struct);
+                }
                 char *struct_name = acc;
                 if (!ctx->imports.current_module_prefix)
                 {

@@ -725,7 +725,11 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         if (node->cast.expr && node->cast.expr->type_info && node->cast.target_type)
         {
             Type *source_type = resolve_alias(node->cast.expr->type_info);
-            Type *target_type = type_from_string_helper(tc->pctx, node->cast.target_type);
+            // The parser's Type, when it left one: cast.target_type is the C spelling codegen
+            // emits (`c_point*` for a struct with @link_name), not a name the program uses.
+            Type *target_type = node->type_info
+                                    ? node->type_info
+                                    : type_from_string_helper(tc->pctx, node->cast.target_type);
 
             if (tc->pctx->config->misra_mode && target_type)
             {
