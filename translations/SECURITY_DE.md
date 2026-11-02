@@ -6,8 +6,8 @@ In diesem Abschnitt kannst du angeben, welche Versionen deines Projekts aktuell 
 
 | Version | Unterstützt        |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
-| < 0.1   | :x:                |
+| 0.5.x   | :white_check_mark: |
+| < 0.5   | :x:                |
 
 ## Meldung einer Sicherheitslücke
 

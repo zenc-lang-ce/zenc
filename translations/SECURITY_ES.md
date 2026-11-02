@@ -6,8 +6,8 @@ Utilice esta sección para informar sobre qué versiones de su proyecto reciben 
 
 | Versión | Soportada          |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
-| < 0.1   | :x:                |
+| 0.5.x   | :white_check_mark: |
+| < 0.5   | :x:                |
 
 ## Reportar una Vulnerabilidad
 

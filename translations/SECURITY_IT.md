@@ -6,8 +6,8 @@ Usa questa sezione per indicare quali versioni del tuo progetto ricevono aggiorn
 
 | Versione | Supportata         |
 | -------- | ------------------ |
-| 0.1.x    | :white_check_mark: |
-| < 0.1    | :x:                |
+| 0.5.x    | :white_check_mark: |
+| < 0.5    | :x:                |
 
 ## Segnalare una Vulnerabilità
 
