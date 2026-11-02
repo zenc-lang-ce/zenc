@@ -69,9 +69,9 @@ static void node_deps_build(ParserContext *ctx, ASTNode *node, NodeDeps *deps)
         ASTNode *field = node->strct.fields;
         while (field)
         {
-            if (field->kind == NODE_FIELD && field->field.type)
+            if (field->kind == NODE_FIELD)
             {
-                node_deps_add(ctx, deps, field->field.type);
+                node_deps_add(ctx, deps, type_to_string(field->type_info));
             }
             field = field->next;
         }

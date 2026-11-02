@@ -1220,9 +1220,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 tpl_field = tpl_field->next;
                             }
 
-                            if (tpl_field && tpl_field->field.type)
+                            if (tpl_field && tpl_field->type_info)
                             {
-                                const char *ft = tpl_field->field.type;
+                                const char *ft = type_to_string(tpl_field->type_info);
                                 Type *val_type = init_field->var_decl.init_expr->type_info;
 
                                 if (strcmp(ft, gen_param) == 0 && val_type)

@@ -229,7 +229,7 @@ static int cmd_show(ReplState *state, const char *args)
             {
                 if (field->kind == NODE_FIELD)
                 {
-                    printf("    %s: %s;\n", field->field.name, field->field.type);
+                    printf("    %s: %s;\n", field->field.name, type_to_string(field->type_info));
                 }
                 else if (field->kind == NODE_VAR_DECL)
                 {

@@ -1174,8 +1174,7 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                 if (strcmp(field->field.name, parts[p]) == 0)
                                 {
                                     zfree(type_name);
-                                    type_name =
-                                        field->field.type ? xstrdup(field->field.type) : NULL;
+                                    type_name = type_to_string(field->type_info);
                                     found_field = 1;
                                     break;
                                 }
@@ -1231,7 +1230,8 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                     cJSON *item = cJSON_CreateObject();
                                     cJSON_AddStringToObject(item, "label", field->field.name);
                                     cJSON_AddNumberToObject(item, "kind", 5); // Field
-                                    cJSON_AddStringToObject(item, "detail", field->field.type);
+                                    cJSON_AddStringToObject(item, "detail",
+                                                            type_to_string(field->type_info));
                                     cJSON_AddItemToArray(items, item);
                                     field = field->next;
                                 }

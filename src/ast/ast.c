@@ -1457,7 +1457,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
                     {
                         if (field->field.name && strcmp(field->field.name, "val") == 0)
                         {
-                            return xstrdup(field->field.type);
+                            return type_to_string(field->type_info);
                         }
                         field = field->next;
                     }
@@ -1684,7 +1684,7 @@ char *get_field_type_str(ParserContext *ctx, const char *struct_name, const char
     {
         if (strcmp(f->field.name, field_name) == 0)
         {
-            return f->field.type;
+            return type_to_string(f->type_info);
         }
         f = f->next;
     }

@@ -28,8 +28,7 @@ static Type *match_subject_type(Type *scrutinee)
 
 // Type of the binding of an Option or Result case. They are structs in the standard library,
 // as codegen reads them: Some and Ok bind the field `val`, Err binds `err`.
-static Type *option_result_binding_type(TypeChecker *tc, ASTNode *def, const char *variant,
-                                        int count)
+static Type *option_result_binding_type(ASTNode *def, const char *variant, int count)
 {
     const char *field_name = NULL;
     if (strcmp(variant, "Some") == 0 || strcmp(variant, "Ok") == 0)
@@ -49,10 +48,6 @@ static Type *option_result_binding_type(TypeChecker *tc, ASTNode *def, const cha
         if (field->kind == NODE_FIELD && field->field.name &&
             strcmp(field->field.name, field_name) == 0)
         {
-            if (!field->type_info && field->field.type)
-            {
-                return type_from_string_helper(tc->pctx, field->field.type);
-            }
             return field->type_info;
         }
     }
@@ -93,7 +88,7 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
     if (def && def->kind == NODE_STRUCT &&
         (str_is_option_type(t->name) || str_is_result_type(t->name)))
     {
-        return option_result_binding_type(tc, def, variant, count);
+        return option_result_binding_type(def, variant, count);
     }
     if (!def || def->kind != NODE_ENUM)
     {
@@ -128,12 +123,6 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
                 {
                     if (i == index)
                     {
-                        // Tuple structs registered for payloads only keep the
-                        // field type as text.
-                        if (!field->type_info && field->field.type)
-                        {
-                            return type_from_string_helper(tc->pctx, field->field.type);
-                        }
                         return field->type_info;
                     }
                     i++;

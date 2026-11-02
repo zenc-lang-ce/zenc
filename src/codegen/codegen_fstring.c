@@ -46,7 +46,7 @@ static int is_char_data_len_struct(ASTNode *def)
     {
         if (strcmp(field->field.name, "data") == 0)
         {
-            data_type = field->field.type;
+            data_type = type_to_string(field->type_info);
         }
         else if (strcmp(field->field.name, "len") == 0)
         {

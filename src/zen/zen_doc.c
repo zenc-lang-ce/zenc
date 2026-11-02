@@ -207,8 +207,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
             {
                 if (field->kind == NODE_FIELD)
                 {
-                    printf("    %s: %s,\n", field->field.name,
-                           field->field.type ? field->field.type : "?");
+                    printf("    %s: %s,\n", field->field.name, type_to_string(field->type_info));
                 }
                 field = field->next;
             }

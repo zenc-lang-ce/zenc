@@ -272,7 +272,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
                 {
                     char fh[MAX_SHORT_MSG_LEN];
                     const char *fname = field->field.name ? field->field.name : "unknown";
-                    const char *ftype = field->field.type ? field->field.type : "unknown";
+                    const char *ftype = type_to_string(field->type_info);
                     snprintf(fh, sizeof(fh), "field %s: %s", fname, ftype);
                     lsp_index_add_def(idx, field->token, fh, field);
                 }

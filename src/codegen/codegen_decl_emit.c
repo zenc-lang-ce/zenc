@@ -851,8 +851,8 @@ void print_type_defs(ParserContext *ctx, ASTNode *nodes)
     while (c)
     {
         EMIT(ctx,
-             "typedef struct Slice__%s Slice__%s;\nstruct Slice__%s { %s *data; int len; int cap; "
-             "};\n",
+             "typedef struct Slice__%s Slice__%s;\nstruct Slice__%s { %s *data; size_t len; size_t "
+             "cap; };\n",
              c->name, c->name, c->name, c->name);
         c = c->next;
     }

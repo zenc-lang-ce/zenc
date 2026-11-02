@@ -88,11 +88,7 @@ ASTNode *capture_struct_def(ParserContext *ctx, ASTNode *lambda, int index)
 
 const char *field_c_type(ParserContext *ctx, ASTNode *field)
 {
-    if (field->type_info)
-    {
-        return c_type_spelling(ctx, field->type_info);
-    }
-    return field->field.type;
+    return c_type_spelling(ctx, field->type_info);
 }
 
 // Helper to emit C declaration (handle arrays, function pointers correctly)
