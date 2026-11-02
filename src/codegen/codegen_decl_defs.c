@@ -373,7 +373,7 @@ void emit_lambda_defs(ParserContext *ctx)
         ctx->cg.current_lambda = node;
         if (node->lambda.body && node->lambda.body->kind == NODE_BLOCK)
         {
-            if (node->lambda.is_expression && node->type_info && node->type_info->inner &&
+            if (node->lambda.is_expression && node->type_info->inner &&
                 node->type_info->inner->kind != TYPE_VOID)
             {
                 ASTNode *stmt = node->lambda.body->block.statements;
@@ -401,8 +401,8 @@ void emit_lambda_defs(ParserContext *ctx)
         }
         else if (node->lambda.body)
         {
-            if (node->type_info && node->type_info->inner &&
-                node->type_info->inner->kind != TYPE_VOID && node->lambda.body->kind != NODE_RETURN)
+            if (node->type_info->inner && node->type_info->inner->kind != TYPE_VOID &&
+                node->lambda.body->kind != NODE_RETURN)
             {
                 EMIT(ctx, "return ");
             }

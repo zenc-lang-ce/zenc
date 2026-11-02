@@ -979,7 +979,7 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         const char *c_name = c_name_of(t, lookup, context);
         // A struct with a C name of its own is written by it alone; otherwise "struct Foo" only
         // when written so (else a typedef).
-        if (c_name != t->name || !t->is_explicit_struct)
+        if (!c_name || c_name != t->name || !t->is_explicit_struct)
         {
             return xstrdup(c_name);
         }
