@@ -1022,32 +1022,6 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         // in their respective node visitors.
     }
 
-    // Resolve type aliases (str -> string, etc.) for non-integer types
-    // (Integer aliases handled by resolve_alias above)
-    if (target->kind == TYPE_ALIAS && target->name)
-    {
-        Type *alias = find_type_alias(tc->pctx, target->name);
-        if (alias)
-        {
-            // Check if resolved names match
-            if (value->name && strcmp(type_to_string(alias), value->name) == 0)
-            {
-                return 1;
-            }
-        }
-    }
-    if (value->kind == TYPE_ALIAS && value->name)
-    {
-        Type *alias = find_type_alias(tc->pctx, value->name);
-        if (alias)
-        {
-            if (target->name && strcmp(type_to_string(alias), target->name) == 0)
-            {
-                return 1;
-            }
-        }
-    }
-
     // String types: str, string, *char are compatible
     if ((target->kind == TYPE_STRING || (target->name && strcmp(target->name, "str") == 0)) &&
         (value->kind == TYPE_STRING || (value->name && strcmp(value->name, "string") == 0)))

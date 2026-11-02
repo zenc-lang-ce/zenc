@@ -36,14 +36,14 @@ Type *alias_type(TypeAlias *alias_node)
 }
 
 // The type for a non-primitive type name that is not parsed from source (the
-// receiver of a method, a generic argument): the opaque alias of that name if
+// receiver of a method, a generic argument): the type of the alias of that name if
 // there is one, a struct otherwise.
 Type *type_from_name(ParserContext *ctx, const char *name)
 {
     TypeAlias *alias_node = ctx ? find_type_alias_node(ctx, name) : NULL;
-    if (alias_node && alias_node->is_opaque)
+    if (alias_node)
     {
-        return opaque_alias_type(alias_node);
+        return alias_type(alias_node);
     }
     Type *t = type_new(TYPE_STRUCT);
     t->name = xstrdup(name);
