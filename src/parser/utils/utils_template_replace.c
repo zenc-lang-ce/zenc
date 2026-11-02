@@ -1177,7 +1177,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         new_node->index.index = copy_ast_replacing(ctx, n->index.index, p, c, os, ns);
         break;
     case NODE_EXPR_CAST:
-        new_node->cast.target_type = replace_type_str(n->cast.target_type, p, c, os, ns);
         new_node->cast.expr = copy_ast_replacing(ctx, n->cast.expr, p, c, os, ns);
         break;
     case NODE_EXPR_STRUCT_INIT:

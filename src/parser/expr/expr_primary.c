@@ -1041,7 +1041,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
 
                         ASTNode *cast = ast_create(NODE_EXPR_CAST);
-                        cast->cast.target_type = xstrdup(acc);
+                        cast->token = t;
                         cast->cast.expr = node;
 
                         TypeKind tk = get_primitive_type_kind(acc);
@@ -1920,7 +1920,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     {
                         return NULL;
                     }
-                    char *cast_type = type_to_string(cast_type_obj);
                     {
                         Token inner_t = lexer_next(l);
                         if (inner_t.kind != TOK_RPAREN)
@@ -1931,16 +1930,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     }
                     ASTNode *target = parse_expr_prec(ctx, l, PREC_UNARY);
 
+                    char *cast_type = type_to_string(cast_type_obj);
                     if (is_trait(cast_type))
                     {
-                        zfree(cast_type);
-                        return transform_to_trait_object(ctx, type_to_string(cast_type_obj),
-                                                         target);
+                        return transform_to_trait_object(ctx, cast_type, target);
                     }
 
                     node = ast_create(NODE_EXPR_CAST);
                     node->token = next;
-                    node->cast.target_type = cast_type;
                     node->cast.expr = target;
                     node->type_info = cast_type_obj;
                     return node;

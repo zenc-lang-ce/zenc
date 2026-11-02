@@ -1657,7 +1657,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
 
     if (node->kind == NODE_EXPR_CAST)
     {
-        return node->cast.target_type;
+        return type_to_c_string_with(node->type_info, ctx->config->misra_mode, link_name_of, ctx);
     }
 
     if (node->kind == NODE_EXPR_STRUCT_INIT)

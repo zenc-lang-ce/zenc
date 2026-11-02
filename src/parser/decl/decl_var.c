@@ -396,7 +396,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 {
                     // Create Cast Node
                     ASTNode *cast = ast_create(NODE_EXPR_CAST);
-                    cast->cast.target_type = xstrdup(type);
                     cast->cast.expr = init;
                     cast->type_info = type_obj; // Inherit formal type
 

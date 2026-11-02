@@ -476,8 +476,7 @@ struct ASTNode
 
         struct
         {
-            char *target_type;
-            ASTNode *expr;
+            ASTNode *expr; // The target type is the node's type_info.
         } cast;
 
         struct

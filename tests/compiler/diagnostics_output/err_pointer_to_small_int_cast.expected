@@ -1,0 +1,25 @@
+   Compiling tests/compiler/diagnostics_output/err_pointer_to_small_int_cast.zc...
+error: Potentially unsafe pointer cast
+  --> tests/compiler/diagnostics_output/err_pointer_to_small_int_cast.zc:6:17
+   |
+6  |     let a = (u8)p;
+   |                 ^ here
+   |
+   = help: Pointer-to-small-integer casts may lose address bits
+error: Potentially unsafe pointer cast
+  --> tests/compiler/diagnostics_output/err_pointer_to_small_int_cast.zc:7:18
+   |
+7  |     let b = (i16)p;
+   |                  ^ here
+   |
+   = help: Pointer-to-small-integer casts may lose address bits
+error: Potentially unsafe pointer cast
+  --> tests/compiler/diagnostics_output/err_pointer_to_small_int_cast.zc:8:13
+   |
+8  |     let c = u8{p};
+   |             ^ here
+   |
+   = help: Pointer-to-small-integer casts may lose address bits
+     error: semantic analysis found 3 errors
+       Check failed with 3 errors
+[exit 1]

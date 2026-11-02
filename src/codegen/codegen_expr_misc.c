@@ -16,11 +16,7 @@
 
 void handle_expr_cast(ParserContext *ctx, ASTNode *node)
 {
-    // The cast's Type, spelled in C here (a struct with @link_name by its C name): the
-    // parser keeps the type as the program writes it.
-    const char *t =
-        node->type_info ? c_type_spelling(ctx, node->type_info) : node->cast.target_type;
-    const char *mapped = map_to_c_type(t);
+    const char *mapped = map_to_c_type(c_type_spelling(ctx, node->type_info));
 
     EMIT(ctx, "((%s)(", mapped);
     Type *src_type = node->cast.expr->type_info;

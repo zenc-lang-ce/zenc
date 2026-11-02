@@ -722,14 +722,10 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         // Check the expression being cast
         check_node(tc, node->cast.expr, depth + 1);
         // Could add cast safety checks here (e.g., narrowing, pointer-to-int)
-        if (node->cast.expr && node->cast.expr->type_info && node->cast.target_type)
+        if (node->cast.expr && node->cast.expr->type_info && node->type_info)
         {
             Type *source_type = resolve_alias(node->cast.expr->type_info);
-            // The parser's Type, when it left one: cast.target_type is the C spelling codegen
-            // emits (`c_point*` for a struct with @link_name), not a name the program uses.
-            Type *target_type = node->type_info
-                                    ? node->type_info
-                                    : type_from_string_helper(tc->pctx, node->cast.target_type);
+            Type *target_type = node->type_info;
 
             if (tc->pctx->config->misra_mode && target_type)
             {
@@ -746,16 +742,15 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             // Warn on pointer-to-integer casts (potential data loss)
             if (source_type->kind == TYPE_POINTER)
             {
-                const char *target = node->cast.target_type;
-                if (strcmp(target, "i8") == 0 || strcmp(target, "i16") == 0 ||
-                    strcmp(target, "u8") == 0 || strcmp(target, "u16") == 0)
+                TypeKind target = target_type->kind;
+                if (target == TYPE_I8 || target == TYPE_I16 || target == TYPE_U8 ||
+                    target == TYPE_U16)
                 {
                     const char *hints[] = {"Pointer-to-small-integer casts may lose address bits",
                                            NULL};
                     tc_error_with_hints(tc, node->token, "Potentially unsafe pointer cast", hints);
                 }
             }
-            node->type_info = target_type;
             mark_type_as_used(tc, target_type);
         }
         break;

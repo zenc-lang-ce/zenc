@@ -414,9 +414,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     arr_addr->unary.operand = obj_expr;
 
                     ASTNode *arr_cast = ast_create(NODE_EXPR_CAST);
-                    char cast_type[MAX_TYPE_NAME_LEN];
-                    snprintf(cast_type, sizeof(cast_type), "%s*", elem_type_str);
-                    arr_cast->cast.target_type = xstrdup(cast_type);
+                    arr_cast->type_info = type_new_ptr(obj_expr->type_info->inner);
                     arr_cast->cast.expr = arr_addr;
 
                     ASTNode *size_arg = ast_create(NODE_EXPR_LITERAL);
