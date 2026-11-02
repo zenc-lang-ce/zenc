@@ -975,7 +975,7 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
                 sig->name = n->func.name;
                 sig->decl_token = n->token;
                 sig->total_args = n->func.count;
-                sig->defaults = n->func.defaults;
+                sig->default_values = n->func.default_values;
                 sig->arg_types = n->func.arg_types;
                 sig->ret_type = n->func.ret_type_info;
                 sig->is_varargs = n->func.is_varargs;

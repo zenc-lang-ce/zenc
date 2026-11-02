@@ -271,8 +271,7 @@ struct ASTNode
             char *ret_type;       // Legacy string return type.
             ASTNode *body;
             Type **arg_types;
-            char **defaults;
-            ASTNode **default_values; // AST representation (for robust substitution)
+            ASTNode **default_values; // Default value of each parameter, NULL where it has none.
             char **param_names;       // Explicit parameter names.
             int count;
             Type *ret_type_info;

@@ -355,7 +355,7 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
 
     add_instantiated_func(ctx, new_fn);
 
-    register_func(ctx, ctx->global_scope, mangled, new_fn->func.count, new_fn->func.defaults,
+    register_func(ctx, ctx->global_scope, mangled, new_fn->func.count, new_fn->func.default_values,
                   new_fn->func.arg_types, new_fn->func.ret_type_info, new_fn->func.is_varargs,
                   new_fn->func.pure, new_fn->link_name, new_fn->token, new_fn->func.is_export);
 
@@ -612,7 +612,7 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
         }
 
         register_func(ctx, ctx->global_scope, meth->func.name, meth->func.count,
-                      meth->func.defaults, meth->func.arg_types, meth->func.ret_type_info,
+                      meth->func.default_values, meth->func.arg_types, meth->func.ret_type_info,
                       meth->func.is_varargs, meth->func.pure, meth->link_name, meth->token,
                       meth->func.is_export);
 

@@ -952,32 +952,11 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         if (n->func.default_values && n->func.count > 0)
         {
             new_node->func.default_values = xmalloc(sizeof(ASTNode *) * (size_t)(n->func.count));
-            // We also need to regenerate the string defaults array based on the substituted ASTs
-            // This ensures potential generic params in default values (T{}) are updated (i32{})
-            // in the string representation used by codegen.
-            char **new_defaults_strs = xmalloc(sizeof(char *) * (size_t)(n->func.count));
-
             for (int i = 0; i < n->func.count; i++)
             {
-                if (n->func.default_values[i])
-                {
-                    new_node->func.default_values[i] =
-                        copy_ast_replacing(ctx, n->func.default_values[i], p, c, os, ns);
-                    new_defaults_strs[i] = ast_to_string(new_node->func.default_values[i]);
-                }
-                else
-                {
-                    new_node->func.default_values[i] = NULL;
-                    new_defaults_strs[i] = NULL;
-                }
+                new_node->func.default_values[i] =
+                    copy_ast_replacing(ctx, n->func.default_values[i], p, c, os, ns);
             }
-            // Replace the old string-based defaults with our regenerated ones
-            // Note: We leak the old 'tmp_args' calculated above, but that's just a single string
-            // for valid args The 'defaults' array in func struct is what matters for function
-            // definition. Wait, NODE_FUNCTION has char *args (legacy) AND char **defaults (array).
-            // parse_and_convert_args populated both.
-            // We need to update new_node->func.defaults.
-            new_node->func.defaults = new_defaults_strs;
         }
 
         new_node->func.body = copy_ast_replacing(ctx, n->func.body, p, c, os, ns);
@@ -1563,4 +1542,9 @@ int is_unmangle_primitive(const char *base)
             strncmp(base, "int32", 5) == 0 || strncmp(base, "int64", 5) == 0 ||
             strncmp(base, "uint8", 5) == 0 || strncmp(base, "uint16", 6) == 0 ||
             strncmp(base, "uint32", 6) == 0 || strncmp(base, "uint64", 6) == 0);
+}
+
+ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index)
+{
+    return copy_ast_replacing(ctx, sig->default_values[index], NULL, NULL, NULL, NULL);
 }

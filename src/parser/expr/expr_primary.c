@@ -1401,11 +1401,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
             for (int i = args_provided; sig->arg_types && i < sig->total_args; i++)
             {
-                if (sig->defaults[i])
+                if (sig->default_values && sig->default_values[i])
                 {
-                    Lexer def_l;
-                    lexer_init(&def_l, sig->defaults[i], ctx->config, ctx->current_filename);
-                    ASTNode *def = parse_expression(ctx, &def_l);
+                    ASTNode *def = copy_default_value(ctx, sig, i);
                     Type *expected = sig->arg_types[i];
                     if (expected && expected->name && is_trait(expected->name))
                     {

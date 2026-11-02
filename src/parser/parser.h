@@ -100,18 +100,18 @@ extern ParserContext *token_parser_ctx;
  */
 typedef struct FuncSig
 {
-    char *name;           ///< Function name.
-    Token decl_token;     ///< declaration token.
-    int total_args;       ///< Total argument count.
-    char **defaults;      ///< Default values for arguments (or NULL).
-    Type **arg_types;     ///< Argument types.
-    Type *ret_type;       ///< Return type.
-    int is_varargs;       ///< 1 if variadic.
-    int required;         ///< 1 if return value must be used.
-    int is_pure;          ///< 1 if marked @pure.
-    char *link_name;      ///< Overriding C identifier (from @link_name).
-    int elide_from_idx;   ///< Index of parameter for lifetime elision (-1 if none)
-    struct FuncSig *next; ///< Next function in registry.
+    char *name;               ///< Function name.
+    Token decl_token;         ///< declaration token.
+    int total_args;           ///< Total argument count.
+    ASTNode **default_values; ///< Default value of each argument, NULL where it has none.
+    Type **arg_types;         ///< Argument types.
+    Type *ret_type;           ///< Return type.
+    int is_varargs;           ///< 1 if variadic.
+    int required;             ///< 1 if return value must be used.
+    int is_pure;              ///< 1 if marked @pure.
+    char *link_name;          ///< Overriding C identifier (from @link_name).
+    int elide_from_idx;       ///< Index of parameter for lifetime elision (-1 if none)
+    struct FuncSig *next;     ///< Next function in registry.
 } FuncSig;
 
 /**
@@ -691,9 +691,16 @@ const char *normalize_type_name(const char *name);
 /**
  * @brief Registers a function.
  */
-void register_func(ParserContext *ctx, Scope *scope, const char *name, int count, char **defaults,
-                   Type **arg_types, Type *ret_type, int is_varargs, int is_pure,
-                   const char *link_name, Token decl_token, int is_export);
+void register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
+                   ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
+                   int is_pure, const char *link_name, Token decl_token, int is_export);
+
+/**
+ * @brief A copy of the default value of argument `index` of `sig`, for a call that leaves the
+ *        argument out. Each call gets its own: it is linked into the call's arguments, and
+ *        later passes rewrite it in place.
+ */
+ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index);
 
 /**
  * @brief Registers a function template.
@@ -840,9 +847,9 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export);
 ASTNode *parse_test(ParserContext *ctx, Lexer *l);
 ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export);
 ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_export);
-int parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults,
-                           ASTNode ***default_values, int *count, Type ***arg_types,
-                           char ***param_names, int *is_varargs, char ***ctype_overrides);
+int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_values, int *count,
+                           Type ***arg_types, char ***param_names, int *is_varargs,
+                           char ***ctype_overrides);
 Type *parse_type_formal(ParserContext *ctx, Lexer *l);
 Type *type_from_string_helper(ParserContext *ctx, const char *c);
 Type *type_from_name(ParserContext *ctx, const char *name);

@@ -164,12 +164,12 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         max_args = sig->total_args;
         is_varargs = sig->is_varargs;
         min_args = sig->total_args;
-        if (sig->defaults)
+        if (sig->default_values)
         {
             min_args = 0;
             for (int i = 0; i < sig->total_args; i++)
             {
-                if (!sig->defaults[i])
+                if (!sig->default_values[i])
                 {
                     min_args++;
                 }

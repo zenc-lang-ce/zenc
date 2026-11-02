@@ -99,9 +99,9 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         }
         else
         {
-            register_func(ctx, ctx->current_scope, f->func.name, f->func.count, f->func.defaults,
-                          f->func.arg_types, f->func.ret_type_info, f->func.is_varargs,
-                          f->func.pure, f->link_name, f->token, 0);
+            register_func(ctx, ctx->current_scope, f->func.name, f->func.count,
+                          f->func.default_values, f->func.arg_types, f->func.ret_type_info,
+                          f->func.is_varargs, f->func.pure, f->link_name, f->token, 0);
         }
 
         if (!h)

@@ -31,22 +31,16 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
             check_argument_type(ctx, *expected, arg);
         }
     }
-    if (sig->defaults && sig->arg_types)
+    if (sig->default_values && sig->arg_types)
     {
         ASTNode *tail = head;
         while (tail && tail->next)
         {
             tail = tail->next;
         }
-        for (int i = *count; i < sig->total_args && sig->defaults[i]; i++)
+        for (int i = *count; i < sig->total_args && sig->default_values[i]; i++)
         {
-            Lexer def_l;
-            lexer_init(&def_l, sig->defaults[i], ctx->config, ctx->current_filename);
-            ASTNode *def = parse_expression(ctx, &def_l);
-            if (!def)
-            {
-                break;
-            }
+            ASTNode *def = copy_default_value(ctx, sig, i);
             if (tail)
             {
                 tail->next = def;

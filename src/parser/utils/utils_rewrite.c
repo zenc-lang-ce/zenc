@@ -67,9 +67,9 @@ char *parse_condition_raw(ParserContext *ctx, Lexer *l)
     }
 }
 
-int parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
-                           ASTNode ***default_values_out, int *count_out, Type ***types_out,
-                           char ***names_out, int *is_varargs_out, char ***ctype_overrides_out)
+int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_values_out,
+                           int *count_out, Type ***types_out, char ***names_out,
+                           int *is_varargs_out, char ***ctype_overrides_out)
 {
     Token t = lexer_next(l);
     if (t.kind != TOK_LPAREN)
@@ -80,7 +80,6 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
 
     int count = 0;
     int max_args = 16;
-    char **defaults = xcalloc((size_t)(max_args), sizeof(char *));
     ASTNode **default_values = xcalloc((size_t)(max_args), sizeof(ASTNode *));
     Type **types = xcalloc((size_t)(max_args), sizeof(Type *));
     char **names = xcalloc((size_t)(max_args), sizeof(char *));
@@ -99,8 +98,6 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
             if (count >= max_args)
             {
                 int new_max = max_args * 2;
-                defaults = xrealloc(defaults, sizeof(char *) * (size_t)(new_max));
-                memset(defaults + max_args, 0, sizeof(char *) * (size_t)(new_max - max_args));
                 default_values = xrealloc(default_values, sizeof(ASTNode *) * (size_t)(new_max));
                 memset(default_values + max_args, 0,
                        sizeof(ASTNode *) * (size_t)(new_max - max_args));
@@ -243,12 +240,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                 {
                     lexer_next(l); // consume =
 
-                    // Parse the expression into an AST node
-                    ASTNode *def_node = parse_expression(ctx, l);
-
-                    // Store both the AST node and the reconstructed string for legacy support
-                    default_values[count - 1] = def_node;
-                    defaults[count - 1] = ast_to_string(def_node);
+                    default_values[count - 1] = parse_expression(ctx, l);
                 }
             }
             if (lexer_peek(l).kind == TOK_COMMA)
@@ -277,7 +269,6 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
         return 0;
     }
 
-    *defaults_out = defaults;
     *default_values_out = default_values;
     *count_out = count;
     *types_out = types;

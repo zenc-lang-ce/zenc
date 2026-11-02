@@ -144,7 +144,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     }
 
     enter_scope(ctx);
-    char **defaults;
     ASTNode **default_values;
     int count;
     Type **arg_types;
@@ -152,8 +151,8 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     char **ctype_overrides;
     int is_varargs = 0;
 
-    if (!parse_and_convert_args(ctx, l, &defaults, &default_values, &count, &arg_types,
-                                &param_names, &is_varargs, &ctype_overrides))
+    if (!parse_and_convert_args(ctx, l, &default_values, &count, &arg_types, &param_names,
+                                &is_varargs, &ctype_overrides))
     {
         return NULL;
     }
@@ -199,7 +198,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     // Register if concrete (Global functions only)
     if (!gen_param && !ctx->current_impl_struct)
     {
-        register_func(ctx, ctx->current_scope->parent, name, count, defaults, arg_types,
+        register_func(ctx, ctx->current_scope->parent, name, count, default_values, arg_types,
                       ret_type_obj, is_varargs, 0, link_name, name_tok, is_export);
         // Note: required is set after return by caller (parser_core.c)
     }
@@ -278,7 +277,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     node->func.arg_types = arg_types;
     node->func.param_names = param_names;
     node->func.count = count;
-    node->func.defaults = defaults;
     node->func.default_values = default_values;
     node->func.ret_type_info = ret_type_obj;
     node->func.is_varargs = is_varargs;
