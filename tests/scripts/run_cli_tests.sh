@@ -413,6 +413,19 @@ else
     check "a changed C header is read again" 0
 fi
 
+# A header of `include <x.h>` gives the type of the functions it declares, through the cache.
+printf 'double zc_probe_ratio(void);\n' > "$workdir/c_include/zc_probe.h"
+printf 'include <zc_probe.h>\nfn main() {\n    let ratio = zc_probe_ratio();\n}\n' \
+    > "$workdir/calls_include.zc"
+XDG_CACHE_HOME="$workdir/cache" "$ZC" transpile "$workdir/calls_include.zc" \
+    -I "$workdir/c_include" -o "$workdir/calls_include.c" >/dev/null 2>&1
+if grep -q "double ratio = zc_probe_ratio();" "$workdir/calls_include.c" 2>/dev/null &&
+    grep -q "^function zc_probe_ratio double$" "$cache_file" 2>/dev/null; then
+    check "include <x.h> gives the type of its functions" 1
+else
+    check "include <x.h> gives the type of its functions" 0
+fi
+
 out=$("$ZC" cache 2>&1)
 if [ $? -ne 0 ] && echo "$out" | grep -q "usage: zc cache c-headers"; then
     check "zc cache without what to cache prints usage" 1

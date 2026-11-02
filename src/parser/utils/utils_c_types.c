@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // The types of the C functions a program calls without declaring them: read from the C headers
-// it includes and from those of the hosted preamble, and turned from C text into Types.
+// it includes (`include "x.h"` and `include <x.h>`) and from those of the hosted preamble, and
+// turned from C text into Types.
 #include "parser.h"
 #include "utils/c_headers.h"
 #include "utils/c_header_cache.h"
@@ -264,10 +265,12 @@ static const char *header_cache_key(const CompilerConfig *config,
     return xstrdup(key);
 }
 
-// Reads the headers of the hosted preamble, as the C compiler will find them (the include
-// paths, then the compiler's own directories), through the cache on disk. With `discard`,
-// all of them are read again.
-static int read_preamble_headers(ParserContext *ctx, const CompilerConfig *config, int discard)
+// Reads the headers of the hosted preamble and those in `includes` (`include <x.h>`), as the C
+// compiler will find them (the include paths, then the compiler's own directories), through the
+// cache on disk. A header that is not found gives nothing. With `discard`, all of them are read
+// again.
+static int read_system_headers(ParserContext *ctx, const CompilerConfig *config,
+                               const StringList *includes, int discard)
 {
     CSearchDirList dirs = {0};
     for (size_t i = 0; i < config->include_paths.length; i++)
@@ -287,16 +290,26 @@ static int read_preamble_headers(ParserContext *ctx, const CompilerConfig *confi
     {
         c_search_dirs_add(&dirs, compiler_dirs->items[i], "");
     }
-    StringList visited = {0};
+    StringList names = {0};
     for (int i = 0; PREAMBLE_HEADERS[i]; i++)
     {
-        char *path = c_headers_find(PREAMBLE_HEADERS[i], NULL, &dirs, NULL, 0);
+        string_list_add(&names, PREAMBLE_HEADERS[i]);
+    }
+    for (int i = 0; includes && i < includes->count; i++)
+    {
+        string_list_add(&names, includes->items[i]);
+    }
+    StringList visited = {0};
+    for (int i = 0; i < names.count; i++)
+    {
+        char *path = c_headers_find(names.items[i], NULL, &dirs, NULL, 0);
         if (path)
         {
             read_header_tree(ctx, path, &dirs, &visited, 0);
             libc_free(path);
         }
     }
+    string_list_free(&names);
     string_list_free(&visited);
     c_search_dirs_free(&dirs);
     return c_header_cache_save();
@@ -304,7 +317,13 @@ static int read_preamble_headers(ParserContext *ctx, const CompilerConfig *confi
 
 int refresh_c_header_cache(const CompilerConfig *config)
 {
-    return read_preamble_headers(NULL, config, 1);
+    return read_system_headers(NULL, config, NULL, 1);
+}
+
+// The C type text remembered for the function `name`, or NULL.
+static const char **known_c_function(ParserContext *ctx, const char *name)
+{
+    return ctx->c_function_types.hash_func ? zmap_get(&ctx->c_function_types, name) : NULL;
 }
 
 Type *c_function_return_type(ParserContext *ctx, const char *name)
@@ -314,12 +333,12 @@ Type *c_function_return_type(ParserContext *ctx, const char *name)
     {
         return NULL;
     }
-    if (is_preamble_c_function(ctx, name) && !ctx->c_preamble_headers_read)
+    const char **c_type = known_c_function(ctx, name);
+    if (!c_type && !ctx->c_system_headers_read)
     {
-        ctx->c_preamble_headers_read = 1;
-        read_preamble_headers(ctx, ctx->config, 0);
+        ctx->c_system_headers_read = 1;
+        read_system_headers(ctx, ctx->config, &ctx->c_system_includes, 0);
+        c_type = known_c_function(ctx, name);
     }
-    const char **c_type =
-        ctx->c_function_types.hash_func ? zmap_get(&ctx->c_function_types, name) : NULL;
     return (c_type && (*c_type)[0]) ? c_type_from_text(ctx, *c_type) : NULL;
 }

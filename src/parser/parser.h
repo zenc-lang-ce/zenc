@@ -12,6 +12,7 @@
 #include "../diagnostics/diagnostics.h"
 #include "../utils/emitter.h"
 #include "../utils/mangle.h"
+#include "../utils/string_list.h"
 
 // Operator precedence for expression parsing
 
@@ -425,7 +426,8 @@ struct ParserContext
     // External C interop: suppress undefined warnings for external symbols
     int has_external_includes;
     zmap_FileSet c_function_types; ///< C function name -> its return type as C text ("": none).
-    int c_preamble_headers_read;   ///< The preamble's headers are in c_function_types.
+    StringList c_system_includes;  ///< The headers of `include <x.h>`, as written.
+    int c_system_headers_read;     ///< Those and the preamble's are in c_function_types.
     int is_comptime;               // Flag for comptime execution context
     char **extern_symbols;         ///< Explicitly declared extern symbols.
     int extern_symbol_count;       ///< Count of external symbols.

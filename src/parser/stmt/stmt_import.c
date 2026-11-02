@@ -131,6 +131,7 @@ ASTNode *parse_include(ParserContext *ctx, Lexer *l)
         path = xstrdup(buf);
 
         ctx->has_external_includes = 1;
+        string_list_add(&ctx->c_system_includes, path);
     }
     else
     {
