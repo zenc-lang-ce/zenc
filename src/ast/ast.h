@@ -663,7 +663,6 @@ struct ASTNode
 
         struct
         {
-            char *target_type;
             ASTNode *expr;
             Type *target_type_info;
             int is_type;

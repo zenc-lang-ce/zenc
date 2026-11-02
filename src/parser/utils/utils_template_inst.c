@@ -98,62 +98,9 @@ static void trigger_instantiations(ParserContext *ctx, ASTNode *node)
     }
 
     // Process current node
-    if (node->kind == NODE_EXPR_SIZEOF && node->size_of.target_type)
+    if (node->kind == NODE_EXPR_SIZEOF)
     {
-        const char *type_str = node->size_of.target_type;
-        if (strchr(type_str, '_'))
-        {
-            // Remove trailing '*' or 'Ptr' if present
-            char *type_copy = xstrdup(type_str);
-            char *star = (char *)strchr(type_copy, '*');
-            if (star)
-            {
-                *star = '\0';
-            }
-            else
-            {
-                // Check for "Ptr" suffix and remove it
-                size_t len = strlen(type_copy);
-                if (len > 3 && strcmp(type_copy + len - 3, "Ptr") == 0)
-                {
-                    type_copy[len - 3] = '\0';
-                }
-            }
-
-            char *underscore = (char *)strchr(type_copy, '_');
-            if (underscore)
-            {
-                char *concrete_arg = underscore;
-                while (*concrete_arg == '_')
-                {
-                    concrete_arg++;
-                }
-                *underscore = '\0';
-                char *template_name = type_copy;
-
-                // Check if this is a known generic template
-                GenericTemplate *gt = ctx->templates;
-                int found = 0;
-                while (gt)
-                {
-                    if (strcmp(gt->name, template_name) == 0)
-                    {
-                        found = 1;
-                        break;
-                    }
-                    gt = gt->next;
-                }
-
-                if (found)
-                {
-                    char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                    Token dummy_tok = {0};
-                    instantiate_generic(ctx, template_name, concrete_arg, unmangled, dummy_tok);
-                    zfree(unmangled);
-                }
-            }
-            zfree(type_copy);
-        }
+        trigger_type_instantiation(ctx, node->size_of.target_type_info);
     }
     else if (node->kind == NODE_EXPR_VAR)
     {

@@ -1162,10 +1162,8 @@ ASTNode *parse_size_or_typeof(ParserContext *ctx, Lexer *l, Token tk, int is_typ
     if (ty->kind != TYPE_UNKNOWN && !is_actually_var && lexer_peek(l).kind == TOK_RPAREN)
     {
         lexer_next(l);
-        char *ts = type_to_string(ty);
         node = ast_create(is_typeof ? NODE_TYPEOF : NODE_EXPR_SIZEOF);
         node->token = tk;
-        node->size_of.target_type = ts;
         node->size_of.target_type_info = ty;
         node->size_of.is_type = 1;
         node->size_of.expr = NULL;
@@ -1191,7 +1189,6 @@ ASTNode *parse_size_or_typeof(ParserContext *ctx, Lexer *l, Token tk, int is_typ
         }
         node = ast_create(is_typeof ? NODE_TYPEOF : NODE_EXPR_SIZEOF);
         node->token = tk;
-        node->size_of.target_type = NULL;
         node->size_of.target_type_info = NULL;
         node->size_of.is_type = 0;
         node->size_of.expr = ex;

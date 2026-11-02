@@ -1316,7 +1316,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         break;
     case NODE_TYPEOF:
     case NODE_EXPR_SIZEOF:
-        new_node->size_of.target_type = replace_type_str(n->size_of.target_type, p, c, os, ns);
         new_node->size_of.expr = copy_ast_replacing(ctx, n->size_of.expr, p, c, os, ns);
         new_node->size_of.is_type = n->size_of.is_type;
         if (n->size_of.target_type_info)
