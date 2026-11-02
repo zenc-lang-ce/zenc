@@ -72,17 +72,12 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
             break;
         }
 
-        size_t pat_cap = 1024;
-        char *patterns_buf = xmalloc(pat_cap);
-        patterns_buf[0] = 0;
-        int pattern_count = 0;
         MatchPattern *patterns = NULL;
         MatchPattern *last_pattern = NULL;
 
         while (1)
         {
             Token p = lexer_next(l);
-            char *p_str = token_strdup(p);
             char *written_scope = NULL;
             char *written_name = token_strdup(p);
 
@@ -106,10 +101,6 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                         written_scope = written_name;
                     }
                     written_name = token_strdup(suffix);
-                    char *tmp = xmalloc(strlen(p_str) + suffix.len + 3);
-                    sprintf(tmp, "%s__%.*s", p_str, (int)(suffix.len), suffix.start); /* safe */
-                    zfree(p_str);
-                    p_str = tmp;
                 }
                 else if (pk.kind == TOK_LANGLE)
                 {
@@ -147,13 +138,9 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 range_is_inclusive = (lexer_peek(l).kind == TOK_DOTDOT_EQ);
                 lexer_next(l); // eat operator
                 Token end_tok = lexer_next(l);
-                range_start = p_str;
+                range_start = written_scope ? mangle_module_symbol(written_scope, written_name)
+                                            : written_name;
                 range_end = token_strdup(end_tok);
-
-                char *range_str = xmalloc(strlen(range_start) + strlen(range_end) + 5);
-                sprintf(range_str, "%s%s%s", range_start, range_is_inclusive ? "..=" : "..",
-                        range_end); /* safe */
-                p_str = range_str;
             }
 
             MatchPattern *alternative = xcalloc(1, sizeof(MatchPattern));
@@ -189,21 +176,6 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
             }
             last_pattern = alternative;
 
-            size_t needed = strlen(patterns_buf) + strlen(p_str) + 4;
-            if (needed >= pat_cap)
-            {
-                pat_cap = pat_cap * 2 + needed;
-                patterns_buf = xrealloc(patterns_buf, pat_cap);
-            }
-
-            if (pattern_count > 0)
-            {
-                strcat(patterns_buf, "|");
-            }
-            strcat(patterns_buf, p_str);
-            zfree(p_str);
-            pattern_count++;
-
             Token next = lexer_peek(l);
             skip_comments(l);
             int is_or = (next.kind == TOK_OR) ||
@@ -222,8 +194,10 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
             }
         }
 
-        char *pattern = xstrdup(patterns_buf);
-        int is_default = (strcmp(pattern, "_") == 0);
+        // The variant the case names, when it is a single name (`Variant(x)`, `Enum::Variant`).
+        QualifiedName *named =
+            (patterns->kind == PATTERN_NAME && !patterns->next) ? &patterns->name : NULL;
+        int is_default = (patterns->kind == PATTERN_WILDCARD && !patterns->next);
         int is_destructure = 0;
 
         char **bindings = NULL;
@@ -237,7 +211,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
             zpanic_with_hints(lexer_peek(l), "Struct patterns are not supported in match", hints);
             return NULL;
         }
-        if (!is_default && pattern_count == 1 && lexer_peek(l).kind == TOK_LPAREN)
+        if (!is_default && !patterns->next && lexer_peek(l).kind == TOK_LPAREN)
         {
             lexer_next(l);
 
@@ -326,7 +300,12 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
         enter_scope(ctx);
         if (binding_count > 0)
         {
-            EnumVariantReg *vreg = find_enum_variant(ctx, pattern);
+            EnumVariantReg *vreg = NULL;
+            if (named)
+            {
+                vreg = named->scope ? find_enum_variant_of(ctx, named->scope, named->name)
+                                    : find_enum_variant(ctx, named->name);
+            }
 
             ASTNode *payload_node_field = NULL;
             int is_tuple_payload = 0;
@@ -341,10 +320,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                     ASTNode *v = enum_def->enm.variants;
                     while (v)
                     {
-                        size_t size = strlen(vreg->enum_name) + strlen(v->variant.name) + 2;
-                        char *v_full = xmalloc(size + 1);
-                        snprintf(v_full, size + 1, "%s__%s", vreg->enum_name, v->variant.name);
-                        if (strcmp(v_full, pattern) == 0 && v->variant.payload)
+                        if (strcmp(v->variant.name, named->name) == 0 && v->variant.payload)
                         {
                             payload_type = v->variant.payload;
                             if (payload_type && payload_type->kind == TYPE_STRUCT &&
@@ -357,14 +333,13 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                                     payload_node_field = tuple_def->strct.fields;
                                 }
                             }
-                            zfree(v_full);
                             break;
                         }
                         v = v->next;
                     }
                 }
             }
-            else if (binding_count == 1 && expr && expr->type_info)
+            else if (binding_count == 1 && named && expr && expr->type_info)
             {
                 // Struct constructor pattern, e.g. `Ok(val)` matching a
                 // `Result<String>`. The payload type is the constructor's
@@ -393,15 +368,8 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                             arg_start++;
                         }
 
-                        char *ctor = NULL;
-                        if (strstr(pattern, "__"))
-                        {
-                            ctor = xstrdup(pattern);
-                        }
-                        else
-                        {
-                            ctor = mangle_method_symbol(base, NULL, pattern);
-                        }
+                        char *ctor = mangle_method_symbol(named->scope ? named->scope : base, NULL,
+                                                          named->name);
                         GenericFuncTemplate *ft = find_func_template(ctx, ctor);
                         zfree(ctor);
                         if (ft && ft->func_node && ft->func_node->kind == NODE_FUNCTION &&
@@ -605,7 +573,6 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
 
         ASTNode *c = ast_create(NODE_MATCH_CASE);
         c->token = pk;
-        c->match_case.pattern = pattern;
         c->match_case.patterns = patterns;
         c->match_case.binding_names = bindings;
         c->match_case.binding_count = binding_count;

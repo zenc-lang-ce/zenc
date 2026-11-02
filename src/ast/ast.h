@@ -406,7 +406,6 @@ struct ASTNode
 
         struct
         {
-            char *pattern;          // Being replaced by `patterns`.
             MatchPattern *patterns; ///< The alternatives of the case, as written.
             char **binding_names;   // Multiple bindings
             int binding_count;      // Count

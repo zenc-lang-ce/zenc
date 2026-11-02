@@ -1341,17 +1341,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         break;
 
     case NODE_MATCH_CASE:
-        if (n->match_case.pattern)
-        {
-            char *s1 = replace_generic_text(n->match_case.pattern, p, c, os, ns);
-            char *colons = (os && ns) ? strstr(s1, "::") : NULL;
-            if (colons)
-            {
-                colons[0] = '_';
-                memmove(colons + 1, colons + 2, strlen(colons + 2) + 1);
-            }
-            new_node->match_case.pattern = s1;
-        }
         new_node->match_case.patterns =
             copy_patterns_replacing(n->match_case.patterns, p, c, os, ns);
         new_node->match_case.binding_count = n->match_case.binding_count;
