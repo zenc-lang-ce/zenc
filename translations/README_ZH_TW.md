@@ -49,7 +49,7 @@
 加入官方 Zen C Discord 服務器，參與討論、展示 Demo、提問或報告 Bug！
 
 - Discord: [點擊加入](https://discord.com/invite/q6wEsCmkJP)
-- RFC: [功能提案](https://github.com/zenc-lang/rfcs)
+- RFC: [功能提案](https://github.com/zenc-lang-ce/zenc-rfcs)
 
 ## 生態系統
 
@@ -57,12 +57,12 @@ Zen C 項目包含多個倉庫。下面是主要的倉庫列表：
 
 | 倉庫 | 描述 | 狀態 |
 | :--- | :--- | :--- |
-| **[zenc](https://github.com/zenc-lang/zenc)** | Zen C 核心編譯器 (`zc`)、CLI 和標準庫。 | 活躍開發 |
-| **[docs](https://github.com/zenc-lang/docs)** | 官方技術文檔與語言規範。 | 活躍 |
-| **[rfcs](https://github.com/zenc-lang/rfcs)** | 徵求意見稿 (RFC) 倉庫。塑造語言的未來。 | 活躍 |
-| **[vscode-zenc](https://github.com/zenc-lang/vscode-zenc)** | 官方 VS Code 擴充功能（語法高亮、程式碼片段）。 | Alpha |
-| **[www](https://github.com/zenc-lang/www)** | `zenc-lang.org` 的源代碼。 | 活躍 |
-| **[awesome-zenc](https://github.com/zenc-lang/awesome-zenc)** | 精選的 Zen C 範例列表。 | 不斷增加 |
+| **[zenc](https://github.com/zenc-lang-ce/zenc)** | Zen C 核心編譯器 (`zc`)、CLI 和標準庫。 | 活躍開發 |
+| **[docs](https://github.com/zenc-lang-ce/zenc-docs)** | 官方技術文檔與語言規範。 | 活躍 |
+| **[rfcs](https://github.com/zenc-lang-ce/zenc-rfcs)** | 徵求意見稿 (RFC) 倉庫。塑造語言的未來。 | 活躍 |
+| **[vscode-zenc](https://github.com/zenc-lang-ce/zenc-vscode)** | 官方 VS Code 擴充功能（語法高亮、程式碼片段）。 | Alpha |
+| **[www](https://github.com/zenc-lang-ce/zenc-lang-ce.github.io)** | `zenc-lang-ce.github.io` 的源代碼。 | 活躍 |
+| **[awesome-zenc](https://github.com/zenc-lang-ce/awesome-zenc)** | 精選的 Zen C 範例列表。 | 不斷增加 |
 
 ## 展示
 
@@ -87,9 +87,9 @@ Zen C 項目包含多個倉庫。下面是主要的倉庫列表：
         <li><a href="#概述">概述</a></li>
         <li><a href="#社區">社區</a></li>
         <li><a href="#生態系統">生態系統</a></li>
-        <li><a href="https://github.com/zenc-lang/rfcs">RFC</a></li>
+        <li><a href="https://github.com/zenc-lang-ce/zenc-rfcs">RFC</a></li>
         <li><a href="#快速入門">快速入門</a></li>
-        <li><a href="https://github.com/zenc-lang/docs">文檔</a></li>
+        <li><a href="https://github.com/zenc-lang-ce/zenc-docs">文檔</a></li>
         <li><a href="#標準庫">標準庫</a></li>
         <li><a href="#工具鏈">工具鏈</a>
           <ul>
@@ -103,7 +103,7 @@ Zen C 項目包含多個倉庫。下面是主要的倉庫列表：
       </ul>
     </td>
     <td valign="top">
-      <p><a href="https://docs.zenc-lang.org/tour/"><b>Browse the Language Reference</b></a></p>
+      <p><a href="https://zenc-lang-ce.github.io/docs/tour/"><b>Browse the Language Reference</b></a></p>
     </td>
   </tr>
 </table>
@@ -115,7 +115,7 @@ Zen C 項目包含多個倉庫。下面是主要的倉庫列表：
 ### 安裝
 
 ```bash
-git clone https://github.com/zenc-lang/zenc.git
+git clone https://github.com/zenc-lang-ce/zenc.git
 cd zenc
 make clean # 移除舊的構建文件
 make
@@ -232,7 +232,7 @@ export ZC_ROOT=/path/to/zenc
 
 ## 語言參考
 
-有關更多詳細資訊，請參閲官方[語言參考](https://docs.zenc-lang.org/tour/01-variables-constants/)。
+有關更多詳細資訊，請參閲官方[語言參考](https://zenc-lang-ce.github.io/docs/tour/01-variables-constants/)。
 
 ## 標準庫
 
@@ -728,7 +728,7 @@ cc -I /usr/local/include/zenc my_tool.c -o my_tool
 *   **[zc-ape](https://github.com/OEvgeny/zc-ape)** (MIT 許可證)：由 [Eugene Olonov](https://github.com/OEvgeny) 開發的原版 Zen-C 實際上便攜的可執行文件 (APE) 端口。
 *   **[Cosmopolitan Libc](https://github.com/jart/cosmopolitan)** (ISC 許可證)：使 APE 成為可能納基礎庫。
 *   **[TRE](https://github.com/laurikari/tre)** (BSD 許可證)：用於標準庫中的正則表達式引擎。
-*   **[zenc.vim](https://github.com/zenc-lang/zenc.vim)** (MIT 許可證)：官方 Vim/Neovim 插件，主要由 **[davidscholberg](https://github.com/davidscholberg)** 編寫。
+*   **[zenc.vim](https://github.com/zenc-lang-ce/zenc-vim)** (MIT 許可證)：官方 Vim/Neovim 插件，主要由 **[davidscholberg](https://github.com/davidscholberg)** 編寫。
 *   **[TinyCC](https://github.com/TinyCC/tinycc)** (LGPL 許可證)：用於高效能 REPL 評估的基礎 JIT 引擎。
 
 ---
@@ -740,10 +740,10 @@ cc -I /usr/local/include/zenc my_tool.c -o my_tool
   </p>
   <p>
     <a href="https://discord.com/invite/q6wEsCmkJP">Discord</a> •
-    <a href="https://github.com/zenc-lang/zenc">GitHub</a> •
-    <a href="https://github.com/zenc-lang/docs">文檔</a> •
-    <a href="https://github.com/zenc-lang/awesome-zenc">範例</a> •
-    <a href="https://github.com/zenc-lang/rfcs">RFC</a> •
+    <a href="https://github.com/zenc-lang-ce/zenc">GitHub</a> •
+    <a href="https://github.com/zenc-lang-ce/zenc-docs">文檔</a> •
+    <a href="https://github.com/zenc-lang-ce/awesome-zenc">範例</a> •
+    <a href="https://github.com/zenc-lang-ce/zenc-rfcs">RFC</a> •
     <a href="CONTRIBUTING_ZH_TW.md">貢獻</a>
   </p>
 </div>
