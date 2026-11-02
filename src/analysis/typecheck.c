@@ -181,8 +181,23 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         tc_check_impl_trait(tc, node, depth + 1);
         break;
     case NODE_IMPORT:
-        check_node(tc, node->import_stmt.module_root, depth + 1);
-        break;
+    {
+        // The module's nodes, a list as at the root of the program. The standard library is
+        // checked for what checking gives the AST (types, implicit `&` and `*`), but its
+        // diagnostics are not the program's.
+        int in_std = tc_file_in_std(tc, node->import_stmt.path);
+        int prev_suppress = tc->pctx->suppress_errors;
+        int prev_silent = tc->pctx->silent_warnings;
+        tc->pctx->suppress_errors = prev_suppress || in_std;
+        tc->pctx->silent_warnings = prev_silent || in_std;
+        for (ASTNode *child = node->import_stmt.module_root; child; child = child->next)
+        {
+            check_node(tc, child, depth + 1);
+        }
+        tc->pctx->suppress_errors = prev_suppress;
+        tc->pctx->silent_warnings = prev_silent;
+    }
+    break;
     case NODE_EXPR_VAR:
         check_expr_var(tc, node);
         break;

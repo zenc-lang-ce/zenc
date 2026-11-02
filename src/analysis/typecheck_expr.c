@@ -959,11 +959,7 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
                 snprintf(msg, sizeof(msg),
                          "Implicit narrowing conversion from '%s' (%d-bit) to '%s' (%d-bit)", v_str,
                          value_width, t_str, target_width);
-                zwarn_at(t, "%s", msg);
-                if (tc)
-                {
-                    tc->warning_count++;
-                }
+                tc_warning(tc, t, msg);
                 zfree(t_str);
                 zfree(v_str);
             }
