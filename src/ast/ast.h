@@ -601,8 +601,7 @@ struct ASTNode
         struct
         {
             char **names;
-            char **types;      // Explicit types (NULL entries if inferred)
-            Type **type_infos; // Formal type objects (NULL entries if inferred)
+            Type **type_infos; // Explicit types (NULL entries if inferred)
             int count;
             ASTNode *init_expr;
             int is_struct_destruct;

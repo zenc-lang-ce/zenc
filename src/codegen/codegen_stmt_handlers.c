@@ -500,11 +500,13 @@ void handle_node_destruct_var(ParserContext *ctx, ASTNode *node)
             }
             else
             {
-                char *explicit_type = node->destruct.types ? node->destruct.types[i] : NULL;
+                Type *explicit_type =
+                    node->destruct.type_infos ? node->destruct.type_infos[i] : NULL;
                 if (explicit_type)
                 {
-                    EMIT(ctx, "%s %s = _tmp_%d.v%d;\n", explicit_type, node->destruct.names[i], id,
-                         i);
+                    EMIT(ctx, "%s %s = _tmp_%d.v%d;\n",
+                         type_to_c_string(explicit_type, ctx->config->misra_mode),
+                         node->destruct.names[i], id, i);
                 }
                 else if (z_path_match_compiler(ctx->config->cc, "tcc"))
                 {

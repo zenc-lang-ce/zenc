@@ -56,7 +56,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         lexer_next(l);
         int cap = 16;
         char **names = xmalloc((size_t)cap * sizeof(char *));
-        char **types = xmalloc((size_t)cap * sizeof(char *));
         Type **type_infos = xmalloc((size_t)cap * sizeof(Type *));
         int count = 0;
         while (1)
@@ -65,14 +64,12 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
             {
                 cap *= 2;
                 names = xrealloc(names, (size_t)cap * sizeof(char *));
-                types = xrealloc(types, (size_t)cap * sizeof(char *));
                 type_infos = xrealloc(type_infos, (size_t)cap * sizeof(Type *));
             }
             Token t = lexer_next(l);
             check_identifier(t);
             char *nm = token_strdup(t);
             names[count] = nm;
-            types[count] = NULL;
             type_infos[count] = NULL;
 
             // Check for optional type annotation: name: type
@@ -80,9 +77,9 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
             {
                 lexer_next(l); // eat :
                 Type *type_obj = parse_type_formal(ctx, l);
-                types[count] = type_obj ? type_to_string(type_obj) : xstrdup("unknown");
                 type_infos[count] = type_obj;
-                add_symbol(ctx, nm, types[count], type_obj, is_export);
+                add_symbol(ctx, nm, type_obj ? type_to_string(type_obj) : "unknown", type_obj,
+                           is_export);
             }
             else
             {
@@ -119,7 +116,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         ASTNode *n = ast_create(NODE_DESTRUCT_VAR);
         n->token = tk;
         n->destruct.names = names;
-        n->destruct.types = types;
         n->destruct.type_infos = type_infos;
         n->destruct.count = count;
         n->destruct.init_expr = init;
