@@ -300,16 +300,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 fallback_t->name = xstrdup("Slice__char");
                 init->type_info = fallback_t;
             }
-
-            if (!type && init->type_info)
-            {
-                type = type_to_string(init->type_info);
-            }
-            if (!type)
-            {
-                register_slice(ctx, "char");
-                type = xstrdup("Slice__char");
-            }
             if (lexer_peek(l).kind == TOK_SEMICOLON)
             {
                 lexer_next(l);
