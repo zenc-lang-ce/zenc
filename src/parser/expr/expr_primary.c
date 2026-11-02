@@ -425,10 +425,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                             if (is_variant)
                             {
-                                // The name parse_enum registers: the enum's link_name, if
-                                // it has one.
-                                char *v_mangled = mangle_variant_symbol(
-                                    def->link_name ? def->link_name : acc, method_name);
+                                char *v_mangled = mangle_variant_symbol(acc, method_name);
 
                                 if (!find_func(ctx, v_mangled))
                                 {

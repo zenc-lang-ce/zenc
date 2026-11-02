@@ -760,8 +760,7 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             ASTNode *def = find_struct_def(ctx, mangled_type);
             if (def && def->kind == NODE_ENUM)
             {
-                const char *ename_for_mangling = (def->link_name) ? def->link_name : mangled_type;
-                char *mangled = mangle_method_symbol(ename_for_mangling, NULL, method);
+                char *mangled = mangle_method_symbol(mangled_type, NULL, method);
                 FuncSig *sig = find_func(ctx, mangled);
                 if (sig)
                 {
