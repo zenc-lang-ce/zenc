@@ -637,8 +637,7 @@ struct ASTNode
 
         struct
         {
-            char **param_names; // Parameter types: type_info->args.
-            char *return_type;
+            char **param_names; // Parameter and return types: type_info->args and ->inner.
             ASTNode *body;
             int count;
             int lambda_id;

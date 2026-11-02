@@ -1313,7 +1313,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
                 new_node->lambda.param_names[i] = xstrdup(n->lambda.param_names[i]);
             }
         }
-        new_node->lambda.return_type = replace_type_str(n->lambda.return_type, p, c, os, ns);
         new_node->lambda.capture_count = n->lambda.capture_count;
         if (n->lambda.capture_count > 0)
         {

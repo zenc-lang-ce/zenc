@@ -66,8 +66,8 @@ static void return_target(ASTNode *from, const char **name, Type **type)
     if (from->kind == NODE_LAMBDA)
     {
         Type *fn = get_inner_type(from->type_info);
-        *name = from->lambda.return_type;
         *type = (fn && fn->kind == TYPE_FUNCTION) ? fn->inner : NULL;
+        *name = *type ? type_to_string(*type) : NULL;
         return;
     }
     *name = type_to_string(from->func.ret_type_info);

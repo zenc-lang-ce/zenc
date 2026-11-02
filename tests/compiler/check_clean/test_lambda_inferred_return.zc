@@ -1,0 +1,23 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A lambda written without `->` returns the type its `return`s give, and the program can use
+// that value before codegen: in arithmetic and inside an f-string.
+test "a lambda without an arrow returns what its returns give" {
+    let k = 10;
+    let scale = fn(x: int) {
+        if x < 0 {
+            return 0;
+        }
+        return x * 2 + k;
+    };
+    assert(scale(3) + 1 == 17, "result used in arithmetic");
+
+    let text = f"{scale(3)}";
+    assert(strcmp(text, "16") == 0, "result used in an f-string");
+
+    let nothing = fn(x: int) {
+        if x > 0 {
+            return;
+        }
+    };
+    nothing(1);
+}

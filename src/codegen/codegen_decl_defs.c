@@ -251,91 +251,6 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
 
 // Emit lambda definitions.
 // Collect the set of C type strings produced by `return <expr>;` in a lambda body.
-static void collect_lambda_return_types(ParserContext *ctx, ASTNode *node, char ***types,
-                                        int *count, int *cap)
-{
-    if (!node)
-    {
-        return;
-    }
-
-    if (node->kind == NODE_RETURN && node->ret.value)
-    {
-        ASTNode *val = node->ret.value;
-        char *tstr = NULL;
-        if (val->type_info && val->type_info->kind != TYPE_UNKNOWN)
-        {
-            tstr = c_type_spelling(ctx, val->type_info);
-        }
-        else
-        {
-            tstr = infer_type(ctx, val);
-        }
-
-        if (tstr && strcmp(tstr, "void") != 0 && strcmp(tstr, "unknown") != 0)
-        {
-            int dup = 0;
-            for (int i = 0; i < *count; i++)
-            {
-                if (strcmp((*types)[i], tstr) == 0)
-                {
-                    dup = 1;
-                    break;
-                }
-            }
-            if (!dup)
-            {
-                if (*count >= *cap)
-                {
-                    *cap *= 2;
-                    *types = xrealloc(*types, sizeof(char *) * (size_t)(*cap));
-                }
-                (*types)[*count] = xstrdup(tstr);
-                (*count)++;
-            }
-        }
-        if (tstr)
-        {
-            zfree(tstr);
-        }
-        return;
-    }
-
-    switch (node->kind)
-    {
-    case NODE_BLOCK:
-        for (ASTNode *s = node->block.statements; s; s = s->next)
-        {
-            collect_lambda_return_types(ctx, s, types, count, cap);
-        }
-        break;
-    case NODE_IF:
-        collect_lambda_return_types(ctx, node->if_stmt.then_body, types, count, cap);
-        collect_lambda_return_types(ctx, node->if_stmt.else_body, types, count, cap);
-        break;
-    case NODE_WHILE:
-        collect_lambda_return_types(ctx, node->while_stmt.body, types, count, cap);
-        break;
-    case NODE_FOR:
-        collect_lambda_return_types(ctx, node->for_stmt.body, types, count, cap);
-        break;
-    case NODE_FOR_RANGE:
-        collect_lambda_return_types(ctx, node->for_range.body, types, count, cap);
-        break;
-    case NODE_MATCH:
-        for (ASTNode *c = node->match_stmt.cases; c; c = c->next)
-        {
-            collect_lambda_return_types(ctx, c->match_case.body, types, count, cap);
-        }
-        break;
-    default:
-        break;
-    }
-}
-
-// When the lambda's return type was not propagated from a call signature (e.g.
-// lambdas inside f-string interpolations, which skip the normal type-check pass),
-// infer it from the body's return statements.
 // Emits one field of a closure context struct. A function pointer type needs the
 // field name inside its declarator (`int32_t (*f)(int32_t)`), which
 // emit_var_decl_type does.
@@ -366,38 +281,6 @@ static void emit_lambda_ctx_field(ParserContext *ctx, const char *tstr, const ch
     EMIT(ctx, by_ref ? "%s* %s;\n" : "%s %s;\n", tstr, name);
 }
 
-static void infer_lambda_return_type(ParserContext *ctx, ASTNode *node)
-{
-    if (node->type_info && node->type_info->inner && node->type_info->inner->kind != TYPE_UNKNOWN)
-    {
-        return;
-    }
-    if (node->lambda.return_type && strcmp(node->lambda.return_type, "void") != 0 &&
-        strcmp(node->lambda.return_type, "unknown") != 0)
-    {
-        return;
-    }
-
-    char **types = NULL;
-    int count = 0;
-    int cap = 8;
-    types = xmalloc(sizeof(char *) * (size_t)cap);
-
-    collect_lambda_return_types(ctx, node->lambda.body, &types, &count, &cap);
-
-    if (count == 1)
-    {
-        zfree(node->lambda.return_type);
-        node->lambda.return_type = xstrdup(types[0]);
-    }
-
-    for (int i = 0; i < count; i++)
-    {
-        zfree(types[i]);
-    }
-    zfree(types);
-}
-
 void emit_lambda_defs(ParserContext *ctx)
 {
     LambdaRef *cur = ctx->global_lambdas;
@@ -406,8 +289,6 @@ void emit_lambda_defs(ParserContext *ctx)
         ASTNode *node = cur->node;
         int saved_defer = ctx->cg.defer_count;
         ctx->cg.defer_count = 0;
-
-        infer_lambda_return_type(ctx, node);
 
         if (node->lambda.capture_count > 0)
         {
@@ -456,31 +337,15 @@ void emit_lambda_defs(ParserContext *ctx)
             EMIT(ctx, "}\n\n");
         }
 
-        char *ret_type_str = node->lambda.return_type;
-        if (node->type_info && node->type_info->inner &&
-            node->type_info->inner->kind != TYPE_UNKNOWN)
-        {
-            ret_type_str = c_type_spelling(ctx, node->type_info->inner);
-        }
-
-        if (strcmp(ret_type_str, "unknown") == 0)
-        {
-            EMIT(ctx, "void* _lambda_%d(", node->lambda.lambda_id);
-        }
-        else
-        {
-            EMIT(ctx, "%s _lambda_%d(", ret_type_str, node->lambda.lambda_id);
-        }
+        // A return type nothing told is `void*`.
+        Type *ret = node->type_info->inner;
+        const char *ret_c_type =
+            (ret && ret->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, ret) : "void*";
+        EMIT(ctx, "%s _lambda_%d(", ret_c_type, node->lambda.lambda_id);
 
         if (!node->lambda.is_bare)
         {
             EMIT(ctx, "void* _ctx");
-        }
-
-        if (node->type_info && node->type_info->inner &&
-            node->type_info->inner->kind != TYPE_UNKNOWN)
-        {
-            zfree(ret_type_str);
         }
 
         for (int i = 0; i < node->lambda.count; i++)

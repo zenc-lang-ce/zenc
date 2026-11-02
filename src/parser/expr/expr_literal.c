@@ -8,6 +8,71 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Adds to `found` (up to `max`) the distinct types the `return`s under `node` give, not
+// counting nested lambdas. Returns the new count.
+static int collect_return_types(ASTNode *node, Type **found, int count, int max)
+{
+    if (!node)
+    {
+        return count;
+    }
+    switch (node->kind)
+    {
+    case NODE_RETURN:
+    {
+        Type *t = node->ret.value ? node->ret.value->type_info : NULL;
+        if (!t || t->kind == TYPE_UNKNOWN || t->kind == TYPE_VOID)
+        {
+            return count;
+        }
+        for (int i = 0; i < count; i++)
+        {
+            if (type_eq(found[i], t))
+            {
+                return count;
+            }
+        }
+        if (count < max)
+        {
+            found[count++] = t;
+        }
+        return count;
+    }
+    case NODE_BLOCK:
+        for (ASTNode *s = node->block.statements; s; s = s->next)
+        {
+            count = collect_return_types(s, found, count, max);
+        }
+        return count;
+    case NODE_IF:
+        count = collect_return_types(node->if_stmt.then_body, found, count, max);
+        return collect_return_types(node->if_stmt.else_body, found, count, max);
+    case NODE_WHILE:
+        return collect_return_types(node->while_stmt.body, found, count, max);
+    case NODE_FOR:
+        return collect_return_types(node->for_stmt.body, found, count, max);
+    case NODE_FOR_RANGE:
+        return collect_return_types(node->for_range.body, found, count, max);
+    case NODE_MATCH:
+        for (ASTNode *c = node->match_stmt.cases; c; c = c->next)
+        {
+            count = collect_return_types(c->match_case.body, found, count, max);
+        }
+        return count;
+    default:
+        return count;
+    }
+}
+
+// The return type of a lambda written without `->`: the type its `return`s give when they all
+// give the same one, `void` otherwise.
+static Type *lambda_body_return_type(ASTNode *body)
+{
+    Type *found[2];
+    int count = collect_return_types(body, found, 0, 2);
+    return count == 1 ? found[0] : type_new(TYPE_VOID);
+}
+
 ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
 {
     Token lambda_token = lexer_next(l);
@@ -135,7 +200,6 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     }
     lexer_next(l);
 
-    char *return_type = xstrdup("void");
     if (lexer_peek(l).kind == TOK_ARROW)
     {
         lexer_next(l);
@@ -145,7 +209,6 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
         {
             return NULL;
         }
-        return_type = type_to_string(t->inner);
     }
 
     enter_scope(ctx);
@@ -165,12 +228,15 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     {
         zpanic_at(lexer_peek(l), "Expected '{' for lambda body");
     }
+    if (!t->inner)
+    {
+        t->inner = lambda_body_return_type(body);
+    }
 
     ASTNode *lambda = ast_create(NODE_LAMBDA);
     lambda->token = lambda_token;
     lambda->line = lambda_token.line;
     lambda->lambda.param_names = param_names;
-    lambda->lambda.return_type = return_type;
     lambda->lambda.body = body;
     lambda->lambda.body = body;
     lambda->lambda.count = count;

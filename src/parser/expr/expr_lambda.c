@@ -84,7 +84,6 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
         }
     }
 
-    lambda->lambda.return_type = type_to_string(t->inner);
     lambda->lambda.lambda_id = ctx->lambda_counter++;
     lambda->lambda.is_expression = 1;
     if (ctx->known_generics_count == 0)
@@ -152,7 +151,6 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
         body_block->block.statements = ret;
     }
     lambda->lambda.body = body_block;
-    lambda->lambda.return_type = xstrdup("unknown");
     lambda->lambda.lambda_id = ctx->lambda_counter++;
     lambda->lambda.is_expression = 1;
     if (ctx->known_generics_count == 0)
