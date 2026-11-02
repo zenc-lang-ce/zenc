@@ -509,6 +509,17 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
 
             tc->is_unreachable = all_unreachable;
         }
+        // Used as a value, a match has the type of its first arm that gives one (an arm can
+        // also leave with `return`, or be a block of statements).
+        for (ASTNode *mcase = node->match_stmt.cases; mcase && !node->type_info;
+             mcase = mcase->next)
+        {
+            Type *arm = mcase->match_case.body ? mcase->match_case.body->type_info : NULL;
+            if (arm && arm->kind != TYPE_VOID && arm->kind != TYPE_UNKNOWN)
+            {
+                node->type_info = arm;
+            }
+        }
         break;
     case NODE_STRUCT:
     case NODE_ENUM:
