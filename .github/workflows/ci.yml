@@ -604,7 +604,9 @@ jobs:
           out/bin/zc.com
           out/bin/zc-boot.com
         draft: false
-        prerelease: false
+        # A tag with a suffix (v0.5.1-rc1) is a pre-release: it is not the latest release, which
+        # zc-boot.com downloads
+        prerelease: ${{ contains(github.ref_name, '-') }}
         generate_release_notes: true
 
 

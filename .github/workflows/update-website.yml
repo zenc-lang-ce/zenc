@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+      # A pre-release (v0.5.1-rc1) is for testing: the website keeps the last release
+      - '!v*-*'
 
 permissions:
   contents: read
