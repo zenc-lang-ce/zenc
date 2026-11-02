@@ -1225,6 +1225,28 @@ static void check_program_prepass(TypeChecker *tc, ASTNode *root, int depth)
     RECURSION_EXIT(tc->pctx);
 }
 
+// The instances of generic functions and impls, which are not in the tree. Checking one can
+// instantiate more, so the list is walked until every instance has been checked.
+static void check_instantiations(TypeChecker *tc)
+{
+    int changed = 1;
+    while (changed)
+    {
+        changed = 0;
+        for (ASTNode *inst = tc->pctx->instantiated_funcs; inst; inst = inst->next)
+        {
+            if (!inst->is_checked)
+            {
+                check_node(tc, inst, 0);
+                inst->is_checked = 1;
+                changed = 1;
+                // Restart from head to catch newly added instantiations that might be before us
+                break;
+            }
+        }
+    }
+}
+
 // ** Entry Point **
 
 int check_program(ParserContext *ctx, ASTNode *root)
@@ -1242,26 +1264,7 @@ int check_program(ParserContext *ctx, ASTNode *root)
 
     check_node(&tc, root, 0);
     root->is_checked = 1;
-
-    // Fixed-point iteration to handle secondary instantiations
-    int changed = 1;
-    while (changed)
-    {
-        changed = 0;
-        ASTNode *inst_func = ctx->instantiated_funcs;
-        while (inst_func)
-        {
-            if (!inst_func->is_checked)
-            {
-                check_node(&tc, inst_func, 0);
-                inst_func->is_checked = 1;
-                changed = 1;
-                // Restart from head to catch newly added instantiations that might be before us
-                break;
-            }
-            inst_func = inst_func->next;
-        }
-    }
+    check_instantiations(&tc);
 
     if (ctx->move_state)
     {
@@ -1301,6 +1304,7 @@ int check_moves_only(ParserContext *ctx, ASTNode *root)
     }
 
     check_node(&tc, root, 0);
+    check_instantiations(&tc);
 
     if (ctx->move_state)
     {
