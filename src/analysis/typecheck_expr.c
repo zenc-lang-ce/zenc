@@ -1140,10 +1140,6 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
         {
             Type *enum_type = type_new(TYPE_ENUM);
             enum_type->name = xstrdup(enum_variant->enum_name);
-            if (enum_variant->link_name)
-            {
-                enum_type->link_name = xstrdup(enum_variant->link_name);
-            }
             node->type_info = enum_type;
             return;
         }

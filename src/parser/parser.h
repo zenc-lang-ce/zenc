@@ -375,8 +375,6 @@ struct ParserContext
     Instantiation *instantiations; ///< Cache of instantiated generic types.
     ASTNode *instantiated_structs; ///< List of AST nodes for instantiated structs.
     ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
-    ASTNode *link_synced_structs;  ///< Head of instantiated_structs at the last link_name pass.
-    ASTNode *link_synced_funcs;    ///< Head of instantiated_funcs at the last link_name pass.
 
     // Structs/Enums
     StructRef *parsed_structs_list;                ///< List of all parsed struct nodes.
@@ -763,11 +761,6 @@ void add_to_impl_list(ParserContext *ctx, ASTNode *node);
  * @brief Adds a global to the list.
  */
 void add_to_global_list(ParserContext *ctx, ASTNode *node);
-
-/**
- * @brief Synchronizes linkage overrides across all type references in the AST.
- */
-void sync_all_link_names(ParserContext *ctx, ASTNode *root);
 
 /**
  * @brief Registers built-in types and functions.

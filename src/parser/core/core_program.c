@@ -650,8 +650,5 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
     ATTACH_DOC_COMMENT(ctx, r);
     r->root.children = parse_program_nodes(ctx, l);
 
-    // Synchronize linkage overrides across all type references
-    sync_all_link_names(ctx, r);
-
     return r;
 }

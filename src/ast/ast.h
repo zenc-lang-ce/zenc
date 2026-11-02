@@ -99,7 +99,6 @@ typedef struct Type
     TypeKind kind;          ///< The kind of type.
     int lifetime_depth;     ///< Nesting depth of this type's lifetime (0 = static, >0 = local).
     char *name;             ///< Name of the type (for STRUCT, GENERIC, ENUM).
-    char *link_name;        ///< Optional linkage override (from @link_name).
     struct Type *inner;     ///< Inner type (for POINTER, ARRAY).
     struct Type **args;     ///< Generic arguments (for GENERIC instantiations).
     int count;              ///< Count of generic arguments.

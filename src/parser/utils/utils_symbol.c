@@ -66,10 +66,6 @@ Type *find_symbol_type_info(ParserContext *ctx, const char *n)
     {
         Type *t = type_new(TYPE_ENUM);
         t->name = xstrdup(enum_variant->enum_name);
-        if (enum_variant->link_name)
-        {
-            t->link_name = xstrdup(enum_variant->link_name);
-        }
         return t;
     }
 

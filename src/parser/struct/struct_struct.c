@@ -343,10 +343,6 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     // Initialize Type Info so we can track traits (like Drop)
     node->type_info = type_new(TYPE_STRUCT);
     node->type_info->name = xstrdup(name);
-    if (node->link_name)
-    {
-        node->type_info->link_name = xstrdup(node->link_name);
-    }
     if (gp_count > 0)
     {
         node->type_info->kind = TYPE_GENERIC;

@@ -329,7 +329,6 @@ Type *type_new(TypeKind kind)
         t->traits.has_drop = 1;
     }
     t->name = NULL;
-    t->link_name = NULL;
     t->inner = NULL;
     t->args = NULL;
     t->count = 0;
@@ -372,7 +371,7 @@ Type *type_clone(Type *t)
     // clone->inner = t->inner; // Already done by memcpy
     // clone->args = t->args;   // Already done by memcpy
 
-    // Note: Strings like name and link_name are shared (shallow copy)
+    // Note: Strings like name are shared (shallow copy)
     // but names are usually static or managed by pctx string pool.
     return clone;
 }
@@ -944,11 +943,7 @@ char *type_to_c_string(Type *t, int misra_mode)
 static const char *c_name_of(Type *t, CNameLookup lookup, void *context)
 {
     const char *c_name = (lookup && t->name) ? lookup(context, t->name) : NULL;
-    if (c_name)
-    {
-        return c_name;
-    }
-    return t->link_name ? t->link_name : t->name;
+    return c_name ? c_name : t->name;
 }
 
 char *type_to_c_string_with(Type *t, int misra_mode, CNameLookup lookup, void *context)

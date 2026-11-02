@@ -185,10 +185,6 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
                 {
                     Type *ret_t = type_new(TYPE_ENUM);
                     ret_t->name = xstrdup(ename);
-                    if (link_name)
-                    {
-                        ret_t->link_name = xstrdup(link_name);
-                    }
 
                     // We can reuse the tuple_types collected during parsing!
                     register_func(ctx, ctx->current_scope, mangled, tuple_count, NULL, tuple_types,
@@ -200,10 +196,6 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
                     at[0] = payload;
                     Type *ret_t = type_new(TYPE_ENUM);
                     ret_t->name = xstrdup(ename);
-                    if (link_name)
-                    {
-                        ret_t->link_name = xstrdup(link_name);
-                    }
                     register_func(ctx, ctx->current_scope, mangled, 1, NULL, at, ret_t, 0, 0,
                                   mangled, vt, is_export);
                 }
@@ -245,10 +237,6 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     node->link_name = link_name ? xstrdup(link_name) : NULL;
     node->type_info = type_new(TYPE_ENUM);
     node->type_info->name = xstrdup(ename);
-    if (node->link_name)
-    {
-        node->type_info->link_name = xstrdup(node->link_name);
-    }
 
     node->enm.variants = h;
     node->enm.generic_param = gp; // Store generic param
