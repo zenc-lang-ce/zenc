@@ -1227,6 +1227,15 @@ static void check_program_prepass(TypeChecker *tc, ASTNode *root, int depth)
 
 // The instances of generic functions and impls, which are not in the tree. Checking one can
 // instantiate more, so the list is walked until every instance has been checked.
+// The std modules the compiler loaded on its own, which are not in the tree.
+static void check_implicit_std_imports(TypeChecker *tc)
+{
+    for (ASTNode *import = tc->pctx->implicit_std_imports; import; import = import->next)
+    {
+        check_node(tc, import, 0);
+    }
+}
+
 static void check_instantiations(TypeChecker *tc)
 {
     int changed = 1;
@@ -1264,6 +1273,7 @@ int check_program(ParserContext *ctx, ASTNode *root)
 
     check_node(&tc, root, 0);
     root->is_checked = 1;
+    check_implicit_std_imports(&tc);
     check_instantiations(&tc);
 
     if (ctx->move_state)
@@ -1304,6 +1314,7 @@ int check_moves_only(ParserContext *ctx, ASTNode *root)
     }
 
     check_node(&tc, root, 0);
+    check_implicit_std_imports(&tc);
     check_instantiations(&tc);
 
     if (ctx->move_state)
