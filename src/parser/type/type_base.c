@@ -318,6 +318,10 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
                 return NULL;
             }
             char *first_arg_str = type_to_string(first_arg);
+            // The instance keeps the Types of its arguments; its name is the mangled one.
+            Type **arg_types = xmalloc(sizeof(Type *));
+            int arg_count = 0;
+            arg_types[arg_count++] = first_arg;
 
             // Check for multi-arg: <K, V>
             Token next_tok = lexer_peek(l);
@@ -336,6 +340,8 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
                     {
                         return NULL;
                     }
+                    arg_types = xrealloc(arg_types, sizeof(Type *) * (size_t)(arg_count + 1));
+                    arg_types[arg_count++] = arg;
                     char *arg_str = type_to_string(arg);
                     args = realloc(args, sizeof(char *) * (size_t)(count + 1));
                     args[count++] = xstrdup(arg_str);
@@ -414,8 +420,8 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
 
             zfree(first_arg_str);
             ty->kind = TYPE_STRUCT;
-            ty->args = NULL;
-            ty->count = 0;
+            ty->args = arg_types;
+            ty->count = arg_count;
         }
         return ty;
     }

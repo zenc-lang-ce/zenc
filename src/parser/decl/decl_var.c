@@ -330,31 +330,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         {
             if (type_obj && type_obj->name)
             {
-                if (type_obj->count > 0 && type_obj->args)
-                {
-                    size_t len = strlen(type_obj->name) + 1;
-                    char **clean_args = xmalloc(sizeof(char *) * (size_t)type_obj->count);
-                    for (int ai = 0; ai < type_obj->count; ai++)
-                    {
-                        const char *an = type_obj->args[ai] ? type_obj->args[ai]->name : "int";
-                        clean_args[ai] = sanitize_mangled_name(an);
-                        len += 2 + strlen(clean_args[ai]);
-                    }
-                    char *mangled = xmalloc(len);
-                    strcpy(mangled, type_obj->name);
-                    for (int ai = 0; ai < type_obj->count; ai++)
-                    {
-                        strcat(mangled, "__");
-                        strcat(mangled, clean_args[ai]);
-                        zfree(clean_args[ai]);
-                    }
-                    zfree(clean_args);
-                    ctx->cg.expected_init_type = mangled;
-                }
-                else
-                {
-                    ctx->cg.expected_init_type = xstrdup(type_obj->name);
-                }
+                ctx->cg.expected_init_type = type_to_string(type_obj);
             }
             init = parse_expression(ctx, l);
             zfree(ctx->cg.expected_init_type);
