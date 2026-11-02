@@ -92,7 +92,8 @@ static Type *c_arithmetic_type(const char *words)
 
 static Type *c_type_from_text_at(ParserContext *ctx, const char *text, int depth);
 
-// The arithmetic type the C typedef `name` stands for (`time_t` is a `long`), or NULL.
+// The arithmetic type the C typedef `name` stands for (`time_t` is a `long`), written in C by
+// that name, or NULL.
 static Type *c_typedef_arithmetic_type(ParserContext *ctx, const char *name, int depth)
 {
     const char **c_type =
@@ -104,6 +105,7 @@ static Type *c_typedef_arithmetic_type(ParserContext *ctx, const char *name, int
     Type *named = c_type_from_text_at(ctx, *c_type, depth + 1);
     if (named && named->kind != TYPE_STRUCT && (is_integer_type(named) || is_float_type(named)))
     {
+        named->c_typedef_name = xstrdup(name);
         return named;
     }
     return NULL;
@@ -192,7 +194,7 @@ static Type *c_type_from_text_at(ParserContext *ctx, const char *text, int depth
         // A name: the standard typedefs (`size_t`, `uint8_t`, `bool`) are primitives, and
         // `float` and `double` too; any other name is only known behind a pointer (`FILE *`),
         // as an opaque C struct, or alone when a header defines it as an arithmetic type
-        // (`time_t`).
+        // (`time_t`), which C keeps writing by that name.
         TypeKind kind = strchr(words, ' ') ? TYPE_UNKNOWN : find_primitive_kind(words);
         if (kind != TYPE_UNKNOWN && kind != TYPE_STRING && kind != TYPE_VOID)
         {
