@@ -73,6 +73,11 @@ void emit_var_decl_type(ParserContext *ctx, const char *type_str, const char *va
  *        name), or from its text when the compiler made the field without one.
  */
 const char *field_c_type(ParserContext *ctx, ASTNode *field);
+/**
+ * @brief A type spelled in C, every struct or enum by the C name of its definition (its
+ *        @link_name), wherever the Type comes from.
+ */
+char *c_type_spelling(ParserContext *ctx, Type *t);
 void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t);
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr);
 void emit_rvalue_address(ParserContext *ctx, ASTNode *expr);

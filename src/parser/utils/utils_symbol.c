@@ -378,6 +378,12 @@ EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name)
     return NULL;
 }
 
+const char *link_name_of(void *ctx, const char *name)
+{
+    ASTNode *def = find_struct_def((ParserContext *)ctx, name);
+    return def ? def->link_name : NULL;
+}
+
 // Several enums may share a variant name (`Slot::None`, `Attribute::None`), so
 // a lookup that knows the enum must filter by it instead of taking the first
 // variant with that name.

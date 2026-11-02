@@ -855,6 +855,11 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c);
 Type *type_from_name(ParserContext *ctx, const char *name);
 FuncSig *find_func(ParserContext *ctx, const char *name);
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name);
+/**
+ * @brief The C name of the struct or enum `name`: the @link_name of its definition, or NULL
+ *        when it has none. A CNameLookup over a ParserContext.
+ */
+const char *link_name_of(void *ctx, const char *name);
 EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,
                                      const char *variant_name);
 /**

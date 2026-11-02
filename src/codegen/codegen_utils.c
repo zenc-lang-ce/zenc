@@ -63,11 +63,16 @@ int is_enum_type_name(ParserContext *ctx, const char *name)
     return (def && def->kind == NODE_ENUM);
 }
 
+char *c_type_spelling(ParserContext *ctx, Type *t)
+{
+    return type_to_c_string_with(t, ctx->config->misra_mode, link_name_of, ctx);
+}
+
 const char *field_c_type(ParserContext *ctx, ASTNode *field)
 {
     if (field->type_info)
     {
-        return type_to_c_string(field->type_info, ctx->config->misra_mode);
+        return c_type_spelling(ctx, field->type_info);
     }
     return field->field.type;
 }
@@ -274,7 +279,7 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
     char *ret_str;
     if (func->func.ret_type_info)
     {
-        ret_str = type_to_c_string(func->func.ret_type_info, ctx->config->misra_mode);
+        ret_str = c_type_spelling(ctx, func->func.ret_type_info);
     }
     else if (func->func.ret_type)
     {
@@ -321,7 +326,7 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
             }
             else if (func->func.arg_types && func->func.arg_types[i])
             {
-                type_str = type_to_c_string(func->func.arg_types[i], ctx->config->misra_mode);
+                type_str = c_type_spelling(ctx, func->func.arg_types[i]);
             }
             else
             {

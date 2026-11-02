@@ -272,7 +272,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     emitter_indent(&ctx->cg.emitter);
     if (ctx->config->misra_mode && node->func.ret_type && strcmp(node->func.ret_type, "void") != 0)
     {
-        char *safe_ret_type = type_to_c_string(node->func.ret_type_info, ctx->config->misra_mode);
+        char *safe_ret_type = c_type_spelling(ctx, node->func.ret_type_info);
         EMIT(ctx, "%s _misra_ret = 0;\n", safe_ret_type);
         zfree(safe_ret_type);
     }
@@ -504,8 +504,7 @@ void handle_node_destruct_var(ParserContext *ctx, ASTNode *node)
                     node->destruct.type_infos ? node->destruct.type_infos[i] : NULL;
                 if (explicit_type)
                 {
-                    EMIT(ctx, "%s %s = _tmp_%d.v%d;\n",
-                         type_to_c_string(explicit_type, ctx->config->misra_mode),
+                    EMIT(ctx, "%s %s = _tmp_%d.v%d;\n", c_type_spelling(ctx, explicit_type),
                          node->destruct.names[i], id, i);
                 }
                 else if (z_path_match_compiler(ctx->config->cc, "tcc"))
@@ -579,7 +578,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
         char *tname = NULL;
         if (node->type_info)
         {
-            tname = type_to_c_string(node->type_info, ctx->config->misra_mode);
+            tname = c_type_spelling(ctx, node->type_info);
         }
         else if (node->var_decl.type_str && strcmp(node->var_decl.type_str, "__auto_type") != 0)
         {
@@ -626,7 +625,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 if (ctx->config->use_cpp && node->type_info &&
                     (node->type_info->kind == TYPE_POINTER || node->type_info->kind == TYPE_ENUM))
                 {
-                    char *ct = type_to_c_string(node->type_info, ctx->config->misra_mode);
+                    char *ct = c_type_spelling(ctx, node->type_info);
                     EMIT(ctx, "(%s)(", ct);
                     codegen_expression(ctx, node->var_decl.init_expr);
                     EMIT(ctx, ")");

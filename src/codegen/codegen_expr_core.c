@@ -370,8 +370,7 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                 char *tstr = NULL;
                 if (node->lambda.captured_types_info && node->lambda.captured_types_info[i])
                 {
-                    tstr = type_to_c_string(node->lambda.captured_types_info[i],
-                                            ctx->config->misra_mode);
+                    tstr = c_type_spelling(ctx, node->lambda.captured_types_info[i]);
                 }
                 else
                 {
@@ -616,7 +615,7 @@ void handle_va_copy(ParserContext *ctx, ASTNode *node)
 
 void handle_va_arg(ParserContext *ctx, ASTNode *node)
 {
-    char *type_str = type_to_c_string(node->va_arg_val.type_info, ctx->config->misra_mode);
+    char *type_str = c_type_spelling(ctx, node->va_arg_val.type_info);
     EMIT(ctx, "va_arg(");
     codegen_expression(ctx, node->va_arg_val.ap);
     EMIT(ctx, ", %s)", type_str);

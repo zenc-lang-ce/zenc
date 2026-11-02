@@ -18,7 +18,7 @@ void handle_expr_sizeof(ParserContext *ctx, ASTNode *node)
 {
     if (node->size_of.target_type_info)
     {
-        char *mapped = type_to_c_string(node->size_of.target_type_info, ctx->config->misra_mode);
+        char *mapped = c_type_spelling(ctx, node->size_of.target_type_info);
         EMIT(ctx, "sizeof(%s)", mapped);
         zfree(mapped);
     }
@@ -34,7 +34,7 @@ void handle_typeof(ParserContext *ctx, ASTNode *node)
 {
     if (node->size_of.target_type_info)
     {
-        char *mapped = type_to_c_string(node->size_of.target_type_info, ctx->config->misra_mode);
+        char *mapped = c_type_spelling(ctx, node->size_of.target_type_info);
         EMIT(ctx, "typeof(%s)", mapped);
         zfree(mapped);
     }

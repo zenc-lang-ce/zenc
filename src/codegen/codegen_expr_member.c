@@ -244,7 +244,7 @@ void handle_expr_slice(ParserContext *ctx, ASTNode *node)
     char *tname = "unknown";
     if (node->type_info && node->type_info->inner)
     {
-        tname = type_to_c_string(node->type_info->inner, ctx->config->misra_mode);
+        tname = c_type_spelling(ctx, node->type_info->inner);
     }
 
     EMIT(ctx, "({ ");

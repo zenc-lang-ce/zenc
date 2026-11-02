@@ -18,8 +18,8 @@ void handle_expr_cast(ParserContext *ctx, ASTNode *node)
 {
     // The cast's Type, spelled in C here (a struct with @link_name by its C name): the
     // parser keeps the type as the program writes it.
-    const char *t = node->type_info ? type_to_c_string(node->type_info, ctx->config->misra_mode)
-                                    : node->cast.target_type;
+    const char *t =
+        node->type_info ? c_type_spelling(ctx, node->type_info) : node->cast.target_type;
     const char *mapped = map_to_c_type(t);
 
     EMIT(ctx, "((%s)(", mapped);
@@ -65,7 +65,7 @@ void handle_reflection(ParserContext *ctx, ASTNode *node)
     Type *t = node->reflection.target_type;
     if (node->reflection.kind == 0)
     {
-        char *s = type_to_c_string(t, ctx->config->misra_mode);
+        char *s = c_type_spelling(ctx, t);
         EMIT(ctx, "\"%s\"", s);
         zfree(s);
     }

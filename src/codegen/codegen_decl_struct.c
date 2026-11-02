@@ -146,7 +146,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
 
             if (node->type_info && node->type_info->kind == TYPE_VECTOR)
             {
-                char *inner_c = type_to_c_string(node->type_info->inner, ctx->config->misra_mode);
+                char *inner_c = c_type_spelling(ctx, node->type_info->inner);
                 EMIT(ctx, "typedef ZC_SIMD(%s, %d) %s;\n", inner_c, node->type_info->array_size,
                      node->strct.name);
                 zfree(inner_c);
@@ -283,7 +283,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
             {
                 if (v->variant.payload)
                 {
-                    char *tstr = type_to_c_string(v->variant.payload, ctx->config->misra_mode);
+                    char *tstr = c_type_spelling(ctx, v->variant.payload);
                     EMIT(ctx, "%s %s; ", tstr, v->variant.name);
                     zfree(tstr);
                 }
@@ -298,7 +298,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 if (v->variant.payload)
                 {
                     Type *pt = v->variant.payload;
-                    char *tstr = type_to_c_string(pt, ctx->config->misra_mode);
+                    char *tstr = c_type_spelling(ctx, pt);
                     ASTNode *tuple_def = NULL;
                     if (pt->kind == TYPE_STRUCT && strncmp(pt->name, "Tuple__", 7) == 0)
                     {
@@ -437,7 +437,7 @@ static char *trait_method_params(ParserContext *ctx, ASTNode *m, const char *sel
             continue;
         }
         char *type = (m->func.arg_types && m->func.arg_types[i])
-                         ? type_to_c_string(m->func.arg_types[i], ctx->config->misra_mode)
+                         ? c_type_spelling(ctx, m->func.arg_types[i])
                          : xstrdup("void*");
         char *c_type = replace_type_str(type, "Self", self_c, NULL, NULL);
         const char *name =

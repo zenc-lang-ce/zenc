@@ -84,8 +84,7 @@ static void node_deps_build(ParserContext *ctx, ASTNode *node, NodeDeps *deps)
         {
             if (variant->kind == NODE_ENUM_VARIANT && variant->variant.payload)
             {
-                char *type_str =
-                    type_to_c_string(variant->variant.payload, ctx->config->misra_mode);
+                char *type_str = c_type_spelling(ctx, variant->variant.payload);
                 if (type_str)
                 {
                     node_deps_add(ctx, deps, type_str);

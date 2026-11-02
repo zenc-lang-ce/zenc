@@ -403,6 +403,7 @@ void register_tuple_with_types(ParserContext *ctx, const char *sig, const char *
         snprintf(fname, sizeof(fname), "v%d", fi);
         f->field.name = xstrdup(fname);
         f->field.type = xstrdup(types[fi]);
+        f->type_info = type_from_string_helper(ctx, types[fi]);
         if (!head)
         {
             head = f;

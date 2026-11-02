@@ -933,15 +933,31 @@ static char *type_to_string_impl(Type *t)
 // C-compatible type stringifier.
 // Strictly uses 'struct T' for explicit structs to support external types.
 // Does NOT mangle pointers to 'Ptr'.
-static char *type_to_c_string_impl(Type *t, int misra_mode);
+static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, void *context);
 
 char *type_to_c_string(Type *t, int misra_mode)
+{
+    return type_to_c_string_with(t, misra_mode, NULL, NULL);
+}
+
+// The C name of a struct or enum: the one `lookup` gives, else the Zen C name.
+static const char *c_name_of(Type *t, CNameLookup lookup, void *context)
+{
+    const char *c_name = (lookup && t->name) ? lookup(context, t->name) : NULL;
+    if (c_name)
+    {
+        return c_name;
+    }
+    return t->link_name ? t->link_name : t->name;
+}
+
+char *type_to_c_string_with(Type *t, int misra_mode, CNameLookup lookup, void *context)
 {
     if (!t)
     {
         return xstrdup("void");
     }
-    char *res = type_to_c_string_impl(t, misra_mode);
+    char *res = type_to_c_string_impl(t, misra_mode, lookup, context);
     if (t->is_const)
     {
         char *final = xmalloc(strlen(res) + 7);
@@ -952,7 +968,7 @@ char *type_to_c_string(Type *t, int misra_mode)
     return res;
 }
 
-static char *type_to_c_string_impl(Type *t, int misra_mode)
+static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, void *context)
 {
     if (!t)
     {
@@ -965,23 +981,16 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
         return xstrdup("void");
     case TYPE_STRUCT:
     {
-        if (t->link_name)
+        const char *c_name = c_name_of(t, lookup, context);
+        // A struct with a C name of its own is written by it alone; otherwise "struct Foo" only
+        // when written so (else a typedef).
+        if (c_name != t->name || !t->is_explicit_struct)
         {
-            return xstrdup(
-                t->link_name); // Only prepend 'struct' if explicitly requested (e.g. "struct Foo")
+            return xstrdup(c_name);
         }
-        // otherwise assume it's a typedef/alias (e.g. "Foo").
-        if (t->is_explicit_struct)
-        {
-            const char *final_name = t->link_name ? t->link_name : t->name;
-            char *res = xmalloc(strlen(final_name) + 8);
-            sprintf(res, "struct %s", final_name); /* safe */
-            return res;
-        }
-        else
-        {
-            return xstrdup(t->link_name ? t->link_name : t->name);
-        }
+        char *res = xmalloc(strlen(c_name) + 8);
+        sprintf(res, "struct %s", c_name); /* safe */
+        return res;
     }
     case TYPE_BOOL:
         return xstrdup("bool");
@@ -1071,7 +1080,7 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
         {
             return xstrdup(t->name);
         }
-        char *inner = type_to_c_string(t->inner, misra_mode);
+        char *inner = type_to_c_string_with(t->inner, misra_mode, lookup, context);
         char *res = xmalloc(strlen(inner) + 32);
         sprintf(res, "ZC_SIMD(%s, %d)", inner, t->array_size); /* safe */
         zfree(inner);
@@ -1080,7 +1089,7 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
 
     case TYPE_POINTER:
     {
-        char *inner = type_to_c_string(t->inner, misra_mode);
+        char *inner = type_to_c_string_with(t->inner, misra_mode, lookup, context);
         char *ptr_token = (char *)strstr(inner, "(*");
         if (ptr_token)
         {
@@ -1135,7 +1144,7 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
             base = base->inner;
         }
 
-        char *inner = type_to_c_string(base, misra_mode);
+        char *inner = type_to_c_string_with(base, misra_mode, lookup, context);
         size_t total_len = strlen(inner) + 1;
         for (int i = 0; i < dims_count; i++)
         {
@@ -1163,7 +1172,7 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
     case TYPE_FUNCTION:
         if (t->is_raw)
         {
-            char *ret = type_to_c_string(t->inner, misra_mode);
+            char *ret = type_to_c_string_with(t->inner, misra_mode, lookup, context);
             char *res = xmalloc(strlen(ret) + 64); // heuristic start buffer
             snprintf(res, strlen(ret) + 64, "%s (*)(", ret);
 
@@ -1176,7 +1185,7 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
                     zfree(res);
                     res = tmp;
                 }
-                char *arg = type_to_c_string(t->args[i], misra_mode);
+                char *arg = type_to_c_string_with(t->args[i], misra_mode, lookup, context);
                 char *tmp = xmalloc(strlen(res) + strlen(arg) + 1);
                 sprintf(tmp, "%s%s", res, arg); /* safe */
                 zfree(res);
@@ -1209,7 +1218,7 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
         }
         if (t->inner)
         {
-            zfree(type_to_c_string(t->inner, misra_mode));
+            zfree(type_to_c_string_with(t->inner, misra_mode, lookup, context));
         }
         return xstrdup("z_closure_T");
 
@@ -1226,10 +1235,10 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
         {
             return xstrdup(t->name);
         }
-        return type_to_c_string(t->inner, misra_mode);
+        return type_to_c_string_with(t->inner, misra_mode, lookup, context);
 
     case TYPE_ENUM:
-        return xstrdup(t->link_name ? t->link_name : t->name);
+        return xstrdup(c_name_of(t, lookup, context));
 
     case TYPE_UNSAFE_ANY:
         return xstrdup("any");
@@ -1259,7 +1268,8 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
 
     if (node->type_info && node->type_info->kind != TYPE_UNKNOWN)
     {
-        char *t = type_to_c_string(node->type_info, ctx->config->misra_mode);
+        char *t =
+            type_to_c_string_with(node->type_info, ctx->config->misra_mode, link_name_of, ctx);
         return t;
     }
 
@@ -1313,7 +1323,8 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
     {
         if (node->type_info)
         {
-            return type_to_c_string(node->type_info, ctx->config->misra_mode);
+            return type_to_c_string_with(node->type_info, ctx->config->misra_mode, link_name_of,
+                                         ctx);
         }
         return NULL;
     }
@@ -1329,7 +1340,8 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
             }
             if (sym->type_info)
             {
-                return type_to_c_string(sym->type_info, ctx->config->misra_mode);
+                return type_to_c_string_with(sym->type_info, ctx->config->misra_mode, link_name_of,
+                                             ctx);
             }
         }
     }
@@ -1343,7 +1355,8 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
             {
                 if (sig->ret_type)
                 {
-                    return type_to_c_string(sig->ret_type, ctx->config->misra_mode);
+                    return type_to_c_string_with(sig->ret_type, ctx->config->misra_mode,
+                                                 link_name_of, ctx);
                 }
             }
 
@@ -1398,7 +1411,8 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
 
                 if (sig && sig->ret_type)
                 {
-                    char *ret = type_to_c_string(sig->ret_type, ctx->config->misra_mode);
+                    char *ret = type_to_c_string_with(sig->ret_type, ctx->config->misra_mode,
+                                                      link_name_of, ctx);
                     zfree(func_name);
                     return ret;
                 }
@@ -1412,7 +1426,8 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
             if (sym && sym->type_info && sym->type_info->kind == TYPE_FUNCTION &&
                 sym->type_info->inner)
             {
-                return type_to_c_string(sym->type_info->inner, ctx->config->misra_mode);
+                return type_to_c_string_with(sym->type_info->inner, ctx->config->misra_mode,
+                                             link_name_of, ctx);
             }
         }
     }
@@ -1474,8 +1489,9 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
                         {
                             if (var->variant.payload)
                             {
-                                return type_to_c_string(var->variant.payload,
-                                                        ctx->config->misra_mode);
+                                return type_to_c_string_with(var->variant.payload,
+                                                             ctx->config->misra_mode, link_name_of,
+                                                             ctx);
                             }
                             // Ok with no payload? Then it's void/u0.
                             return "void";
@@ -1601,7 +1617,8 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
             if (def && def->type_info && def->type_info->kind == TYPE_VECTOR &&
                 def->type_info->inner)
             {
-                return type_to_c_string(def->type_info->inner, ctx->config->misra_mode);
+                return type_to_c_string_with(def->type_info->inner, ctx->config->misra_mode,
+                                             link_name_of, ctx);
             }
         }
         return "int";
@@ -1657,7 +1674,8 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
     {
         if (node->type_info)
         {
-            return type_to_c_string(node->type_info, ctx->config->misra_mode);
+            return type_to_c_string_with(node->type_info, ctx->config->misra_mode, link_name_of,
+                                         ctx);
         }
         return NULL;
     }

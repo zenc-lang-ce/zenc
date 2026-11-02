@@ -1,0 +1,16 @@
+// structs: a struct with @link_name inside a tuple and in a destructuring declaration is
+// declared in C by its C name.
+@link_name("c_point")
+struct Point {
+    x: int;
+}
+
+fn pair() -> (int, Point) {
+    return (1, Point { x: 7 });
+}
+
+test "a link_name struct in a tuple and in a destructuring" {
+    let (n: int, p: Point) = pair();
+    assert(n == 1, "first element");
+    assert(p.x == 7, "the link_name struct");
+}
