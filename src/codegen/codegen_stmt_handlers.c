@@ -115,36 +115,7 @@ void handle_node_block(ParserContext *ctx, ASTNode *node)
 
 void handle_node_impl(ParserContext *ctx, ASTNode *node)
 {
-    char *sname = node->impl.struct_name;
-    TypeAlias *ta = find_type_alias_node(ctx, sname);
-    const char *resolved = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
-
-    if (resolved)
-    {
-        size_t slen = strlen(sname);
-        ASTNode *m = node->impl.methods;
-        while (m)
-        {
-            if (m->kind == NODE_FUNCTION && m->func.name &&
-                strncmp(m->func.name, sname, (size_t)(slen)) == 0 && m->func.name[slen] == '_' &&
-                m->func.name[slen + 1] == '_')
-            {
-                const char *method_part = m->func.name + slen;
-                size_t new_name_sz = strlen(resolved) + strlen(method_part) + 1;
-                char *new_name = xmalloc(new_name_sz);
-                snprintf(new_name, new_name_sz, "%s%s", resolved, method_part);
-                zfree(m->func.name);
-                m->func.name = new_name;
-            }
-            m = m->next;
-        }
-        ctx->cg.current_impl_type = (char *)resolved;
-    }
-    else
-    {
-        ctx->cg.current_impl_type = sname;
-    }
-
+    ctx->cg.current_impl_type = node->impl.struct_name;
     codegen_walker(ctx, node->impl.methods);
     ctx->cg.current_impl_type = NULL;
 }
@@ -395,36 +366,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
 
 void handle_node_impl_trait(ParserContext *ctx, ASTNode *node)
 {
-    char *sname = node->impl_trait.target_type;
-    TypeAlias *ta = find_type_alias_node(ctx, sname);
-    const char *resolved = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
-
-    if (resolved)
-    {
-        size_t slen = strlen(sname);
-        ASTNode *m = node->impl_trait.methods;
-        while (m)
-        {
-            if (m->kind == NODE_FUNCTION && m->func.name &&
-                strncmp(m->func.name, sname, (size_t)(slen)) == 0 && m->func.name[slen] == '_' &&
-                m->func.name[slen + 1] == '_')
-            {
-                const char *method_part = m->func.name + slen;
-                size_t new_name_sz = strlen(resolved) + strlen(method_part) + 1;
-                char *new_name = xmalloc(new_name_sz);
-                snprintf(new_name, new_name_sz, "%s%s", resolved, method_part);
-                zfree(m->func.name);
-                m->func.name = new_name;
-            }
-            m = m->next;
-        }
-        ctx->cg.current_impl_type = (char *)resolved;
-    }
-    else
-    {
-        ctx->cg.current_impl_type = sname;
-    }
-
+    ctx->cg.current_impl_type = node->impl_trait.target_type;
     codegen_walker(ctx, node->impl_trait.methods);
     ctx->cg.current_impl_type = NULL;
 }
