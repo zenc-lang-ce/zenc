@@ -343,6 +343,7 @@ static CHeaderEntry *add_header_symbol(CHeaderFile *header, const char *name, in
     entry->symbol.start_line = start_line;
     entry->symbol.end_line = end_line;
     entry->tag = C_TAG_NONE;
+    entry->c_type = NULL;
     return entry;
 }
 
@@ -698,6 +699,80 @@ static void process_typedef(CHeaderFile *header, const Statement *statement, con
     }
 }
 
+// Words of a declaration that say nothing about its type: storage, inlining, nullability.
+static const char *const NON_TYPE_WORDS[] = {
+    "extern",        "static",        "inline",   "__inline",
+    "__inline__",    "_Noreturn",     "noreturn", "register",
+    "_Thread_local", "__extension__", "restrict", "__restrict",
+    "__restrict__",  "_Nullable",     "_Nonnull", "_Null_unspecified",
+    "__nullable",    "__nonnull",     NULL};
+
+// Reserved-looking words that are C types, not the macros system headers use for attributes.
+static const char *const RESERVED_TYPE_WORDS[] = {"_Bool", "_Complex", "__int128", NULL};
+
+// The type a declaration gives its name, written from tokens[from..to) as C spells it
+// (`const char *`), without storage words, attributes (`__attribute__((...))`, a macro called
+// with arguments), the reserved macros of system headers (`__BEGIN_DECLS`) or anything before
+// the end of a previous declaration. A libc string, or NULL when nothing is left.
+static char *declaration_type_text(const Statement *statement, const CToken *tokens, int from,
+                                   int to)
+{
+    char text[512];
+    size_t used = 0;
+    char previous = 0;
+    for (int i = from; i < to; i++)
+    {
+        const CToken *token = &tokens[i];
+        // Only the last declaration before the name counts: a statement may run on from an
+        // inline function's body (`char *f(char *s) { ... } char *g(...)`).
+        if (token->kind == '}' || token->kind == ';')
+        {
+            used = 0;
+            previous = 0;
+            continue;
+        }
+        if (token->brace_depth > 0)
+        {
+            continue;
+        }
+        if (token->kind == 'w' && i + 1 < to && tokens[i + 1].kind == '(')
+        {
+            // An attribute or a macro with arguments: skip it with its parentheses.
+            int depth = tokens[i + 1].paren_depth;
+            i += 2;
+            while (i < to && !(tokens[i].kind == ')' && tokens[i].paren_depth == depth))
+            {
+                i++;
+            }
+            continue;
+        }
+        if (token->kind == 'w' &&
+            (token_in(statement, token, NON_TYPE_WORDS) ||
+             (c_headers_is_reserved_identifier(statement->chars + token->start) &&
+              !token_in(statement, token, RESERVED_TYPE_WORDS))))
+        {
+            continue;
+        }
+        if (token->kind != 'w' && token->kind != '*')
+        {
+            continue;
+        }
+        int space = used > 0 && !(previous == '*' && token->kind == '*');
+        if (used + (size_t)space + (size_t)token->length + 1 > sizeof(text))
+        {
+            return NULL;
+        }
+        if (space)
+        {
+            text[used++] = ' ';
+        }
+        memcpy(text + used, statement->chars + token->start, (size_t)token->length);
+        used += (size_t)token->length;
+        previous = token->kind;
+    }
+    return used ? c_headers_copy_text(text, used) : NULL;
+}
+
 static void process_function_or_variable(CHeaderFile *header, const Statement *statement,
                                          const CToken *tokens, int count, int start_line,
                                          int end_line)
@@ -719,7 +794,29 @@ static void process_function_or_variable(CHeaderFile *header, const Statement *s
         // RLAPI void InitWindow(int width, int height, const char *title);
         if (i > 0 && is_name_token(statement, &tokens[i - 1]))
         {
-            record(header, statement, &tokens[i - 1], start_line, end_line, 0, C_SYMBOL_FUNCTION);
+            // System headers annotate the return type with reserved macros called with
+            // arguments (`void * __sized_by_or_null(__size) malloc(size_t __size)`): the name
+            // is the first one before `(` that is not reserved, if there is one.
+            int name = i - 1;
+            if (c_headers_is_reserved_identifier(statement->chars + tokens[name].start))
+            {
+                for (int j = i + 1; j < count; j++)
+                {
+                    if (tokens[j].kind == '(' && tokens[j].brace_depth == 0 &&
+                        tokens[j].paren_depth == 0 && is_name_token(statement, &tokens[j - 1]) &&
+                        !c_headers_is_reserved_identifier(statement->chars + tokens[j - 1].start))
+                    {
+                        name = j - 1;
+                        break;
+                    }
+                }
+            }
+            CHeaderEntry *entry = record(header, statement, &tokens[name], start_line, end_line, 0,
+                                         C_SYMBOL_FUNCTION);
+            if (entry)
+            {
+                entry->c_type = declaration_type_text(statement, tokens, 0, name);
+            }
             return;
         }
         // `__attribute__((...))` and the like: the name comes later.
@@ -750,7 +847,12 @@ static void process_function_or_variable(CHeaderFile *header, const Statement *s
     }
     if (is_extern && last_name >= 0)
     {
-        record(header, statement, &tokens[last_name], start_line, end_line, 0, C_SYMBOL_VARIABLE);
+        CHeaderEntry *entry = record(header, statement, &tokens[last_name], start_line, end_line, 0,
+                                     C_SYMBOL_VARIABLE);
+        if (entry)
+        {
+            entry->c_type = declaration_type_text(statement, tokens, 0, last_name);
+        }
     }
 }
 
@@ -1111,6 +1213,7 @@ static void clear_header(CHeaderFile *header)
     for (int i = 0; i < header->symbol_count; i++)
     {
         libc_free(header->symbols[i].name);
+        libc_free(header->symbols[i].c_type);
     }
     for (int i = 0; i < header->include_count; i++)
     {
@@ -1197,7 +1300,7 @@ CHeaderFile *c_headers_get(const char *path)
     }
     header->line_offsets[0] = 0;
     header->line_count = 1;
-    for (int i = 0; header->text[i]; i++)
+    for (int i = 0; header->text[i] && header->line_count < lines; i++)
     {
         if (header->text[i] == '\n')
         {
