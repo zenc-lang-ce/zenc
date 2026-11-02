@@ -142,7 +142,6 @@ ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_ex
     {
         return NULL;
     }
-    char *o = type_to_string(t);
 
     if (lexer_peek(l).kind == TOK_SEMICOLON)
     {
@@ -153,14 +152,13 @@ ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_ex
     node->type_alias.alias = xmalloc(n.len + 1);
     strncpy(node->type_alias.alias, n.start, n.len);
     node->type_alias.alias[n.len] = 0;
-    node->type_alias.original_type = o;
     node->type_info = t;
     node->type_alias.is_opaque = is_opaque;
     node->type_alias.defined_in_file =
         ctx->current_filename ? xstrdup(ctx->current_filename) : NULL;
 
-    register_type_alias(ctx, node->type_alias.alias, o, t, is_opaque,
-                        node->type_alias.defined_in_file, n, is_export);
+    register_type_alias(ctx, node->type_alias.alias, t, is_opaque, node->type_alias.defined_in_file,
+                        n, is_export);
 
     return node;
 }

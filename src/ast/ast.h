@@ -104,6 +104,7 @@ typedef struct Type
     int count;              ///< Count of generic arguments.
     int is_const;           ///< 1 if const-qualified.
     int is_explicit_struct; ///< 1 if defined with "struct" keyword explicitly.
+    int is_union;           ///< With is_explicit_struct: the keyword is "union" (a C union tag).
     int is_raw;             // Raw function pointer (fn*)
     int array_size;         ///< Size for fixed-size arrays. For TYPE_BITINT, this is the bit width.
     struct
@@ -348,8 +349,7 @@ struct ASTNode
 
         struct
         {
-            char *alias;
-            char *original_type;
+            char *alias; // The aliased type is the node's type_info.
             int is_opaque;
             char *defined_in_file;
             int is_export;

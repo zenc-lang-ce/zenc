@@ -399,11 +399,11 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 is_opaque_alias = ta->is_opaque;
                                 if (!is_opaque_alias)
                                 {
-                                    const char *aliased = find_type_alias(ctx, acc);
+                                    Type *aliased = find_type_alias(ctx, acc);
                                     if (aliased)
                                     {
                                         zfree(acc);
-                                        acc = xstrdup(aliased);
+                                        acc = type_to_string(aliased);
                                         def = find_struct_def(ctx, acc);
                                     }
                                 }

@@ -13,18 +13,11 @@
 #include "ast/primitives.h"
 
 // The type an opaque alias name stands for: a TYPE_ALIAS wrapping its underlying type.
-static Type *opaque_alias_type(ParserContext *ctx, TypeAlias *alias_node)
+static Type *opaque_alias_type(TypeAlias *alias_node)
 {
-    Lexer tmp;
-    lexer_init(&tmp, alias_node->original_type, ctx->config, ctx->current_filename);
-    Type *underlying = parse_type_formal(ctx, &tmp);
-    if (!underlying)
-    {
-        return NULL;
-    }
     Type *wrapper = type_new(TYPE_ALIAS);
     wrapper->name = xstrdup(alias_node->alias);
-    wrapper->inner = underlying;
+    wrapper->inner = type_clone(alias_node->type_info);
     wrapper->alias.is_opaque_alias = 1;
     wrapper->alias.alias_defined_in_file =
         alias_node->defined_in_file ? xstrdup(alias_node->defined_in_file) : NULL;
@@ -39,11 +32,7 @@ Type *type_from_name(ParserContext *ctx, const char *name)
     TypeAlias *alias_node = ctx ? find_type_alias_node(ctx, name) : NULL;
     if (alias_node && alias_node->is_opaque)
     {
-        Type *wrapper = opaque_alias_type(ctx, alias_node);
-        if (wrapper)
-        {
-            return wrapper;
-        }
+        return opaque_alias_type(alias_node);
     }
     Type *t = type_new(TYPE_STRUCT);
     t->name = xstrdup(name);
@@ -104,18 +93,9 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             zfree(name);
             if (alias_node->is_opaque)
             {
-                Type *wrapper = opaque_alias_type(ctx, alias_node);
-                return wrapper;
+                return opaque_alias_type(alias_node);
             }
-
-            Lexer tmp;
-            lexer_init(&tmp, alias_node->original_type, ctx->config, ctx->current_filename);
-            Type *t_res = parse_type_formal(ctx, &tmp);
-            if (!t_res)
-            {
-                return NULL;
-            }
-            return t_res;
+            return type_clone(alias_node->type_info);
         }
 
         // Self type alias: Replace "Self" with current impl struct type

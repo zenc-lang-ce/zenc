@@ -173,16 +173,14 @@ void add_to_struct_list(ParserContext *ctx, ASTNode *node)
     }
 }
 
-void register_type_alias(ParserContext *ctx, const char *alias, const char *original,
-                         Type *type_info, int is_opaque, const char *defined_in_file, Token tok,
-                         int is_export)
+void register_type_alias(ParserContext *ctx, const char *alias, Type *type_info, int is_opaque,
+                         const char *defined_in_file, Token tok, int is_export)
 {
     if (ctx->config->mode_lsp)
     {
         TypeAlias *existing = find_type_alias_node(ctx, alias);
         if (existing)
         {
-            existing->original_type = xstrdup(original);
             existing->type_info = type_info;
             existing->is_opaque = is_opaque;
             existing->defined_in_file = defined_in_file ? xstrdup(defined_in_file) : NULL;
@@ -203,7 +201,6 @@ void register_type_alias(ParserContext *ctx, const char *alias, const char *orig
         ctx->type_aliases = ta;
     }
 
-    ta->original_type = xstrdup(original);
     ta->type_info = type_info;
     ta->is_opaque = is_opaque;
     ta->defined_in_file = defined_in_file ? xstrdup(defined_in_file) : NULL;
@@ -220,21 +217,20 @@ void register_type_alias(ParserContext *ctx, const char *alias, const char *orig
     }
     sym->decl_token = tok;
     sym->is_export = is_export;
-    sym->data.alias.original_type = xstrdup(original);
     sym->type_info = type_info;
     register_in_all_symbols(ctx, sym);
 }
 
-const char *find_type_alias(ParserContext *ctx, const char *alias)
+Type *find_type_alias(ParserContext *ctx, const char *alias)
 {
     ZenSymbol *sym = symbol_lookup_kind(ctx->current_scope, alias, SYM_ALIAS);
     if (sym)
     {
-        return sym->data.alias.original_type;
+        return sym->type_info;
     }
 
     TypeAlias *ta = find_type_alias_node(ctx, alias);
-    return ta ? ta->original_type : NULL;
+    return ta ? ta->type_info : NULL;
 }
 
 TypeAlias *find_type_alias_node(ParserContext *ctx, const char *alias)
@@ -360,7 +356,9 @@ void register_slice(ParserContext *ctx, const char *type)
     snprintf(legacy_name, sizeof(legacy_name), "Slice_%s", type);
     if (slice_name[0] != legacy_name[0] || strcmp(slice_name, legacy_name) != 0)
     {
-        register_type_alias(ctx, legacy_name, slice_name, NULL, 0, NULL, TOKEN_UNKNOWN, 0);
+        Type *slice_type = type_new(TYPE_STRUCT);
+        slice_type->name = xstrdup(slice_name);
+        register_type_alias(ctx, legacy_name, slice_type, 0, NULL, TOKEN_UNKNOWN, 0);
     }
 }
 

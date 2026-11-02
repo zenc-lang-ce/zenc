@@ -72,11 +72,6 @@ typedef struct ZenSymbol
         FuncSig *sig;  ///< Function signature metadata.
         struct
         {
-            char *original_type;
-            Type *resolved_type;
-        } alias;
-        struct
-        {
             int int_val;
             double float_val;
             char *str_val;

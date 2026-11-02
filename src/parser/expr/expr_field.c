@@ -189,9 +189,10 @@ char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out
     }
 
     const char *alias_target = NULL;
-    if (t->kind == TYPE_STRUCT)
+    Type *aliased = t->kind == TYPE_STRUCT ? find_type_alias(ctx, t->name) : NULL;
+    if (aliased)
     {
-        alias_target = find_type_alias(ctx, t->name);
+        alias_target = type_to_string(aliased);
     }
 
     if (alias_target)

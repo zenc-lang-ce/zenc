@@ -117,7 +117,7 @@ void handle_node_impl(ParserContext *ctx, ASTNode *node)
 {
     char *sname = node->impl.struct_name;
     TypeAlias *ta = find_type_alias_node(ctx, sname);
-    const char *resolved = (ta && !ta->is_opaque) ? ta->original_type : NULL;
+    const char *resolved = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
 
     if (resolved)
     {
@@ -396,7 +396,7 @@ void handle_node_impl_trait(ParserContext *ctx, ASTNode *node)
 {
     char *sname = node->impl_trait.target_type;
     TypeAlias *ta = find_type_alias_node(ctx, sname);
-    const char *resolved = (ta && !ta->is_opaque) ? ta->original_type : NULL;
+    const char *resolved = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
 
     if (resolved)
     {

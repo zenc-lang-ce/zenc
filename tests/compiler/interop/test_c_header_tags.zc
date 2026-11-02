@@ -1,0 +1,14 @@
+// Types declared in an included C header, used by their names: a struct tag, a union tag and
+// a typedef of an anonymous struct.
+include "tests/compiler/interop/test_c_header_tags.h"
+
+test "c header types by name" {
+    let v: header_vec;
+    v.x = 1;
+    v.y = 2;
+    let n: header_num;
+    n.i = 3;
+    let a: header_anon;
+    a.a = 4;
+    assert(v.x + v.y + n.i + a.a == 10, "fields of header types");
+}

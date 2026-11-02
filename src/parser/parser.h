@@ -287,9 +287,8 @@ typedef struct ImportedPlugin
  */
 typedef struct TypeAlias
 {
-    char *alias;         ///< New type name.
-    char *original_type; ///< Original type.
-    Type *type_info;     ///< Parsed original type.
+    char *alias;     ///< New type name.
+    Type *type_info; ///< The aliased type.
     struct TypeAlias *next;
     int is_opaque;
     char *defined_in_file;
@@ -882,7 +881,7 @@ void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base);
 void re_export_propagated(ParserContext *ctx, const char *alias, const char *parent_prefix,
                           const char *base_name);
 ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name);
-const char *find_type_alias(ParserContext *ctx, const char *alias);
+Type *find_type_alias(ParserContext *ctx, const char *alias);
 Type *parse_type_base(ParserContext *ctx, Lexer *l);
 char *parse_type(ParserContext *ctx, Lexer *l);
 ASTNode *find_trait_def(ParserContext *ctx, const char *name);
@@ -894,8 +893,8 @@ void init_builtins(void);
 void register_extern_symbol(ParserContext *ctx, const char *name);
 void register_impl(ParserContext *ctx, const char *trait, const char *type);
 void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node);
-void register_type_alias(ParserContext *ctx, const char *alias, const char *original, Type *type,
-                         int is_opaque, const char *defined_in_file, Token tok, int is_export);
+void register_type_alias(ParserContext *ctx, const char *alias, Type *type, int is_opaque,
+                         const char *defined_in_file, Token tok, int is_export);
 void register_slice(ParserContext *ctx, const char *type);
 void register_lambda(ParserContext *ctx, ASTNode *node);
 void register_template(ParserContext *ctx, const char *name, ASTNode *node);

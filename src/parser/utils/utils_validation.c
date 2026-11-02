@@ -32,7 +32,7 @@ int validate_types(ParserContext *ctx)
         ASTNode *def = find_struct_def(ctx, u->name);
         if (!def)
         {
-            const char *alias = find_type_alias(ctx, u->name);
+            Type *alias = find_type_alias(ctx, u->name);
             if (!alias)
             {
                 SelectiveImport *si = find_selective_import(ctx, u->name);

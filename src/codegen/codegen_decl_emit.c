@@ -262,7 +262,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
 
             // Resolve opaque alias (e.g. StringView -> Slice__char)
             TypeAlias *ta = find_type_alias_node(ctx, sname);
-            const char *resolved = (ta && !ta->is_opaque) ? ta->original_type : NULL;
+            const char *resolved = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
             const char *effective_name = resolved ? resolved : sname;
 
             char *mangled = replace_string_type(sname);

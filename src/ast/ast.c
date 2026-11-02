@@ -983,8 +983,9 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         {
             return xstrdup(c_name);
         }
-        char *res = xmalloc(strlen(c_name) + 8);
-        sprintf(res, "struct %s", c_name); /* safe */
+        const char *keyword = t->is_union ? "union" : "struct";
+        char *res = xmalloc(strlen(keyword) + strlen(c_name) + 2);
+        sprintf(res, "%s %s", keyword, c_name); /* safe */
         return res;
     }
     case TYPE_BOOL:

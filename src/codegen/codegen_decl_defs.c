@@ -98,6 +98,22 @@ void emit_includes_and_aliases(ParserContext *ctx, ASTNode *node, VisitedModules
 }
 
 // Emit type aliases (after struct defs so the aliased types exist)
+// `typedef <type> <alias>;`. A function pointer type (`int (*)(int)`) takes the alias name
+// inside it.
+static void emit_alias_typedef(ParserContext *ctx, Type *type, const char *alias)
+{
+    const char *c_type = c_type_spelling(ctx, type);
+    const char *ptr = strstr(c_type, "(*)");
+    if (ptr)
+    {
+        EMIT(ctx, "typedef %.*s (*%s)%s;\n", (int)(ptr - c_type), c_type, alias, ptr + 3);
+    }
+    else
+    {
+        EMIT(ctx, "typedef %s %s;\n", c_type, alias);
+    }
+}
+
 static void emit_type_aliases_internal(ParserContext *ctx, ASTNode *node, VisitedModules **visited,
                                        int depth)
 {
@@ -121,31 +137,7 @@ static void emit_type_aliases_internal(ParserContext *ctx, ASTNode *node, Visite
             {
                 EMIT(ctx, "#if %s\n", node->cfg_condition);
             }
-            char *c_type_str = c_type_spelling(ctx, node->type_info);
-            // Quick fix for raw function pointers and arrays in typedefs:
-            // Since type_to_c_string returns `int (*)(int)`, simple replacement isn't valid
-            // C. But Zen C doesn't officially support raw function pointer aliases. We'll just
-            // print it.
-            if (c_type_str)
-            {
-                if (strstr(c_type_str, "(*)"))
-                {
-                    char *ptr = (char *)strstr(c_type_str, "(*)");
-                    ptrdiff_t prefix_len = ptr - c_type_str;
-                    EMIT(ctx, "typedef %.*s (*%s)%s;\n", (int)prefix_len, c_type_str,
-                         node->type_alias.alias, ptr + 3);
-                }
-                else
-                {
-                    EMIT(ctx, "typedef %s %s;\n", c_type_str, node->type_alias.alias);
-                }
-                zfree(c_type_str);
-            }
-            else
-            {
-                EMIT(ctx, "typedef %s %s;\n", node->type_alias.original_type,
-                     node->type_alias.alias);
-            }
+            emit_alias_typedef(ctx, node->type_info, node->type_alias.alias);
             if (node->cfg_condition)
             {
                 EMIT(ctx, "#endif\n");
@@ -173,33 +165,7 @@ void emit_global_aliases(ParserContext *ctx)
     TypeAlias *ta = ctx->type_aliases;
     while (ta)
     {
-        if (ta->type_info)
-        {
-            char *c_type_str = c_type_spelling(ctx, ta->type_info);
-            if (c_type_str)
-            {
-                if (strstr(c_type_str, "(*)"))
-                {
-                    char *ptr = (char *)strstr(c_type_str, "(*)");
-                    ptrdiff_t prefix_len = ptr - c_type_str;
-                    EMIT(ctx, "typedef %.*s (*%s)%s;\n", (int)prefix_len, c_type_str, ta->alias,
-                         ptr + 3);
-                }
-                else
-                {
-                    EMIT(ctx, "typedef %s %s;\n", c_type_str, ta->alias);
-                }
-                zfree(c_type_str);
-            }
-            else
-            {
-                EMIT(ctx, "typedef %s %s;\n", ta->original_type, ta->alias);
-            }
-        }
-        else
-        {
-            EMIT(ctx, "typedef %s %s;\n", ta->original_type, ta->alias);
-        }
+        emit_alias_typedef(ctx, ta->type_info, ta->alias);
         ta = ta->next;
     }
 }

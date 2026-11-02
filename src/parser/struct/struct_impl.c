@@ -341,12 +341,8 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         TypeAlias *ta = find_type_alias_node(ctx, name1);
         if (ta && !ta->is_opaque)
         {
-            const char *alias_resolved = ta->original_type;
-            if (alias_resolved)
-            {
-                zfree(name1);
-                name1 = xstrdup(alias_resolved);
-            }
+            zfree(name1);
+            name1 = type_to_string(ta->type_info);
         }
 
         ctx->current_impl_struct = name1; // For patch_self_args inside parse_function

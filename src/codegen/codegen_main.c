@@ -48,10 +48,10 @@ static void node_deps_add(ParserContext *ctx, NodeDeps *deps, const char *type_s
     }
 
     const char *clean = strip_c_tag(type_str);
-    const char *alias = find_type_alias(ctx, clean);
+    Type *alias = find_type_alias(ctx, clean);
     if (alias)
     {
-        clean = alias;
+        clean = type_to_string(alias);
     }
 
     deps->mangled = xrealloc(deps->mangled, (size_t)(deps->count + 1) * sizeof(char *));
@@ -963,7 +963,8 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
                 }
 
                 // Resolve opaque alias
-                const char *resolved = find_type_alias(ctx, sname);
+                Type *aliased = find_type_alias(ctx, sname);
+                const char *resolved = aliased ? type_to_string(aliased) : NULL;
 
                 char *mangled = replace_string_type(sname);
                 ASTNode *def = find_struct_def(ctx, mangled);

@@ -171,7 +171,9 @@ static void try_parse_c_struct_decl(ParserContext *ctx, const char *line)
                 char *name = xmalloc((size_t)(name_len + 1));
                 strncpy(name, name_start, (size_t)(name_len));
                 name[name_len] = '\0';
-                register_type_alias(ctx, name, name, NULL, 1, NULL, TOKEN_UNKNOWN, 0);
+                Type *c_type = type_new(TYPE_STRUCT);
+                c_type->name = xstrdup(name);
+                register_type_alias(ctx, name, c_type, 1, NULL, TOKEN_UNKNOWN, 0);
                 register_extern_symbol(ctx, name);
                 zfree(name);
             }
@@ -207,12 +209,13 @@ static void try_parse_c_struct_decl(ParserContext *ctx, const char *line)
 
     if (*p == '{' || *p == ';')
     {
-        const char *c_keyword = is_union ? "union" : "struct";
-        char *c_type = xmalloc((size_t)(strlen(c_keyword) + 1 + (size_t)(tag_len) + 1));
-        sprintf(c_type, "%s %s", c_keyword, tag_name); /* safe */
-        register_type_alias(ctx, tag_name, c_type, NULL, 1, NULL, TOKEN_UNKNOWN, 0);
+        // `struct tag` (or `union tag`) in C.
+        Type *c_type = type_new(TYPE_STRUCT);
+        c_type->name = xstrdup(tag_name);
+        c_type->is_explicit_struct = 1;
+        c_type->is_union = is_union;
+        register_type_alias(ctx, tag_name, c_type, 1, NULL, TOKEN_UNKNOWN, 0);
         register_extern_symbol(ctx, tag_name);
-        zfree(c_type);
     }
 
     zfree(tag_name);
