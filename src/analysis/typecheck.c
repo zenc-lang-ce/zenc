@@ -15,38 +15,10 @@
 
 // ** Internal Helpers **
 
-// The variant a match pattern names. The parser stores it mangled
-// (`Shape__Circle`); `Shape::Circle` and a bare `Circle` are accepted too. NULL
-// for patterns that are not a single enum variant (`_`, `A || B`, literals).
-static const char *match_pattern_variant(const char *pattern, const char *enum_name)
-{
-    if (!pattern || strstr(pattern, "||") || strchr(pattern, ',') || strstr(pattern, " or "))
-    {
-        return NULL;
-    }
-    size_t enum_len = enum_name ? strlen(enum_name) : 0;
-    if (enum_len && strncmp(pattern, enum_name, enum_len) == 0)
-    {
-        const char *rest = pattern + enum_len;
-        if (strncmp(rest, "__", 2) == 0 || strncmp(rest, "::", 2) == 0)
-        {
-            return rest + 2;
-        }
-    }
-    const char *sep = NULL;
-    const char *p = pattern;
-    while ((p = strstr(p, "::")) != NULL)
-    {
-        sep = p;
-        p += 2;
-    }
-    return sep ? sep + 2 : pattern;
-}
-
 // Type of the `index`-th of `count` bindings of a match case, read from the
 // payload of the variant the pattern names. NULL when it cannot be told (not an
 // enum, unknown variant, unresolved generic): the caller keeps UNSAFE_ANY.
-static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, const char *pattern, int index,
+static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *patterns, int index,
                                 int count)
 {
     Type *t = get_inner_type(scrutinee);
@@ -54,7 +26,10 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, const char *pa
     {
         t = get_inner_type(t->inner);
     }
-    const char *variant = t ? match_pattern_variant(pattern, t->name) : NULL;
+    // Bindings come from a single variant: `A || B` gives them no type.
+    const char *variant = (patterns && patterns->kind == PATTERN_NAME && !patterns->next)
+                              ? patterns->name.name
+                              : NULL;
     if (!t || !t->name || !variant)
     {
         return NULL;
@@ -349,7 +324,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                             if (bname)
                             {
                                 Type *bt = match_binding_type(tc, node->match_stmt.expr->type_info,
-                                                              mcase->match_case.pattern, i,
+                                                              mcase->match_case.patterns, i,
                                                               mcase->match_case.binding_count);
                                 if (!bt)
                                 {
