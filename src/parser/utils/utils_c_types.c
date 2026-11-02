@@ -3,6 +3,8 @@
 // it includes and from those of the hosted preamble, and turned from C text into Types.
 #include "parser.h"
 #include "utils/c_headers.h"
+#include "utils/c_header_cache.h"
+#include "platform/os.h"
 #include "utils/zalloc.h"
 #include "ast/primitives.h"
 #include <string.h>
@@ -212,7 +214,8 @@ void register_c_header_functions(ParserContext *ctx, const CHeaderFile *header)
     }
 }
 
-// Remembers the functions of the header at `path` and of every header it includes.
+// Remembers the functions of the header at `path` and of every header it includes; with no
+// `ctx`, only reads them into the cache.
 static void read_header_tree(ParserContext *ctx, const char *path, const CSearchDirList *dirs,
                              StringList *visited, int depth)
 {
@@ -221,42 +224,65 @@ static void read_header_tree(ParserContext *ctx, const char *path, const CSearch
         return;
     }
     string_list_add(visited, path);
-    CHeaderFile *header = c_headers_get(path);
+    const CachedHeader *header = c_header_cache_header(path, dirs);
     if (!header)
     {
         return;
     }
-    register_c_header_functions(ctx, header);
-    char header_dir[MAX_PATH_LEN];
-    c_headers_directory_of(path, header_dir, sizeof(header_dir));
+    for (int i = 0; ctx && i < header->function_count; i++)
+    {
+        remember_c_function(ctx, header->functions[i].name, header->functions[i].c_type);
+    }
     for (int i = 0; i < header->include_count; i++)
     {
-        char *child =
-            c_headers_find(header->includes[i].name,
-                           header->includes[i].is_system ? NULL : header_dir, dirs, NULL, 0);
-        if (child)
-        {
-            read_header_tree(ctx, child, dirs, visited, depth + 1);
-            libc_free(child);
-        }
+        read_header_tree(ctx, header->includes[i], dirs, visited, depth + 1);
     }
 }
 
-// Reads the headers of the hosted preamble, once, as the C compiler will find them: the
-// configured include paths, then the compiler's own directories.
-static void read_preamble_headers(ParserContext *ctx)
+// What the headers read depend on: the zc binary (its reader), the C compiler and the
+// include paths (`include_dirs`). NULL when it does not fit.
+static const char *header_cache_key(const CompilerConfig *config,
+                                    const CSearchDirList *include_dirs)
 {
-    if (ctx->c_preamble_headers_read)
+    char executable[MAX_PATH_LEN];
+    long long modified = 0;
+    long long size = 0;
+    z_get_executable_file(executable, sizeof(executable));
+    c_headers_file_stamp(executable, &modified, &size);
+    char key[4096];
+    int used = snprintf(key, sizeof(key), "zc=%s %lld %lld cc=%s include=", ZEN_VERSION, modified,
+                        size, config->cc);
+    for (int i = 0; i < include_dirs->count && used >= 0 && (size_t)used < sizeof(key); i++)
     {
-        return;
+        used +=
+            snprintf(key + used, sizeof(key) - (size_t)used, "%s;", include_dirs->items[i].path);
     }
-    ctx->c_preamble_headers_read = 1;
+    if (used < 0 || (size_t)used >= sizeof(key))
+    {
+        return NULL;
+    }
+    return xstrdup(key);
+}
+
+// Reads the headers of the hosted preamble, as the C compiler will find them (the include
+// paths, then the compiler's own directories), through the cache on disk. With `discard`,
+// all of them are read again.
+static int read_preamble_headers(ParserContext *ctx, const CompilerConfig *config, int discard)
+{
     CSearchDirList dirs = {0};
-    for (size_t i = 0; i < ctx->config->include_paths.length; i++)
+    for (size_t i = 0; i < config->include_paths.length; i++)
     {
-        c_search_dirs_add(&dirs, ctx->config->include_paths.data[i], "");
+        char absolute[MAX_PATH_LEN];
+        z_get_absolute_path(config->include_paths.data[i], absolute, sizeof(absolute));
+        c_search_dirs_add(&dirs, absolute[0] ? absolute : config->include_paths.data[i], "");
     }
-    const StringList *compiler_dirs = c_headers_compiler_dirs(ctx->config->cc, NULL);
+    c_header_cache_open(header_cache_key(config, &dirs), discard);
+    const StringList *compiler_dirs = c_header_cache_compiler_dirs();
+    if (!compiler_dirs)
+    {
+        compiler_dirs = c_headers_compiler_dirs(config->cc, NULL);
+        c_header_cache_set_compiler_dirs(compiler_dirs);
+    }
     for (int i = 0; i < compiler_dirs->count; i++)
     {
         c_search_dirs_add(&dirs, compiler_dirs->items[i], "");
@@ -273,6 +299,12 @@ static void read_preamble_headers(ParserContext *ctx)
     }
     string_list_free(&visited);
     c_search_dirs_free(&dirs);
+    return c_header_cache_save();
+}
+
+int refresh_c_header_cache(const CompilerConfig *config)
+{
+    return read_preamble_headers(NULL, config, 1);
 }
 
 Type *c_function_return_type(ParserContext *ctx, const char *name)
@@ -282,9 +314,10 @@ Type *c_function_return_type(ParserContext *ctx, const char *name)
     {
         return NULL;
     }
-    if (is_preamble_c_function(ctx, name))
+    if (is_preamble_c_function(ctx, name) && !ctx->c_preamble_headers_read)
     {
-        read_preamble_headers(ctx);
+        ctx->c_preamble_headers_read = 1;
+        read_preamble_headers(ctx, ctx->config, 0);
     }
     const char **c_type =
         ctx->c_function_types.hash_func ? zmap_get(&ctx->c_function_types, name) : NULL;

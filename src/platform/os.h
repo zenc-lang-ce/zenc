@@ -145,9 +145,27 @@ int z_get_pid(void);
 int z_rename_replace(const char *from, const char *to);
 
 /**
- * @brief Get the path of the current executable.
+ * @brief Get the directory of the current executable.
  */
 void z_get_executable_path(char *buffer, size_t size);
+
+/**
+ * @brief Get the path of the current executable file itself.
+ */
+void z_get_executable_file(char *buffer, size_t size);
+
+/**
+ * @brief Create a directory and the missing ones above it, like `mkdir -p`.
+ * @return 0 when the directory exists afterwards, -1 otherwise.
+ */
+int z_make_directories(const char *path);
+
+/**
+ * @brief The directory where zc keeps its caches: $XDG_CACHE_HOME/zenc, or the platform's
+ * user cache directory (~/.cache/zenc, ~/Library/Caches/zenc, %LOCALAPPDATA%/zenc).
+ * @return NULL when there is no home directory to put it in.
+ */
+const char *z_get_cache_dir(void);
 
 /**
  * @brief Resolve a path to an absolute path.

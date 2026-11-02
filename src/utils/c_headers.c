@@ -1246,18 +1246,30 @@ CHeaderFile *c_headers_cached(const char *path)
     return NULL;
 }
 
-// The scanned header at `path`, scanned again when it has changed on disk.
-CHeaderFile *c_headers_get(const char *path)
+int c_headers_file_stamp(const char *path, long long *modified, long long *size)
 {
     struct stat st;
     if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
+    {
+        return 0;
+    }
+    *modified = (long long)st.st_mtime;
+    *size = (long long)st.st_size;
+    return 1;
+}
+
+// The scanned header at `path`, scanned again when it has changed on disk.
+CHeaderFile *c_headers_get(const char *path)
+{
+    long long modified = 0;
+    long long size = 0;
+    if (!c_headers_file_stamp(path, &modified, &size))
     {
         return NULL;
     }
 
     CHeaderFile *header = c_headers_cached(path);
-    if (header && header->modified == (long long)st.st_mtime &&
-        header->size == (long long)st.st_size)
+    if (header && header->modified == modified && header->size == size)
     {
         return header;
     }
@@ -1280,8 +1292,8 @@ CHeaderFile *c_headers_get(const char *path)
         header->next = g_headers;
         g_headers = header;
     }
-    header->modified = (long long)st.st_mtime;
-    header->size = (long long)st.st_size;
+    header->modified = modified;
+    header->size = size;
 
     header->text = c_headers_read_file(path);
     if (!header->text)

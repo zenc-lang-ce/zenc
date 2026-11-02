@@ -122,6 +122,9 @@ const StringList *c_headers_compiler_dirs(const char *cc, int *status);
 char *c_headers_find(const char *name, const char *local_dir, const CSearchDirList *dirs,
                      char *found_by, size_t found_by_size);
 
+/// When the regular file at `path` was last modified, and its size; 0 when it is not one.
+int c_headers_file_stamp(const char *path, long long *modified, long long *size);
+
 /// The header at `path`, read and scanned, from the cache unless it changed on disk.
 CHeaderFile *c_headers_get(const char *path);
 /// The cached header at `path`, or NULL when it has not been read.

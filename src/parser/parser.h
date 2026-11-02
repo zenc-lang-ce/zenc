@@ -908,6 +908,9 @@ void register_c_header_functions(ParserContext *ctx, const struct CHeaderFile *h
 /// The return type of a C function the program calls undeclared, from the headers it includes
 /// and those of the hosted preamble; NULL when it is not known.
 Type *c_function_return_type(ParserContext *ctx, const char *name);
+/// Reads the headers of the hosted preamble again into the cache on disk (`zc cache
+/// c-headers`): how many headers it holds, or -1 when it could not be written.
+int refresh_c_header_cache(const CompilerConfig *config);
 void init_builtins(void);
 void register_extern_symbol(ParserContext *ctx, const char *name);
 void register_impl(ParserContext *ctx, const char *trait, const char *type);

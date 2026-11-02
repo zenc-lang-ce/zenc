@@ -387,6 +387,39 @@ else
     echo "$out" | head -5
 fi
 
+# --- Cache of the C headers ----------------------------------------------------
+
+# A preamble header found through -I first, so the test controls what it declares.
+mkdir -p "$workdir/c_include"
+printf 'int zc_cache_probe(void);\n' > "$workdir/c_include/stdbool.h"
+out=$(XDG_CACHE_HOME="$workdir/cache" "$ZC" cache c-headers -I "$workdir/c_include" 2>&1)
+cache_file=$(ls "$workdir"/cache/zenc/c-headers-*.txt 2>/dev/null | head -1)
+if echo "$out" | grep -q "^Cached [0-9]* C headers in $workdir/cache/zenc/" &&
+    grep -q "^function zc_cache_probe int$" "$cache_file" 2>/dev/null; then
+    check "zc cache c-headers caches what the headers declare" 1
+else
+    check "zc cache c-headers caches what the headers declare" 0
+    echo "$out" | head -5
+fi
+
+# A header that changed on disk is read again by the next compilation.
+printf 'long zc_cache_probe(void); /* changed */\n' > "$workdir/c_include/stdbool.h"
+printf 'fn main() {\n    let n = strlen("abc");\n}\n' > "$workdir/calls_c.zc"
+XDG_CACHE_HOME="$workdir/cache" "$ZC" transpile "$workdir/calls_c.zc" -I "$workdir/c_include" \
+    -o "$workdir/calls_c.c" >/dev/null 2>&1
+if grep -q "^function zc_cache_probe long$" "$cache_file" 2>/dev/null; then
+    check "a changed C header is read again" 1
+else
+    check "a changed C header is read again" 0
+fi
+
+out=$("$ZC" cache 2>&1)
+if [ $? -ne 0 ] && echo "$out" | grep -q "usage: zc cache c-headers"; then
+    check "zc cache without what to cache prints usage" 1
+else
+    check "zc cache without what to cache prints usage" 0
+fi
+
 echo "----------------------------------------"
 echo "Results (CLI):"
 echo "-> Passed:  $PASSED"

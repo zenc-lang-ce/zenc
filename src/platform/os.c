@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
 
 #if ZC_OS_WINDOWS
 #include <windows.h>
@@ -158,7 +159,7 @@ int z_rename_replace(const char *from, const char *to)
     return rename(from, to);
 }
 
-void z_get_executable_path(char *buffer, size_t size)
+void z_get_executable_file(char *buffer, size_t size)
 {
     memset(buffer, 0, size);
 #ifdef __COSMOPOLITAN__
@@ -185,6 +186,11 @@ void z_get_executable_path(char *buffer, size_t size)
 #else
     // Fallback
 #endif
+}
+
+void z_get_executable_path(char *buffer, size_t size)
+{
+    z_get_executable_file(buffer, size);
 
     // Strip the executable filename to get the directory
     char *last_slash = (char *)strrchr(buffer, '/');
@@ -816,4 +822,60 @@ int z_run_command_capture_ex(char *const argv[], char *buffer, size_t size, int 
     }
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 #endif
+}
+
+int z_make_directories(const char *path)
+{
+    char partial[MAX_PATH_SIZE];
+    snprintf(partial, sizeof(partial), "%s", path);
+    for (char *p = partial + 1;; p++)
+    {
+        if (*p == '/' || *p == '\\' || *p == '\0')
+        {
+            char separator = *p;
+            *p = '\0';
+#if ZC_OS_WINDOWS
+            _mkdir(partial);
+#else
+            mkdir(partial, 0755);
+#endif
+            *p = separator;
+            if (!separator)
+            {
+                break;
+            }
+        }
+    }
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode) ? 0 : -1;
+}
+
+const char *z_get_cache_dir(void)
+{
+    static char dir[MAX_PATH_SIZE] = {0};
+    if (dir[0])
+    {
+        return dir;
+    }
+    const char *xdg = getenv("XDG_CACHE_HOME");
+#if ZC_OS_WINDOWS
+    const char *base = getenv("LOCALAPPDATA");
+#else
+    const char *base = getenv("HOME");
+#endif
+    if (xdg && xdg[0])
+    {
+        snprintf(dir, sizeof(dir), "%s/zenc", xdg);
+    }
+    else if (base && base[0])
+    {
+#if ZC_OS_WINDOWS
+        snprintf(dir, sizeof(dir), "%s/zenc", base);
+#elif ZC_OS_MACOS
+        snprintf(dir, sizeof(dir), "%s/Library/Caches/zenc", base);
+#else
+        snprintf(dir, sizeof(dir), "%s/.cache/zenc", base);
+#endif
+    }
+    return dir[0] ? dir : NULL;
 }
