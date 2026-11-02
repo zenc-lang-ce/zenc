@@ -83,7 +83,6 @@ void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *c
 void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
 
 // Exported helpers for modularization
-Type *resolve_alias(Type *t);
 int tc_expr_has_side_effects(ASTNode *node);
 
 #endif // TYPECHECK_H

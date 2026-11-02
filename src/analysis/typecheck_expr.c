@@ -136,15 +136,6 @@ static char *canonical_type_name(TypeChecker *tc, Type *t, int depth)
     return out;
 }
 
-Type *resolve_alias(Type *t)
-{
-    while (t && t->kind == TYPE_ALIAS && t->inner)
-    {
-        t = t->inner;
-    }
-    return t;
-}
-
 void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
 {
     check_node(tc, node->unary.operand, depth + 1);
@@ -659,6 +650,11 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                     if (is_float_type(left_type) || is_float_type(right_type))
                     {
                         node->type_info = type_new(TYPE_F64);
+                    }
+                    else if (is_integer_type(left_type) && is_integer_type(right_type))
+                    {
+                        node->type_info =
+                            integer_operation_type(node->binary.left, node->binary.right);
                     }
                     else
                     {

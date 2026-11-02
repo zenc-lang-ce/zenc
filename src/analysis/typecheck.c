@@ -832,14 +832,16 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             Type *t2 = node->ternary.false_expr->type_info;
             if (t1 && t2)
             {
-                // Loose compatibility check
-                if (!check_type_compatibility(tc, t1, t2, node->token, NULL, 0))
+                // The type of both branches: for integers, the one C computes in. The other
+                // branch must convert to it (check_type_compatibility reports it if not).
+                Type *result =
+                    (is_integer_type(t1) && is_integer_type(t2))
+                        ? integer_operation_type(node->ternary.true_expr, node->ternary.false_expr)
+                        : t1;
+                Type *other = (result == t1) ? t2 : t1;
+                if (check_type_compatibility(tc, result, other, node->token, NULL, 0))
                 {
-                    // Error reported by check_type_compatibility
-                }
-                else
-                {
-                    node->type_info = t1; // Inherit type
+                    node->type_info = result;
                 }
             }
         }

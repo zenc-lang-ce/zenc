@@ -452,6 +452,94 @@ int is_unsigned_type(Type *t)
     return res;
 }
 
+// The type an alias stands for, through every alias of an alias.
+Type *resolve_alias(Type *t)
+{
+    while (t && t->kind == TYPE_ALIAS && t->inner)
+    {
+        t = t->inner;
+    }
+    return t;
+}
+
+int integer_type_width(Type *t)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    switch (t->kind)
+    {
+    case TYPE_I8:
+    case TYPE_U8:
+    case TYPE_BYTE:
+    case TYPE_C_CHAR:
+    case TYPE_C_UCHAR:
+        return 8;
+    case TYPE_I16:
+    case TYPE_U16:
+    case TYPE_C_SHORT:
+    case TYPE_C_USHORT:
+        return 16;
+    case TYPE_I32:
+    case TYPE_U32:
+    case TYPE_INT:
+    case TYPE_UINT:
+    case TYPE_RUNE:
+    case TYPE_C_INT:
+    case TYPE_C_UINT:
+        return 32;
+    case TYPE_I64:
+    case TYPE_U64:
+    case TYPE_ISIZE:
+    case TYPE_USIZE:
+    case TYPE_C_LONG:
+    case TYPE_C_ULONG:
+    case TYPE_C_LONGLONG:
+    case TYPE_C_ULONGLONG:
+        return 64;
+    case TYPE_I128:
+    case TYPE_U128:
+        return 128;
+    default:
+        return 0;
+    }
+}
+
+// The type C gives an operation on two integers, so the one the generated code computes in:
+// the wider of the two, and the unsigned one when they are as wide (`8` and a usize give a
+// usize). Either may be an alias: the one chosen is returned as it is.
+Type *common_integer_type(Type *a, Type *b)
+{
+    int width_a = integer_type_width(resolve_alias(a));
+    int width_b = integer_type_width(resolve_alias(b));
+    if (width_a != width_b)
+    {
+        return width_a > width_b ? a : b;
+    }
+    return (is_unsigned_type(resolve_alias(b)) && !is_unsigned_type(resolve_alias(a))) ? b : a;
+}
+
+// An integer literal written without a suffix (`15`), whose type adapts to the other operand.
+static int is_plain_int_literal(ASTNode *n)
+{
+    return n && n->kind == NODE_EXPR_LITERAL && n->literal.kind == LITERAL_INT && n->type_info &&
+           n->type_info->kind == TYPE_INT;
+}
+
+Type *integer_operation_type(ASTNode *left, ASTNode *right)
+{
+    if (is_plain_int_literal(left) && !is_plain_int_literal(right))
+    {
+        return right->type_info;
+    }
+    if (is_plain_int_literal(right))
+    {
+        return left->type_info;
+    }
+    return common_integer_type(left->type_info, right->type_info);
+}
+
 int is_signed_type(Type *t)
 {
     if (!t)

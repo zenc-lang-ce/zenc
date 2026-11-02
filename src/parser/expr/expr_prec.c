@@ -2328,7 +2328,12 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 if (type_eq(lhs->type_info, rhs->type_info) ||
                     check_opaque_alias_compat(ctx, lhs->type_info, rhs->type_info))
                 {
-                    bin->type_info = lhs->type_info;
+                    // type_eq takes any two integers as equal: the result is the one C
+                    // computes in.
+                    bin->type_info =
+                        (is_integer_type(lhs->type_info) && is_integer_type(rhs->type_info))
+                            ? integer_operation_type(lhs, rhs)
+                            : lhs->type_info;
                 }
                 else
                 {
@@ -2487,11 +2492,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                     }
                                     else
                                     {
-                                        // Both int (but failed equality check previously? - rare
-                                        // but possible if diff int types) If diff int types, we
-                                        // usually allow it in C (promotion). For now, assume LHS
-                                        // dominates or standard promotion.
-                                        bin->type_info = lhs->type_info;
+                                        bin->type_info = integer_operation_type(lhs, rhs);
                                     }
                                 }
                             }
