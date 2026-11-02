@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/warn_destructured_type.zc...
+warning: Implicit narrowing conversion from 'int64_t' (64-bit) to 'uint8_t' (8-bit)
+  --> tests/compiler/diagnostics_output/warn_destructured_type.zc:10:9
+   |
+10 |     let narrow: u8 = total;
+   |         ^ here
+   |
+[exit 0]

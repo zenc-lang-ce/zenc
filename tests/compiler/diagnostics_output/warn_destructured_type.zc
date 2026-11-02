@@ -1,0 +1,12 @@
+// ARGS: check
+// A name a destructuring declaration gives has the type of the element it takes: `total` is
+// the i64 of the tuple, so storing it in a u8 narrows it.
+fn counts() -> (bool, i64) {
+    return (true, 300);
+}
+
+fn main() {
+    let (found, total) = counts();
+    let narrow: u8 = total;
+    printf("%d %d\n", (int)found, (int)narrow);
+}

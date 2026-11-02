@@ -136,39 +136,76 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
     return NULL;
 }
 
+// The type of the field `name` of the struct `t`, or NULL.
+static Type *struct_field_type(ParserContext *ctx, Type *t, const char *name)
+{
+    t = resolve_alias(t);
+    ASTNode *def = (t && t->kind == TYPE_STRUCT && t->name) ? find_struct_def(ctx, t->name) : NULL;
+    if (!def || def->kind != NODE_STRUCT)
+    {
+        return NULL;
+    }
+    for (ASTNode *field = def->strct.fields; field; field = field->next)
+    {
+        if (field->kind == NODE_FIELD && field->field.name && strcmp(field->field.name, name) == 0)
+        {
+            return field->type_info;
+        }
+    }
+    return NULL;
+}
+
 // What `x?` gives: the value an Option or Result holds (the `val` field of the standard
 // library's, the payload of an enum's `Ok` or `Some`), or NULL.
 static Type *try_value_type(ParserContext *ctx, Type *t)
 {
     t = resolve_alias(t);
-    if (!t || !t->name || (t->kind != TYPE_STRUCT && t->kind != TYPE_ENUM))
+    if (!t || !t->name)
     {
         return NULL;
     }
-    ASTNode *def = find_struct_def(ctx, t->name);
-    if (def && def->kind == NODE_STRUCT)
+    if (t->kind == TYPE_STRUCT)
     {
-        for (ASTNode *field = def->strct.fields; field; field = field->next)
-        {
-            if (field->kind == NODE_FIELD && field->field.name &&
-                strcmp(field->field.name, "val") == 0)
-            {
-                return field->type_info;
-            }
-        }
+        return struct_field_type(ctx, t, "val");
     }
-    else if (def && def->kind == NODE_ENUM)
+    ASTNode *def = t->kind == TYPE_ENUM ? find_struct_def(ctx, t->name) : NULL;
+    for (ASTNode *variant = (def && def->kind == NODE_ENUM) ? def->enm.variants : NULL; variant;
+         variant = variant->next)
     {
-        for (ASTNode *variant = def->enm.variants; variant; variant = variant->next)
+        if (variant->variant.name && (strcmp(variant->variant.name, "Ok") == 0 ||
+                                      strcmp(variant->variant.name, "Some") == 0))
         {
-            if (variant->variant.name && (strcmp(variant->variant.name, "Ok") == 0 ||
-                                          strcmp(variant->variant.name, "Some") == 0))
-            {
-                return variant->variant.payload;
-            }
+            return variant->variant.payload;
         }
     }
     return NULL;
+}
+
+// The type of the i-th name a destructuring declaration gives: its explicit type, or that of
+// what it takes from the value: a tuple's element, a struct's field, or what a guard unwraps
+// (`let Some(x) = opt else ...`).
+static Type *destructured_type(ParserContext *ctx, ASTNode *node, int i)
+{
+    if (node->destruct.type_infos && node->destruct.type_infos[i])
+    {
+        return node->destruct.type_infos[i];
+    }
+    Type *value = node->destruct.init_expr ? node->destruct.init_expr->type_info : NULL;
+    if (node->destruct.is_guard)
+    {
+        return strcmp(node->destruct.guard_variant, "Err") == 0
+                   ? struct_field_type(ctx, value, "err")
+                   : try_value_type(ctx, value);
+    }
+    if (node->destruct.is_struct_destruct)
+    {
+        return struct_field_type(ctx, value,
+                                 node->destruct.field_names ? node->destruct.field_names[i]
+                                                            : node->destruct.names[i]);
+    }
+    char element[32];
+    snprintf(element, sizeof(element), "v%d", i);
+    return struct_field_type(ctx, value, element);
 }
 
 void check_node(TypeChecker *tc, ASTNode *node, int depth)
@@ -993,6 +1030,15 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         if (node->destruct.init_expr)
         {
             check_node(tc, node->destruct.init_expr, depth + 1);
+        }
+        if (node->destruct.else_block)
+        {
+            check_node(tc, node->destruct.else_block, depth + 1);
+        }
+        for (int i = 0; i < node->destruct.count; i++)
+        {
+            tc_add_symbol(tc, node->destruct.names[i], destructured_type(tc->pctx, node, i),
+                          node->token, 0);
         }
         break;
     case NODE_BREAK:
