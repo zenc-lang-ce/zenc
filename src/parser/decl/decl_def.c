@@ -54,7 +54,7 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
         lexer_next(l);
 
         Token tk = lexer_peek(l);
-        if (tk.kind == TOK_LPAREN && type_str && strncmp(type_str, "Tuple__", 7) == 0)
+        if (tk.kind == TOK_LPAREN && type_obj && type_obj->kind == TYPE_TUPLE)
         {
             char *code = parse_tuple_literal(ctx, l, type_str);
             i = ast_create(NODE_RAW_STMT);

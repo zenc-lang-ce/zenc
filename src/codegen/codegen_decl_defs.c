@@ -203,24 +203,14 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
                     if (v->variant.payload)
                     {
                         Type *pt = v->variant.payload;
-                        ASTNode *tuple_def = NULL;
-                        if (pt->kind == TYPE_STRUCT && strncmp(pt->name, "Tuple__", 7) == 0)
-                        {
-                            tuple_def = find_struct_def(ctx, pt->name);
-                        }
-
-                        if (tuple_def)
+                        if (pt->kind == TYPE_TUPLE)
                         {
                             EMIT(ctx, "%s %s(", final_name,
                                  mangle_variant_symbol(final_name, v->variant.name));
-                            ASTNode *f = tuple_def->strct.fields;
-                            int i = 0;
-                            while (f)
+                            for (int i = 0; i < pt->count; i++)
                             {
-                                const char *at = field_c_type(ctx, f);
-                                EMIT(ctx, "%s _%d%s", at, i, (f->next) ? ", " : "");
-                                f = f->next;
-                                i++;
+                                EMIT(ctx, "%s _%d%s", c_type_spelling(ctx, pt->args[i]), i,
+                                     i < pt->count - 1 ? ", " : "");
                             }
                             EMIT(ctx, ");\n");
                         }

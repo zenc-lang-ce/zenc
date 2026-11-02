@@ -360,45 +360,56 @@ void register_slice(ParserContext *ctx, const char *type)
     }
 }
 
-void register_tuple_with_types(ParserContext *ctx, const char *sig, const char **types, int count)
+Type *find_tuple_type(ParserContext *ctx, const char *name)
 {
+    if (strncmp(name, "Tuple__", 7) != 0)
+    {
+        return NULL;
+    }
+    for (TupleType *c = ctx->used_tuples; c; c = c->next)
+    {
+        char *tuple_name = type_to_string(c->type);
+        int same = strcmp(tuple_name, name) == 0;
+        zfree(tuple_name);
+        if (same)
+        {
+            return type_clone(c->type);
+        }
+    }
+    return NULL;
+}
+
+void register_tuple(ParserContext *ctx, Type *tuple)
+{
+    char *struct_name = type_to_string(tuple);
     TupleType *c = ctx->used_tuples;
     while (c)
     {
-        if (c->sig[0] == sig[0] && strcmp(c->sig, sig) == 0)
+        char *name = type_to_string(c->type);
+        int same = strcmp(name, struct_name) == 0;
+        zfree(name);
+        if (same)
         {
+            zfree(struct_name);
             return;
         }
         c = c->next;
     }
     TupleType *n = xmalloc(sizeof(TupleType));
-    n->sig = xstrdup(sig);
-    n->types = xmalloc(sizeof(char *) * (size_t)count);
-    for (int i = 0; i < count; i++)
-    {
-        n->types[i] = xstrdup(types[i]);
-    }
-    n->count = count;
+    n->type = tuple;
     n->next = ctx->used_tuples;
     ctx->used_tuples = n;
-
-    // As long as the signature: a shorter buffer would cut the name parse_type_base gives it
-    char *clean_sig = sanitize_mangled_name(sig);
-    size_t name_len = strlen(clean_sig) + sizeof("Tuple__");
-    char *struct_name = xmalloc(name_len);
-    snprintf(struct_name, name_len, "Tuple__%s", clean_sig);
-    zfree(clean_sig);
 
     ASTNode *s_def = ast_create(NODE_STRUCT);
     s_def->strct.name = struct_name;
     ASTNode *head = NULL, *tail = NULL;
-    for (int fi = 0; fi < count; fi++)
+    for (int fi = 0; fi < tuple->count; fi++)
     {
         ASTNode *f = ast_create(NODE_FIELD);
         char fname[32];
         snprintf(fname, sizeof(fname), "v%d", fi);
         f->field.name = xstrdup(fname);
-        f->type_info = type_from_string_helper(ctx, types[fi]);
+        f->type_info = tuple->args[fi];
         if (!head)
         {
             head = f;

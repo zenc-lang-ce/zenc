@@ -109,27 +109,9 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
             {
                 return payload;
             }
-            // Several bindings destructure a tuple payload: one per field.
-            ASTNode *tuple = payload->name ? find_struct_def(tc->pctx, payload->name) : NULL;
-            if (!tuple || tuple->kind != NODE_STRUCT)
-            {
-                return NULL;
-            }
-            ASTNode *field = tuple->strct.fields;
-            int i = 0;
-            while (field)
-            {
-                if (field->kind == NODE_FIELD)
-                {
-                    if (i == index)
-                    {
-                        return field->type_info;
-                    }
-                    i++;
-                }
-                field = field->next;
-            }
-            return NULL;
+            // Several bindings destructure a tuple payload: one per element.
+            return payload->kind == TYPE_TUPLE && index < payload->count ? payload->args[index]
+                                                                         : NULL;
         }
         v = v->next;
     }
@@ -203,9 +185,7 @@ static Type *destructured_type(ParserContext *ctx, ASTNode *node, int i)
                                  node->destruct.field_names ? node->destruct.field_names[i]
                                                             : node->destruct.names[i]);
     }
-    char element[32];
-    snprintf(element, sizeof(element), "v%d", i);
-    return struct_field_type(ctx, value, element);
+    return value && value->kind == TYPE_TUPLE && i < value->count ? value->args[i] : NULL;
 }
 
 void check_node(TypeChecker *tc, ASTNode *node, int depth)
@@ -690,7 +670,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         if (node->member.target && node->member.target->type_info)
         {
             Type *target_type = get_inner_type(node->member.target->type_info);
-            if (target_type->kind == TYPE_STRUCT && target_type->name)
+            Type *tuple = tuple_of(node->member.target->type_info);
+            Type *element = tuple ? tuple_element_type(tuple, node->member.field) : NULL;
+            if (element)
+            {
+                node->type_info = type_clone(element);
+                node->type_info->lifetime_depth = node->member.target->type_info->lifetime_depth;
+            }
+            else if (target_type->kind == TYPE_STRUCT && target_type->name)
             {
                 if (tc->pctx->config->misra_mode)
                 {

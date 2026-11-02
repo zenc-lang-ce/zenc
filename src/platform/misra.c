@@ -1549,34 +1549,11 @@ void misra_check_typographic_ambiguity(struct ParserContext *ctx, const char *ne
 
 void misra_check_tuple_size(struct ParserContext *ctx, struct Type *t, Token token)
 {
-    if (!ctx->config->misra_mode || !t || t->kind != TYPE_STRUCT || !t->name)
+    if (ctx->config->misra_mode && t && t->kind == TYPE_TUPLE && t->count >= 3)
     {
-        return;
-    }
-    // Tuple types have names like "Tuple__int__string"
-    if (strncmp(t->name, "Tuple__", 7) != 0)
-    {
-        return;
-    }
-    // Look up the tuple in the registry to get field count
-    TupleType *tup = ctx->used_tuples;
-    while (tup)
-    {
-        char *clean_sig = sanitize_mangled_name(tup->sig);
-        char expected[1024];
-        snprintf(expected, sizeof(expected), "Tuple__%s", clean_sig);
-        zfree(clean_sig);
-        if (strcmp(t->name, expected) == 0)
-        {
-            if (tup->count >= 3)
-            {
-                zerror_at(token, "MISRA Rule Zen 2.2: tuple with 3 or more fields shall be "
-                                 "replaced with a named struct (use 'struct' instead of "
-                                 "positional tuple)");
-            }
-            break;
-        }
-        tup = tup->next;
+        zerror_at(token, "MISRA Rule Zen 2.2: tuple with 3 or more fields shall be "
+                         "replaced with a named struct (use 'struct' instead of "
+                         "positional tuple)");
     }
 }
 

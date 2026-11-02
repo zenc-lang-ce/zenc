@@ -14,3 +14,13 @@ test "a link_name struct in a tuple and in a destructuring" {
     assert(n == 1, "first element");
     assert(p.x == 7, "the link_name struct");
 }
+
+fn sum(t: (Point, int)) -> int {
+    return t.0.x + t.1;
+}
+
+test "a tuple literal holding a link_name struct is the tuple type that names it" {
+    let p = Point { x: 2 };
+    let literal = (p, 3);
+    assert(sum(literal) == 5, "the literal is passed as a (Point, int)");
+}

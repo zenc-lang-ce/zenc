@@ -15,7 +15,7 @@
 #include "zprep_plugin.h"
 #include "analysis/move_check.h"
 
-char *curr_func_ret = NULL;
+Type *curr_func_ret = NULL;
 
 static void auto_import_std_test(ParserContext *ctx)
 {
@@ -221,8 +221,7 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
 
     int handled = 0;
 
-    if (curr_func_ret && strncmp(curr_func_ret, "Tuple__", 7) == 0 &&
-        lexer_peek(l).kind == TOK_LPAREN)
+    if (curr_func_ret && curr_func_ret->kind == TYPE_TUPLE && lexer_peek(l).kind == TOK_LPAREN)
     {
 
         int is_tuple_lit = 0;

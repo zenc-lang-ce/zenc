@@ -315,7 +315,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 lexer_next(l);
             }
         }
-        else if (next.kind == TOK_LPAREN && type && strncmp(type, "Tuple__", 7) == 0)
+        else if (next.kind == TOK_LPAREN && type_obj && type_obj->kind == TYPE_TUPLE)
         {
             char *code = parse_tuple_literal(ctx, l, type);
             init = ast_create(NODE_RAW_STMT);

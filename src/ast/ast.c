@@ -362,6 +362,35 @@ Type *type_new_tuple(Type **elements, int count)
     return t;
 }
 
+Type *tuple_of(Type *t)
+{
+    if (t && t->kind == TYPE_POINTER)
+    {
+        t = t->inner;
+    }
+    return t && t->kind == TYPE_TUPLE ? t : NULL;
+}
+
+Type *tuple_element_type(Type *tuple, const char *field)
+{
+    // The program writes `t.0`; C names the field `v0`, and code may write that too.
+    const char *digits = field[0] == 'v' ? field + 1 : field;
+    if (!*digits)
+    {
+        return NULL;
+    }
+    int index = 0;
+    for (const char *p = digits; *p; p++)
+    {
+        if (*p < '0' || *p > '9' || index > tuple->count)
+        {
+            return NULL;
+        }
+        index = index * 10 + (*p - '0');
+    }
+    return index < tuple->count ? tuple->args[index] : NULL;
+}
+
 Type *type_clone(Type *t)
 {
     if (!t)

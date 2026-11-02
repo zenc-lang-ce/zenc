@@ -758,11 +758,7 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         TupleType *tup = ctx->used_tuples;
         while (tup)
         {
-            char *clean_sig = sanitize_mangled_name(tup->sig);
-            size_t name_len = strlen(clean_sig) + sizeof("Tuple__");
-            char *tuple_name = xmalloc(name_len);
-            snprintf(tuple_name, name_len, "Tuple__%s", clean_sig);
-            zfree(clean_sig);
+            char *tuple_name = type_to_string(tup->type);
             ASTNode *def = find_struct_def(ctx, tuple_name);
             zfree(tuple_name);
             if (def && def->kind == NODE_STRUCT)

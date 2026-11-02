@@ -3,6 +3,7 @@
 #include "constants.h"
 #include "expr_internal.h"
 #include "ast/ast.h"
+#include "ast/primitives.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -161,16 +162,46 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
     return lambda;
 }
 
-// The type of a tuple, as the type parser gives it: the struct the compiler makes for it.
-static Type *tuple_type(const char *name)
+// The type of an element of a tuple literal. A struct, enum, alias or tuple is the type the parser
+// gave it, by its Zen C name as in a tuple type (a @link_name only shows in C). A primitive is
+// read from the C type codegen writes for it: an integer literal is an `int` until then, and
+// `(1, 2)` must be the tuple `(int, int)` is, of `int32_t`s.
+static Type *literal_element_type(ParserContext *ctx, ASTNode *element)
 {
-    Type *t = type_new(TYPE_STRUCT);
-    t->name = xstrdup(name);
+    Type *parsed = element->type_info;
+    if (parsed && (parsed->kind == TYPE_STRUCT || parsed->kind == TYPE_ENUM ||
+                   parsed->kind == TYPE_ALIAS || parsed->kind == TYPE_TUPLE))
+    {
+        return parsed;
+    }
+    char *inferred = infer_type(ctx, element);
+    if (!inferred)
+    {
+        return type_new(TYPE_INT);
+    }
+    char *text = xstrdup(inferred);
+    int pointers = 0;
+    size_t length = strlen(text);
+    while (length > 0 && text[length - 1] == '*')
+    {
+        length--;
+        pointers++;
+    }
+    text[length] = 0;
+    TypeKind kind = find_primitive_kind(text);
+    Type *t = kind != TYPE_UNKNOWN ? type_new(kind) : type_from_string_helper(ctx, text);
+    if (!t)
+    {
+        t = type_from_name(ctx, text);
+    }
+    while (pointers-- > 0)
+    {
+        t = type_new_ptr(t);
+    }
     return t;
 }
 
-ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, const char *type_name,
-                                ASTNode *first_elem)
+ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, Type *tuple, ASTNode *first_elem)
 {
     Token tk;
     if (!first_elem)
@@ -233,50 +264,20 @@ ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, const char *type_n
         return n;
     }
 
-    if (type_name)
+    if (tuple)
     {
-        n->type_info = tuple_type(type_name);
+        n->type_info = tuple;
     }
     else
     {
-        char sig[MAX_ERROR_MSG_LEN];
-        sig[0] = 0;
-        const char *type_names[256];
-        int type_count = 0;
-        ASTNode *curr = head;
+        Type **elements = xmalloc(sizeof(Type *) * (size_t)(count > 0 ? count : 1));
         int i = 0;
-        while (curr)
+        for (ASTNode *curr = head; curr; curr = curr->next)
         {
-            char *it = infer_type(ctx, curr);
-            const char *type_name_to_append = it ? it : "int";
-
-            if (type_count < 256)
-            {
-                type_names[type_count++] = type_name_to_append;
-            }
-
-            if (i > 0)
-            {
-                if (strlen(sig) + 4 < sizeof(sig))
-                {
-                    strncat(sig, "__", sizeof(sig) - strlen(sig) - 1);
-                }
-            }
-
-            if (strlen(sig) + strlen(type_name_to_append) + 1 < sizeof(sig))
-            {
-                strncat(sig, type_name_to_append, sizeof(sig) - strlen(sig) - 1);
-            }
-
-            curr = curr->next;
-            i++;
+            elements[i++] = literal_element_type(ctx, curr);
         }
-        register_tuple_with_types(ctx, sig, type_names, type_count);
-        char tuple_name[1024 + 16];
-        char *clean_sig = sanitize_mangled_name(sig);
-        snprintf(tuple_name, sizeof(tuple_name), "Tuple__%s", clean_sig);
-        zfree(clean_sig);
-        n->type_info = tuple_type(tuple_name);
+        n->type_info = type_new_tuple(elements, count);
+        register_tuple(ctx, n->type_info);
     }
     return n;
 }

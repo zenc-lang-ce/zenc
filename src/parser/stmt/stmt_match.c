@@ -307,7 +307,6 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                                     : find_enum_variant(ctx, named->name);
             }
 
-            ASTNode *payload_node_field = NULL;
             int is_tuple_payload = 0;
             Type *payload_type = NULL;
             ASTNode *enum_def = NULL;
@@ -323,16 +322,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                         if (strcmp(v->variant.name, named->name) == 0 && v->variant.payload)
                         {
                             payload_type = v->variant.payload;
-                            if (payload_type && payload_type->kind == TYPE_STRUCT &&
-                                strncmp(payload_type->name, "Tuple__", 7) == 0)
-                            {
-                                is_tuple_payload = 1;
-                                ASTNode *tuple_def = find_struct_def(ctx, payload_type->name);
-                                if (tuple_def)
-                                {
-                                    payload_node_field = tuple_def->strct.fields;
-                                }
-                            }
+                            is_tuple_payload = payload_type->kind == TYPE_TUPLE;
                             break;
                         }
                         v = v->next;
@@ -460,18 +450,10 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                         binding_type = type_to_string(payload_type);
                         binding_type_info = payload_type;
                     }
-                    else if (binding_count > 1 && is_tuple_payload)
+                    else if (binding_count > 1 && is_tuple_payload && i < payload_type->count)
                     {
-                        if (payload_node_field)
-                        {
-                            binding_type_info = payload_node_field->type_info;
-                            if (!binding_type_info)
-                            {
-                                continue;
-                            }
-                            binding_type = type_to_string(binding_type_info);
-                            payload_node_field = payload_node_field->next;
-                        }
+                        binding_type_info = payload_type->args[i];
+                        binding_type = type_to_string(binding_type_info);
                     }
                 }
 

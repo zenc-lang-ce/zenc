@@ -179,7 +179,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         return NULL;
     }
 
-    curr_func_ret = type_to_string(ret_type_obj);
+    curr_func_ret = ret_type_obj;
 
     // Auto-prefix function name if in module context
     // Don't prefix generic templates or functions inside impl blocks (already
@@ -316,7 +316,7 @@ void parse_pending_bodies(ParserContext *ctx)
     ASTNode *saved_impl_methods = ctx->current_impl_methods;
     const char *saved_filename = ctx->current_filename;
     int saved_in_method = ctx->in_method_with_self;
-    char *saved_ret = curr_func_ret;
+    Type *saved_ret = curr_func_ret;
     char *saved_doc = ctx->last_doc_comment;
 
     // We increment parse depth so a parse_program_nodes inside a body does not start another round.
@@ -350,7 +350,7 @@ void parse_pending_bodies(ParserContext *ctx)
             ctx->imports.current_module_prefix = node->func.module_prefix;
             ctx->current_impl_struct = node->func.impl_struct;
             ctx->current_filename = node->func.filename;
-            curr_func_ret = type_to_string(node->func.ret_type_info);
+            curr_func_ret = node->func.ret_type_info;
         }
 
         Lexer body_lexer = pending->body_start;

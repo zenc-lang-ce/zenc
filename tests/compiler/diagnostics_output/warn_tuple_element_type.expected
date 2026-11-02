@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/warn_tuple_element_type.zc...
+warning: Implicit narrowing conversion from 'int64_t' (64-bit) to 'uint8_t' (8-bit)
+  --> tests/compiler/diagnostics_output/warn_tuple_element_type.zc:9:9
+   |
+9  |     let narrow: u8 = t.0;
+   |         ^ here
+   |
+[exit 0]

@@ -789,6 +789,10 @@ Type *type_new(TypeKind kind);
 Type *type_new_ptr(Type *inner);
 Type *type_new_array(Type *inner, int size);
 Type *type_new_tuple(Type **elements, int count);
+/** @brief `t` if it is a tuple, or the tuple it points to; else NULL. */
+Type *tuple_of(Type *t);
+/** @brief The type of the element `field` (`0` or `v0`) of `tuple`, or NULL. */
+Type *tuple_element_type(Type *tuple, const char *field);
 Type *type_clone(Type *t);
 int type_eq(Type *a, Type *b);
 int is_integer_type(Type *t);

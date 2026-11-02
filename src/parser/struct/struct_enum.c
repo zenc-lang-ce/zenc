@@ -75,63 +75,23 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
 
                 if (lexer_peek(l).kind == TOK_COMMA)
                 {
-                    // Multi-arg variant -> Tuple
-                    char sig[MAX_MANGLED_NAME_LEN];
-                    sig[0] = 0;
-
-                    char *s = type_to_string(first_t);
-                    if (strlen(s) > 250)
-                    { // Safety check
-                        zpanic_at(lexer_peek(l), "Type name too long for tuple generation");
-                        return NULL;
-                    }
-                    strcpy(sig, s);
-                    zfree(s);
-
-                    tuple_types = xmalloc(sizeof(Type *) * 32);
-                    int tuple_cap = 32;
+                    // Several values: the payload is a tuple of them.
+                    int tuple_cap = 4;
+                    tuple_types = xmalloc(sizeof(Type *) * (size_t)tuple_cap);
                     tuple_types[tuple_count++] = first_t;
-
                     while (lexer_peek(l).kind == TOK_COMMA)
                     {
                         lexer_next(l); // eat ,
-                        strcat(sig, "__");
                         if (tuple_count >= tuple_cap)
                         {
                             tuple_cap *= 2;
                             tuple_types =
                                 xrealloc(tuple_types, sizeof(Type *) * (size_t)(tuple_cap));
                         }
-                        Type *next_t = parse_type_obj(ctx, l);
-                        tuple_types[tuple_count++] = next_t;
-                        char *ns = type_to_string(next_t);
-                        if (strlen(sig) + strlen(ns) + 2 > 510)
-                        {
-                            zpanic_at(lexer_peek(l), "Tuple signature too long");
-                            return NULL;
-                        }
-                        strcat(sig, ns);
-                        zfree(ns);
+                        tuple_types[tuple_count++] = parse_type_obj(ctx, l);
                     }
-
-                    const char **type_strs = xmalloc(sizeof(char *) * (size_t)(tuple_count));
-                    for (int ti = 0; ti < tuple_count; ti++)
-                    {
-                        type_strs[ti] = type_to_string(tuple_types[ti]);
-                    }
-                    register_tuple_with_types(ctx, sig, type_strs, tuple_count);
-                    for (int ti = 0; ti < tuple_count; ti++)
-                    {
-                        zfree((void *)type_strs[ti]);
-                    }
-                    zfree(type_strs);
-                    char *clean_sig = sanitize_mangled_name(sig);
-                    char *tuple_name = xmalloc(strlen(clean_sig) + 8);
-                    sprintf(tuple_name, "Tuple__%s", clean_sig); /* safe */
-                    zfree(clean_sig);
-
-                    payload = type_new(TYPE_STRUCT);
-                    payload->name = tuple_name;
+                    payload = type_new_tuple(tuple_types, tuple_count);
+                    register_tuple(ctx, payload);
                 }
                 else
                 {
@@ -182,7 +142,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             // Register Constructor Function Signature
             if (payload && !gp) // Only for non-generic enums for now
             {
-                if (payload->kind == TYPE_STRUCT && strncmp(payload->name, "Tuple__", 7) == 0)
+                if (payload->kind == TYPE_TUPLE)
                 {
                     Type *ret_t = type_new(TYPE_ENUM);
                     ret_t->name = xstrdup(ename);

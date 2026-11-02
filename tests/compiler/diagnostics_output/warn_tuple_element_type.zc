@@ -1,0 +1,11 @@
+// ARGS: check
+// `t.0` has the type of the tuple's first element: an i64, so storing it in a u8 narrows it.
+fn pair() -> (i64, bool) {
+    return (300, true);
+}
+
+fn main() {
+    let t = pair();
+    let narrow: u8 = t.0;
+    printf("%d %d\n", (int)narrow, (int)t.1);
+}
