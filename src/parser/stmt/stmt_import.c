@@ -14,349 +14,91 @@
 #include "zen/zen_facts.h"
 #include "zprep_plugin.h"
 #include "analysis/move_check.h"
+#include "utils/c_headers.h"
 
-static void try_parse_c_function_decl(ParserContext *ctx, const char *line)
-{
-    const char *p = line;
-    while (*p && isspace(*p))
-    {
-        p++;
-    }
-
-    if (*p == '#' || *p == '/' || *p == '*' || *p == '\0')
-    {
-        return;
-    }
-    if (strncmp(p, "typedef", 7) == 0 && !isalnum(p[7]) && p[7] != '_')
-    {
-        return;
-    }
-    if (strncmp(p, "static", 6) == 0 && !isalnum(p[6]) && p[6] != '_')
-    {
-        return;
-    }
-    if (strncmp(p, "struct", 6) == 0 && !isalnum(p[6]) && p[6] != '_')
-    {
-        return;
-    }
-    if (strncmp(p, "union", 5) == 0 && !isalnum(p[5]) && p[5] != '_')
-    {
-        return;
-    }
-    if (strncmp(p, "enum", 4) == 0 && !isalnum(p[4]) && p[4] != '_')
-    {
-        return;
-    }
-
-    const char *lparen = (char *)strchr(p, '(');
-    if (!lparen)
-    {
-        return;
-    }
-
-    const char *end = p + strlen(p) - 1;
-    while (end > p && isspace(*end))
-    {
-        end--;
-    }
-    if (*end != ';')
-    {
-        return;
-    }
-
-    if (strchr(p, '{'))
-    {
-        return;
-    }
-
-    const char *name_end = lparen;
-    while (name_end > p && isspace(*(name_end - 1)))
-    {
-        name_end--;
-    }
-
-    const char *name_start = name_end;
-    while (name_start > p && (isalnum(*(name_start - 1)) || *(name_start - 1) == '_'))
-    {
-        name_start--;
-    }
-
-    int name_len = (int)(name_end - name_start);
-    if (name_len <= 0)
-    {
-        return;
-    }
-
-    if ((name_len == 6 && strncmp(name_start, "return", 6) == 0) ||
-        (name_len == 2 && strncmp(name_start, "if", 2) == 0) ||
-        (name_len == 3 && strncmp(name_start, "for", 3) == 0) ||
-        (name_len == 5 && strncmp(name_start, "while", 5) == 0))
-    {
-        return;
-    }
-
-    if (name_start == p)
-    {
-        return;
-    }
-
-    char *name = xmalloc((size_t)(name_len + 1));
-    strncpy(name, name_start, (size_t)(name_len));
-    name[name_len] = '\0';
-
-    register_extern_symbol(ctx, name);
-    zfree(name);
-}
-
-static void try_parse_c_struct_decl(ParserContext *ctx, const char *line)
-{
-    const char *p = line;
-    while (*p && isspace(*p))
-    {
-        p++;
-    }
-
-    if (*p == '#' || *p == '/' || *p == '*' || *p == '\0')
-    {
-        return;
-    }
-
-    int is_typedef = 0;
-    int is_union = 0;
-
-    if (strncmp(p, "typedef", 7) == 0 && !isalnum(p[7]) && p[7] != '_')
-    {
-        is_typedef = 1;
-        p += 7;
-        while (*p && isspace(*p))
-        {
-            p++;
-        }
-    }
-
-    if (strncmp(p, "struct", 6) == 0 && !isalnum(p[6]) && p[6] != '_')
-    {
-        p += 6;
-    }
-    else if (strncmp(p, "union", 5) == 0 && !isalnum(p[5]) && p[5] != '_')
-    {
-        p += 5;
-        is_union = 1;
-    }
-    else if (is_typedef)
-    {
-        return;
-    }
-    else
-    {
-        if (*p == '}')
-        {
-            p++;
-            while (*p && isspace(*p))
-            {
-                p++;
-            }
-            const char *name_start = p;
-            while (*p && (isalnum(*p) || *p == '_'))
-            {
-                p++;
-            }
-            int name_len = (int)(p - name_start);
-            while (*p && isspace(*p))
-            {
-                p++;
-            }
-            if (name_len > 0 && *p == ';')
-            {
-                char *name = xmalloc((size_t)(name_len + 1));
-                strncpy(name, name_start, (size_t)(name_len));
-                name[name_len] = '\0';
-                Type *c_type = type_new(TYPE_STRUCT);
-                c_type->name = xstrdup(name);
-                register_type_alias(ctx, name, c_type, 1, NULL, TOKEN_UNKNOWN, 0);
-                register_extern_symbol(ctx, name);
-                zfree(name);
-            }
-        }
-        return;
-    }
-
-    while (*p && isspace(*p))
-    {
-        p++;
-    }
-
-    const char *tag_start = p;
-    while (*p && (isalnum(*p) || *p == '_'))
-    {
-        p++;
-    }
-    int tag_len = (int)(p - tag_start);
-
-    if (tag_len <= 0)
-    {
-        return;
-    }
-
-    char *tag_name = xmalloc((size_t)((size_t)(tag_len) + 1));
-    strncpy(tag_name, tag_start, (size_t)(tag_len));
-    tag_name[tag_len] = '\0';
-
-    while (*p && isspace(*p))
-    {
-        p++;
-    }
-
-    if (*p == '{' || *p == ';')
-    {
-        // `struct tag` (or `union tag`) in C.
-        Type *c_type = type_new(TYPE_STRUCT);
-        c_type->name = xstrdup(tag_name);
-        c_type->is_explicit_struct = 1;
-        c_type->is_union = is_union;
-        register_type_alias(ctx, tag_name, c_type, 1, NULL, TOKEN_UNKNOWN, 0);
-        register_extern_symbol(ctx, tag_name);
-    }
-
-    zfree(tag_name);
-}
-
+// Registers what a C header included with `include "x.h"` declares, so the program can use
+// it: its functions and variables, its struct and union tags (`struct tag` in C), the names
+// its typedefs give a struct or union, its constants, and the headers it includes with "...".
 static void scan_c_header_contents(ParserContext *ctx, const char *path, int depth)
 {
-    if (depth > 16)
-    {
-        return;
-    }
-
-    if (is_file_imported(ctx, path))
+    if (depth > C_HEADERS_MAX_INCLUDE_DEPTH || is_file_imported(ctx, path))
     {
         return;
     }
     mark_file_imported(ctx, path);
 
-    char *src = load_file(path, ctx->current_filename, ctx->config);
-    if (!src)
+    char *resolved = z_resolve_path(path, ctx->current_filename, ctx->config);
+    CHeaderFile *header = resolved ? c_headers_get(resolved) : NULL;
+    if (!header || !header->text)
     {
         return;
     }
 
+    for (int i = 0; i < header->symbol_count; i++)
+    {
+        const CHeaderEntry *entry = &header->symbols[i];
+        if (entry->kind == C_SYMBOL_FUNCTION || entry->kind == C_SYMBOL_VARIABLE)
+        {
+            register_extern_symbol(ctx, entry->name);
+        }
+        else if (entry->kind == C_SYMBOL_CONSTANT)
+        {
+            // The `#define` line, with its continuations.
+            int from = header->line_offsets[entry->symbol.start_line];
+            int to = entry->symbol.end_line + 1 < header->line_count
+                         ? header->line_offsets[entry->symbol.end_line + 1]
+                         : (int)strlen(header->text);
+            char *line = xmalloc((size_t)(to - from + 1));
+            memcpy(line, header->text + from, (size_t)(to - from));
+            line[to - from] = 0;
+            try_parse_macro_const(ctx, line);
+        }
+    }
+
+    // The names its typedefs give a struct or union, then the tags of those that have none of
+    // the same name (`typedef struct Point {...} Point;` is used as `Point`). A tag is written
+    // `struct tag` (or `union tag`) in C; a typedef name, alone.
+    for (int pass = 0; pass < 2; pass++)
+    {
+        for (int i = 0; i < header->symbol_count; i++)
+        {
+            const CHeaderEntry *entry = &header->symbols[i];
+            int is_tag = entry->tag == C_TAG_STRUCT || entry->tag == C_TAG_UNION;
+            if (entry->kind != C_SYMBOL_STRUCT || is_tag != pass ||
+                (is_tag && find_type_alias_node(ctx, entry->name)))
+            {
+                continue;
+            }
+            Type *c_type = type_new(TYPE_STRUCT);
+            c_type->name = xstrdup(entry->name);
+            c_type->is_explicit_struct = is_tag;
+            c_type->is_union = entry->tag == C_TAG_UNION;
+            register_type_alias(ctx, entry->name, c_type, 1, NULL, TOKEN_UNKNOWN, 0);
+            register_extern_symbol(ctx, entry->name);
+        }
+    }
+
+    // Headers included with "..." are looked up next to this one, as the C preprocessor does.
     char header_dir[MAX_PATH_LEN];
-    header_dir[0] = 0;
-    const char *last_slash = z_path_last_sep(path);
-    if (last_slash)
+    c_headers_directory_of(path, header_dir, sizeof(header_dir));
+    for (int i = 0; i < header->include_count; i++)
     {
-        int dir_len = (int)(last_slash - path);
-        if (dir_len >= (int)sizeof(header_dir))
+        if (header->includes[i].is_system)
         {
-            dir_len = (int)sizeof(header_dir) - 1;
+            continue;
         }
-        strncpy(header_dir, path, (size_t)(dir_len));
-        header_dir[dir_len] = 0;
+        char nested_path[MAX_PATH_LEN * 2];
+        if (header_dir[0])
+        {
+            snprintf(nested_path, sizeof(nested_path), "%s/%s", header_dir,
+                     header->includes[i].name);
+        }
+        else
+        {
+            snprintf(nested_path, sizeof(nested_path), "%s", header->includes[i].name);
+        }
+        scan_c_header_contents(ctx, nested_path, depth + 1);
     }
-
-    char *ptr = src;
-    while (*ptr)
-    {
-        char *line_start = ptr;
-        char *line_end = ptr;
-        while (*line_end)
-        {
-            if (*line_end == '\n')
-            {
-                if (line_end > line_start && *(line_end - 1) == '\\')
-                {
-                    line_end++;
-                    continue;
-                }
-                break;
-            }
-            line_end++;
-        }
-
-        ptrdiff_t len = line_end - line_start;
-        if (len > 0)
-        {
-            char stack_buf[4096];
-            char *line_buf = stack_buf;
-            int heap_alloced = 0;
-            if (len >= (int)sizeof(stack_buf))
-            {
-                line_buf = xmalloc((size_t)(len + 1));
-                heap_alloced = 1;
-            }
-            memcpy(line_buf, line_start, (size_t)(len));
-            line_buf[len] = 0;
-
-            char *p = line_buf;
-            while (*p && isspace(*p))
-            {
-                p++;
-            }
-            if (*p == '#')
-            {
-                try_parse_macro_const(ctx, line_buf);
-
-                const char *inc = p + 1;
-                while (*inc && isspace(*inc))
-                {
-                    inc++;
-                }
-                if (strncmp(inc, "include", 7) == 0 && !isalnum(inc[7]) && inc[7] != '_')
-                {
-                    inc += 7;
-                    while (*inc && isspace(*inc))
-                    {
-                        inc++;
-                    }
-                    if (*inc == '"')
-                    {
-                        inc++;
-                        const char *end_quote = (char *)strchr(inc, '"');
-                        if (end_quote && end_quote > inc)
-                        {
-                            int inc_len = (int)(end_quote - inc);
-                            if (inc_len > 255)
-                            {
-                                inc_len = 255;
-                            }
-                            char inc_name[MAX_VAR_NAME_LEN];
-                            memcpy(inc_name, inc, (size_t)(inc_len));
-                            inc_name[inc_len] = '\0';
-
-                            char nested_path[MAX_PATH_LEN * 2];
-                            if (header_dir[0])
-                            {
-                                snprintf(nested_path, sizeof(nested_path), "%s/%s", header_dir,
-                                         inc_name);
-                            }
-                            else
-                            {
-                                snprintf(nested_path, sizeof(nested_path), "%s", inc_name);
-                            }
-
-                            scan_c_header_contents(ctx, nested_path, depth + 1);
-                        }
-                    }
-                }
-            }
-            else
-            {
-                try_parse_c_function_decl(ctx, line_buf);
-                try_parse_c_struct_decl(ctx, line_buf);
-            }
-            if (heap_alloced)
-            {
-                zfree(line_buf);
-            }
-        }
-
-        ptr = line_end;
-        if (*ptr == '\n')
-        {
-            ptr++;
-        }
-    }
-    zfree(src);
 }
 
 ASTNode *parse_include(ParserContext *ctx, Lexer *l)

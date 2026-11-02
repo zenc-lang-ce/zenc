@@ -56,12 +56,22 @@ typedef enum
     C_SYMBOL_TYPE = 25
 } CSymbolKind;
 
+/// The keyword a tag is written with in C (`struct tag`), or none for any other name.
+typedef enum
+{
+    C_TAG_NONE = 0,
+    C_TAG_STRUCT,
+    C_TAG_UNION,
+    C_TAG_ENUM
+} CTagKind;
+
 typedef struct
 {
     CHeaderSymbol symbol;
     char *name;
     int is_forward; ///< `struct X;` without a body.
     int kind;       ///< LSP CompletionItemKind (see CSymbolKind).
+    CTagKind tag;   ///< For a struct, union or enum tag: its keyword.
 } CHeaderEntry;
 
 typedef struct

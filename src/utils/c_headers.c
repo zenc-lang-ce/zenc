@@ -311,8 +311,9 @@ static int line_of(const CHeaderFile *header, int offset)
     return low;
 }
 
-static void add_header_symbol(CHeaderFile *header, const char *name, int name_length, int offset,
-                              int start_line, int end_line, int is_forward, int kind)
+static CHeaderEntry *add_header_symbol(CHeaderFile *header, const char *name, int name_length,
+                                       int offset, int start_line, int end_line, int is_forward,
+                                       int kind)
 {
     if (header->symbol_count == header->symbol_capacity)
     {
@@ -321,7 +322,7 @@ static void add_header_symbol(CHeaderFile *header, const char *name, int name_le
             libc_realloc(header->symbols, (size_t)capacity * sizeof(CHeaderEntry));
         if (!symbols)
         {
-            return;
+            return NULL;
         }
         header->symbols = symbols;
         header->symbol_capacity = capacity;
@@ -329,7 +330,7 @@ static void add_header_symbol(CHeaderFile *header, const char *name, int name_le
     char *copy = c_headers_copy_text(name, (size_t)name_length);
     if (!copy)
     {
-        return;
+        return NULL;
     }
     CHeaderEntry *entry = &header->symbols[header->symbol_count++];
     entry->name = copy;
@@ -341,6 +342,8 @@ static void add_header_symbol(CHeaderFile *header, const char *name, int name_le
     entry->symbol.length = name_length;
     entry->symbol.start_line = start_line;
     entry->symbol.end_line = end_line;
+    entry->tag = C_TAG_NONE;
+    return entry;
 }
 
 static void add_include(CHeaderFile *header, const char *name, int is_system)
@@ -548,11 +551,26 @@ static int is_name_token(const Statement *statement, const CToken *token)
            !token_in(statement, token, ATTRIBUTE_WORDS);
 }
 
-static void record(CHeaderFile *header, const Statement *statement, const CToken *token,
-                   int start_line, int end_line, int is_forward, int kind)
+static CHeaderEntry *record(CHeaderFile *header, const Statement *statement, const CToken *token,
+                            int start_line, int end_line, int is_forward, int kind)
 {
-    add_header_symbol(header, statement->chars + token->start, token->length,
-                      statement->offsets[token->start], start_line, end_line, is_forward, kind);
+    return add_header_symbol(header, statement->chars + token->start, token->length,
+                             statement->offsets[token->start], start_line, end_line, is_forward,
+                             kind);
+}
+
+// The tag keyword a declaration starts with (`struct`, `union` or `enum` at `token`).
+static CTagKind tag_kind(const Statement *statement, const CToken *token)
+{
+    if (token_is(statement, token, "struct"))
+    {
+        return C_TAG_STRUCT;
+    }
+    if (token_is(statement, token, "union"))
+    {
+        return C_TAG_UNION;
+    }
+    return token_is(statement, token, "enum") ? C_TAG_ENUM : C_TAG_NONE;
 }
 
 // First token of `kind` at the statement's top level (outside braces and parentheses).
@@ -620,8 +638,12 @@ static void process_typedef(CHeaderFile *header, const Statement *statement, con
             (is_enum || token_is(statement, &tokens[1], "struct") ||
              token_is(statement, &tokens[1], "union")))
         {
-            record(header, statement, &tokens[body - 1], start_line, end_line, 0,
-                   is_enum ? C_SYMBOL_ENUM : C_SYMBOL_STRUCT);
+            CHeaderEntry *tag = record(header, statement, &tokens[body - 1], start_line, end_line,
+                                       0, is_enum ? C_SYMBOL_ENUM : C_SYMBOL_STRUCT);
+            if (tag)
+            {
+                tag->tag = tag_kind(statement, &tokens[1]);
+            }
         }
         if (is_enum)
         {
@@ -823,9 +845,13 @@ static void process_statement(CHeaderFile *header, const Statement *statement)
             // struct Tag { ... };   enum { A, B };   struct Tag;
             if (count >= 2 && declaration[1].kind == 'w')
             {
-                record(header, statement, &declaration[1], start_line, end_line, body < 0,
-                       token_is(statement, &declaration[0], "enum") ? C_SYMBOL_ENUM
-                                                                    : C_SYMBOL_STRUCT);
+                CHeaderEntry *tag = record(
+                    header, statement, &declaration[1], start_line, end_line, body < 0,
+                    token_is(statement, &declaration[0], "enum") ? C_SYMBOL_ENUM : C_SYMBOL_STRUCT);
+                if (tag)
+                {
+                    tag->tag = tag_kind(statement, &declaration[0]);
+                }
             }
             if (body >= 0 && token_is(statement, &declaration[0], "enum"))
             {
