@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Unit tests of src/ast/ast.c.
 #include "ast/ast.h"
+#include "arena.h"
 #include "unit_test.h"
 
 UTEST(ast_children, if_gives_condition_then_else_in_order)
@@ -55,4 +56,33 @@ UTEST(ast_children, no_kind_has_more_than_the_maximum)
         ASTChildren c = ast_children(ast_create((NodeType)kind));
         ASSERT_LE(c.count, AST_MAX_CHILDREN);
     }
+}
+
+// A tuple of two elements: an int and a pointer to a struct.
+static Type *int_and_point_pointer(TypeKind first)
+{
+    Type *point = type_new(TYPE_STRUCT);
+    point->name = "Point";
+    Type **elements = xmalloc(sizeof(Type *) * 2);
+    elements[0] = type_new(first);
+    elements[1] = type_new_ptr(point);
+    return type_new_tuple(elements, 2);
+}
+
+UTEST(type_tuple, is_named_after_its_elements_in_c)
+{
+    Type *tuple = int_and_point_pointer(TYPE_I32);
+    ASSERT_STREQ("Tuple__int32_t__PointPtr", type_to_c_string(tuple, 0));
+    ASSERT_STREQ("Tuple__int32_t__PointPtr", type_to_string(tuple));
+}
+
+UTEST(type_tuple, equals_a_tuple_of_the_same_elements)
+{
+    ASSERT_TRUE(type_eq(int_and_point_pointer(TYPE_I32), int_and_point_pointer(TYPE_I32)));
+}
+
+UTEST(type_tuple, differs_from_one_whose_element_is_another_integer)
+{
+    // type_eq lets an int stand for a u8, but the two tuples are different C structs.
+    ASSERT_FALSE(type_eq(int_and_point_pointer(TYPE_I32), int_and_point_pointer(TYPE_U8)));
 }
