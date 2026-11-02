@@ -76,11 +76,15 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
         char *patterns_buf = xmalloc(pat_cap);
         patterns_buf[0] = 0;
         int pattern_count = 0;
+        MatchPattern *patterns = NULL;
+        MatchPattern *last_pattern = NULL;
 
         while (1)
         {
             Token p = lexer_next(l);
             char *p_str = token_strdup(p);
+            char *written_scope = NULL;
+            char *written_name = token_strdup(p);
 
             while (1)
             {
@@ -90,6 +94,18 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 {
                     lexer_next(l); // eat ::
                     Token suffix = lexer_next(l);
+                    if (written_scope)
+                    {
+                        size_t scope_size = strlen(written_scope) + strlen(written_name) + 3;
+                        char *joined = xmalloc(scope_size);
+                        snprintf(joined, scope_size, "%s::%s", written_scope, written_name);
+                        written_scope = joined;
+                    }
+                    else
+                    {
+                        written_scope = written_name;
+                    }
+                    written_name = token_strdup(suffix);
                     char *tmp = xmalloc(strlen(p_str) + suffix.len + 3);
                     sprintf(tmp, "%s__%.*s", p_str, (int)(suffix.len), suffix.start); /* safe */
                     zfree(p_str);
@@ -122,21 +138,56 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 }
             }
 
+            char *range_start = NULL;
+            char *range_end = NULL;
+            int range_is_inclusive = 0;
             if (lexer_peek(l).kind == TOK_DOTDOT || lexer_peek(l).kind == TOK_DOTDOT_EQ ||
                 lexer_peek(l).kind == TOK_DOTDOT_LT)
             {
-                int is_inclusive = (lexer_peek(l).kind == TOK_DOTDOT_EQ);
+                range_is_inclusive = (lexer_peek(l).kind == TOK_DOTDOT_EQ);
                 lexer_next(l); // eat operator
                 Token end_tok = lexer_next(l);
-                char *end_str = token_strdup(end_tok);
+                range_start = p_str;
+                range_end = token_strdup(end_tok);
 
-                char *range_str = xmalloc(strlen(p_str) + strlen(end_str) + 5);
-                sprintf(range_str, "%s%s%s", p_str, is_inclusive ? "..=" : "..",
-                        end_str); /* safe */
-                zfree(p_str);
-                zfree(end_str);
+                char *range_str = xmalloc(strlen(range_start) + strlen(range_end) + 5);
+                sprintf(range_str, "%s%s%s", range_start, range_is_inclusive ? "..=" : "..",
+                        range_end); /* safe */
                 p_str = range_str;
             }
+
+            MatchPattern *alternative = xcalloc(1, sizeof(MatchPattern));
+            if (range_end)
+            {
+                alternative->kind = PATTERN_RANGE;
+                alternative->range_start = range_start;
+                alternative->range_end = range_end;
+                alternative->is_inclusive = range_is_inclusive;
+            }
+            else if (p.kind == TOK_IDENT && !written_scope && strcmp(written_name, "_") == 0)
+            {
+                alternative->kind = PATTERN_WILDCARD;
+            }
+            else if (p.kind == TOK_IDENT)
+            {
+                alternative->kind = PATTERN_NAME;
+                alternative->name.scope = written_scope;
+                alternative->name.name = written_name;
+            }
+            else
+            {
+                alternative->kind = PATTERN_LITERAL;
+                alternative->literal = token_strdup(p);
+            }
+            if (last_pattern)
+            {
+                last_pattern->next = alternative;
+            }
+            else
+            {
+                patterns = alternative;
+            }
+            last_pattern = alternative;
 
             size_t needed = strlen(patterns_buf) + strlen(p_str) + 4;
             if (needed >= pat_cap)
@@ -555,6 +606,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
         ASTNode *c = ast_create(NODE_MATCH_CASE);
         c->token = pk;
         c->match_case.pattern = pattern;
+        c->match_case.patterns = patterns;
         c->match_case.binding_names = bindings;
         c->match_case.binding_count = binding_count;
         c->match_case.binding_refs = binding_refs;

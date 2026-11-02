@@ -208,6 +208,37 @@ typedef struct Attribute
     struct Attribute *next;
 } Attribute;
 
+/**
+ * @brief A name as the source writes it, optionally qualified: `Variant`,
+ *        `Enum::Variant`, `Type::method`. Codegen builds its C name.
+ */
+typedef struct QualifiedName
+{
+    char *scope; ///< `Enum` or `Type`; NULL if the name is not qualified.
+    char *name;  ///< `Variant` or `method`.
+} QualifiedName;
+
+/** The kind of one alternative of a match case. */
+typedef enum
+{
+    PATTERN_WILDCARD, ///< `_`.
+    PATTERN_NAME,     ///< A name: a variant (`Variant`, `Enum::Variant`) or a constant (`MAX`).
+    PATTERN_LITERAL,  ///< A number, char or string literal, as written.
+    PATTERN_RANGE     ///< `start..end` or `start..=end`.
+} PatternKind;
+
+/** One alternative of a match case: `A || B` is a list of two. */
+typedef struct MatchPattern
+{
+    PatternKind kind;
+    QualifiedName name; ///< PATTERN_NAME: the name, as written.
+    char *literal;      ///< PATTERN_LITERAL: the literal, as written.
+    char *range_start;  ///< PATTERN_RANGE: the start, as written.
+    char *range_end;    ///< PATTERN_RANGE: the end, as written.
+    int is_inclusive;   ///< PATTERN_RANGE: `..=` rather than `..`.
+    struct MatchPattern *next;
+} MatchPattern;
+
 struct ASTNode
 {
     NodeType kind;
@@ -375,10 +406,11 @@ struct ASTNode
 
         struct
         {
-            char *pattern;
-            char **binding_names; // Multiple bindings
-            int binding_count;    // Count
-            int *binding_refs;    // Ref flags per binding
+            char *pattern;          // Being replaced by `patterns`.
+            MatchPattern *patterns; ///< The alternatives of the case, as written.
+            char **binding_names;   // Multiple bindings
+            int binding_count;      // Count
+            int *binding_refs;      // Ref flags per binding
             int is_destructuring;
             ASTNode *guard;
             ASTNode *body;
