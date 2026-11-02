@@ -1,0 +1,33 @@
+// language/features/match: a case names its variant as written, so a variant with an
+// underscore binds its payload, and a qualified Option::Some or Option::None is told
+// apart from the other.
+
+import "std/option.zc"
+
+enum Reply { Not_Found(int), Served(int) }
+
+fn reply_code(r: Reply) -> int {
+    match r {
+        Reply::Not_Found(n) => { return n; },
+        Reply::Served(n) => { return n + 1000; },
+    }
+    return 0;
+}
+
+fn or_minus_one(o: Option<int>) -> int {
+    match o {
+        Option::Some(v) => { return v; },
+        Option::None => { return -1; },
+    }
+    return 0;
+}
+
+test "a variant with an underscore binds its payload" {
+    assert(reply_code(Reply::Not_Found(404)) == 404, "Not_Found");
+    assert(reply_code(Reply::Served(1)) == 1001, "Served");
+}
+
+test "a qualified Some and None are told apart" {
+    assert(or_minus_one(Option<int>::Some(5)) == 5, "Some");
+    assert(or_minus_one(Option<int>::None()) == -1, "None");
+}
