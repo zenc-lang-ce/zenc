@@ -105,10 +105,7 @@ void handle_expr_array_literal(ParserContext *ctx, ASTNode *node)
 
 void handle_expr_tuple_literal(ParserContext *ctx, ASTNode *node)
 {
-    char *type = node->resolved_type ? node->resolved_type
-                 : node->type_info   ? type_to_string(node->type_info)
-                                     : "unknown";
-    EMIT(ctx, "(%s){", type);
+    EMIT(ctx, "(%s){", c_type_spelling(ctx, node->type_info));
     ASTNode *tup_elem = node->tuple_literal.elements;
     int first_tup = 1;
     while (tup_elem)

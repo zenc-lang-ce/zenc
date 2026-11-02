@@ -163,6 +163,14 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
     return lambda;
 }
 
+// The type of a tuple, as the type parser gives it: the struct the compiler makes for it.
+static Type *tuple_type(const char *name)
+{
+    Type *t = type_new(TYPE_STRUCT);
+    t->name = xstrdup(name);
+    return t;
+}
+
 ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, const char *type_name,
                                 ASTNode *first_elem)
 {
@@ -220,16 +228,16 @@ ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, const char *type_n
     n->tuple_literal.elements = head;
     n->tuple_literal.count = count;
 
+    // While the language server indexes the workspace, the literal is left without a type.
     extern int g_is_indexing;
     if (g_is_indexing)
     {
-        n->resolved_type = xstrdup("Tuple__Indexing");
         return n;
     }
 
     if (type_name)
     {
-        n->resolved_type = xstrdup(type_name);
+        n->type_info = tuple_type(type_name);
     }
     else
     {
@@ -270,7 +278,7 @@ ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, const char *type_n
         char *clean_sig = sanitize_mangled_name(sig);
         snprintf(tuple_name, sizeof(tuple_name), "Tuple__%s", clean_sig);
         zfree(clean_sig);
-        n->resolved_type = xstrdup(tuple_name);
+        n->type_info = tuple_type(tuple_name);
     }
     return n;
 }
