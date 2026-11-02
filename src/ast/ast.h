@@ -444,6 +444,7 @@ struct ASTNode
             char *name;
             char *suggestion;
             struct ZenSymbol *symbol;
+            QualifiedName variant; ///< An enum variant: its enum (resolved) and its name.
         } var_ref;
 
         struct

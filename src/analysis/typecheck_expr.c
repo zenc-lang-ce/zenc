@@ -1127,7 +1127,10 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
 {
     // Check if it's an enum variant FIRST, prioritizing value over function constructor if no
     // payload
-    EnumVariantReg *enum_variant = find_enum_variant(tc->pctx, node->var_ref.name);
+    QualifiedName *variant = &node->var_ref.variant;
+    EnumVariantReg *enum_variant =
+        variant->name ? find_enum_variant_of(tc->pctx, variant->scope, variant->name)
+                      : find_enum_variant(tc->pctx, node->var_ref.name);
     if (enum_variant)
     {
         FuncSig *sig = find_func(tc->pctx, node->var_ref.name);
