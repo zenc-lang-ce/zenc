@@ -79,6 +79,11 @@ const char *field_c_type(ParserContext *ctx, ASTNode *field);
  */
 char *c_type_spelling(ParserContext *ctx, Type *t);
 /**
+ * @brief The type of a declaration (`let`, `def`) spelled in C, as written or as the parser
+ *        inferred it; NULL when the parser left it untyped and codegen has to infer it.
+ */
+char *declared_c_type(ParserContext *ctx, ASTNode *decl);
+/**
  * @brief The type of capture `index` of a lambda spelled in C; `int` when the parser found no
  *        type for it.
  */

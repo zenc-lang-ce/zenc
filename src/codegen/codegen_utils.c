@@ -68,6 +68,17 @@ char *c_type_spelling(ParserContext *ctx, Type *t)
     return type_to_c_string_with(t, ctx->config->misra_mode, link_name_of, ctx);
 }
 
+char *declared_c_type(ParserContext *ctx, ASTNode *decl)
+{
+    Type *t = decl->type_info;
+    if (t && t->kind != TYPE_UNKNOWN)
+    {
+        return c_type_spelling(ctx, t);
+    }
+    // The variables the parser makes for `for x in ...` have their type only as text.
+    return decl->var_decl.type_str;
+}
+
 char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index)
 {
     Type *t = lambda->lambda.captured_types_info[index];

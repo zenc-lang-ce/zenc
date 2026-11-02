@@ -54,9 +54,10 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             {
                 EMIT(ctx, "__attribute__((unused)) const ");
             }
-            if (node->var_decl.type_str)
+            char *declared = declared_c_type(ctx, node);
+            if (declared)
             {
-                emit_var_decl_type(ctx, node->var_decl.type_str, node->var_decl.name);
+                emit_var_decl_type(ctx, declared, node->var_decl.name);
             }
             else
             {
@@ -84,10 +85,9 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             {
                 EMIT(ctx, " = ");
                 char *tname =
-                    node->var_decl.type_str
-                        ? xstrdup(node->var_decl.type_str)
-                        : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                    : NULL);
+                    declared ? declared
+                             : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
+                                                         : NULL);
                 if (ctx->config->use_cpp && tname &&
                     (strchr(tname, '*') || is_enum_type_name(ctx, tname)))
                 {
@@ -108,10 +108,9 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             if (ctx->config->use_cpp && node->kind == NODE_VAR_DECL)
             {
                 char *tname =
-                    node->var_decl.type_str
-                        ? xstrdup(node->var_decl.type_str)
-                        : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                    : NULL);
+                    declared ? declared
+                             : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
+                                                         : NULL);
                 if (tname)
                 {
                     char *ct = tname;

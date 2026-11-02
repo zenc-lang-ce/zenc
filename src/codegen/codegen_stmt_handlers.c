@@ -548,10 +548,6 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
         {
             is_void = 1;
         }
-        else if (node->var_decl.type_str && strcmp(node->var_decl.type_str, "void") == 0)
-        {
-            is_void = 1;
-        }
         else if (!node->type_info && !node->var_decl.type_str)
         {
             char *ret_type = infer_type(ctx, node->var_decl.init_expr);
@@ -576,15 +572,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, "static ");
     }
     {
-        char *tname = NULL;
-        if (node->type_info)
-        {
-            tname = c_type_spelling(ctx, node->type_info);
-        }
-        else if (node->var_decl.type_str && strcmp(node->var_decl.type_str, "__auto_type") != 0)
-        {
-            tname = node->var_decl.type_str;
-        }
+        char *tname = declared_c_type(ctx, node);
 
         if (tname && strcmp(tname, "void*") != 0 && strcmp(tname, "unknown") != 0)
         {
@@ -772,9 +760,10 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 void handle_node_const(ParserContext *ctx, ASTNode *node)
 {
     EMIT(ctx, "__attribute__((unused)) const ");
-    if (node->var_decl.type_str)
+    char *declared = declared_c_type(ctx, node);
+    if (declared)
     {
-        EMIT(ctx, "%s %s", node->var_decl.type_str, node->var_decl.name);
+        EMIT(ctx, "%s %s", declared, node->var_decl.name);
     }
     else
     {

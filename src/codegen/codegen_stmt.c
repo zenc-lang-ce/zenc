@@ -160,10 +160,10 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             if (node->for_stmt.init->kind == NODE_VAR_DECL)
             {
                 ASTNode *v = node->for_stmt.init;
-                if (v->var_decl.type_str && strcmp(v->var_decl.type_str, "__auto_type") != 0)
+                char *declared = declared_c_type(ctx, v);
+                if (declared)
                 {
-                    EMIT(ctx, "%s %s = (%s)(", v->var_decl.type_str, v->var_decl.name,
-                         v->var_decl.type_str);
+                    EMIT(ctx, "%s %s = (%s)(", declared, v->var_decl.name, declared);
                     codegen_expression(ctx, v->var_decl.init_expr);
                     EMIT(ctx, ")");
                 }

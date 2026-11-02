@@ -33,14 +33,13 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
     }
 
     char *ns = token_strdup(n);
-    if (!type_obj)
-    {
-        type_obj = type_new(TYPE_UNKNOWN); // Ensure we have an object
-    }
-    type_obj->is_const = 1;
+    // The node keeps the type as written (a NODE_CONST is const already); its symbol, a const
+    // copy, or an unknown type until the value tells it.
+    Type *sym_type = type_obj ? type_clone(type_obj) : type_new(TYPE_UNKNOWN);
+    sym_type->is_const = 1;
 
     // Use is_def flag for manifest constants
-    add_symbol_with_token(ctx, ns, type_str ? type_str : "unknown", type_obj, n, is_export);
+    add_symbol_with_token(ctx, ns, type_str ? type_str : "unknown", sym_type, n, is_export);
     ZenSymbol *sym_entry = find_symbol_entry(ctx, ns);
     if (sym_entry)
     {
@@ -115,6 +114,7 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
     o->var_decl.name = ns;
     o->var_decl.type_str = type_str;
     o->var_decl.init_expr = i;
+    o->type_info = type_obj;
     // Store extra metadata if needed, but NODE_CONST usually suffices
 
     if (!ctx->current_scope || !ctx->current_scope->parent)
