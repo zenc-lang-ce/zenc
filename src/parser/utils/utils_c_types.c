@@ -34,7 +34,8 @@ static Type *c_arithmetic_type(const char *words)
         {
             is_unsigned = 1;
         }
-        else if (strcmp(word, "signed") == 0)
+        else if (strcmp(word, "signed") == 0 || strcmp(word, "__signed") == 0 ||
+                 strcmp(word, "__signed__") == 0)
         {
             is_signed = 1;
         }
@@ -86,7 +87,34 @@ static Type *c_arithmetic_type(const char *words)
     return type_new(is_unsigned ? TYPE_C_UINT : TYPE_C_INT);
 }
 
+// How many typedefs of typedefs are followed (`time_t` -> `__darwin_time_t` -> `long`).
+#define MAX_TYPEDEF_DEPTH 8
+
+static Type *c_type_from_text_at(ParserContext *ctx, const char *text, int depth);
+
+// The arithmetic type the C typedef `name` stands for (`time_t` is a `long`), or NULL.
+static Type *c_typedef_arithmetic_type(ParserContext *ctx, const char *name, int depth)
+{
+    const char **c_type =
+        ctx->c_typedef_types.hash_func ? zmap_get(&ctx->c_typedef_types, name) : NULL;
+    if (!c_type || depth >= MAX_TYPEDEF_DEPTH)
+    {
+        return NULL;
+    }
+    Type *named = c_type_from_text_at(ctx, *c_type, depth + 1);
+    if (named && named->kind != TYPE_STRUCT && (is_integer_type(named) || is_float_type(named)))
+    {
+        return named;
+    }
+    return NULL;
+}
+
 Type *c_type_from_text(ParserContext *ctx, const char *text)
+{
+    return c_type_from_text_at(ctx, text, 0);
+}
+
+static Type *c_type_from_text_at(ParserContext *ctx, const char *text, int depth)
 {
     if (!text)
     {
@@ -163,7 +191,8 @@ Type *c_type_from_text(ParserContext *ctx, const char *text)
     {
         // A name: the standard typedefs (`size_t`, `uint8_t`, `bool`) are primitives, and
         // `float` and `double` too; any other name is only known behind a pointer (`FILE *`),
-        // as an opaque C struct. Alone it may be an integer typedef (`time_t`): no type.
+        // as an opaque C struct, or alone when a header defines it as an arithmetic type
+        // (`time_t`).
         TypeKind kind = strchr(words, ' ') ? TYPE_UNKNOWN : find_primitive_kind(words);
         if (kind != TYPE_UNKNOWN && kind != TYPE_STRING && kind != TYPE_VOID)
         {
@@ -178,7 +207,7 @@ Type *c_type_from_text(ParserContext *ctx, const char *text)
                 base->name = xstrdup(words);
             }
         }
-        else
+        else if (strchr(words, ' ') || !(base = c_typedef_arithmetic_type(ctx, words, depth)))
         {
             return NULL;
         }
@@ -191,32 +220,37 @@ Type *c_type_from_text(ParserContext *ctx, const char *text)
     return base;
 }
 
-static void remember_c_function(ParserContext *ctx, const char *name, const char *c_type)
+// Remembers the C type of `name` in `types`, unless a header read before gave it one.
+static void remember_c_type(zmap_FileSet *types, const char *name, const char *c_type)
 {
-    if (!ctx->c_function_types.hash_func)
+    if (!types->hash_func)
     {
-        ctx->c_function_types = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
+        *types = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
     }
-    if (!zmap_get(&ctx->c_function_types, name))
+    if (!zmap_get(types, name))
     {
-        zmap_put(&ctx->c_function_types, xstrdup(name), c_type ? xstrdup(c_type) : "");
+        zmap_put(types, xstrdup(name), c_type ? xstrdup(c_type) : "");
     }
 }
 
-void register_c_header_functions(ParserContext *ctx, const CHeaderFile *header)
+void register_c_header_types(ParserContext *ctx, const CHeaderFile *header)
 {
     for (int i = 0; i < header->symbol_count; i++)
     {
         const CHeaderEntry *entry = &header->symbols[i];
         if (entry->kind == C_SYMBOL_FUNCTION && entry->c_type)
         {
-            remember_c_function(ctx, entry->name, entry->c_type);
+            remember_c_type(&ctx->c_function_types, entry->name, entry->c_type);
+        }
+        else if (entry->kind == C_SYMBOL_TYPE && entry->c_type)
+        {
+            remember_c_type(&ctx->c_typedef_types, entry->name, entry->c_type);
         }
     }
 }
 
-// Remembers the functions of the header at `path` and of every header it includes; with no
-// `ctx`, only reads them into the cache.
+// Remembers the functions and typedefs of the header at `path` and of every header it
+// includes; with no `ctx`, only reads them into the cache.
 static void read_header_tree(ParserContext *ctx, const char *path, const CSearchDirList *dirs,
                              StringList *visited, int depth)
 {
@@ -232,7 +266,12 @@ static void read_header_tree(ParserContext *ctx, const char *path, const CSearch
     }
     for (int i = 0; ctx && i < header->function_count; i++)
     {
-        remember_c_function(ctx, header->functions[i].name, header->functions[i].c_type);
+        remember_c_type(&ctx->c_function_types, header->functions[i].name,
+                        header->functions[i].c_type);
+    }
+    for (int i = 0; ctx && i < header->type_count; i++)
+    {
+        remember_c_type(&ctx->c_typedef_types, header->types[i].name, header->types[i].c_type);
     }
     for (int i = 0; i < header->include_count; i++)
     {

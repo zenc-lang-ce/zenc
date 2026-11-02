@@ -623,6 +623,9 @@ static int function_pointer_name(const Statement *statement, const CToken *token
     return (i < count && tokens[i].kind == 'w') ? i : -1;
 }
 
+static char *declaration_type_text(const Statement *statement, const CToken *tokens, int from,
+                                   int to);
+
 static void process_typedef(CHeaderFile *header, const Statement *statement, const CToken *tokens,
                             int count, int start_line, int end_line)
 {
@@ -678,6 +681,7 @@ static void process_typedef(CHeaderFile *header, const Statement *statement, con
 
     // typedef int Name(int);   typedef unsigned int Name;   typedef int Name[4];
     int last_name = -1;
+    int is_plain = 1; // Neither a function type nor an array.
     for (int i = 1; i < count; i++)
     {
         if (tokens[i].paren_depth > 0)
@@ -686,6 +690,7 @@ static void process_typedef(CHeaderFile *header, const Statement *statement, con
         }
         if (tokens[i].kind == '(' || tokens[i].kind == '[' || tokens[i].kind == ';')
         {
+            is_plain = tokens[i].kind == ';';
             break;
         }
         if (is_name_token(statement, &tokens[i]))
@@ -695,7 +700,12 @@ static void process_typedef(CHeaderFile *header, const Statement *statement, con
     }
     if (last_name >= 0)
     {
-        record(header, statement, &tokens[last_name], start_line, end_line, 0, C_SYMBOL_TYPE);
+        CHeaderEntry *entry =
+            record(header, statement, &tokens[last_name], start_line, end_line, 0, C_SYMBOL_TYPE);
+        if (entry && is_plain)
+        {
+            entry->c_type = declaration_type_text(statement, tokens, 1, last_name);
+        }
     }
 }
 
@@ -708,7 +718,34 @@ static const char *const NON_TYPE_WORDS[] = {
     "__nullable",    "__nonnull",     NULL};
 
 // Reserved-looking words that are C types, not the macros system headers use for attributes.
-static const char *const RESERVED_TYPE_WORDS[] = {"_Bool", "_Complex", "__int128", NULL};
+static const char *const RESERVED_TYPE_WORDS[] = {"_Bool",    "_Complex",   "__int128",
+                                                  "__signed", "__signed__", NULL};
+
+// Words that go with a type without naming one.
+static const char *const TYPE_QUALIFIER_WORDS[] = {"const", "volatile", "struct",
+                                                   "union", "enum",     NULL};
+
+// A reserved name at tokens[at] is the declaration's type, not a macro (`__darwin_time_t` in
+// `typedef __darwin_time_t time_t`, `struct __sFILE *`), when no type came before it and only
+// pointers and qualifiers follow it up to tokens[to].
+static int is_reserved_type_name(const Statement *statement, const CToken *tokens, int at, int to,
+                                 int has_type)
+{
+    if (has_type)
+    {
+        return 0;
+    }
+    for (int i = at + 1; i < to; i++)
+    {
+        if (tokens[i].kind != '*' &&
+            !(tokens[i].kind == 'w' && (token_in(statement, &tokens[i], TYPE_QUALIFIER_WORDS) ||
+                                        token_in(statement, &tokens[i], NON_TYPE_WORDS))))
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
 
 // The type a declaration gives its name, written from tokens[from..to) as C spells it
 // (`const char *`), without storage words, attributes (`__attribute__((...))`, a macro called
@@ -720,6 +757,7 @@ static char *declaration_type_text(const Statement *statement, const CToken *tok
     char text[512];
     size_t used = 0;
     char previous = 0;
+    int has_type = 0; // A word other than a qualifier was written.
     for (int i = from; i < to; i++)
     {
         const CToken *token = &tokens[i];
@@ -729,6 +767,7 @@ static char *declaration_type_text(const Statement *statement, const CToken *tok
         {
             used = 0;
             previous = 0;
+            has_type = 0;
             continue;
         }
         if (token->brace_depth > 0)
@@ -749,7 +788,8 @@ static char *declaration_type_text(const Statement *statement, const CToken *tok
         if (token->kind == 'w' &&
             (token_in(statement, token, NON_TYPE_WORDS) ||
              (c_headers_is_reserved_identifier(statement->chars + token->start) &&
-              !token_in(statement, token, RESERVED_TYPE_WORDS))))
+              !token_in(statement, token, RESERVED_TYPE_WORDS) &&
+              !is_reserved_type_name(statement, tokens, i, to, has_type))))
         {
             continue;
         }
@@ -769,6 +809,8 @@ static char *declaration_type_text(const Statement *statement, const CToken *tok
         memcpy(text + used, statement->chars + token->start, (size_t)token->length);
         used += (size_t)token->length;
         previous = token->kind;
+        has_type =
+            has_type || (token->kind == 'w' && !token_in(statement, token, TYPE_QUALIFIER_WORDS));
     }
     return used ? c_headers_copy_text(text, used) : NULL;
 }

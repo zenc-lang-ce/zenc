@@ -426,6 +426,20 @@ else
     check "include <x.h> gives the type of its functions" 0
 fi
 
+# A typedef of an arithmetic type, through another typedef, is that type.
+printf 'typedef long __zc_probe_base_t;\ntypedef __zc_probe_base_t zc_probe_t;\nzc_probe_t zc_probe_now(void);\n' \
+    > "$workdir/c_include/zc_probe_time.h"
+printf 'include <zc_probe_time.h>\nfn main() {\n    let now = zc_probe_now();\n}\n' \
+    > "$workdir/calls_typedef.zc"
+XDG_CACHE_HOME="$workdir/cache" "$ZC" transpile "$workdir/calls_typedef.zc" \
+    -I "$workdir/c_include" -o "$workdir/calls_typedef.c" >/dev/null 2>&1
+if grep -q "long now = zc_probe_now();" "$workdir/calls_typedef.c" 2>/dev/null &&
+    grep -q "^type zc_probe_t __zc_probe_base_t$" "$cache_file" 2>/dev/null; then
+    check "a C typedef of an arithmetic type gives that type" 1
+else
+    check "a C typedef of an arithmetic type gives that type" 0
+fi
+
 out=$("$ZC" cache 2>&1)
 if [ $? -ne 0 ] && echo "$out" | grep -q "usage: zc cache c-headers"; then
     check "zc cache without what to cache prints usage" 1

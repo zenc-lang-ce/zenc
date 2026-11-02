@@ -426,8 +426,9 @@ struct ParserContext
     // External C interop: suppress undefined warnings for external symbols
     int has_external_includes;
     zmap_FileSet c_function_types; ///< C function name -> its return type as C text ("": none).
+    zmap_FileSet c_typedef_types;  ///< C typedef name -> the type it names as C text.
     StringList c_system_includes;  ///< The headers of `include <x.h>`, as written.
-    int c_system_headers_read;     ///< Those and the preamble's are in c_function_types.
+    int c_system_headers_read;     ///< Those and the preamble's are in the maps above.
     int is_comptime;               // Flag for comptime execution context
     char **extern_symbols;         ///< Explicitly declared extern symbols.
     int extern_symbol_count;       ///< Count of external symbols.
@@ -905,8 +906,9 @@ int should_suppress_undef_warning(ParserContext *ctx, const char *name);
 struct CHeaderFile;
 /// The Type of a C type written as C text (`const char *`, `size_t`, `struct tm *`), or NULL.
 Type *c_type_from_text(ParserContext *ctx, const char *text);
-/// Remembers the return types of the functions a C header declares.
-void register_c_header_functions(ParserContext *ctx, const struct CHeaderFile *header);
+/// Remembers the return types of the functions a C header declares, and the types its
+/// typedefs name.
+void register_c_header_types(ParserContext *ctx, const struct CHeaderFile *header);
 /// The return type of a C function the program calls undeclared, from the headers it includes
 /// and those of the hosted preamble; NULL when it is not known.
 Type *c_function_return_type(ParserContext *ctx, const char *name);

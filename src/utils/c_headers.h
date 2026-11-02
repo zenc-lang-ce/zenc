@@ -72,7 +72,8 @@ typedef struct
     int is_forward; ///< `struct X;` without a body.
     int kind;       ///< LSP CompletionItemKind (see CSymbolKind).
     CTagKind tag;   ///< For a struct, union or enum tag: its keyword.
-    char *c_type;   ///< For a function, its return type; for a variable, its type (C text).
+    char *c_type;   ///< For a function, its return type; for a variable, its type; for a
+                    ///< typedef of neither a function nor an array, the type it names (C text).
 } CHeaderEntry;
 
 typedef struct

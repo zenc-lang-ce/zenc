@@ -8,7 +8,7 @@
 
 // The first line of a cache file. Change it when what the reader gives changes in a way the
 // key does not show (the key already changes with the zc binary).
-#define CACHE_FORMAT "zc c-header cache 1"
+#define CACHE_FORMAT "zc c-header cache 2"
 
 static CachedHeader *g_headers = NULL;
 static CachedHeader *g_last_header = NULL;
@@ -57,8 +57,23 @@ static CachedHeader *add_header(const char *path)
     return header;
 }
 
-// `header <modified> <size> <functions> <includes> <path>`, followed by its `function <name>
-// <type>` and `include <path>` lines.
+// Adds `name` and `c_type`, as one `function` or `type` line gives them (`<name> <type>`), to
+// `list`, when there is room.
+static void add_declaration(CachedDeclaration *list, int *count, int capacity, char *text)
+{
+    char *space = strchr(text, ' ');
+    if (!space || *count >= capacity)
+    {
+        return;
+    }
+    *space = '\0';
+    list[*count].name = xstrdup(text);
+    list[*count].c_type = xstrdup(space + 1);
+    (*count)++;
+}
+
+// `header <modified> <size> <functions> <types> <includes> <path>`, followed by its `function
+// <name> <type>`, `type <name> <type>` and `include <path>` lines.
 static void load_cache_file(void)
 {
     char *text = c_headers_read_file(g_cache_file);
@@ -84,6 +99,7 @@ static void load_cache_file(void)
         long long modified = 0;
         long long size = 0;
         int functions = 0;
+        int types = 0;
         int includes = 0;
         int path_offset = 0;
         if (strncmp(line, "dir ", 4) == 0)
@@ -91,30 +107,28 @@ static void load_cache_file(void)
             string_list_add(&g_compiler_dirs, line + 4);
             g_has_compiler_dirs = 1;
         }
-        else if (sscanf(line, "header %lld %lld %d %d %n", &modified, &size, &functions, &includes,
-                        &path_offset) == 4 &&
-                 path_offset > 0 && functions >= 0 && includes >= 0)
+        else if (sscanf(line, "header %lld %lld %d %d %d %n", &modified, &size, &functions, &types,
+                        &includes, &path_offset) == 5 &&
+                 path_offset > 0 && functions >= 0 && types >= 0 && includes >= 0)
         {
             current = add_header(line + path_offset);
             current->modified = modified;
             current->size = size;
-            current->functions = xcalloc((size_t)functions + 1, sizeof(CachedFunction));
+            current->functions = xcalloc((size_t)functions + 1, sizeof(CachedDeclaration));
+            current->types = xcalloc((size_t)types + 1, sizeof(CachedDeclaration));
             current->includes = xcalloc((size_t)includes + 1, sizeof(char *));
             current->function_capacity = functions;
+            current->type_capacity = types;
             current->include_capacity = includes;
         }
-        else if (current && strncmp(line, "function ", 9) == 0 &&
-                 current->function_count < current->function_capacity)
+        else if (current && strncmp(line, "function ", 9) == 0)
         {
-            char *name = line + 9;
-            char *space = strchr(name, ' ');
-            if (space)
-            {
-                *space = '\0';
-                CachedFunction *function = &current->functions[current->function_count++];
-                function->name = xstrdup(name);
-                function->c_type = xstrdup(space + 1);
-            }
+            add_declaration(current->functions, &current->function_count,
+                            current->function_capacity, line + 9);
+        }
+        else if (current && strncmp(line, "type ", 5) == 0)
+        {
+            add_declaration(current->types, &current->type_count, current->type_capacity, line + 5);
         }
         else if (current && strncmp(line, "include ", 8) == 0 &&
                  current->include_count < current->include_capacity)
@@ -198,18 +212,24 @@ static CachedHeader *scan_header(const char *path, const CSearchDirList *dirs)
     }
     header->modified = file->modified;
     header->size = file->size;
-    header->functions = xcalloc((size_t)file->symbol_count + 1, sizeof(CachedFunction));
+    header->functions = xcalloc((size_t)file->symbol_count + 1, sizeof(CachedDeclaration));
     header->function_count = 0;
     header->function_capacity = file->symbol_count;
+    header->types = xcalloc((size_t)file->symbol_count + 1, sizeof(CachedDeclaration));
+    header->type_count = 0;
+    header->type_capacity = file->symbol_count;
     for (int i = 0; i < file->symbol_count; i++)
     {
         const CHeaderEntry *entry = &file->symbols[i];
-        if (entry->kind == C_SYMBOL_FUNCTION && entry->c_type)
+        if ((entry->kind != C_SYMBOL_FUNCTION && entry->kind != C_SYMBOL_TYPE) || !entry->c_type)
         {
-            CachedFunction *function = &header->functions[header->function_count++];
-            function->name = xstrdup(entry->name);
-            function->c_type = xstrdup(entry->c_type);
+            continue;
         }
+        CachedDeclaration *declaration = entry->kind == C_SYMBOL_FUNCTION
+                                             ? &header->functions[header->function_count++]
+                                             : &header->types[header->type_count++];
+        declaration->name = xstrdup(entry->name);
+        declaration->c_type = xstrdup(entry->c_type);
     }
     header->includes = xcalloc((size_t)file->include_count + 1, sizeof(char *));
     header->include_count = 0;
@@ -280,12 +300,16 @@ int c_header_cache_save(void)
     }
     for (const CachedHeader *header = g_headers; header; header = header->next)
     {
-        fprintf(out, "header %lld %lld %d %d %s\n", header->modified, header->size,
-                header->function_count, header->include_count, header->path);
+        fprintf(out, "header %lld %lld %d %d %d %s\n", header->modified, header->size,
+                header->function_count, header->type_count, header->include_count, header->path);
         for (int i = 0; i < header->function_count; i++)
         {
             fprintf(out, "function %s %s\n", header->functions[i].name,
                     header->functions[i].c_type);
+        }
+        for (int i = 0; i < header->type_count; i++)
+        {
+            fprintf(out, "type %s %s\n", header->types[i].name, header->types[i].c_type);
         }
         for (int i = 0; i < header->include_count; i++)
         {

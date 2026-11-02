@@ -34,7 +34,7 @@ static void scan_c_header_contents(ParserContext *ctx, const char *path, int dep
         return;
     }
 
-    register_c_header_functions(ctx, header);
+    register_c_header_types(ctx, header);
     for (int i = 0; i < header->symbol_count; i++)
     {
         const CHeaderEntry *entry = &header->symbols[i];
