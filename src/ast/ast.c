@@ -1374,17 +1374,10 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
     if (node->kind == NODE_EXPR_VAR)
     {
         ZenSymbol *sym = find_symbol_entry(ctx, node->var_ref.name);
-        if (sym)
+        if (sym && sym->type_info)
         {
-            if (sym->c_type)
-            {
-                return sym->c_type;
-            }
-            if (sym->type_info)
-            {
-                return type_to_c_string_with(sym->type_info, ctx->config->misra_mode, link_name_of,
-                                             ctx);
-            }
+            return type_to_c_string_with(sym->type_info, ctx->config->misra_mode, link_name_of,
+                                         ctx);
         }
     }
 

@@ -461,10 +461,9 @@ void handle_node_destruct_var(ParserContext *ctx, ASTNode *node)
     }
 }
 
-// Records the type of a local for infer_type. The parser already audited the declaration
+// Records a local and its type for infer_type. The parser already audited the declaration
 // (shadowing, MISRA names), so this does not go through add_symbol.
-static void add_symbol_local(ParserContext *ctx, const char *name, const char *type_name,
-                             Type *type_info)
+static void add_symbol_local(ParserContext *ctx, const char *name, Type *type_info)
 {
     ZenSymbol *sym = symbol_add(ctx->current_scope, name, SYM_VARIABLE);
     if (!sym)
@@ -472,7 +471,6 @@ static void add_symbol_local(ParserContext *ctx, const char *name, const char *t
         return;
     }
     sym->is_local = (ctx->current_scope != ctx->global_scope);
-    sym->c_type = type_name ? xstrdup(type_name) : NULL;
     sym->type_info = type_info;
 }
 
@@ -545,7 +543,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             }
 
             emit_var_decl_type(ctx, tname, node->var_decl.name);
-            add_symbol_local(ctx, node->var_decl.name, tname, node->type_info);
+            add_symbol_local(ctx, node->var_decl.name, node->type_info);
 
             if (node->var_decl.init_expr)
             {
@@ -653,7 +651,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 }
 
                 emit_var_decl_type(ctx, inferred, node->var_decl.name);
-                add_symbol_local(ctx, node->var_decl.name, inferred, NULL);
+                add_symbol_local(ctx, node->var_decl.name, NULL);
                 EMIT(ctx, " = ");
                 if (ctx->config->use_cpp && inferred &&
                     (strchr(inferred, '*') || is_enum_type_name(ctx, inferred)))
@@ -679,7 +677,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 emit_auto_type(ctx, node->var_decl.init_expr, node->token);
                 EMIT(ctx, " %s", node->var_decl.name);
 
-                add_symbol_local(ctx, node->var_decl.name, inferred, NULL);
+                add_symbol_local(ctx, node->var_decl.name, NULL);
 
                 EMIT(ctx, " = ");
                 codegen_expression(ctx, node->var_decl.init_expr);
