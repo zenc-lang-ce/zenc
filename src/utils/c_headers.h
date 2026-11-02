@@ -37,7 +37,7 @@ typedef struct
     char *origin; ///< What made it a search directory, for hover.
 } CSearchDir;
 
-typedef struct
+typedef struct CSearchDirList
 {
     CSearchDir *items;
     int count;

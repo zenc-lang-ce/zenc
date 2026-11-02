@@ -37,6 +37,7 @@ src/parser/utils/utils_template_replace.c
 src/parser/utils/utils_template_inst.c
 src/parser/utils/utils_rewrite.c
 src/parser/utils/utils_validation.c
+src/parser/utils/utils_c_types.c
 src/parser/utils/utils_audit.c
 src/parser/utils/utils_plugins.c
 src/parser/expr/expr_helpers.c

@@ -424,9 +424,11 @@ struct ParserContext
 
     // External C interop: suppress undefined warnings for external symbols
     int has_external_includes;
-    int is_comptime;         // Flag for comptime execution context
-    char **extern_symbols;   ///< Explicitly declared extern symbols.
-    int extern_symbol_count; ///< Count of external symbols.
+    zmap_FileSet c_function_types; ///< C function name -> its return type as C text ("": none).
+    int c_preamble_headers_read;   ///< The preamble's headers are in c_function_types.
+    int is_comptime;               // Flag for comptime execution context
+    char **extern_symbols;         ///< Explicitly declared extern symbols.
+    int extern_symbol_count;       ///< Count of external symbols.
 
     // Codegen context (mutable state during code generation):
     struct
@@ -898,6 +900,14 @@ int is_preamble_c_function(ParserContext *ctx, const char *name);
  *        caps), or anything when the program includes or imports C headers.
  */
 int should_suppress_undef_warning(ParserContext *ctx, const char *name);
+struct CHeaderFile;
+/// The Type of a C type written as C text (`const char *`, `size_t`, `struct tm *`), or NULL.
+Type *c_type_from_text(ParserContext *ctx, const char *text);
+/// Remembers the return types of the functions a C header declares.
+void register_c_header_functions(ParserContext *ctx, const struct CHeaderFile *header);
+/// The return type of a C function the program calls undeclared, from the headers it includes
+/// and those of the hosted preamble; NULL when it is not known.
+Type *c_function_return_type(ParserContext *ctx, const char *name);
 void init_builtins(void);
 void register_extern_symbol(ParserContext *ctx, const char *name);
 void register_impl(ParserContext *ctx, const char *trait, const char *type);
