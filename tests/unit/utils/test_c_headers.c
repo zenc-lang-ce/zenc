@@ -105,6 +105,52 @@ UTEST(c_headers, extern_variable_types)
     ASSERT_STREQ("const int", entry_named(header, "table_size")->c_type);
 }
 
+UTEST(c_headers, an_annotation_macro_after_a_variable_name)
+{
+    // macOS's <stdio.h>: the streams' names are followed by an attribute macro.
+    CHeaderFile *header = header_from("/tmp/zc_unit_c_headers_annotated_variables.h",
+                                      "extern FILE *__stdinp __swift_nonisolated_unsafe;\n"
+                                      "extern __darwin_time_t __timezone;\n");
+    ASSERT_TRUE(header != NULL);
+    ASSERT_STREQ("FILE *", entry_named(header, "__stdinp")->c_type);
+    ASSERT_TRUE(entry_named(header, "__swift_nonisolated_unsafe") == NULL);
+    // A reserved name with only a storage word before it is the type, not an annotation.
+    ASSERT_STREQ("__darwin_time_t", entry_named(header, "__timezone")->c_type);
+}
+
+UTEST(c_headers, typedef_types)
+{
+    CHeaderFile *header =
+        header_from("/tmp/zc_unit_c_headers_typedefs.h", "typedef long __darwin_time_t;\n"
+                                                         "typedef __darwin_time_t time_t;\n"
+                                                         "typedef __signed char __int8_t;\n"
+                                                         "typedef int handler(int);\n"
+                                                         "typedef int row[4];\n");
+    ASSERT_TRUE(header != NULL);
+    ASSERT_STREQ("long", entry_named(header, "__darwin_time_t")->c_type);
+    ASSERT_STREQ("__darwin_time_t", entry_named(header, "time_t")->c_type);
+    ASSERT_STREQ("__signed char", entry_named(header, "__int8_t")->c_type);
+    // A function type or an array has no plain type to name.
+    ASSERT_TRUE(entry_named(header, "handler")->c_type == NULL);
+    ASSERT_TRUE(entry_named(header, "row")->c_type == NULL);
+}
+
+UTEST(c_headers, macros_that_stand_for_a_name)
+{
+    CHeaderFile *header = header_from("/tmp/zc_unit_c_headers_macros.h",
+                                      "#define stdin __stdinp\n"
+                                      "#define stdout (stdout) /* glibc and musl */\n"
+                                      "#define BUFSIZ 1024\n"
+                                      "#define EOF (-1)\n"
+                                      "#define pair a b\n");
+    ASSERT_TRUE(header != NULL);
+    ASSERT_STREQ("__stdinp", entry_named(header, "stdin")->c_type);
+    ASSERT_STREQ("stdout", entry_named(header, "stdout")->c_type);
+    ASSERT_TRUE(entry_named(header, "BUFSIZ")->c_type == NULL);
+    ASSERT_TRUE(entry_named(header, "EOF")->c_type == NULL);
+    ASSERT_TRUE(entry_named(header, "pair")->c_type == NULL);
+}
+
 UTEST(c_headers, tags_record_their_keyword)
 {
     CHeaderFile *header =

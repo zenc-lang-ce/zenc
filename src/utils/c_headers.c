@@ -887,6 +887,16 @@ static void process_function_or_variable(CHeaderFile *header, const Statement *s
             last_name = i;
         }
     }
+    // A reserved macro after the name annotates it (`extern FILE *__stdinp
+    // __swift_nonisolated_unsafe;`): the name is the one before it, when a type comes first.
+    if (last_name >= 2 && is_name_token(statement, &tokens[last_name - 1]) &&
+        c_headers_is_reserved_identifier(statement->chars + tokens[last_name].start) &&
+        (tokens[last_name - 2].kind == '*' ||
+         (tokens[last_name - 2].kind == 'w' &&
+          !token_in(statement, &tokens[last_name - 2], NON_TYPE_WORDS))))
+    {
+        last_name--;
+    }
     if (is_extern && last_name >= 0)
     {
         CHeaderEntry *entry = record(header, statement, &tokens[last_name], start_line, end_line, 0,
@@ -1050,6 +1060,43 @@ static int is_function_body(const Statement *statement)
     return 0;
 }
 
+// The name a macro body from `body` to `end` stands for, when it is only that name, maybe in
+// parentheses (`__stdinp` in `#define stdin __stdinp`, `stdin` in `#define stdin (stdin)`):
+// a libc string, or NULL.
+static char *macro_alias(const char *body, const char *end)
+{
+    const char *p = c_headers_skip_blanks(body);
+    int parenthesized = p < end && *p == '(';
+    if (parenthesized)
+    {
+        p = c_headers_skip_blanks(p + 1);
+    }
+    const char *name = p;
+    while (p < end && c_headers_is_identifier_char(*p))
+    {
+        p++;
+    }
+    if (p == name || (*name >= '0' && *name <= '9'))
+    {
+        return NULL;
+    }
+    const char *rest = c_headers_skip_blanks(p);
+    if (parenthesized)
+    {
+        if (rest >= end || *rest != ')')
+        {
+            return NULL;
+        }
+        rest = c_headers_skip_blanks(rest + 1);
+    }
+    // Only a comment may follow.
+    if (rest < end && *rest != '\n' && strncmp(rest, "/*", 2) != 0 && strncmp(rest, "//", 2) != 0)
+    {
+        return NULL;
+    }
+    return c_headers_copy_text(name, (size_t)(p - name));
+}
+
 // Handles the preprocessor line starting at `offset` (`#define NAME`, `#include`) and
 // returns the offset of the newline that ends it, continuation lines included.
 static int scan_preprocessor_line(CHeaderFile *header, int offset)
@@ -1074,9 +1121,14 @@ static int scan_preprocessor_line(CHeaderFile *header, int offset)
         {
             int start_line = line_of(header, offset);
             // `#define NAME(args)` reads like a function; `#define NAME value` like a constant.
-            add_header_symbol(header, name, length, (int)(name - text), start_line,
-                              line_of(header, end > offset ? end - 1 : offset), 0,
-                              name[length] == '(' ? C_SYMBOL_FUNCTION : C_SYMBOL_CONSTANT);
+            CHeaderEntry *entry =
+                add_header_symbol(header, name, length, (int)(name - text), start_line,
+                                  line_of(header, end > offset ? end - 1 : offset), 0,
+                                  name[length] == '(' ? C_SYMBOL_FUNCTION : C_SYMBOL_CONSTANT);
+            if (entry && entry->kind == C_SYMBOL_CONSTANT)
+            {
+                entry->c_type = macro_alias(name + length, text + end);
+            }
         }
     }
     else if (strncmp(p, "include", 7) == 0)

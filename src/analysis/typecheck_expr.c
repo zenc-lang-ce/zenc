@@ -1155,12 +1155,23 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
             }
             node->type_info = fn_type;
         }
-        else if (tc->pctx->config->misra_mode)
+        else
         {
-            char msg[MAX_SHORT_MSG_LEN];
-            snprintf(msg, sizeof(msg), "Undefined variable '%s' (MISRA Rule 17.3)",
-                     node->var_ref.name);
-            tc_error(tc, node->token, msg);
+            // A C variable the program uses undeclared (`stdin`): the type its header declares.
+            Type *c_type = should_suppress_undef_warning(tc->pctx, node->var_ref.name)
+                               ? c_variable_type(tc->pctx, node->var_ref.name)
+                               : NULL;
+            if (c_type)
+            {
+                node->type_info = c_type;
+            }
+            else if (tc->pctx->config->misra_mode)
+            {
+                char msg[MAX_SHORT_MSG_LEN];
+                snprintf(msg, sizeof(msg), "Undefined variable '%s' (MISRA Rule 17.3)",
+                         node->var_ref.name);
+                tc_error(tc, node->token, msg);
+            }
         }
     }
 
