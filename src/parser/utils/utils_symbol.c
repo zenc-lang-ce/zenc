@@ -118,21 +118,6 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
                    Type **arg_types, Type *ret_type, int is_varargs, int is_pure,
                    const char *link_name, Token decl_token, int is_export)
 {
-    if (ctx->config->mode_lsp || ctx->config->misra_mode)
-    {
-        FuncSig *existing = find_func(ctx, name);
-        if (existing)
-        {
-            existing->decl_token = decl_token;
-            existing->total_args = count;
-            existing->defaults = defaults;
-            existing->arg_types = arg_types;
-            existing->ret_type = ret_type;
-            existing->is_varargs = is_varargs;
-            existing->is_pure = is_pure;
-        }
-    }
-
     FuncSig *f = NULL;
     if (ctx->config->mode_lsp || ctx->config->misra_mode)
     {
@@ -155,7 +140,9 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
 
     f->decl_token = decl_token;
     f->total_args = count;
-    f->defaults = defaults;
+    // One slot per argument, NULL where it has no default: callers that register a function
+    // without defaults (enum variant constructors) get the empty array readers index into.
+    f->defaults = (defaults || count <= 0) ? defaults : xcalloc((size_t)count, sizeof(char *));
     f->arg_types = arg_types;
     f->ret_type = ret_type;
     f->is_varargs = is_varargs;

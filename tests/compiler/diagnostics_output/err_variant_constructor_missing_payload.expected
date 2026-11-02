@@ -1,0 +1,9 @@
+   Compiling tests/compiler/diagnostics_output/err_variant_constructor_missing_payload.zc...
+error: Too few arguments: 'Shape__Circle' expects at least 1, got 0
+  --> tests/compiler/diagnostics_output/err_variant_constructor_missing_payload.zc:7:12
+   |
+7  |     return Shape::Circle();
+   |            ^ here
+   |
+   = help: Check the function signature for required parameters
+[exit 1]

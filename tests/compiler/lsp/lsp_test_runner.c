@@ -786,6 +786,34 @@ static void test_workspace_symbol(void)
     printf("PASS: test_workspace_symbol\n");
 }
 
+// Two open files declare the same enum, one with a payload on a variant and one without.
+// The server keeps one function registry for every file, so the second file's
+// `Tint::Shade()` finds the other file's one-argument constructor: it has to report a
+// missing argument, not read a default that does not exist.
+static void test_variant_constructor_from_other_file(void)
+{
+    printf("Running test_variant_constructor_from_other_file...\n");
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_tint_payload.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, "
+                 "\"text\": \"enum Tint { Plain, Shade(int) }\\n\"}}}");
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_tint_plain.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, "
+                 "\"text\": \"enum Tint { Plain, Shade }\\nfn tint_use() {\\n"
+                 "    let t = Tint::Shade();\\n}\\n\"}}}");
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 920, \"method\": \"textDocument/documentSymbol\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_tint_plain.zc\"}}}");
+    char *response = wait_for_response(920);
+    if (!response || !strstr(response, "tint_use"))
+    {
+        printf("Response: %s\n", response ? response : "(none)");
+        fail("The server did not survive a variant constructor declared in another file");
+    }
+    free(response);
+    printf("PASS: test_variant_constructor_from_other_file\n");
+}
+
 // The name of the first symbol of /tmp/test_close.zc, as the server knows it.
 static char *first_close_symbol(int id)
 {
@@ -2283,6 +2311,7 @@ int main()
     test_unknown_method();
     test_string_id();
     test_workspace_symbol();
+    test_variant_constructor_from_other_file();
     test_did_close();
     test_c_header_symbols();
     test_c_header_reexports();
