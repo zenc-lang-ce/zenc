@@ -26,48 +26,6 @@ char *strip_template_suffix(const char *name)
     return xstrdup(name);
 }
 
-char *extract_call_args(const char *args)
-{
-    if (!args || strlen(args) == 0)
-    {
-        return xstrdup("");
-    }
-    char *out = xmalloc(strlen(args) + 1);
-    out[0] = 0;
-
-    char *dup = xstrdup(args);
-    char *p = strtok(dup, ",");
-    while (p)
-    {
-        while (*p == ' ')
-        {
-            p++;
-        }
-        char *last_space = (char *)strrchr(p, ' ');
-        char *ptr_star = (char *)strrchr(p, '*');
-
-        char *name = p;
-        if (last_space)
-        {
-            name = last_space + 1;
-        }
-        if (ptr_star && ptr_star > last_space)
-        {
-            name = ptr_star + 1;
-        }
-
-        if (strlen(out) > 0)
-        {
-            strcat(out, ", ");
-        }
-        strcat(out, name);
-
-        p = strtok(NULL, ",");
-    }
-    zfree(dup);
-    return out;
-}
-
 const char *parse_original_method_name(const char *mangled)
 {
     const char *sep = (char *)strstr(mangled, "__");

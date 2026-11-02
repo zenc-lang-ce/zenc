@@ -122,8 +122,8 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
         ASTNode **default_values = NULL;
         char **param_names = NULL;
         int is_varargs = 0;
-        char *args = parse_and_convert_args(ctx, l, &defaults, &default_values, &count, &arg_types,
-                                            &param_names, &is_varargs, NULL);
+        parse_and_convert_args(ctx, l, &defaults, &default_values, &count, &arg_types, &param_names,
+                               &is_varargs, NULL);
 
         char *ret = xstrdup("void");
         Type *ret_type_obj = type_new(TYPE_VOID);
@@ -147,7 +147,6 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
             m->token = ft;
             m->func.param_names = param_names;
             m->func.name = mname;
-            m->func.args = args;
             m->func.defaults = defaults;
             m->func.default_values = default_values;
             m->func.count = count;

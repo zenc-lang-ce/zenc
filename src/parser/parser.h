@@ -784,7 +784,6 @@ ASTNode *parse_comptime_body(ParserContext *ctx, Lexer *l);
 /**
  * @brief Patches self arguments in a function.
  */
-char *patch_self_args(const char *args, const char *struct_name);
 char *escape_c_string(const char *input);
 char *replace_type_str(const char *src, const char *param, const char *concrete,
                        const char *old_struct, const char *new_struct);
@@ -956,7 +955,6 @@ void replace_it_with_var(ASTNode *node, char *var_name);
 // struct/ declarations
 void load_std_module(ParserContext *ctx, const char *path);
 void auto_import_std_mem(ParserContext *ctx);
-void patch_and_fix_self(ParserContext *ctx, ASTNode *f, const char *full_struct_name);
 Type *parse_type_obj(ParserContext *ctx, Lexer *l);
 
 // expr/ declarations

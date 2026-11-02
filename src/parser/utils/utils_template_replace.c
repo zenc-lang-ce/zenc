@@ -930,79 +930,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         new_node->func.name = n->func.name ? xstrdup(n->func.name) : NULL;
         new_node->func.ret_type = replace_type_str(n->func.ret_type, p, c, os, ns);
 
-        char *tmp_args = n->func.args ? xstrdup(n->func.args) : NULL;
-        if (p && c && strchr(p, ','))
-        {
-            char *p_ptr = (char *)p;
-            char *c_ptr = (char *)c;
-            while (*p_ptr && *c_ptr)
-            {
-                char *p_end = (char *)strchr(p_ptr, ',');
-                int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
-                char *c_end = (char *)strchr(c_ptr, ',');
-                int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
-
-                char *p_part = xmalloc((size_t)(p_len + 1));
-                strncpy(p_part, p_ptr, (size_t)(p_len));
-                p_part[p_len] = 0;
-
-                char *c_part = xmalloc((size_t)(c_len + 1));
-                strncpy(c_part, c_ptr, (size_t)(c_len));
-                c_part[c_len] = 0;
-
-                char *t1 = replace_in_string(tmp_args, p_part, c_part);
-                zfree(tmp_args);
-                tmp_args = t1;
-
-                char *clean_c = sanitize_mangled_name(c_part);
-                char *t2 = replace_mangled_part(tmp_args, p_part, clean_c);
-                zfree(tmp_args);
-                tmp_args = t2;
-
-                zfree(p_part);
-                zfree(c_part);
-                zfree(clean_c);
-
-                if (p_end)
-                {
-                    p_ptr = p_end + 1;
-                }
-                else
-                {
-                    break;
-                }
-                if (c_end)
-                {
-                    c_ptr = c_end + 1;
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-        else
-        {
-            char *t1 = replace_in_string(tmp_args, p, c);
-            zfree(tmp_args);
-            tmp_args = t1;
-
-            if (p && c)
-            {
-                char *clean_c = sanitize_mangled_name(c);
-                char *t2 = replace_mangled_part(tmp_args, p, clean_c);
-                zfree(tmp_args);
-                tmp_args = t2;
-                zfree(clean_c);
-            }
-        }
-
-        if (os && ns)
-        {
-            char *tmp2 = replace_in_string(tmp_args, os, ns);
-            zfree(tmp_args);
-            tmp_args = tmp2;
-        }
         new_node->func.count = n->func.count;
         if (n->func.count > 0 && n->func.arg_types)
         {
@@ -1017,7 +944,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         {
             new_node->func.arg_types = NULL;
         }
-        new_node->func.args = tmp_args;
 
         new_node->func.ret_type_info =
             replace_type_formal(ctx, n->func.ret_type_info, p, c, os, ns);

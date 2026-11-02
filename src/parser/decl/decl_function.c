@@ -277,7 +277,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     ASTNode *node = ast_create(NODE_FUNCTION);
     node->token = name_tok; // Save definition location
     node->func.name = name;
-    node->func.args = args;
     node->func.ret_type = ret;
     node->func.body = body;
 
@@ -315,56 +314,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         add_to_func_list(ctx, node);
     }
     return node;
-}
-
-char *patch_self_args(const char *args, const char *struct_name)
-{
-    if (!args)
-    {
-        return NULL;
-    }
-
-    // Sanitize struct name for C usage (Vec<T> -> Vec_T)
-    char *safe_name = xmalloc(strlen(struct_name) + 1);
-    int j = 0;
-    for (int i = 0; struct_name[i]; i++)
-    {
-        if (struct_name[i] == '<')
-        {
-            safe_name[j++] = '_';
-        }
-        else if (struct_name[i] == '>')
-        {
-            // skip
-        }
-        else if (struct_name[i] == ' ')
-        {
-            // skip
-        }
-        else
-        {
-            safe_name[j++] = struct_name[i];
-        }
-    }
-    safe_name[j] = 0;
-
-    char *new_args = xmalloc(strlen(args) + strlen(safe_name) + 20);
-
-    // Check if it starts with "const void* self" or "void* self"
-    if (strncmp(args, "const void* self", 16) == 0)
-    {
-        sprintf(new_args, "const %s* self%s", safe_name, args + 16); /* safe */
-    }
-    else if (strncmp(args, "void* self", 10) == 0)
-    {
-        sprintf(new_args, "%s* self%s", safe_name, args + 10); /* safe */
-    }
-    else
-    {
-        strcpy(new_args, args);
-    }
-    zfree(safe_name);
-    return new_args;
 }
 
 /**

@@ -418,6 +418,56 @@ static char *substitute_proto_self(const char *type_str, const char *replacement
     return xstrdup(type_str);
 }
 
+// Whether a parameter of a trait method is its receiver.
+static int is_self_param(ASTNode *m, int i)
+{
+    return m->func.param_names && m->func.param_names[i] &&
+           strcmp(m->func.param_names[i], "self") == 0;
+}
+
+// The parameters of a trait method after its receiver, spelled in C from their Types and with
+// `Self` written as `self_c`: "int32_t n, void* other". Empty when there are none.
+static char *trait_method_params(ParserContext *ctx, ASTNode *m, const char *self_c)
+{
+    char *out = xstrdup("");
+    for (int i = 0; i < m->func.count; i++)
+    {
+        if (is_self_param(m, i))
+        {
+            continue;
+        }
+        char *type = (m->func.arg_types && m->func.arg_types[i])
+                         ? type_to_c_string(m->func.arg_types[i], ctx->config->misra_mode)
+                         : xstrdup("void*");
+        char *c_type = replace_type_str(type, "Self", self_c, NULL, NULL);
+        const char *name =
+            (m->func.param_names && m->func.param_names[i]) ? m->func.param_names[i] : "";
+        size_t size = strlen(out) + strlen(c_type) + strlen(name) + 4;
+        char *next = xmalloc(size);
+        snprintf(next, size, "%s%s%s %s", out, out[0] ? ", " : "", c_type, name);
+        out = next;
+    }
+    return out;
+}
+
+// The names of the parameters of a trait method after its receiver, to pass them on: "n, other".
+static char *trait_method_arg_names(ASTNode *m)
+{
+    char *out = xstrdup("");
+    for (int i = 0; i < m->func.count; i++)
+    {
+        if (is_self_param(m, i) || !m->func.param_names || !m->func.param_names[i])
+        {
+            continue;
+        }
+        size_t size = strlen(out) + strlen(m->func.param_names[i]) + 3;
+        char *next = xmalloc(size);
+        snprintf(next, size, "%s%s%s", out, out[0] ? ", " : "", m->func.param_names[i]);
+        out = next;
+    }
+    return out;
+}
+
 // Emit trait definitions.
 static void emit_trait_defs_internal(ParserContext *ctx, ASTNode *node, VisitedModules **visited,
                                      int depth)
@@ -459,32 +509,17 @@ static void emit_trait_defs_internal(ParserContext *ctx, ASTNode *node, VisitedM
                 EMIT(ctx, "%s (*%s)(", ret_safe, orig);
                 zfree(ret_safe);
 
-                int has_self = (m->func.args && strstr(m->func.args, "self"));
-                if (!has_self)
-                {
-                    EMIT(ctx, "void* self");
-                }
-
-                if (m->func.args && strlen(m->func.args) > 0)
-                {
-                    char *args_safe = replace_type_str(m->func.args, "Self", "void*", NULL, NULL);
-                    // Filter out "void* self" or "const void* self" if it's already there to avoid
-                    // duplication
-                    if (strstr(args_safe, "void* self") == args_safe ||
-                        strstr(args_safe, "const void* self") == args_safe)
-                    {
-                        EMIT(ctx, "%s", args_safe);
-                    }
-                    else if (strlen(args_safe) > 0)
-                    {
-                        if (!has_self)
-                        {
-                            EMIT(ctx, ", ");
-                        }
-                        EMIT(ctx, "%s", args_safe);
-                    }
-                    zfree(args_safe);
-                }
+                // The receiver is always `void* self` (const for a const self), whether or not
+                // the method takes one.
+                Type *self_type = (m->func.count > 0 && is_self_param(m, 0) && m->func.arg_types)
+                                      ? m->func.arg_types[0]
+                                      : NULL;
+                // `const self` marks what self points to (parse_and_convert_args).
+                int is_const_self = self_type && self_type->kind == TYPE_POINTER &&
+                                    self_type->inner && self_type->inner->is_const;
+                char *params = trait_method_params(ctx, m, "void*");
+                EMIT(ctx, "%svoid* self%s%s", is_const_self ? "const " : "", params[0] ? ", " : "",
+                     params);
                 EMIT(ctx, ");\n");
                 m = m->next;
             }
@@ -559,22 +594,10 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                      mangle_method_symbol(node->trait.name, NULL, orig),
                      is_const_self ? "const " : "", node->trait.name);
 
-                if (m->func.args && strlen(m->func.args) > 0)
+                char *params = trait_method_params(ctx, m, node->trait.name);
+                if (params[0])
                 {
-                    char *sa = replace_type_str(m->func.args, "Self", node->trait.name, NULL, NULL);
-                    if (strstr(sa, "void* self") == sa || strstr(sa, "const void* self") == sa)
-                    {
-                        char *comma = (char *)strchr(sa, ',');
-                        if (comma)
-                        {
-                            EMIT(ctx, ", %s", comma + 1);
-                        }
-                    }
-                    else if (strlen(sa) > 0)
-                    {
-                        EMIT(ctx, ", %s", sa);
-                    }
-                    zfree(sa);
+                    EMIT(ctx, ", %s", params);
                 }
                 EMIT(ctx, ") {\n");
                 emitter_indent(&ctx->cg.emitter);
@@ -589,28 +612,10 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                     EMIT(ctx, "return self->vtable->%s(self->self", orig);
                 }
 
-                if (m->func.args && strlen(m->func.args) > 0)
+                char *arg_names = trait_method_arg_names(m);
+                if (arg_names[0])
                 {
-                    char *call_args = extract_call_args(m->func.args);
-                    if (call_args && strlen(call_args) > 0)
-                    {
-                        if (strcmp(call_args, "self") != 0)
-                        {
-                            if (strstr(call_args, "self") == call_args)
-                            {
-                                char *comma = (char *)strchr(call_args, ',');
-                                if (comma)
-                                {
-                                    EMIT(ctx, ", %s", comma + 1);
-                                }
-                            }
-                            else
-                            {
-                                EMIT(ctx, ", %s", call_args);
-                            }
-                        }
-                    }
-                    zfree(call_args);
+                    EMIT(ctx, ", %s", arg_names);
                 }
                 EMIT(ctx, ");\n");
 

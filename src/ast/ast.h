@@ -269,7 +269,6 @@ struct ASTNode
         {
             char *name;
             char *generic_params; // <T, U>
-            char *args;           // Legacy string args.
             char *ret_type;       // Legacy string return type.
             ASTNode *body;
             Type **arg_types;

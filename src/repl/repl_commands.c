@@ -209,8 +209,15 @@ static int cmd_show(ReplState *state, const char *args)
     {
         if (n->kind == NODE_FUNCTION && 0 == strcmp(n->func.name, name))
         {
-            printf("  fn %s(%s) -> %s\n", n->func.name, n->func.args ? n->func.args : "",
-                   n->func.ret_type ? n->func.ret_type : "void");
+            printf("  fn %s(", n->func.name);
+            for (int i = 0; i < n->func.count; i++)
+            {
+                char *t = n->func.arg_types ? type_to_string(n->func.arg_types[i]) : NULL;
+                printf("%s%s: %s", i ? ", " : "",
+                       n->func.param_names && n->func.param_names[i] ? n->func.param_names[i] : "_",
+                       t ? t : "?");
+            }
+            printf(") -> %s\n", n->func.ret_type ? n->func.ret_type : "void");
             found = 1;
             break;
         }

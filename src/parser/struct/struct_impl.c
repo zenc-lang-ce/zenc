@@ -13,12 +13,11 @@
 #include "ast/primitives.h"
 
 // The methods of an impl body, after its `{`, up to and including its `}`. Each method is
-// named Type__method (Type__Trait__method in a trait impl), takes `self` as `self_type`, and
-// is registered: as a template of the impl's generic parameter `template_param`, as a
-// template of its own generic parameters, or as a function.
+// named Type__method (Type__Trait__method in a trait impl) and is registered: as a template
+// of the impl's generic parameter `template_param`, as a template of its own generic
+// parameters, or as a function.
 static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *type_name,
-                                   const char *trait_name, const char *self_type,
-                                   const char *template_param)
+                                   const char *trait_name, const char *template_param)
 {
     ASTNode *h = NULL;
     ASTNode *tl = NULL;
@@ -64,8 +63,6 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         char *mangled = mangle_method_symbol(type_name, trait_name, f->func.name);
         zfree(f->func.name);
         f->func.name = mangled;
-
-        patch_and_fix_self(ctx, f, self_type);
 
         if (attrs.cfg_condition)
         {
@@ -279,7 +276,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             full_target_name = xstrdup(name2);
         }
 
-        ASTNode *h = parse_impl_methods(ctx, l, name2, name1, full_target_name, NULL);
+        ASTNode *h = parse_impl_methods(ctx, l, name2, name1, NULL);
 
         if (target_gen_param)
         {
@@ -366,7 +363,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             snprintf(full_struct_name, strlen(name1) + strlen(gen_param) + 3, "%s<%s>", name1,
                      gen_param);
 
-            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, full_struct_name, gen_param);
+            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, gen_param);
             zfree(full_struct_name);
             // Register Template
             ASTNode *n = ast_create(NODE_IMPL);
@@ -385,7 +382,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         {
             // REGULAR IMPL
             lexer_next(l);
-            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, name1, NULL);
+            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, NULL);
             ctx->current_impl_struct = NULL;
             ASTNode *n = ast_create(NODE_IMPL);
             n->impl.struct_name = name1;
