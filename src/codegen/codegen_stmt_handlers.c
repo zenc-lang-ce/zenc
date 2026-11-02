@@ -788,11 +788,12 @@ void handle_node_field(ParserContext *ctx, ASTNode *node)
 {
     if (node->field.bit_width > 0)
     {
-        EMIT(ctx, "%s %s : %d;\n", node->field.type, node->field.name, node->field.bit_width);
+        EMIT(ctx, "%s %s : %d;\n", field_c_type(ctx, node), node->field.name,
+             node->field.bit_width);
     }
     else
     {
-        emit_var_decl_type(ctx, node->field.type, node->field.name);
+        emit_var_decl_type(ctx, field_c_type(ctx, node), node->field.name);
         EMIT(ctx, ";\n");
     }
 }

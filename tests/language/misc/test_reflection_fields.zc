@@ -1,0 +1,27 @@
+// Reflection: @fields(T) gives the name and the type of each field of T. A struct with
+// @link_name appears by the name the program uses, not by its C name.
+
+// The layout of an entry of the table @fields returns.
+struct FieldInfo {
+    name: char*;
+    kind: char*;
+    offset: u64;
+}
+
+@link_name("c_point")
+struct Point {
+    x: int;
+}
+
+struct Wrapper {
+    count: int;
+    point: Point;
+}
+
+test "@fields names a @link_name struct as the program does" {
+    let table = @fields(Wrapper);
+    let fields = (FieldInfo*)table;
+    assert(strcmp(fields[0].name, "count") == 0, "the first field");
+    assert(strcmp(fields[1].name, "point") == 0, "the second field");
+    assert(strcmp(fields[1].kind, "Point") == 0, "a @link_name struct by its Zen C name");
+}

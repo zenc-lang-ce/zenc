@@ -53,11 +53,9 @@ static void sync_link_names_recursive_depth(ParserContext *ctx, ASTNode *node, i
 // The link names of one node and of everything under it, not of the nodes that follow it.
 static void sync_link_names_node(ParserContext *ctx, ASTNode *node, int depth)
 {
-    if (node->type_info && sync_type_linkage(ctx, node->type_info) && node->kind == NODE_FIELD)
+    if (node->type_info)
     {
-        // Codegen declares a field from the text of its type, written when the field was
-        // parsed, before the type had its link_name.
-        node->field.type = type_to_c_string(node->type_info, ctx->config->misra_mode);
+        sync_type_linkage(ctx, node->type_info);
     }
 
     // sizeof(T) is written from its own Type, not from the node's.

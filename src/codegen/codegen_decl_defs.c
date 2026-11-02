@@ -251,7 +251,7 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
                             int i = 0;
                             while (f)
                             {
-                                char *at = f->field.type;
+                                const char *at = field_c_type(ctx, f);
                                 EMIT(ctx, "%s _%d%s", at, i, (f->next) ? ", " : "");
                                 f = f->next;
                                 i++;

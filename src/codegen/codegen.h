@@ -68,6 +68,11 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result);
 #include "codegen_shared.h"
 
 void emit_var_decl_type(ParserContext *ctx, const char *type_str, const char *var_name);
+/**
+ * @brief The type of a struct field spelled in C: from its Type (a @link_name struct by its C
+ *        name), or from its text when the compiler made the field without one.
+ */
+const char *field_c_type(ParserContext *ctx, ASTNode *field);
 void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t);
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr);
 void emit_rvalue_address(ParserContext *ctx, ASTNode *expr);

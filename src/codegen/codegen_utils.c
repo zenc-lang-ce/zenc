@@ -63,6 +63,15 @@ int is_enum_type_name(ParserContext *ctx, const char *name)
     return (def && def->kind == NODE_ENUM);
 }
 
+const char *field_c_type(ParserContext *ctx, ASTNode *field)
+{
+    if (field->type_info)
+    {
+        return type_to_c_string(field->type_info, ctx->config->misra_mode);
+    }
+    return field->field.type;
+}
+
 // Helper to emit C declaration (handle arrays, function pointers correctly)
 static void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name)
 {
