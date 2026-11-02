@@ -527,8 +527,6 @@ jobs:
   ape:
     name: Build APE
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     env:
       # cosmo.zip (the rolling upstream distribution) is currently unreachable;
       # pin a release from GitHub so this job is reproducible. The cache key
@@ -566,18 +564,6 @@ jobs:
         make clean
         make ape ZC_HAS_JIT=0
 
-    - name: Upload zc.com Artifact
-      uses: actions/upload-artifact@v7
-      with:
-        name: zc-portable
-        path: out/bin/zc.com
-
-    - name: Upload zc-boot.com Artifact
-      uses: actions/upload-artifact@v7
-      with:
-        name: zc-boot-portable
-        path: out/bin/zc-boot.com
-
     - name: Test APE (Full Suite)
       run: |
         chmod +x out/bin/zc.com
@@ -596,13 +582,104 @@ jobs:
         echo "$out"
         echo "$out" | grep -q ape-std-ok
 
+    - name: Test the APE tools outside the repository
+      run: |
+        # zc.com launches the tools next to it, and each one carries the standard library
+        dir=$(mktemp -d)
+        cp out/bin/*.com "$dir/"
+        cd "$dir"
+        body='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootPath":".","capabilities":{}}}'
+        answers_initialize() {
+          answer=$(printf 'Content-Length: %d\r\n\r\n%s' "${#body}" "$body" | timeout 60 "$@")
+          echo "$answer" | grep -q '"capabilities"' || { echo "$* did not answer initialize"; exit 1; }
+        }
+        answers_initialize ./zc-lsp.com
+        answers_initialize ./zc.com lsp
+        ./zc-doc.com --help > /dev/null
+
+    - name: Package the portable executables
+      run: |
+        if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; else version="dev-${GITHUB_SHA::8}"; fi
+        mkdir -p out/release
+        cp out/bin/zc.com out/bin/zc-boot.com out/release/
+        (cd out/bin && zip -q "../release/zenc-$version-ape.zip" zc.com zc-lsp.com zc-repl.com zc-format.com zc-doc.com)
+        ls -l out/release
+
+    - name: Upload the portable executables
+      uses: actions/upload-artifact@v7
+      with:
+        name: zenc-ape
+        path: out/release/
+
+  dist:
+    name: Native release (${{ matrix.system }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu 22.04: the binaries need glibc 2.34 or later, not the 2.39 of ubuntu-latest
+          - system: linux-x86_64
+            os: ubuntu-22.04
+          - system: linux-arm64
+            os: ubuntu-22.04-arm
+          - system: macos-arm64
+            os: macos-15
+          - system: macos-x86_64
+            os: macos-15-intel
+          - system: windows-x86_64
+            os: windows-latest
+    env:
+      # The oldest macOS the binaries run on
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Build
+      shell: bash
+      run: |
+        # Without the JIT: with it, the binaries need libtcc on the system
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          ZC_HAS_JIT=0 NO_PLUGINS=1 ./build.bat
+        else
+          make ZC_HAS_JIT=0
+        fi
+
+    - name: Package
+      shell: bash
+      run: |
+        if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; else version="dev-${GITHUB_SHA::8}"; fi
+        scripts/package_release.sh "$version" "${{ matrix.system }}"
+
+    - name: Upload
+      uses: actions/upload-artifact@v7
+      with:
+        name: zenc-${{ matrix.system }}
+        path: out/dist/*.zip
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ape, dist]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Download the release files
+      uses: actions/download-artifact@v8
+      with:
+        pattern: zenc-*
+        path: release
+        merge-multiple: true
+
     - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v3
       with:
-        files: |
-          out/bin/zc.com
-          out/bin/zc-boot.com
+        files: release/*
+        # What each file is; the list of pull requests follows it
+        body_path: .github/release-notes.md
         draft: false
         # A tag with a suffix (v0.5.1-rc1) is a pre-release: it is not the latest release, which
         # zc-boot.com downloads

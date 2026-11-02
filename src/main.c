@@ -43,18 +43,26 @@ static int exec_tool(const char *cmd, const char *tool, int argc, char **argv)
     char self_path[MAX_PATH_SIZE];
     z_get_executable_path(self_path, sizeof(self_path));
 
+    // Next to zc: as `make install` puts it (zc-lsp), as the portable build ships it
+    // (zc-lsp.com), or renamed to run on Windows (zc-lsp.exe). execv returns only if it fails.
+    static const char *const suffixes[] = {"", ".com", ".exe"};
     char path[MAX_PATH_SIZE + 32];
-    if (self_path[0])
+    forward[0] = path;
+    for (size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); i++)
     {
-        snprintf(path, sizeof(path), "%s/%s", self_path, tool);
-    }
-    else
-    {
-        snprintf(path, sizeof(path), "%s", tool);
+        if (self_path[0])
+        {
+            snprintf(path, sizeof(path), "%s/%s%s", self_path, tool, suffixes[i]);
+        }
+        else
+        {
+            snprintf(path, sizeof(path), "%s%s", tool, suffixes[i]);
+        }
+        execv(path, forward);
     }
 
-    forward[0] = path;
-    execv(path, forward);
+    // Anywhere in the PATH
+    snprintf(path, sizeof(path), "%s", tool);
     execvp(tool, forward);
 
     fprintf(stderr, "error: could not launch '%s' (is it installed?)\n", tool);
