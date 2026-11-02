@@ -921,9 +921,9 @@ static char *type_to_string_impl(Type *t)
         return xstrdup(t->name);
     }
     case TYPE_ALIAS:
-        return xstrdup(t->name);
     case TYPE_ENUM:
-        return xstrdup(t->link_name ? t->link_name : t->name);
+        // The name the program uses: a @link_name only shows in C (type_to_c_string).
+        return xstrdup(t->name);
 
     default:
         return xstrdup("unknown");

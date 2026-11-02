@@ -16,7 +16,10 @@
 
 void handle_expr_cast(ParserContext *ctx, ASTNode *node)
 {
-    const char *t = node->cast.target_type;
+    // The cast's Type, spelled in C here (a struct with @link_name by its C name): the
+    // parser keeps the type as the program writes it.
+    const char *t = node->type_info ? type_to_c_string(node->type_info, ctx->config->misra_mode)
+                                    : node->cast.target_type;
     const char *mapped = map_to_c_type(t);
 
     EMIT(ctx, "((%s)(", mapped);

@@ -48,20 +48,6 @@ static int sync_type_linkage(ParserContext *ctx, Type *t)
     return sync_type_linkage_depth(ctx, t, 0);
 }
 
-// Whether t, or the type it points to, is named in C by its @link_name.
-static int type_has_link_name(Type *t)
-{
-    while (t)
-    {
-        if (t->link_name)
-        {
-            return 1;
-        }
-        t = t->inner;
-    }
-    return 0;
-}
-
 static void sync_link_names_recursive_depth(ParserContext *ctx, ASTNode *node, int depth);
 
 // The link names of one node and of everything under it, not of the nodes that follow it.
@@ -72,13 +58,6 @@ static void sync_link_names_node(ParserContext *ctx, ASTNode *node, int depth)
         // Codegen declares a field from the text of its type, written when the field was
         // parsed, before the type had its link_name.
         node->field.type = type_to_c_string(node->type_info, ctx->config->misra_mode);
-    }
-
-    // The same for a cast. Its Type can be the one of the variable it initializes
-    // (`let p = (T*)q;`), which got the link_name first, so this checks the Type instead.
-    if (node->kind == NODE_EXPR_CAST && type_has_link_name(node->type_info))
-    {
-        node->cast.target_type = type_to_c_string(node->type_info, ctx->config->misra_mode);
     }
 
     // sizeof(T) is written from its own Type, not from the node's.
