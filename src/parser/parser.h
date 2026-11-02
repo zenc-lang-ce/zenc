@@ -778,7 +778,9 @@ void add_to_impl_list(ParserContext *ctx, ASTNode *node);
 void add_to_global_list(ParserContext *ctx, ASTNode *node);
 
 /**
- * @brief Registers built-in types and functions.
+ * @brief Registers the built-in names: `true`, `false` and C's `va_list`. The C functions and
+ * variables a program calls undeclared take their types from the C headers
+ * (c_function_return_type, c_variable_type).
  */
 void register_builtins(ParserContext *ctx);
 void register_comptime_builtins(ParserContext *ctx);
