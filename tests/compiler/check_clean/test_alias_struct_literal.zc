@@ -1,0 +1,32 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A struct literal named by an alias has the alias's type: an opaque alias of a generic
+// instance, built inside its impl and returned as the alias, and a plain alias of a struct.
+import "std/slice.zc"
+
+opaque alias Text = Slice<char>;
+
+impl Text {
+    fn from(s: char*) -> Text {
+        let t = Text{data: s, len: strlen(s)};
+        return t;
+    }
+
+    fn length(self) -> usize {
+        return self.len;
+    }
+}
+
+struct Point { x: int; y: int; }
+alias Spot = Point;
+
+fn origin() -> Spot {
+    return Spot{x: 0, y: 0};
+}
+
+test "struct literals named by an alias" {
+    let t = Text::from("hello");
+    assert(t.length() == 5, "opaque alias literal");
+    let s: Spot = Spot{x: 1, y: 2};
+    let p: Point = origin();
+    assert(s.x + p.x == 1, "plain alias literal");
+}

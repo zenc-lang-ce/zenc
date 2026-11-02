@@ -24,6 +24,17 @@ static Type *opaque_alias_type(TypeAlias *alias_node)
     return wrapper;
 }
 
+// The type an alias name stands for: an opaque alias keeps its name, any other
+// alias is the type it names.
+Type *alias_type(TypeAlias *alias_node)
+{
+    if (alias_node->is_opaque)
+    {
+        return opaque_alias_type(alias_node);
+    }
+    return type_clone(alias_node->type_info);
+}
+
 // The type for a non-primitive type name that is not parsed from source (the
 // receiver of a method, a generic argument): the opaque alias of that name if
 // there is one, a struct otherwise.
@@ -91,11 +102,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         if (alias_node)
         {
             zfree(name);
-            if (alias_node->is_opaque)
-            {
-                return opaque_alias_type(alias_node);
-            }
-            return type_clone(alias_node->type_info);
+            return alias_type(alias_node);
         }
 
         // Self type alias: Replace "Self" with current impl struct type

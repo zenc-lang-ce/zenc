@@ -1252,12 +1252,11 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         }
     }
 
-    // Find struct definition (the literal may name it through an alias)
-    ASTNode *def = find_struct_def(tc->pctx, node->struct_init.struct_name);
-    if (!def)
-    {
-        def = find_struct_def(tc->pctx, resolve_alias_name(tc, node->struct_init.struct_name));
-    }
+    // The struct the literal builds: the one its type names, also through an alias.
+    Type *struct_type = resolve_alias(node->type_info);
+    ASTNode *def = find_struct_def(tc->pctx, (struct_type && struct_type->name)
+                                                 ? struct_type->name
+                                                 : node->struct_init.struct_name);
     if (!def)
     {
         char msg[MAX_SHORT_MSG_LEN];
@@ -1375,7 +1374,6 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         def_field = def_field->next;
     }
 
-    node->type_info = def->type_info;
     RECURSION_EXIT(tc->pctx);
 }
 

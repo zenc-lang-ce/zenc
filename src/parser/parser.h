@@ -852,6 +852,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
 Type *parse_type_formal(ParserContext *ctx, Lexer *l);
 Type *type_from_string_helper(ParserContext *ctx, const char *c);
 Type *type_from_name(ParserContext *ctx, const char *name);
+Type *alias_type(TypeAlias *alias_node);
 FuncSig *find_func(ParserContext *ctx, const char *name);
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name);
 /**
