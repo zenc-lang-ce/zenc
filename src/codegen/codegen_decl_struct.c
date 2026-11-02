@@ -504,7 +504,8 @@ static void emit_trait_defs_internal(ParserContext *ctx, ASTNode *node, VisitedM
             ASTNode *m = node->trait.methods;
             while (m)
             {
-                char *ret_safe = substitute_proto_self(m->func.ret_type, "void*");
+                char *ret_safe =
+                    substitute_proto_self(type_to_string(m->func.ret_type_info), "void*");
                 const char *orig = parse_original_method_name(m->func.name);
                 EMIT(ctx, "%s (*%s)(", ret_safe, orig);
                 zfree(ret_safe);
@@ -586,7 +587,8 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
             ASTNode *m = node->trait.methods;
             while (m)
             {
-                char *ret_sub = substitute_proto_self(m->func.ret_type, node->trait.name);
+                char *ret_sub =
+                    substitute_proto_self(type_to_string(m->func.ret_type_info), node->trait.name);
                 const char *orig = parse_original_method_name(m->func.name);
                 int is_const_self = (m->func.count > 0 && m->func.arg_types &&
                                      m->func.arg_types[0] && m->func.arg_types[0]->is_const);
@@ -602,7 +604,7 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                 EMIT(ctx, ") {\n");
                 emitter_indent(&ctx->cg.emitter);
 
-                int ret_is_self = (m->func.ret_type && strcasecmp(m->func.ret_type, "Self") == 0);
+                int ret_is_self = strcasecmp(type_to_string(m->func.ret_type_info), "Self") == 0;
                 if (ret_is_self)
                 {
                     EMIT(ctx, "void* res = self->vtable->%s(self->self", orig);

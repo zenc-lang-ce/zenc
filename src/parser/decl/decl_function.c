@@ -157,12 +157,10 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         return NULL;
     }
 
-    char *ret = "void";
     Type *ret_type_obj = type_new(TYPE_VOID);
 
     if (strcmp(name, "main") == 0)
     {
-        ret = "int";
         ret_type_obj = type_new(TYPE_C_INT);
     }
 
@@ -174,7 +172,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         {
             return NULL;
         }
-        ret = type_to_string(ret_type_obj);
     }
     else if (lexer_peek(l).kind == TOK_COLON)
     {
@@ -182,7 +179,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         return NULL;
     }
 
-    curr_func_ret = ret;
+    curr_func_ret = type_to_string(ret_type_obj);
 
     // Auto-prefix function name if in module context
     // Don't prefix generic templates or functions inside impl blocks (already
@@ -271,7 +268,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     ASTNode *node = ast_create(NODE_FUNCTION);
     node->token = name_tok; // Save definition location
     node->func.name = name;
-    node->func.ret_type = ret;
     node->func.body = body;
 
     node->func.arg_types = arg_types;
@@ -354,7 +350,7 @@ void parse_pending_bodies(ParserContext *ctx)
             ctx->imports.current_module_prefix = node->func.module_prefix;
             ctx->current_impl_struct = node->func.impl_struct;
             ctx->current_filename = node->func.filename;
-            curr_func_ret = node->func.ret_type;
+            curr_func_ret = type_to_string(node->func.ret_type_info);
         }
 
         Lexer body_lexer = pending->body_start;

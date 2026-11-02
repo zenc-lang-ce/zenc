@@ -928,7 +928,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     {
     case NODE_FUNCTION:
         new_node->func.name = n->func.name ? xstrdup(n->func.name) : NULL;
-        new_node->func.ret_type = replace_type_str(n->func.ret_type, p, c, os, ns);
 
         new_node->func.count = n->func.count;
         if (n->func.count > 0 && n->func.arg_types)

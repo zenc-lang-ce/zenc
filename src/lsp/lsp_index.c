@@ -237,7 +237,8 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             if (!lsp_function_signature(node->token, hover, sizeof(hover)))
             {
                 const char *name = node->func.name ? node->func.name : "unknown";
-                const char *ret = node->func.ret_type ? node->func.ret_type : "void";
+                const char *ret =
+                    node->func.ret_type_info ? type_to_string(node->func.ret_type_info) : "void";
                 snprintf(hover, sizeof(hover), "fn %s(...) -> %s", name, ret);
             }
             lsp_index_add_def(idx, node->token, hover, node);

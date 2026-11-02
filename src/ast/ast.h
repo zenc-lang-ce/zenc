@@ -269,7 +269,6 @@ struct ASTNode
         {
             char *name;
             char *generic_params; // <T, U>
-            char *ret_type;       // Legacy string return type.
             ASTNode *body;
             Type **arg_types;
             ASTNode **default_values; // Default value of each parameter, NULL where it has none.

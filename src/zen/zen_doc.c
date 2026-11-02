@@ -188,10 +188,6 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
                 printf(" -> %s", rstr);
                 zfree(rstr);
             }
-            else if (node->func.ret_type)
-            {
-                printf(" -> %s", node->func.ret_type);
-            }
             printf(";\n```\n");
             break;
         }

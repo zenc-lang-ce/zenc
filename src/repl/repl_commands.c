@@ -217,7 +217,8 @@ static int cmd_show(ReplState *state, const char *args)
                        n->func.param_names && n->func.param_names[i] ? n->func.param_names[i] : "_",
                        t ? t : "?");
             }
-            printf(") -> %s\n", n->func.ret_type ? n->func.ret_type : "void");
+            printf(") -> %s\n",
+                   n->func.ret_type_info ? type_to_string(n->func.ret_type_info) : "void");
             found = 1;
             break;
         }

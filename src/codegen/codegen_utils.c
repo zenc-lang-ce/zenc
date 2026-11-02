@@ -281,10 +281,6 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
     {
         ret_str = c_type_spelling(ctx, func->func.ret_type_info);
     }
-    else if (func->func.ret_type)
-    {
-        ret_str = xstrdup(func->func.ret_type);
-    }
     else
     {
         ret_str = xstrdup("void");

@@ -217,9 +217,9 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
 
     // Scan the original return type for generic struct patterns like "Triple_X_Y_Z"
     // and instantiate them with the concrete types
-    if (tpl->func_node && tpl->func_node->func.ret_type)
+    if (tpl->func_node && tpl->func_node->func.ret_type_info)
     {
-        const char *ret = tpl->func_node->func.ret_type;
+        const char *ret = type_to_string(tpl->func_node->func.ret_type_info);
 
         // Build the param suffix (e.g., for "X,Y,Z" -> "_X_Y_Z")
         size_t suffix_cap = strlen(tpl->generic_param) * 2 + 64;
@@ -617,26 +617,27 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
                       meth->func.is_export);
 
         // Handle generic return types in methods (e.g., Option<T> -> Option_int)
-        if (meth->func.ret_type &&
-            (strchr(meth->func.ret_type, '_') || strchr(meth->func.ret_type, '<')))
+        const char *meth_ret =
+            meth->func.ret_type_info ? type_to_string(meth->func.ret_type_info) : NULL;
+        if (meth_ret && (strchr(meth_ret, '_') || strchr(meth_ret, '<')))
         {
             GenericTemplate *gt = ctx->templates;
 
             while (gt)
             {
                 size_t tlen = strlen(gt->name);
-                size_t rlen = strlen(meth->func.ret_type);
+                size_t rlen = strlen(meth_ret);
                 if (tlen > rlen)
                 {
                     gt = gt->next;
                     continue;
                 }
-                char delim = meth->func.ret_type[tlen];
-                if (strncmp(meth->func.ret_type, gt->name, (size_t)(tlen)) == 0 &&
+                char delim = meth_ret[tlen];
+                if (strncmp(meth_ret, gt->name, (size_t)(tlen)) == 0 &&
                     (delim == '_' || delim == '<'))
                 {
                     // Found matching template prefix
-                    const char *type_arg = meth->func.ret_type + tlen;
+                    const char *type_arg = meth_ret + tlen;
                     while (*type_arg == '_' || *type_arg == '<')
                     {
                         type_arg++;

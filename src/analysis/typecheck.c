@@ -70,7 +70,7 @@ static void return_target(ASTNode *from, const char **name, Type **type)
         *type = (fn && fn->kind == TYPE_FUNCTION) ? fn->inner : NULL;
         return;
     }
-    *name = from->func.ret_type;
+    *name = type_to_string(from->func.ret_type_info);
     *type = from->func.ret_type_info;
 }
 
