@@ -438,21 +438,20 @@ struct ParserContext
         int is_repl;        ///< 1 if running in REPL mode.
         int in_defer_block; ///< 1 if currently parsing inside a defer block.
 
-        ASTNode *global_user_structs; ///< List of user defined structs.
-        char *current_impl_type;      ///< Type currently being implemented (in impl block).
-        int tmp_counter;              ///< Counter for temporary variables.
-        int fstring_counter;          ///< Counter for the buffers of f-string values.
-        ASTNode *defer_stack[1024];   ///< Stack of deferred nodes (max 1024).
-        int defer_count;              ///< Counter for defer statements in current scope.
-        ASTNode *current_lambda;      ///< Current lambda being generated.
-        char *current_func_ret_type;  ///< Return type of current function.
-        Type *current_func_ret_type_info;
-        char *expected_init_type;      ///< Expected type for initializer (from let declaration).
-        int *loop_defer_boundary;      ///< Defer stack index at start of each enclosing loop.
-        int loop_defer_capacity;       ///< Allocated slots of loop_defer_boundary.
-        int loop_depth;                ///< Current loop nesting depth.
-        int func_defer_boundary;       ///< Defer stack index at function entry.
-        int pending_closure_frees[64]; ///< Lambda IDs whose ctx needs freeing (max 64).
+        ASTNode *global_user_structs;     ///< List of user defined structs.
+        char *current_impl_type;          ///< Type currently being implemented (in impl block).
+        int tmp_counter;                  ///< Counter for temporary variables.
+        int fstring_counter;              ///< Counter for the buffers of f-string values.
+        ASTNode *defer_stack[1024];       ///< Stack of deferred nodes (max 1024).
+        int defer_count;                  ///< Counter for defer statements in current scope.
+        ASTNode *current_lambda;          ///< Current lambda being generated.
+        Type *current_func_ret_type_info; ///< Return type of the function being generated.
+        char *expected_init_type;         ///< Expected type for initializer (from let declaration).
+        int *loop_defer_boundary;         ///< Defer stack index at start of each enclosing loop.
+        int loop_defer_capacity;          ///< Allocated slots of loop_defer_boundary.
+        int loop_depth;                   ///< Current loop nesting depth.
+        int func_defer_boundary;          ///< Defer stack index at function entry.
+        int pending_closure_frees[64];    ///< Lambda IDs whose ctx needs freeing (max 64).
         int pending_closure_free_count;
     } cg;
 

@@ -51,7 +51,7 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
         sr = sr->next;
     }
 
-    int in_func = (ctx->cg.current_func_ret_type != NULL || ctx->cg.current_lambda != NULL);
+    int in_func = (ctx->cg.current_func_ret_type_info != NULL || ctx->cg.current_lambda != NULL);
 
     int vec_size = 0;
     if (is_vector)

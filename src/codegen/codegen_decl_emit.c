@@ -138,7 +138,7 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
 
 void emit_globals(ParserContext *ctx, ASTNode *node, VisitedModules **visited)
 {
-    ctx->cg.current_func_ret_type = NULL;
+    ctx->cg.current_func_ret_type_info = NULL;
     ctx->cg.current_lambda = NULL;
     if (visited)
     {
@@ -627,10 +627,10 @@ int emit_tests_and_runner(ParserContext *ctx, ASTNode *node)
             EMIT(ctx, "fprintf(stderr, \"  TEST: %s ... \");\n", cur->test_stmt.name);
             EMIT(ctx, "int _zc_before = _zc_test_failures;\n");
             int saved = ctx->cg.defer_count;
-            char *saved_ret = ctx->cg.current_func_ret_type;
-            ctx->cg.current_func_ret_type = "void";
+            Type *saved_ret = ctx->cg.current_func_ret_type_info;
+            ctx->cg.current_func_ret_type_info = type_new(TYPE_VOID);
             codegen_walker(ctx, cur->test_stmt.body);
-            ctx->cg.current_func_ret_type = saved_ret;
+            ctx->cg.current_func_ret_type_info = saved_ret;
             // Run defers
             emit_defers_down_to(ctx, saved);
             ctx->cg.defer_count = saved;

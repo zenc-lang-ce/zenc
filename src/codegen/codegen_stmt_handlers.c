@@ -248,9 +248,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, "%s _misra_ret = 0;\n", safe_ret_type);
         zfree(safe_ret_type);
     }
-    char *prev_ret = ctx->cg.current_func_ret_type;
     Type *prev_ret_info = ctx->cg.current_func_ret_type_info;
-    ctx->cg.current_func_ret_type = type_to_string(node->func.ret_type_info);
     ctx->cg.current_func_ret_type_info = node->func.ret_type_info;
 
     // Set self_is_pointer flag for codegen of the body
@@ -339,7 +337,6 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
 
     codegen_walker(ctx, node->func.body);
     emit_defers_down_to(ctx, 0);
-    ctx->cg.current_func_ret_type = prev_ret;
     ctx->cg.current_func_ret_type_info = prev_ret_info;
     ctx->self_is_pointer = prev_self_is_ptr;
 
