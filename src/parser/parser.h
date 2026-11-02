@@ -790,6 +790,8 @@ void register_tuple(ParserContext *ctx, Type *tuple);
  */
 Type *find_tuple_type(ParserContext *ctx, const char *name);
 ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, Type *tuple, ASTNode *expr);
+/** @brief Whether a tuple literal comes next: `(` and a comma before its `)`. */
+int tuple_literal_follows(Lexer *l);
 
 /** @brief Parses just the comptime block body, returning the statement list. */
 ASTNode *parse_comptime_body(ParserContext *ctx, Lexer *l);
@@ -950,7 +952,6 @@ char *normalize_raw_content(const char *content);
 char *parse_condition_raw(ParserContext *ctx, Lexer *l);
 const char *resolve_plugin(ParserContext *ctx, const char *name_or_alias);
 char *parse_array_literal(ParserContext *ctx, Lexer *l, const char *slice_type);
-char *parse_tuple_literal(ParserContext *ctx, Lexer *l, const char *tn);
 ASTNode *parse_embed(ParserContext *ctx, Lexer *l);
 ASTNode *parse_macro_call(ParserContext *ctx, Lexer *l, char *macro_name);
 char *instantiate_function_template(ParserContext *ctx, const char *name, const char *arg1,

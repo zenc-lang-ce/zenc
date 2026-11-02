@@ -201,6 +201,39 @@ static Type *literal_element_type(ParserContext *ctx, ASTNode *element)
     return t;
 }
 
+int tuple_literal_follows(Lexer *l)
+{
+    if (lexer_peek(l).kind != TOK_LPAREN)
+    {
+        return 0;
+    }
+    Lexer ahead = *l;
+    int depth = 0;
+    while (1)
+    {
+        Token t = lexer_next(&ahead);
+        if (t.kind == TOK_EOF || t.kind == TOK_SEMICOLON)
+        {
+            return 0;
+        }
+        if (t.kind == TOK_LPAREN || t.kind == TOK_LBRACKET || t.kind == TOK_LBRACE)
+        {
+            depth++;
+        }
+        else if (t.kind == TOK_RPAREN || t.kind == TOK_RBRACKET || t.kind == TOK_RBRACE)
+        {
+            if (--depth == 0)
+            {
+                return 0;
+            }
+        }
+        else if (depth == 1 && t.kind == TOK_COMMA)
+        {
+            return 1;
+        }
+    }
+}
+
 ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, Type *tuple, ASTNode *first_elem)
 {
     Token tk;
