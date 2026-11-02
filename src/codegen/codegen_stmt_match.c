@@ -206,57 +206,17 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     int is_option = str_is_option_type(expr_type);
     int is_result = str_is_result_type(expr_type);
 
-    char *enum_name = NULL;
-    ASTNode *chk = node->match_stmt.cases;
+    // `has_wildcard` also decides the MISRA warnings further down.
     int has_wildcard = 0;
-    while (chk)
+    for (ASTNode *chk = node->match_stmt.cases; chk; chk = chk->next)
     {
-        if (strcmp(chk->match_case.pattern, "_") == 0)
-        {
-            has_wildcard = 1;
-        }
-        else if (!enum_name)
-        {
-            EnumVariantReg *reg = find_enum_variant(ctx, chk->match_case.pattern);
-            if (reg)
-            {
-                enum_name = reg->enum_name;
-            }
-        }
-        chk = chk->next;
+        has_wildcard = has_wildcard || case_is_wildcard(chk);
     }
 
-    if (enum_name && !has_wildcard)
+    const char *missing = match_missing_variant(ctx, node, expr_type);
+    if (missing && strcmp(missing, "_") != 0)
     {
-        // Iterate through all registered variants for this enum
-        EnumVariantReg *v = ctx->enum_variants;
-        while (v)
-        {
-            if (v->enum_name && strcmp(v->enum_name, enum_name) == 0)
-            {
-                int covered = 0;
-                ASTNode *c2 = node->match_stmt.cases;
-                while (c2)
-                {
-                    char mangled_v[512];
-                    snprintf(mangled_v, sizeof(mangled_v), "%s__%s", v->enum_name, v->variant_name);
-
-                    if (strcmp(c2->match_case.pattern, v->variant_name) == 0 ||
-                        strcmp(c2->match_case.pattern, mangled_v) == 0)
-                    {
-                        covered = 1;
-                        break;
-                    }
-                    c2 = c2->next;
-                }
-                if (!covered)
-                {
-                    zwarn_at(node->token, "Non-exhaustive match: Missing variant '%s'",
-                             v->variant_name);
-                }
-            }
-            v = v->next;
-        }
+        zwarn_at(node->token, "Non-exhaustive match: Missing variant '%s'", missing);
     }
 
     ASTNode *c = node->match_stmt.cases;

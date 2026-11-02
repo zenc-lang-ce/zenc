@@ -1,0 +1,29 @@
+// ARGS: transpile
+// A match without `_` that names every variant does not warn: with several variants in a
+// case, qualified variants, Option::Some and Option::None, and a guarded case followed by
+// the same variant without a guard.
+import "std/option.zc"
+
+enum Color { Red, Green, Blue }
+
+fn warm(c: Color) -> int {
+    match c {
+        Red || Green => { return 1; },
+        Color::Blue => { return 0; },
+    }
+    return 0;
+}
+
+fn unwrap_or_zero(o: Option<int>) -> int {
+    match o {
+        Option::Some(v) if v > 0 => { return v; },
+        Option::Some(v) => { return 0; },
+        Option::None => { return 0; },
+    }
+    return 0;
+}
+
+fn main() {
+    let _a = warm(Color::Red);
+    let _b = unwrap_or_zero(Option<int>::Some(1));
+}

@@ -401,6 +401,101 @@ EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,
     return NULL;
 }
 
+// Whether a case without a guard names `variant` in one of its alternatives.
+static int match_covers(ASTNode *match, const char *variant)
+{
+    for (ASTNode *c = match->match_stmt.cases; c; c = c->next)
+    {
+        if (c->match_case.guard)
+        {
+            continue;
+        }
+        for (MatchPattern *p = c->match_case.patterns; p; p = p->next)
+        {
+            if (p->kind == PATTERN_NAME && strcmp(p->name.name, variant) == 0)
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+const char *match_missing_variant(ParserContext *ctx, ASTNode *match, const char *subject_type)
+{
+    // A default case without a guard covers everything.
+    for (ASTNode *c = match->match_stmt.cases; c; c = c->next)
+    {
+        for (MatchPattern *p = c->match_case.patterns; p && !c->match_case.guard; p = p->next)
+        {
+            if (p->kind == PATTERN_WILDCARD)
+            {
+                return NULL;
+            }
+        }
+    }
+
+    // Option and Result are structs in the standard library, with two variants each.
+    const char *pair[2] = {NULL, NULL};
+    if (str_is_option_type(subject_type))
+    {
+        pair[0] = "Some";
+        pair[1] = "None";
+    }
+    else if (str_is_result_type(subject_type))
+    {
+        pair[0] = "Ok";
+        pair[1] = "Err";
+    }
+    if (pair[0])
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            if (!match_covers(match, pair[i]))
+            {
+                return pair[i];
+            }
+        }
+        return NULL;
+    }
+
+    // An enum: the subject's type if it is one, else the enum of the first variant named.
+    const char *enum_name = NULL;
+    for (EnumVariantReg *r = ctx->enum_variants; r && subject_type && !enum_name; r = r->next)
+    {
+        if (strcmp(r->enum_name, subject_type) == 0)
+        {
+            enum_name = r->enum_name;
+        }
+    }
+    for (ASTNode *c = match->match_stmt.cases; c && !enum_name; c = c->next)
+    {
+        for (MatchPattern *p = c->match_case.patterns; p && !enum_name; p = p->next)
+        {
+            EnumVariantReg *reg = NULL;
+            if (p->kind == PATTERN_NAME)
+            {
+                reg = p->name.scope ? find_enum_variant_of(ctx, p->name.scope, p->name.name)
+                                    : find_enum_variant(ctx, p->name.name);
+            }
+            enum_name = reg ? reg->enum_name : NULL;
+        }
+    }
+    if (!enum_name)
+    {
+        return "_";
+    }
+
+    for (EnumVariantReg *r = ctx->enum_variants; r; r = r->next)
+    {
+        if (strcmp(r->enum_name, enum_name) == 0 && !match_covers(match, r->variant_name))
+        {
+            return r->variant_name;
+        }
+    }
+    return NULL;
+}
+
 // The expression has no address of its own (a call result, a literal, an enum
 // variant...). Taking its address for a `self` or `T*` parameter must go
 // through a temporary (`&_rval`), or the C compiler rejects `&(rvalue)`.
