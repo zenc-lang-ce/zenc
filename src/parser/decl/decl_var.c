@@ -553,7 +553,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     ASTNode *n = ast_create(NODE_VAR_DECL);
     n->token = name_tok; // Save location
     n->var_decl.name = name;
-    n->var_decl.type_str = type;
     n->var_decl.type_info = type_obj;
     n->type_info = type_obj;
 
@@ -698,7 +697,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
             ASTNode *next_node = ast_create(NODE_VAR_DECL);
             next_node->token = next_name_tok;
             next_node->var_decl.name = next_name;
-            next_node->var_decl.type_str = next_type;
             next_node->var_decl.type_info = next_type_obj;
             next_node->type_info = next_type_obj;
             next_node->var_decl.init_expr = next_init;

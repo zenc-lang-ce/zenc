@@ -71,12 +71,7 @@ char *c_type_spelling(ParserContext *ctx, Type *t)
 char *declared_c_type(ParserContext *ctx, ASTNode *decl)
 {
     Type *t = decl->type_info;
-    if (t && t->kind != TYPE_UNKNOWN)
-    {
-        return c_type_spelling(ctx, t);
-    }
-    // The variables the parser makes for `for x in ...` have their type only as text.
-    return decl->var_decl.type_str;
+    return (t && t->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, t) : NULL;
 }
 
 char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index)

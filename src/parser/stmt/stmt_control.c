@@ -282,8 +282,8 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                         ASTNode *idx_decl = ast_create(NODE_VAR_DECL);
                         idx_decl->token = tk;
                         idx_decl->var_decl.name = xstrdup("__zc_enum_idx");
-                        idx_decl->var_decl.type_str = xstrdup("int");
-                        idx_decl->var_decl.type_info = type_new(TYPE_INT);
+                        idx_decl->type_info = type_new(TYPE_INT);
+                        idx_decl->var_decl.type_info = idx_decl->type_info;
                         ASTNode *zero_lit = ast_create(NODE_EXPR_LITERAL);
                         zero_lit->literal.kind = LITERAL_INT;
                         zero_lit->literal.int_val = 0;
@@ -293,8 +293,8 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                         ASTNode *idx_bind = ast_create(NODE_VAR_DECL);
                         idx_bind->token = tk;
                         idx_bind->var_decl.name = enum_idx_name;
-                        idx_bind->var_decl.type_str = xstrdup("int");
-                        idx_bind->var_decl.type_info = type_new(TYPE_INT);
+                        idx_bind->type_info = type_new(TYPE_INT);
+                        idx_bind->var_decl.type_info = idx_bind->type_info;
                         ASTNode *idx_ref = ast_create(NODE_EXPR_VAR);
                         idx_ref->var_ref.name = xstrdup("__zc_enum_idx");
                         idx_bind->var_decl.init_expr = idx_ref;
@@ -428,7 +428,6 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 ASTNode *it_decl = ast_create(NODE_VAR_DECL);
                 it_decl->token = tk;
                 it_decl->var_decl.name = xstrdup("__it");
-                it_decl->var_decl.type_str = NULL;
 
                 ASTNode *call_iter = ast_create(NODE_EXPR_CALL);
                 ASTNode *memb_iter = ast_create(NODE_EXPR_MEMBER);
@@ -477,7 +476,6 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 ASTNode *opt_decl = ast_create(NODE_VAR_DECL);
                 opt_decl->token = tk;
                 opt_decl->var_decl.name = xstrdup("__opt");
-                opt_decl->var_decl.type_str = NULL;
 
                 ASTNode *call_next = ast_create(NODE_EXPR_CALL);
                 ASTNode *memb_next = ast_create(NODE_EXPR_MEMBER);
@@ -544,8 +542,8 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     ASTNode *idx_bind = ast_create(NODE_VAR_DECL);
                     idx_bind->token = tk;
                     idx_bind->var_decl.name = enum_idx_name;
-                    idx_bind->var_decl.type_str = xstrdup("int");
-                    idx_bind->var_decl.type_info = type_new(TYPE_INT);
+                    idx_bind->type_info = type_new(TYPE_INT);
+                    idx_bind->var_decl.type_info = idx_bind->type_info;
                     ASTNode *idx_ref = ast_create(NODE_EXPR_VAR);
                     idx_ref->var_ref.name = xstrdup("__zc_enum_idx");
                     idx_bind->var_decl.init_expr = idx_ref;
@@ -595,8 +593,8 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     enum_idx_decl_node = ast_create(NODE_VAR_DECL);
                     enum_idx_decl_node->token = tk;
                     enum_idx_decl_node->var_decl.name = xstrdup("__zc_enum_idx");
-                    enum_idx_decl_node->var_decl.type_str = xstrdup("int");
-                    enum_idx_decl_node->var_decl.type_info = type_new(TYPE_INT);
+                    enum_idx_decl_node->type_info = type_new(TYPE_INT);
+                    enum_idx_decl_node->var_decl.type_info = enum_idx_decl_node->type_info;
                     ASTNode *zero_lit = ast_create(NODE_EXPR_LITERAL);
                     zero_lit->literal.kind = LITERAL_INT;
                     zero_lit->literal.int_val = 0;

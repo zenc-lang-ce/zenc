@@ -233,7 +233,8 @@ static int cmd_show(ReplState *state, const char *args)
                 }
                 else if (field->kind == NODE_VAR_DECL)
                 {
-                    printf("    %s: %s;\n", field->var_decl.name, field->var_decl.type_str);
+                    printf("    %s: %s;\n", field->var_decl.name,
+                           field->type_info ? type_to_string(field->type_info) : "?");
                 }
             }
             printf("  }\n");
@@ -646,11 +647,11 @@ static int cmd_vars_funcs_structs(ReplState *state, const char *args)
             {
                 if (s->kind == NODE_VAR_DECL)
                 {
-                    char *t = s->var_decl.type_str ? s->var_decl.type_str : "Inferred";
+                    char *t = s->type_info ? type_to_string(s->type_info) : "Inferred";
                     char fmt[64];
                     char val_expr[128];
 
-                    if (s->var_decl.type_str)
+                    if (s->type_info)
                     {
                         if (strcmp(t, "int") == 0 || strcmp(t, "i32") == 0 ||
                             strcmp(t, "I32") == 0 || strcmp(t, "int32_t") == 0 ||

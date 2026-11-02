@@ -548,7 +548,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
         {
             is_void = 1;
         }
-        else if (!node->type_info && !node->var_decl.type_str)
+        else if (!node->type_info)
         {
             char *ret_type = infer_type(ctx, node->var_decl.init_expr);
             if (!ret_type || strcmp(ret_type, "void") == 0)

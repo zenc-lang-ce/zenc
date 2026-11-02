@@ -321,7 +321,6 @@ struct ASTNode
         struct
         {
             char *name;
-            char *type_str;
             ASTNode *init_expr;
             Type *type_info;
             int is_static;

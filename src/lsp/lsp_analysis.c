@@ -1131,9 +1131,9 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                     else
                     {
                         ASTNode *decl = lsp_find_local_decl(target_func, base_name);
-                        if (decl && decl->kind == NODE_VAR_DECL && decl->var_decl.type_str)
+                        if (decl && decl->kind == NODE_VAR_DECL && decl->type_info)
                         {
-                            type_name = xstrdup(decl->var_decl.type_str);
+                            type_name = type_to_string(decl->type_info);
                         }
                         else
                         {

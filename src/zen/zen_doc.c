@@ -272,7 +272,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
                 print_markdown_doc(node->doc_comment);
             }
             printf("```zc\nconst %s: %s;\n```\n", display_name,
-                   node->var_decl.type_str ? node->var_decl.type_str : "?");
+                   node->type_info ? type_to_string(node->type_info) : "?");
             break;
         }
 
