@@ -1197,58 +1197,14 @@ skip_callee_gen:
                     zerror_with_hints(node->call.callee->token, msg, hints);
                 }
 
-                int has_c_interop = ctx->has_external_includes;
-
-                if (!has_c_interop)
-                {
-                    zmap_iter_ModMap it = zmap_iter_init(ModMap, &ctx->imports.modules);
-                    const char *alias;
-                    Module *mod;
-                    while (zmap_iter_next(&it, &alias, &mod))
-                    {
-                        if (mod->is_c_header)
-                        {
-                            has_c_interop = 1;
-                            break;
-                        }
-                    }
-                }
-
-                if (!has_c_interop)
-                {
-                    zmap_iter_FileSet it = zmap_iter_init(FileSet, &ctx->imports.imported_files);
-                    const char *key;
-                    const char *val;
-                    while (zmap_iter_next(&it, &key, &val))
-                    {
-                        if (key && strstr(key, "/std/"))
-                        {
-                            has_c_interop = 1;
-                            break;
-                        }
-                    }
-                }
-
-                int is_internal = strncmp(name, "_z_", 3) == 0 || strncmp(name, "_Z", 2) == 0;
-                int is_extern = is_extern_symbol(ctx, name);
-                int is_whitelisted = 0;
-                if (ctx->config->c_function_whitelist)
-                {
-                    char **w = ctx->config->c_function_whitelist;
-                    while (*w)
-                    {
-                        if (strcmp(*w, name) == 0)
-                        {
-                            is_whitelisted = 1;
-                            break;
-                        }
-                        w++;
-                    }
-                }
-
-                if (!has_c_interop && !is_internal && !is_extern && !is_whitelisted &&
-                    !(node->call.callee->type_info &&
-                      get_inner_type(node->call.callee->type_info)->kind == TYPE_FUNCTION))
+                // A function pointer, or a variant without a payload (`Enum::Variant()`, whose
+                // value check_expr_var typed as the enum), is not a missing function.
+                Type *callee_type = node->call.callee->type_info
+                                        ? get_inner_type(node->call.callee->type_info)
+                                        : NULL;
+                int is_value = callee_type && (callee_type->kind == TYPE_FUNCTION ||
+                                               callee_type->kind == TYPE_ENUM);
+                if (!should_suppress_undef_warning(ctx, name) && !is_value)
                 {
                     Token t = node->call.callee->token;
                     char msg[MAX_SHORT_MSG_LEN];

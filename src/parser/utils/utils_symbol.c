@@ -591,6 +591,50 @@ int is_extern_symbol(ParserContext *ctx, const char *name)
     return 0;
 }
 
+// The functions (and function-like macros) that the headers of the hosted preamble declare:
+// <stdio.h>, <stdlib.h>, <string.h>, <stdarg.h>, <unistd.h> and <fcntl.h> (emit_preamble).
+static const char *const PREAMBLE_C_FUNCTIONS[] = {
+    // <stdio.h>
+    "clearerr", "dprintf", "fclose", "fdopen", "feof", "ferror", "fflush", "fgetc", "fgetpos",
+    "fgets", "fileno", "fopen", "fprintf", "fputc", "fputs", "fread", "freopen", "fscanf", "fseek",
+    "fsetpos", "ftell", "fwrite", "getc", "getchar", "getdelim", "getline", "pclose", "perror",
+    "popen", "printf", "putc", "putchar", "puts", "remove", "rename", "rewind", "scanf", "setbuf",
+    "setvbuf", "snprintf", "sprintf", "sscanf", "tmpfile", "tmpnam", "ungetc", "vfprintf",
+    "vfscanf", "vprintf", "vscanf", "vsnprintf", "vsprintf", "vsscanf",
+    // <stdlib.h>
+    "_Exit", "abort", "abs", "aligned_alloc", "atexit", "atof", "atoi", "atol", "atoll", "bsearch",
+    "calloc", "div", "exit", "free", "getenv", "labs", "ldiv", "llabs", "lldiv", "malloc",
+    "mkstemp", "posix_memalign", "qsort", "rand", "realloc", "realpath", "setenv", "srand",
+    "strtod", "strtof", "strtol", "strtold", "strtoll", "strtoul", "strtoull", "system", "unsetenv",
+    // <string.h>
+    "memchr", "memcmp", "memcpy", "memmove", "memset", "strcat", "strchr", "strcmp", "strcoll",
+    "strcpy", "strcspn", "strdup", "strerror", "strlen", "strncat", "strncmp", "strncpy", "strndup",
+    "strnlen", "strpbrk", "strrchr", "strspn", "strstr", "strtok", "strtok_r", "strxfrm",
+    // <stdarg.h>
+    "va_arg", "va_copy", "va_end", "va_start",
+    // <unistd.h> and <fcntl.h>
+    "access", "chdir", "close", "creat", "dup", "dup2", "execv", "execve", "execvp", "fcntl",
+    "fork", "getcwd", "getgid", "getpid", "getppid", "getuid", "isatty", "lseek", "open", "pipe",
+    "read", "rmdir", "sleep", "sysconf", "unlink", "usleep", "write", NULL};
+
+int is_preamble_c_function(ParserContext *ctx, const char *name)
+{
+    // The MISRA preamble includes none of these headers.
+    if (ctx->config->misra_mode)
+    {
+        return 0;
+    }
+    for (int i = 0; PREAMBLE_C_FUNCTIONS[i]; i++)
+    {
+        if (strcmp(PREAMBLE_C_FUNCTIONS[i], name) == 0)
+        {
+            // The freestanding preamble only includes <stdarg.h>.
+            return !ctx->config->is_freestanding || strncmp(name, "va_", 3) == 0;
+        }
+    }
+    return 0;
+}
+
 int should_suppress_undef_warning(ParserContext *ctx, const char *name)
 {
     if (strcmp(name, "struct") == 0 || strcmp(name, "tv") == 0)
@@ -598,9 +642,24 @@ int should_suppress_undef_warning(ParserContext *ctx, const char *name)
         return 1;
     }
 
-    if (is_extern_symbol(ctx, name))
+    // The runtime's helpers, and panic(), which codegen turns into __zenc_panic.
+    if (strncmp(name, "_z_", 3) == 0 || strncmp(name, "_Z", 2) == 0 || strcmp(name, "panic") == 0)
     {
         return 1;
+    }
+
+    if (is_extern_symbol(ctx, name) || is_preamble_c_function(ctx, name))
+    {
+        return 1;
+    }
+
+    // Functions the project declares as C in its zenc.json.
+    for (char **w = ctx->config->c_function_whitelist; w && *w; w++)
+    {
+        if (strcmp(*w, name) == 0)
+        {
+            return 1;
+        }
     }
 
     int is_all_caps = 1;
@@ -617,9 +676,20 @@ int should_suppress_undef_warning(ParserContext *ctx, const char *name)
         return 1;
     }
 
+    // C headers bring functions the compiler does not see.
     if (ctx->has_external_includes)
     {
         return 1;
+    }
+    zmap_iter_ModMap it = zmap_iter_init(ModMap, &ctx->imports.modules);
+    const char *alias;
+    Module *mod;
+    while (zmap_iter_next(&it, &alias, &mod))
+    {
+        if (mod->is_c_header)
+        {
+            return 1;
+        }
     }
 
     return 0;

@@ -887,6 +887,16 @@ ASTNode *find_trait_def(ParserContext *ctx, const char *name);
 int is_extern_symbol(ParserContext *ctx, const char *name);
 int is_file_imported(ParserContext *ctx, const char *path);
 void mark_file_imported(ParserContext *ctx, const char *path);
+/**
+ * @brief Whether the headers of the C preamble declare `name` (strstr, fputs, va_end...): it
+ *        can be called without a Zen C declaration, and a declaration needs no prototype.
+ */
+int is_preamble_c_function(ParserContext *ctx, const char *name);
+/**
+ * @brief Whether a call to or use of the undeclared `name` may still reach C: a preamble
+ *        function, a runtime helper, an extern symbol, a zenc.json function, a macro (all
+ *        caps), or anything when the program includes or imports C headers.
+ */
 int should_suppress_undef_warning(ParserContext *ctx, const char *name);
 void init_builtins(void);
 void register_extern_symbol(ParserContext *ctx, const char *name);

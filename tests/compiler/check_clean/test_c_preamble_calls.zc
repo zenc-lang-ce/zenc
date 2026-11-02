@@ -1,0 +1,10 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// The headers the C preamble includes (<stdio.h>, <stdlib.h>, <string.h>...) declare their
+// functions, so a program calls them without a Zen C declaration.
+test "functions of the C preamble's headers" {
+    let found = strstr("haystack", "st");
+    assert(found != NULL, "strstr from <string.h>");
+    assert(strlen("abc") == 3, "strlen from <string.h>");
+    assert(atoi("42") == 42, "atoi from <stdlib.h>");
+    assert(abs(-7) == 7, "abs from <stdlib.h>");
+}

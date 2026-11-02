@@ -190,23 +190,8 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                     f = f->next;
                     continue;
                 }
-                static const char *skip_cstdlib[] = {
-                    "strstr",  "strchr",   "strrchr", "strpbrk", "memchr",  "atoi",   "atol",
-                    "atof",    "strtol",   "strtoul", "strtod",  "malloc",  "calloc", "realloc",
-                    "free",    "memcpy",   "memmove", "memset",  "memcmp",  "strlen", "strcmp",
-                    "strncmp", "strcpy",   "strncpy", "strcat",  "strncat", "printf", "fprintf",
-                    "sprintf", "snprintf", "fopen",   "fclose",  "fread",   "fwrite", "fseek",
-                    "ftell",   "exit",     "abort",   "abs",     NULL};
-                int skip_fn = 0;
-                for (int si = 0; skip_cstdlib[si]; si++)
-                {
-                    if (strcmp(f->func.name, skip_cstdlib[si]) == 0)
-                    {
-                        skip_fn = 1;
-                        break;
-                    }
-                }
-                if (skip_fn)
+                // The preamble's headers declare it already: another prototype could clash.
+                if (is_preamble_c_function(ctx, f->func.name))
                 {
                     f = f->next;
                     continue;
