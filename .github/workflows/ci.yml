@@ -15,7 +15,7 @@ jobs:
     name: Lint Code
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install and Run clang-format
       run: |
         sudo apt-get update && sudo apt-get install -y clang-format
@@ -28,9 +28,9 @@ jobs:
     name: Complexity Check (Lizard)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Setup Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v7
       with:
         python-version: '3.x'
     - name: Install Lizard
@@ -39,7 +39,7 @@ jobs:
       run: lizard src/ --CCN 25 --length 1500 --working_threads 4 | tee lizard-report.txt
     - name: Upload Lizard Report
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: lizard-report
         path: lizard-report.txt
@@ -48,9 +48,9 @@ jobs:
     name: Copy-Paste Detection (PMD CPD)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Setup Java
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v6
       with:
         distribution: 'temurin'
         java-version: '17'
@@ -64,7 +64,7 @@ jobs:
       run: pmd cpd --minimum-tokens 100 --dir src/ --language cpp --format text | tee cpd-report.txt
     - name: Upload PMD CPD Report
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: cpd-report
         path: cpd-report.txt
@@ -73,7 +73,7 @@ jobs:
     name: Static Analysis (Clang-Tidy)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install Dependencies
       run: |
         sudo apt-get update
@@ -87,7 +87,7 @@ jobs:
       run: run-clang-tidy -p build-cmake -checks='-*,clang-analyzer-*,bugprone-*,performance-*,readibility-*' 'src/.*\.c' 2>&1 | tee clang-tidy-report.txt
     - name: Upload Clang-Tidy Report
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: clang-tidy-report
         path: clang-tidy-report.txt
@@ -96,7 +96,7 @@ jobs:
     name: MISRA C Compliance
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install Dependencies
       run: sudo apt-get update && sudo apt-get install -y cppcheck libtcc-dev gcc-14
     - name: Build Compiler
@@ -142,7 +142,7 @@ jobs:
             zc_has_jit: 0
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Setup Zig
       if: matrix.setup_zig
@@ -162,7 +162,7 @@ jobs:
 
     - name: Cache TCC Source
       if: matrix.install_tcc
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: tinycc
         key: tcc-source-${{ hashFiles('**/ci.yml') }}
@@ -243,7 +243,7 @@ jobs:
 
     - name: Upload Failed Test Artifacts
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: failed-test-artifacts-${{ matrix.name }}
         path: |
@@ -256,7 +256,7 @@ jobs:
     name: C++ Interoperability
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install Dependencies
       run: sudo apt-get update && sudo apt-get install -y libtcc-dev g++ gcc-14
     - name: Build
@@ -265,7 +265,7 @@ jobs:
       run: ./tests/scripts/run_tests.sh --cpp --no-source -j 2
     - name: Upload Failed Test Artifacts
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: failed-test-artifacts-cpp
         path: |
@@ -278,7 +278,7 @@ jobs:
     name: CUDA Syntax Check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install Dependencies
       run: sudo apt-get update && sudo apt-get install -y libtcc-dev g++ gcc-14
     - name: Build
@@ -306,7 +306,7 @@ jobs:
         [ "$FAILED" -eq 0 ] || exit 1
     - name: Upload Failed CUDA Artifacts
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: failed-cuda-artifacts
         path: /tmp/*.cu
@@ -316,7 +316,7 @@ jobs:
     name: ObjC Syntax Check
     runs-on: macos-15
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install Dependencies
       run: brew install libtcc 2>/dev/null || true
     - name: Build
@@ -336,7 +336,7 @@ jobs:
         [ "$FAILED" -eq 0 ] || exit 1
     - name: Upload Failed ObjC Artifacts
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: failed-objc-artifacts
         path: /tmp/*.m
@@ -346,7 +346,7 @@ jobs:
     name: Sanitizers (ASAN/UBSAN)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install libtcc-dev
       run: sudo apt-get update && sudo apt-get install -y libtcc-dev gcc-14
     - name: Build with Sanitizers
@@ -357,7 +357,7 @@ jobs:
         ./tests/scripts/run_tests.sh --no-source -j 2
     - name: Upload Failed Test Artifacts
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: failed-test-artifacts-sanitizers
         path: |
@@ -370,7 +370,7 @@ jobs:
     name: C11 Compatibility
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install libtcc-dev
       run: sudo apt-get update && sudo apt-get install -y libtcc-dev gcc-14
     - name: Build with C11 Standard
@@ -380,7 +380,7 @@ jobs:
         ./tests/scripts/run_tests.sh --no-source -j 2
     - name: Upload Failed Test Artifacts
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: failed-test-artifacts-c11
         path: |
@@ -393,7 +393,7 @@ jobs:
     name: LeakSanitizer
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install libtcc-dev
       run: sudo apt-get update && sudo apt-get install -y libtcc-dev gcc-14
     - name: Build with LeakSanitizer
@@ -403,7 +403,7 @@ jobs:
     name: ThreadSanitizer
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install libtcc-dev
       run: sudo apt-get update && sudo apt-get install -y libtcc-dev gcc-14
     - name: Build with ThreadSanitizer
@@ -413,7 +413,7 @@ jobs:
     name: MemorySanitizer
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install libtcc-dev
       run: sudo apt-get update && sudo apt-get install -y libtcc-dev
     - name: Build with MemorySanitizer
@@ -423,7 +423,7 @@ jobs:
     name: GCC Static Analyzer
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install libtcc-dev
       run: sudo apt-get update && sudo apt-get install -y libtcc-dev gcc-14
     - name: Build with Static Analyzer
@@ -433,7 +433,7 @@ jobs:
     name: Code Coverage
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install Dependencies
       run: sudo apt-get update && sudo apt-get install -y libtcc-dev lcov gcc-14
     - name: Build and Test with Coverage
@@ -441,7 +441,7 @@ jobs:
     - name: Generate HTML Report
       run: make GCOV=gcov-14 coverage-report
     - name: Upload Coverage Report
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: coverage-report
         path: coverage-report/
@@ -450,7 +450,7 @@ jobs:
     name: Fil-C Build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install -y patchelf wget xz-utils
     - name: Download and extract Fil-C
@@ -477,7 +477,7 @@ jobs:
     name: LSP Tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install libtcc-dev
       run: sudo apt-get update && sudo apt-get install -y libtcc-dev gcc-14
     - name: Build and Run LSP Tests
@@ -488,7 +488,7 @@ jobs:
     name: Backend Tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install -y libtcc-dev sbcl gcc-14
     - name: Build
@@ -497,7 +497,7 @@ jobs:
       run: make test-backends
     - name: Upload Failed Artifacts
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: failed-backend-artifacts
         path: test_out_*
@@ -507,7 +507,7 @@ jobs:
     name: Lisp Transpiler Tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Install sbcl and libtcc
       run: sudo apt-get update && sudo apt-get install -y sbcl libtcc-dev gcc-14
     - name: Build
@@ -516,7 +516,7 @@ jobs:
       run: make test-lisp
     - name: Upload Failed Artifacts
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: failed-lisp-artifacts
         path: |
@@ -531,11 +531,11 @@ jobs:
       contents: write
     env:
       # cosmo.zip (the rolling upstream distribution) is currently unreachable;
-      # pin a release from GitHub so this job is reproducible. Bump both this
-      # value and the cache key when upgrading.
+      # pin a release from GitHub so this job is reproducible. The cache key
+      # follows this value.
       COSMOCC_VERSION: "4.0.2"
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     
     - name: APE dependencies
       run: |
@@ -543,10 +543,10 @@ jobs:
         sudo apt-get install -y zip unzip wget
 
     - name: Cache cosmocc
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
-        path: $HOME/cosmocc
-        key: cosmocc-${{ env.COSMOCC_VERSION }}-${{ hashFiles('**/ci.yml') }}
+        path: ~/cosmocc
+        key: cosmocc-${{ env.COSMOCC_VERSION }}
 
     - name: Setup cosmocc
       run: |
@@ -567,13 +567,13 @@ jobs:
         make ape ZC_HAS_JIT=0
 
     - name: Upload zc.com Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: zc-portable
         path: out/bin/zc.com
 
     - name: Upload zc-boot.com Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: zc-boot-portable
         path: out/bin/zc-boot.com
@@ -587,7 +587,7 @@ jobs:
 
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/v')
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         files: |
           out/bin/zc.com
