@@ -916,10 +916,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     *new_node = *n;
     new_node->next = old_next; // Restore next before recursion
 
-    if (n->resolved_type)
-    {
-        new_node->resolved_type = replace_type_str(n->resolved_type, p, c, os, ns);
-    }
     new_node->type_info = replace_type_formal(ctx, n->type_info, p, c, os, ns);
 
     new_node->next = copy_ast_replacing(ctx, n->next, p, c, os, ns);

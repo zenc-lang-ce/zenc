@@ -247,7 +247,6 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     lambda->lambda.lambda_id = ctx->lambda_counter++;
     lambda->lambda.is_expression = 0;
     lambda->type_info = t;
-    lambda->resolved_type = type_to_string(t);
     if (ctx->known_generics_count == 0)
     {
         register_lambda(ctx, lambda);
@@ -1043,7 +1042,6 @@ ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *con
     node->token = srctoken;
     node->fstring.parts = head;
     node->type_info = type_new(TYPE_STRING);
-    node->resolved_type = xstrdup("string");
     return node;
 }
 

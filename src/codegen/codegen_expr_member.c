@@ -113,15 +113,14 @@ void handle_expr_index(ParserContext *ctx, ASTNode *node)
         }
     }
 
-    if (!is_slice_struct && node->index.array->resolved_type)
+    // A `Slice<T>` instance.
+    Type *array_type = node->index.array->type_info;
+    if (!is_slice_struct && array_type && strncmp(type_to_string(array_type), "Slice__", 7) == 0)
     {
-        if (strncmp(node->index.array->resolved_type, "Slice__", 7) == 0)
-        {
-            is_slice_struct = 1;
-        }
+        is_slice_struct = 1;
     }
 
-    if (!is_slice_struct && !node->index.array->type_info && !node->index.array->resolved_type)
+    if (!is_slice_struct && !array_type)
     {
         char *inferred = infer_type(ctx, node->index.array);
         if (inferred && strncmp(inferred, "Slice__", 7) == 0)

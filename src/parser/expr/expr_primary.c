@@ -38,16 +38,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             Type *inner_type =
                 type_from_name(ctx, ctx->current_impl_struct ? ctx->current_impl_struct : "Self");
             self_node->type_info = type_new_ptr(inner_type);
-            if (ctx->current_impl_struct)
-            {
-                char *rt = xmalloc(strlen(ctx->current_impl_struct) + 2);
-                sprintf(rt, "%s*", ctx->current_impl_struct); /* safe */
-                self_node->resolved_type = rt;
-            }
-            else
-            {
-                self_node->resolved_type = xstrdup("Self*");
-            }
 
             node = ast_create(NODE_EXPR_MEMBER);
             node->member.target = self_node;
@@ -1529,15 +1519,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 node->definition_token = sig->decl_token;
             }
-            if (sig->ret_type)
-            {
-                node->type_info = sig->ret_type;
-                node->resolved_type = type_to_string(sig->ret_type);
-            }
-            else
-            {
-                node->resolved_type = xstrdup("void");
-            }
+            node->type_info = sig->ret_type ? sig->ret_type : type_new(TYPE_VOID);
         }
         else if (!sig && !find_symbol_entry(ctx, acc) && lexer_peek(l).kind == TOK_LPAREN)
         {
@@ -1643,15 +1625,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         if (inst_sig)
                         {
                             node->definition_token = inst_sig->decl_token;
-                            if (inst_sig->ret_type)
-                            {
-                                node->type_info = inst_sig->ret_type;
-                                node->resolved_type = type_to_string(inst_sig->ret_type);
-                            }
-                            else
-                            {
-                                node->resolved_type = xstrdup("void");
-                            }
+                            node->type_info =
+                                inst_sig->ret_type ? inst_sig->ret_type : type_new(TYPE_VOID);
                         }
                     }
                     zfree(inferred_type);
@@ -1716,7 +1691,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                 if (type_str)
                 {
-                    node->resolved_type = type_str;
                     node->var_ref.suggestion = NULL;
                 }
                 else
@@ -2271,7 +2245,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     call->call.args = arg1;
 
                     call->type_info = sig->ret_type;
-                    call->resolved_type = type_to_string(sig->ret_type);
 
                     node = call;
                     overloaded_get = 1;

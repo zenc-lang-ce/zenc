@@ -389,8 +389,9 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                 var_node->var_ref.name = xstrdup(node->lambda.captured_vars[i]);
                 var_node->token = node->token;
 
+                // A capture with no type is an `int`, as its context field is.
                 Type *captured = node->lambda.captured_types_info[i];
-                var_node->resolved_type = captured ? type_to_string(captured) : xstrdup("int");
+                var_node->type_info = captured ? captured : type_new(TYPE_C_INT);
 
                 codegen_expression_with_move(ctx, var_node);
 

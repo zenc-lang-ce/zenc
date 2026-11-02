@@ -363,11 +363,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
 
         if (init && type)
         {
-            char *rhs_type = init->resolved_type;
-            if (!rhs_type && init->type_info)
-            {
-                rhs_type = type_to_string(init->type_info);
-            }
+            char *rhs_type = init->type_info ? type_to_string(init->type_info) : NULL;
 
             if (rhs_type && strchr(type, '*') && strchr(rhs_type, '*'))
             {
