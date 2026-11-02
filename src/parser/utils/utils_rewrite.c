@@ -67,20 +67,17 @@ char *parse_condition_raw(ParserContext *ctx, Lexer *l)
     }
 }
 
-char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
-                             ASTNode ***default_values_out, int *count_out, Type ***types_out,
-                             char ***names_out, int *is_varargs_out, char ***ctype_overrides_out)
+int parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
+                           ASTNode ***default_values_out, int *count_out, Type ***types_out,
+                           char ***names_out, int *is_varargs_out, char ***ctype_overrides_out)
 {
     Token t = lexer_next(l);
     if (t.kind != TOK_LPAREN)
     {
         zpanic_at(t, "Expected '(' in function args");
-        return NULL;
+        return 0;
     }
 
-    size_t buf_size = 8192;
-    char *buf = xmalloc((size_t)(buf_size));
-    buf[0] = 0;
     int count = 0;
     int max_args = 16;
     char **defaults = xcalloc((size_t)(max_args), sizeof(char *));
@@ -128,13 +125,13 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                     if (lexer_next(l).kind != TOK_LPAREN)
                     {
                         zpanic_at(lexer_peek(l), "Expected ( after @ctype");
-                        return NULL;
+                        return 0;
                     }
                     Token ctype_tok = lexer_next(l);
                     if (ctype_tok.kind != TOK_STRING)
                     {
                         zpanic_at(ctype_tok, "@ctype requires a string argument");
-                        return NULL;
+                        return 0;
                     }
                     // Extract string content (strip quotes)
                     ctype_override = xmalloc(ctype_tok.len - 1);
@@ -143,13 +140,13 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                     if (lexer_next(l).kind != TOK_RPAREN)
                     {
                         zpanic_at(lexer_peek(l), "Expected ) after @ctype string");
-                        return NULL;
+                        return 0;
                     }
                 }
                 else
                 {
                     zpanic_at(attr, "Unknown parameter attribute @%.*s", (int)attr.len, attr.start);
-                    return NULL;
+                    return 0;
                 }
             }
 
@@ -197,25 +194,9 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                         types[count] = ptr;
                     }
                     zfree(buf_type);
-                    if (is_const_param)
-                    {
-                        strcat(buf, "const void* self");
-                    }
-                    else
-                    {
-                        strcat(buf, "void* self");
-                    }
                 }
                 else
                 {
-                    if (is_const_param)
-                    {
-                        strcat(buf, "const void* self");
-                    }
-                    else
-                    {
-                        strcat(buf, "void* self");
-                    }
                     Type *void_type = type_new(TYPE_VOID);
                     void_type->is_const = is_const_param;
                     types[count] = type_new_ptr(void_type);
@@ -230,7 +211,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                 if (param_tok.kind != TOK_IDENT)
                 {
                     zpanic_at(lexer_peek(l), "Expected arg name");
-                    return NULL;
+                    return 0;
                 }
                 check_identifier(param_tok);
                 char *name = token_strdup(param_tok);
@@ -238,13 +219,13 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                 if (lexer_next(l).kind != TOK_COLON)
                 {
                     zpanic_at(lexer_peek(l), "Expected ':'");
-                    return NULL;
+                    return 0;
                 }
 
                 Type *arg_type = parse_type_formal(ctx, l);
                 if (!arg_type)
                 {
-                    return NULL;
+                    return 0;
                 }
                 if (is_const_param)
                 {
@@ -254,53 +235,6 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
 
                 add_symbol_with_token(ctx, name, type_str, arg_type, param_tok, 0);
                 types[count] = arg_type;
-
-                if (strlen(buf) > 0)
-                {
-                    strcat(buf, ", ");
-                }
-
-                // Ensure buf has enough space before appending
-                size_t needed = strlen(buf) + strlen(type_str) + strlen(name) + 32;
-                if (needed > buf_size)
-                {
-                    while (needed > buf_size)
-                    {
-                        buf_size *= 2;
-                    }
-                    buf = xrealloc(buf, buf_size);
-                }
-
-                char *fn_ptr = (char *)strstr(type_str, "(*)");
-                if (get_inner_type(arg_type)->kind == TYPE_FUNCTION)
-                {
-                    strcat(buf, "z_closure_T ");
-                    strcat(buf, name);
-                }
-                else if (fn_ptr)
-                {
-                    // Inject name into function pointer: int (*)(int) -> int (*name)(int)
-                    ptrdiff_t prefix_len = fn_ptr - type_str;
-                    strncat(buf, type_str, (size_t)(prefix_len));
-                    strcat(buf, " (*");
-                    strcat(buf, name);
-                    strcat(buf, ")");
-                    strcat(buf, fn_ptr + 3); // Skip "(*)"
-                }
-                else
-                {
-                    // Use @ctype override if present
-                    if (ctype_override)
-                    {
-                        strcat(buf, ctype_override);
-                    }
-                    else
-                    {
-                        strcat(buf, type_str);
-                    }
-                    strcat(buf, " ");
-                    strcat(buf, name);
-                }
 
                 ctype_overrides[count] = ctype_override;
                 count++;
@@ -328,11 +262,6 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                     {
                         *is_varargs_out = 1;
                     }
-                    if (strlen(buf) > 0)
-                    {
-                        strcat(buf, ", ");
-                    }
-                    strcat(buf, "...");
                     break; // Must be last
                 }
             }
@@ -345,7 +274,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
     if (lexer_next(l).kind != TOK_RPAREN)
     {
         zpanic_at(lexer_peek(l), "Expected ')' after args");
-        return NULL;
+        return 0;
     }
 
     *defaults_out = defaults;
@@ -357,7 +286,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
     {
         *ctype_overrides_out = ctype_overrides;
     }
-    return buf;
+    return 1;
 }
 
 // Helper to find similar symbol name in current scope

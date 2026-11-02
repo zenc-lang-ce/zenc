@@ -152,9 +152,8 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     char **ctype_overrides;
     int is_varargs = 0;
 
-    char *args = parse_and_convert_args(ctx, l, &defaults, &default_values, &count, &arg_types,
-                                        &param_names, &is_varargs, &ctype_overrides);
-    if (!args)
+    if (!parse_and_convert_args(ctx, l, &defaults, &default_values, &count, &arg_types,
+                                &param_names, &is_varargs, &ctype_overrides))
     {
         return NULL;
     }
@@ -221,11 +220,9 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     {
         // Set self context flags for .member shorthand in methods with self
         int prev_in_method = ctx->in_method_with_self;
-        int prev_self_ptr = ctx->self_is_pointer;
-        if (args && strstr(args, "self"))
+        if (count > 0 && param_names[0] && strcmp(param_names[0], "self") == 0)
         {
             ctx->in_method_with_self = 1;
-            ctx->self_is_pointer = (strstr(args, "self*") != NULL);
         }
 
         int skipped = 1;
@@ -236,7 +233,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
             pending->body_start = *l;
             pending->scope = ctx->current_scope;
             pending->in_method_with_self = ctx->in_method_with_self;
-            pending->self_is_pointer = ctx->self_is_pointer;
             skipped = skip_braced_block(l);
         }
         else
@@ -246,7 +242,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
 
         // Restore previous state
         ctx->in_method_with_self = prev_in_method;
-        ctx->self_is_pointer = prev_self_ptr;
 
         if (!skipped)
         {
@@ -327,7 +322,6 @@ void parse_pending_bodies(ParserContext *ctx)
     ASTNode *saved_impl_methods = ctx->current_impl_methods;
     const char *saved_filename = ctx->current_filename;
     int saved_in_method = ctx->in_method_with_self;
-    int saved_self_ptr = ctx->self_is_pointer;
     char *saved_ret = curr_func_ret;
     char *saved_doc = ctx->last_doc_comment;
 
@@ -348,7 +342,6 @@ void parse_pending_bodies(ParserContext *ctx)
         ctx->current_scope = pending->scope;
         ctx->current_impl_methods = NULL; // every method is registered by now
         ctx->in_method_with_self = pending->in_method_with_self;
-        ctx->self_is_pointer = pending->self_is_pointer;
         ctx->had_error = 0;
 
         if (node->kind == NODE_TEST)
@@ -392,7 +385,6 @@ void parse_pending_bodies(ParserContext *ctx)
     ctx->current_impl_methods = saved_impl_methods;
     ctx->current_filename = saved_filename;
     ctx->in_method_with_self = saved_in_method;
-    ctx->self_is_pointer = saved_self_ptr;
     curr_func_ret = saved_ret;
     ctx->last_doc_comment = saved_doc;
 }

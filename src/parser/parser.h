@@ -337,7 +337,6 @@ typedef struct PendingBody
     Lexer body_start;        ///< Lexer positioned at the body's opening '{'.
     Scope *scope;            ///< Scope holding the parameters.
     int in_method_with_self; ///< `.field` shorthand allowed in this body.
-    int self_is_pointer;     ///< `self` is a pointer in this body.
     struct PendingBody *next;
 } PendingBody;
 
@@ -848,9 +847,9 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export);
 ASTNode *parse_test(ParserContext *ctx, Lexer *l);
 ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export);
 ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_export);
-char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults,
-                             ASTNode ***default_values, int *count, Type ***arg_types,
-                             char ***param_names, int *is_varargs, char ***ctype_overrides);
+int parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults,
+                           ASTNode ***default_values, int *count, Type ***arg_types,
+                           char ***param_names, int *is_varargs, char ***ctype_overrides);
 Type *parse_type_formal(ParserContext *ctx, Lexer *l);
 Type *type_from_string_helper(ParserContext *ctx, const char *c);
 Type *type_from_name(ParserContext *ctx, const char *name);

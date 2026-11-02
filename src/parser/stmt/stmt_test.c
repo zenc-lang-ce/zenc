@@ -52,7 +52,6 @@ ASTNode *parse_test(ParserContext *ctx, Lexer *l)
     pending->body_start = *l;
     pending->scope = ctx->current_scope;
     pending->in_method_with_self = ctx->in_method_with_self;
-    pending->self_is_pointer = ctx->self_is_pointer;
     if (!skip_braced_block(l))
     {
         return NULL;
