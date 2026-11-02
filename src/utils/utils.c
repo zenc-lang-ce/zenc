@@ -118,16 +118,81 @@ char *sanitize_path_for_c_string(const char *path)
     return sanitized;
 }
 
+// Drops the "." and ".." components of a path without touching the filesystem.
+static char *collapse_dot_segments(const char *path)
+{
+    char *out = xmalloc(strlen(path) + 2);
+    size_t len = 0;
+    int absolute = path[0] == '/';
+    if (absolute)
+    {
+        out[len++] = '/';
+    }
+    size_t root = len; // ".." never removes what is before this
+
+    const char *p = path;
+    while (*p)
+    {
+        while (*p == '/')
+        {
+            p++;
+        }
+        const char *seg = p;
+        while (*p && *p != '/')
+        {
+            p++;
+        }
+        size_t seg_len = (size_t)(p - seg);
+        if (seg_len == 0 || (seg_len == 1 && seg[0] == '.'))
+        {
+            continue;
+        }
+        if (seg_len == 2 && seg[0] == '.' && seg[1] == '.')
+        {
+            size_t last = len;
+            while (last > root && out[last - 1] != '/')
+            {
+                last--;
+            }
+            int last_is_dotdot = len - last == 2 && out[last] == '.' && out[last + 1] == '.';
+            if (len > root && !last_is_dotdot)
+            {
+                len = last > root ? last - 1 : root;
+                continue;
+            }
+            if (absolute)
+            {
+                continue; // "/.." is "/"
+            }
+        }
+        if (len > root)
+        {
+            out[len++] = '/';
+        }
+        memcpy(out + len, seg, seg_len);
+        len += seg_len;
+    }
+    if (len == 0)
+    {
+        out[len++] = '.';
+    }
+    out[len] = '\0';
+    return out;
+}
+
+// The resolved path names the module, so two spellings of one file must give the same string.
+// realpath() already gives that for files on disk, but Cosmopolitan returns the paths inside
+// the executable's own zip (/zip/std/./core.zc) as they are, which imported std modules twice.
 static char *z_realpath_arena(const char *path)
 {
     char *real = realpath(path, NULL);
     if (real)
     {
-        char *res = xstrdup(real);
+        char *res = collapse_dot_segments(real);
         libc_free(real);
         return res;
     }
-    return xstrdup(path);
+    return collapse_dot_segments(path);
 }
 
 static int is_std_import(const char *fn)
