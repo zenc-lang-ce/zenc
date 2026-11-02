@@ -177,7 +177,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                         bt->is_const = is_const_param;
                         Type *ptr = type_new_ptr(bt);
 
-                        add_symbol(ctx, "self", buf_type, ptr, 0);
+                        add_symbol(ctx, "self", ptr, 0);
                         types[count] = ptr;
                     }
                     else
@@ -187,7 +187,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                         st->is_const = is_const_param;
                         Type *ptr = type_new_ptr(st);
 
-                        add_symbol(ctx, "self", buf_type, ptr, 0);
+                        add_symbol(ctx, "self", ptr, 0);
                         types[count] = ptr;
                     }
                     zfree(buf_type);
@@ -197,8 +197,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                     Type *void_type = type_new(TYPE_VOID);
                     void_type->is_const = is_const_param;
                     types[count] = type_new_ptr(void_type);
-                    add_symbol(ctx, "self", is_const_param ? "const void*" : "void*", types[count],
-                               0);
+                    add_symbol(ctx, "self", types[count], 0);
                 }
                 ctype_overrides[count] = ctype_override;
                 count++;
@@ -228,9 +227,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                 {
                     arg_type->is_const = 1;
                 }
-                char *type_str = type_to_string(arg_type);
-
-                add_symbol_with_token(ctx, name, type_str, arg_type, param_tok, 0);
+                add_symbol_with_token(ctx, name, arg_type, param_tok, 0);
                 types[count] = arg_type;
 
                 ctype_overrides[count] = ctype_override;

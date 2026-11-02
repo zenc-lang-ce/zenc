@@ -649,13 +649,13 @@ void exit_scope(ParserContext *ctx);
 /**
  * @brief Adds a symbol to the current scope.
  */
-void add_symbol(ParserContext *ctx, const char *n, const char *t, Type *type_info, int is_export);
+void add_symbol(ParserContext *ctx, const char *n, Type *type_info, int is_export);
 
 /**
  * @brief Adds a symbol with definition token location.
  */
-void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Type *type_info,
-                           Token tok, int is_export);
+void add_symbol_with_token(ParserContext *ctx, const char *n, Type *type_info, Token tok,
+                           int is_export);
 
 /**
  * @brief Finds a symbol's type information.

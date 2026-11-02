@@ -29,7 +29,7 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
 
     // Register parameter in scope for body parsing
     enter_scope(ctx);
-    add_symbol_with_token(ctx, param_name, NULL, t->args[0], param, 0);
+    add_symbol_with_token(ctx, param_name, t->args[0], param, 0);
 
     // Body parsing...
     ASTNode *body_block = NULL;
@@ -79,7 +79,6 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
 
         if (sym)
         {
-            sym->type_name = xstrdup("unknown");
             sym->type_info = t->args[0]; // Bind AST node type implicitly!
         }
     }
@@ -127,12 +126,11 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
     {
         if (param_types && param_types[i])
         {
-            add_symbol_with_token(ctx, param_names[i], type_to_string(param_types[i]),
-                                  param_types[i], params[i], 0);
+            add_symbol_with_token(ctx, param_names[i], param_types[i], params[i], 0);
         }
         else
         {
-            add_symbol_with_token(ctx, param_names[i], "unknown", t->args[i], params[i], 0);
+            add_symbol_with_token(ctx, param_names[i], t->args[i], params[i], 0);
         }
     }
 

@@ -47,14 +47,14 @@ typedef struct ZenSymbol
     ASTNode *first_using_func;  ///< First function that referenced this global.
     int multi_func_use;         ///< Flag set if referenced by multiple functions.
 
-    SymbolKind kind;         ///< Kind of symbol.
-    char *type_name;         ///< String representation of the type (legacy).
-    Type *type_info;         ///< Formal type definition.
-    Token decl_token;        ///< Token where the symbol was declared.
-    int is_used;             ///< 1 if reference count > 0.
-    int is_immutable;        ///< 1 if value cannot be changed.
-    int is_static;           ///< 1 if static storage.
-    int is_export;           ///< 1 if visible outside module.
+    SymbolKind kind;  ///< Kind of symbol.
+    char *c_type;     ///< Codegen only: the C type it inferred for a local the parser left untyped.
+    Type *type_info;  ///< Formal type definition.
+    Token decl_token; ///< Token where the symbol was declared.
+    int is_used;      ///< 1 if reference count > 0.
+    int is_immutable; ///< 1 if value cannot be changed.
+    int is_static;    ///< 1 if static storage.
+    int is_export;    ///< 1 if visible outside module.
     int is_const_value;      ///< 1 if compile-time constant.
     int is_def;              ///< 1 if definition vs declaration.
     long long const_int_val; ///< Integer value if constant.

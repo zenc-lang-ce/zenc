@@ -9,13 +9,13 @@
 #include <ctype.h>
 #include "analysis/const_fold.h"
 
-void add_symbol(ParserContext *ctx, const char *n, const char *t, Type *type_info, int is_export)
+void add_symbol(ParserContext *ctx, const char *n, Type *type_info, int is_export)
 {
-    add_symbol_with_token(ctx, n, t, type_info, TOKEN_UNKNOWN, is_export);
+    add_symbol_with_token(ctx, n, type_info, TOKEN_UNKNOWN, is_export);
 }
 
-void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Type *type_info,
-                           Token tok, int is_export)
+void add_symbol_with_token(ParserContext *ctx, const char *n, Type *type_info, Token tok,
+                           int is_export)
 {
     if (!ctx->current_scope)
     {
@@ -36,7 +36,6 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Typ
         ZenSymbol *existing = symbol_lookup_local(ctx->current_scope, n);
         if (existing)
         {
-            existing->type_name = t ? xstrdup(t) : NULL;
             existing->type_info = type_info;
             existing->decl_token = tok;
             return;
@@ -45,7 +44,6 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Typ
 
     ZenSymbol *s = symbol_add(ctx->current_scope, n, SYM_VARIABLE);
     s->is_local = (ctx->current_scope != ctx->global_scope);
-    s->type_name = t ? xstrdup(t) : NULL;
     s->type_info = type_info;
     s->decl_token = tok;
     s->is_export = is_export;
@@ -77,7 +75,9 @@ char *find_symbol_type(ParserContext *ctx, const char *n)
     ZenSymbol *sym = symbol_lookup(ctx->current_scope, n);
     if (sym)
     {
-        return sym->type_name ? xstrdup(sym->type_name) : NULL;
+        return (sym->type_info && sym->type_info->kind != TYPE_UNKNOWN)
+                   ? type_to_string(sym->type_info)
+                   : NULL;
     }
 
     EnumVariantReg *ev = find_enum_variant(ctx, n);

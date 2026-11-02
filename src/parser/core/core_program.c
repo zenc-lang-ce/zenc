@@ -353,8 +353,7 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                             Type *type_obj = parse_type_formal(ctx, l);
                             if (type_obj != NULL)
                             {
-                                add_symbol_with_token(ctx, name, type_to_string(type_obj), type_obj,
-                                                      sym, attrs.is_export);
+                                add_symbol_with_token(ctx, name, type_obj, sym, attrs.is_export);
                             }
                         }
 

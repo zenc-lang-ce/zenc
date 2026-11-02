@@ -216,10 +216,7 @@ static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, const ch
         {
             rt = sym->type_info;
             rhs->type_info = rt;
-            if (sym->type_name)
-            {
-                rhs->resolved_type = xstrdup(sym->type_name);
-            }
+            rhs->resolved_type = type_to_string(rt);
         }
     }
 
@@ -2251,11 +2248,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 {
                     // Update ZenSymbol
                     sym->type_info = rhs->type_info;
-                    sym->type_name = type_to_string(rhs->type_info);
 
                     // Update AST Node
                     lhs->type_info = rhs->type_info;
-                    lhs->resolved_type = xstrdup(sym->type_name);
+                    lhs->resolved_type = type_to_string(rhs->type_info);
                 }
             }
 
@@ -2270,11 +2266,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 {
                     // Update ZenSymbol
                     sym->type_info = lhs->type_info;
-                    sym->type_name = type_to_string(lhs->type_info);
 
                     // Update AST Node
                     rhs->type_info = lhs->type_info;
-                    rhs->resolved_type = xstrdup(sym->type_name);
+                    rhs->resolved_type = type_to_string(lhs->type_info);
                 }
             }
 
@@ -2432,11 +2427,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             {
                                 // Update ZenSymbol
                                 sym->type_info = rhs->type_info;
-                                sym->type_name = type_to_string(rhs->type_info);
 
                                 // Update AST Node
                                 lhs->type_info = rhs->type_info;
-                                lhs->resolved_type = xstrdup(sym->type_name);
+                                lhs->resolved_type = type_to_string(rhs->type_info);
 
                                 bin->type_info = rhs->type_info;
                                 goto bin_inference_success;
@@ -2454,11 +2448,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             {
                                 // Update ZenSymbol
                                 sym->type_info = lhs->type_info;
-                                sym->type_name = type_to_string(lhs->type_info);
 
                                 // Update AST Node
                                 rhs->type_info = lhs->type_info;
-                                rhs->resolved_type = xstrdup(sym->type_name);
+                                rhs->resolved_type = type_to_string(lhs->type_info);
 
                                 bin->type_info = lhs->type_info;
                                 goto bin_inference_success;

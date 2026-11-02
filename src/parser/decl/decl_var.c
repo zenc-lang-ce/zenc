@@ -78,12 +78,11 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 lexer_next(l); // eat :
                 Type *type_obj = parse_type_formal(ctx, l);
                 type_infos[count] = type_obj;
-                add_symbol(ctx, nm, type_obj ? type_to_string(type_obj) : "unknown", type_obj,
-                           is_export);
+                add_symbol(ctx, nm, type_obj, is_export);
             }
             else
             {
-                add_symbol(ctx, nm, "unknown", NULL, is_export);
+                add_symbol(ctx, nm, NULL, is_export);
             }
             count++;
 
@@ -159,7 +158,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 names[count] = ident; // Share pointer or duplicate? duplicate safer if we free
             }
             // Register symbol for variable
-            add_symbol(ctx, names[count], "unknown", NULL, is_export);
+            add_symbol(ctx, names[count], NULL, is_export);
 
             count++;
 
@@ -257,7 +256,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         n->destruct.guard_variant = name;
         n->destruct.else_block = else_blk;
 
-        add_symbol(ctx, val_name, "unknown", NULL, is_export);
+        add_symbol(ctx, val_name, NULL, is_export);
 
         return n;
     }
@@ -465,7 +464,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     }
 
     // Register in symbol table with actual token
-    add_symbol_with_token(ctx, name, type, type_obj, name_tok, is_export);
+    add_symbol_with_token(ctx, name, type_obj, name_tok, is_export);
 
     if (init && type_obj)
     {
@@ -691,8 +690,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 }
             }
 
-            add_symbol_with_token(ctx, next_name, next_type, next_type_obj, next_name_tok,
-                                  is_export);
+            add_symbol_with_token(ctx, next_name, next_type_obj, next_name_tok, is_export);
 
             ASTNode *next_node = ast_create(NODE_VAR_DECL);
             next_node->token = next_name_tok;

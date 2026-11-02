@@ -39,7 +39,7 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
     sym_type->is_const = 1;
 
     // Use is_def flag for manifest constants
-    add_symbol_with_token(ctx, ns, type_str ? type_str : "unknown", sym_type, n, is_export);
+    add_symbol_with_token(ctx, ns, sym_type, n, is_export);
     ZenSymbol *sym_entry = find_symbol_entry(ctx, ns);
     if (sym_entry)
     {
@@ -78,14 +78,9 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
 
                     // Auto-infer type for def if unknown: `int`, or `i64` when the
                     // value does not fit in 32 bits.
-                    if (!s->type_name || strcmp(s->type_name, "unknown") == 0)
+                    if (!s->type_info || s->type_info->kind == TYPE_UNKNOWN)
                     {
                         int is_wide = val < INT32_MIN || val > INT32_MAX;
-                        if (s->type_name)
-                        {
-                            zfree(s->type_name);
-                        }
-                        s->type_name = xstrdup(is_wide ? "i64" : "int");
                         if (s->type_info)
                         {
                             zfree(s->type_info);

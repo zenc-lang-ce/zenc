@@ -529,7 +529,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 if (strcmp(binding, "parsed") == 0)
                 {
                 }
-                add_symbol(ctx, binding, binding_type, binding_type_info, 0);
+                add_symbol(ctx, binding, binding_type_info, 0);
             }
         }
 

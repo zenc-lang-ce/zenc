@@ -215,8 +215,7 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
 
     for (int i = 0; i < count; i++)
     {
-        add_symbol_with_token(ctx, param_names[i], type_to_string(t->args[i]), t->args[i],
-                              param_tokens[i], 0);
+        add_symbol_with_token(ctx, param_names[i], t->args[i], param_tokens[i], 0);
     }
 
     ASTNode *body = NULL;

@@ -1330,9 +1330,9 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
         ZenSymbol *sym = find_symbol_entry(ctx, node->var_ref.name);
         if (sym)
         {
-            if (sym->type_name)
+            if (sym->c_type)
             {
-                return sym->type_name;
+                return sym->c_type;
             }
             if (sym->type_info)
             {

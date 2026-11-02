@@ -533,7 +533,7 @@ static void add_symbol_local(ParserContext *ctx, const char *name, const char *t
         return;
     }
     sym->is_local = (ctx->current_scope != ctx->global_scope);
-    sym->type_name = type_name ? xstrdup(type_name) : NULL;
+    sym->c_type = type_name ? xstrdup(type_name) : NULL;
     sym->type_info = type_info;
 }
 

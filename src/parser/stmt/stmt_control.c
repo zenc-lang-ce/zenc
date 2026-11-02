@@ -256,10 +256,10 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     }
 
                     enter_scope(ctx);
-                    add_symbol(ctx, n->for_range.var_name, "int", type_new(TYPE_INT), 0);
+                    add_symbol(ctx, n->for_range.var_name, type_new(TYPE_INT), 0);
                     if (enum_idx_name)
                     {
-                        add_symbol(ctx, enum_idx_name, "int", type_new(TYPE_INT), 0);
+                        add_symbol(ctx, enum_idx_name, type_new(TYPE_INT), 0);
                     }
 
                     ASTNode *user_body = NULL;
@@ -553,11 +553,10 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 APPEND_STMT(user_var_decl);
 
                 enter_scope(ctx);
-                add_symbol(ctx, var_name, elem_type ? type_to_string(elem_type) : NULL, elem_type,
-                           0);
+                add_symbol(ctx, var_name, elem_type, 0);
                 if (enum_idx_name)
                 {
-                    add_symbol(ctx, enum_idx_name, "int", type_new(TYPE_INT), 0);
+                    add_symbol(ctx, enum_idx_name, type_new(TYPE_INT), 0);
                 }
 
                 ASTNode *stmt = parse_statement(ctx, l);

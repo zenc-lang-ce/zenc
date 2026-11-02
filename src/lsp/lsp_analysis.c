@@ -1144,10 +1144,6 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                 {
                                     type_name = type_to_string(sym->type_info);
                                 }
-                                else if (sym->type_name)
-                                {
-                                    type_name = xstrdup(sym->type_name);
-                                }
                             }
                         }
                     }
