@@ -367,15 +367,7 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
             }
             else
             {
-                char *tstr = NULL;
-                if (node->lambda.captured_types_info && node->lambda.captured_types_info[i])
-                {
-                    tstr = c_type_spelling(ctx, node->lambda.captured_types_info[i]);
-                }
-                else
-                {
-                    tstr = xstrdup(node->lambda.captured_types[i]);
-                }
+                char *tstr = capture_c_type(ctx, node, i);
 
                 const char *cap_name = node->lambda.captured_vars[i];
                 int is_array = !strstr(tstr, "(*") && strchr(tstr, '[');
@@ -400,15 +392,8 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                 var_node->var_ref.name = xstrdup(node->lambda.captured_vars[i]);
                 var_node->token = node->token;
 
-                if (node->lambda.captured_types && node->lambda.captured_types[i])
-                {
-                    var_node->resolved_type = xstrdup(node->lambda.captured_types[i]);
-                }
-                else
-                {
-                    // Should rely on analysis, but fallback just in case.
-                    var_node->resolved_type = xstrdup("int");
-                }
+                Type *captured = node->lambda.captured_types_info[i];
+                var_node->resolved_type = captured ? type_to_string(captured) : xstrdup("int");
 
                 codegen_expression_with_move(ctx, var_node);
 
@@ -423,21 +408,11 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                     EMIT(ctx, ";\n");
                 }
 
-                if (node->lambda.captured_types && node->lambda.captured_types[i])
+                ASTNode *fdef = capture_struct_def(ctx, node, i);
+                if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
                 {
-                    char *tname = node->lambda.captured_types[i];
-                    const char *clean = tname;
-                    if (strncmp(clean, "struct ", 7) == 0)
-                    {
-                        clean += 7;
-                    }
-
-                    ASTNode *fdef = find_struct_def(ctx, clean);
-                    if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
-                    {
-                        EMIT(ctx, "_z_ctx_%d->__z_drop_flag_%s = 1;\n", lid,
-                             node->lambda.captured_vars[i]);
-                    }
+                    EMIT(ctx, "_z_ctx_%d->__z_drop_flag_%s = 1;\n", lid,
+                         node->lambda.captured_vars[i]);
                 }
             }
         }

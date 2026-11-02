@@ -68,6 +68,18 @@ char *c_type_spelling(ParserContext *ctx, Type *t)
     return type_to_c_string_with(t, ctx->config->misra_mode, link_name_of, ctx);
 }
 
+char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index)
+{
+    Type *t = lambda->lambda.captured_types_info[index];
+    return t ? c_type_spelling(ctx, t) : xstrdup("int");
+}
+
+ASTNode *capture_struct_def(ParserContext *ctx, ASTNode *lambda, int index)
+{
+    Type *t = lambda->lambda.captured_types_info[index];
+    return t ? find_struct_def(ctx, type_to_string(t)) : NULL;
+}
+
 const char *field_c_type(ParserContext *ctx, ASTNode *field)
 {
     if (field->type_info)

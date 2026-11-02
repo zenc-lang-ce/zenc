@@ -78,6 +78,15 @@ const char *field_c_type(ParserContext *ctx, ASTNode *field);
  *        @link_name), wherever the Type comes from.
  */
 char *c_type_spelling(ParserContext *ctx, Type *t);
+/**
+ * @brief The type of capture `index` of a lambda spelled in C; `int` when the parser found no
+ *        type for it.
+ */
+char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index);
+/**
+ * @brief The struct that capture `index` of a lambda holds by value, or NULL.
+ */
+ASTNode *capture_struct_def(ParserContext *ctx, ASTNode *lambda, int index);
 void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t);
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr);
 void emit_rvalue_address(ParserContext *ctx, ASTNode *expr);

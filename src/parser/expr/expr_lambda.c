@@ -19,10 +19,6 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
     lambda->lambda.param_names[0] = param_name;
     lambda->lambda.count = 1;
 
-    // Default param type: unknown (to be inferred)
-    lambda->lambda.param_types = xmalloc(sizeof(char *));
-    lambda->lambda.param_types[0] = NULL;
-
     // Create Type Info: unknown -> unknown
     Type *t = type_new(TYPE_FUNCTION);
     t->inner = type_new(TYPE_INT);
@@ -75,17 +71,10 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
     ZenSymbol *sym = find_symbol_entry(ctx, param_name);
     if (sym && sym->type_info && sym->type_info->kind != TYPE_UNKNOWN)
     {
-        zfree(lambda->lambda.param_types[0]);
-        lambda->lambda.param_types[0] = type_to_string(sym->type_info);
         t->args[0] = sym->type_info;
     }
     else
     {
-        if (lambda->lambda.param_types[0])
-        {
-            zfree(lambda->lambda.param_types[0]);
-        }
-        lambda->lambda.param_types[0] = xstrdup("unknown");
         t->args[0] = type_new(TYPE_UNKNOWN);
 
         if (sym)
@@ -127,19 +116,9 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
     t->args = xmalloc(sizeof(Type *) * (size_t)(count));
     t->count = count;
 
-    lambda->lambda.param_types = xmalloc(sizeof(char *) * (size_t)(count));
     for (int i = 0; i < count; i++)
     {
-        if (param_types && param_types[i])
-        {
-            lambda->lambda.param_types[i] = type_to_string(param_types[i]);
-            t->args[i] = param_types[i];
-        }
-        else
-        {
-            lambda->lambda.param_types[i] = xstrdup("unknown");
-            t->args[i] = type_new(TYPE_UNKNOWN);
-        }
+        t->args[i] = (param_types && param_types[i]) ? param_types[i] : type_new(TYPE_UNKNOWN);
     }
     lambda->type_info = t;
 
@@ -149,7 +128,7 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
     {
         if (param_types && param_types[i])
         {
-            add_symbol_with_token(ctx, param_names[i], lambda->lambda.param_types[i],
+            add_symbol_with_token(ctx, param_names[i], type_to_string(param_types[i]),
                                   param_types[i], params[i], 0);
         }
         else

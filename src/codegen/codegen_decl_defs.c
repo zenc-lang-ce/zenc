@@ -415,42 +415,12 @@ void emit_lambda_defs(ParserContext *ctx)
             emitter_indent(&ctx->cg.emitter);
             for (int i = 0; i < node->lambda.capture_count; i++)
             {
-                if (node->lambda.capture_modes && node->lambda.capture_modes[i] == 1)
+                int by_ref = node->lambda.capture_modes && node->lambda.capture_modes[i] == 1;
+                emit_lambda_ctx_field(ctx, capture_c_type(ctx, node, i),
+                                      node->lambda.captured_vars[i], by_ref);
+                if (!by_ref)
                 {
-                    char *tstr = NULL;
-                    if (node->lambda.captured_types_info && node->lambda.captured_types_info[i])
-                    {
-                        tstr = c_type_spelling(ctx, node->lambda.captured_types_info[i]);
-                    }
-                    else
-                    {
-                        tstr = xstrdup(node->lambda.captured_types[i]);
-                    }
-                    emit_lambda_ctx_field(ctx, tstr, node->lambda.captured_vars[i], 1);
-                    zfree(tstr);
-                }
-                else
-                {
-                    char *tstr = NULL;
-                    if (node->lambda.captured_types_info && node->lambda.captured_types_info[i])
-                    {
-                        tstr = c_type_spelling(ctx, node->lambda.captured_types_info[i]);
-                    }
-                    else
-                    {
-                        tstr = xstrdup(node->lambda.captured_types[i]);
-                    }
-                    emit_lambda_ctx_field(ctx, tstr, node->lambda.captured_vars[i], 0);
-                    zfree(tstr);
-
-                    char *tname = node->lambda.captured_types[i];
-                    const char *clean = tname;
-                    if (strncmp(clean, "struct ", 7) == 0)
-                    {
-                        clean += 7;
-                    }
-
-                    ASTNode *fdef = find_struct_def(ctx, clean);
+                    ASTNode *fdef = capture_struct_def(ctx, node, i);
                     if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
                     {
                         EMIT(ctx, "int __z_drop_flag_%s;\n", node->lambda.captured_vars[i]);
@@ -470,18 +440,13 @@ void emit_lambda_defs(ParserContext *ctx)
             {
                 if (node->lambda.capture_modes && node->lambda.capture_modes[i] == 0)
                 {
-                    char *tname = node->lambda.captured_types[i];
-                    const char *clean = tname;
-                    if (strncmp(clean, "struct ", 7) == 0)
-                    {
-                        clean += 7;
-                    }
-
-                    ASTNode *fdef = find_struct_def(ctx, clean);
+                    ASTNode *fdef = capture_struct_def(ctx, node, i);
                     if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
                     {
                         EMIT(ctx, "if (ctx->__z_drop_flag_%s) %s__Drop__glue(&ctx->%s);\n",
-                             node->lambda.captured_vars[i], clean, node->lambda.captured_vars[i]);
+                             node->lambda.captured_vars[i],
+                             type_to_string(node->lambda.captured_types_info[i]),
+                             node->lambda.captured_vars[i]);
                     }
                 }
             }
@@ -520,31 +485,16 @@ void emit_lambda_defs(ParserContext *ctx)
 
         for (int i = 0; i < node->lambda.count; i++)
         {
-            char *param_type_str = node->lambda.param_types[i];
-            if (node->type_info && node->type_info->args && node->type_info->args[i] &&
-                node->type_info->args[i]->kind != TYPE_UNKNOWN)
-            {
-                param_type_str = c_type_spelling(ctx, node->type_info->args[i]);
-            }
-
             if (!node->lambda.is_bare || i > 0)
             {
                 EMIT(ctx, ", ");
             }
 
-            if (strcmp(param_type_str, "unknown") == 0)
-            {
-                EMIT(ctx, "void* %s", node->lambda.param_names[i]);
-            }
-            else
-            {
-                EMIT(ctx, "%s %s", param_type_str, node->lambda.param_names[i]);
-            }
-            if (node->type_info && node->type_info->args && node->type_info->args[i] &&
-                node->type_info->args[i]->kind != TYPE_UNKNOWN)
-            {
-                zfree(param_type_str);
-            }
+            // A parameter whose type nothing told is passed as `void*`.
+            Type *param = node->type_info->args[i];
+            const char *param_c_type =
+                (param && param->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, param) : "void*";
+            EMIT(ctx, "%s %s", param_c_type, node->lambda.param_names[i]);
         }
         EMIT(ctx, ") {\n");
         emitter_indent(&ctx->cg.emitter);

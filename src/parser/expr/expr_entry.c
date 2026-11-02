@@ -323,7 +323,6 @@ void analyze_lambda_captures(ParserContext *ctx, ASTNode *lambda)
     // (+1 so a lambda that captures nothing does not ask for 0 bytes).
     size_t max_captures = (size_t)lambda->lambda.explicit_capture_count + (size_t)num_refs + 1;
     char **captures = xmalloc(sizeof(char *) * max_captures);
-    char **capture_types = xmalloc(sizeof(char *) * max_captures);
     Type **captured_types_info = xmalloc(sizeof(Type *) * max_captures);
     int *capture_modes = xmalloc(sizeof(int) * max_captures);
     int capture_count = 0;
@@ -338,7 +337,6 @@ void analyze_lambda_captures(ParserContext *ctx, ASTNode *lambda)
 
             Type *t = find_symbol_type_info(ctx, var_name);
             captured_types_info[capture_count] = t;
-            capture_types[capture_count] = t ? type_to_string(t) : xstrdup("int");
             capture_count++;
         }
     }
@@ -444,19 +442,10 @@ void analyze_lambda_captures(ParserContext *ctx, ASTNode *lambda)
 
         Type *t = find_symbol_type_info(ctx, var_name);
         captured_types_info[capture_count] = t;
-        if (t)
-        {
-            capture_types[capture_count] = type_to_string(t);
-        }
-        else
-        {
-            capture_types[capture_count] = xstrdup("int");
-        }
         capture_count++;
     }
 
     lambda->lambda.captured_vars = captures;
-    lambda->lambda.captured_types = capture_types;
     lambda->lambda.captured_types_info = captured_types_info;
     lambda->lambda.capture_modes = capture_modes;
     lambda->lambda.capture_count = capture_count;

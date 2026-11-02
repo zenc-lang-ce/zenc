@@ -637,8 +637,7 @@ struct ASTNode
 
         struct
         {
-            char **param_names;
-            char **param_types;
+            char **param_names; // Parameter types: type_info->args.
             char *return_type;
             ASTNode *body;
             int count;
@@ -646,8 +645,7 @@ struct ASTNode
             int is_expression;
             int is_bare; // 1 if should be emitted without void* ctx (for fn*)
             char **captured_vars;
-            char **captured_types;
-            Type **captured_types_info;
+            Type **captured_types_info; // NULL where the parser found no type.
             int capture_count;
             int *capture_modes;
             int default_capture_mode;

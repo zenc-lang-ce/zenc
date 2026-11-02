@@ -1308,12 +1308,9 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         if (n->lambda.count > 0)
         {
             new_node->lambda.param_names = xmalloc(sizeof(char *) * (size_t)(n->lambda.count));
-            new_node->lambda.param_types = xmalloc(sizeof(char *) * (size_t)(n->lambda.count));
             for (int i = 0; i < n->lambda.count; i++)
             {
                 new_node->lambda.param_names[i] = xstrdup(n->lambda.param_names[i]);
-                new_node->lambda.param_types[i] =
-                    replace_type_str(n->lambda.param_types[i], p, c, os, ns);
             }
         }
         new_node->lambda.return_type = replace_type_str(n->lambda.return_type, p, c, os, ns);
@@ -1321,8 +1318,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         if (n->lambda.capture_count > 0)
         {
             new_node->lambda.captured_vars =
-                xmalloc(sizeof(char *) * (size_t)(n->lambda.capture_count));
-            new_node->lambda.captured_types =
                 xmalloc(sizeof(char *) * (size_t)(n->lambda.capture_count));
             new_node->lambda.captured_types_info =
                 xmalloc(sizeof(Type *) * (size_t)(n->lambda.capture_count));
@@ -1335,8 +1330,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
             for (int i = 0; i < n->lambda.capture_count; i++)
             {
                 new_node->lambda.captured_vars[i] = xstrdup(n->lambda.captured_vars[i]);
-                new_node->lambda.captured_types[i] =
-                    replace_type_str(n->lambda.captured_types[i], p, c, os, ns);
                 new_node->lambda.captured_types_info[i] =
                     replace_type_formal(ctx, n->lambda.captured_types_info[i], p, c, os, ns);
                 if (n->lambda.capture_modes)

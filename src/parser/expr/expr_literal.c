@@ -85,7 +85,6 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     t->args = xmalloc(sizeof(Type *) * 16);
     char **param_names = xmalloc(sizeof(char *) * 16);
     Token param_tokens[16];
-    char **param_types = xmalloc(sizeof(char *) * 16);
     int count = 0;
 
     while (lexer_peek(l).kind != TOK_RPAREN)
@@ -131,7 +130,6 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
             return NULL;
         }
         t->args[t->count] = typef;
-        param_types[count] = type_to_string(typef);
         count++;
         t->count = count;
     }
@@ -154,7 +152,8 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
 
     for (int i = 0; i < count; i++)
     {
-        add_symbol_with_token(ctx, param_names[i], param_types[i], t->args[i], param_tokens[i], 0);
+        add_symbol_with_token(ctx, param_names[i], type_to_string(t->args[i]), t->args[i],
+                              param_tokens[i], 0);
     }
 
     ASTNode *body = NULL;
@@ -171,7 +170,6 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     lambda->token = lambda_token;
     lambda->line = lambda_token.line;
     lambda->lambda.param_names = param_names;
-    lambda->lambda.param_types = param_types;
     lambda->lambda.return_type = return_type;
     lambda->lambda.body = body;
     lambda->lambda.body = body;
