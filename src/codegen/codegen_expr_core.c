@@ -194,17 +194,14 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
         }
     }
 
-    if (node->resolved_type && strcmp(node->resolved_type, "unknown") == 0)
+    // The parser leaves a suggestion only on a name it could not resolve.
+    if (node->var_ref.suggestion && !ctx->silent_warnings && !find_func(ctx, node->var_ref.name))
     {
-        if (node->var_ref.suggestion && !ctx->silent_warnings &&
-            !find_func(ctx, node->var_ref.name))
-        {
-            char msg[MAX_SHORT_MSG_LEN];
-            char help[MAX_SHORT_MSG_LEN];
-            snprintf(msg, sizeof(msg), "Undefined variable '%s'", node->var_ref.name);
-            snprintf(help, sizeof(help), "Did you mean '%s'?", node->var_ref.suggestion);
-            zwarn_at(node->token, "%s\n   = help: %s", msg, help);
-        }
+        char msg[MAX_SHORT_MSG_LEN];
+        char help[MAX_SHORT_MSG_LEN];
+        snprintf(msg, sizeof(msg), "Undefined variable '%s'", node->var_ref.name);
+        snprintf(help, sizeof(help), "Did you mean '%s'?", node->var_ref.suggestion);
+        zwarn_at(node->token, "%s\n   = help: %s", msg, help);
     }
 
     // Check for static method call pattern: Type::method or Type__method

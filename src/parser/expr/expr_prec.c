@@ -670,14 +670,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 {
                     node->resolved_type = type_to_string(node->type_info);
                 }
-                else
-                {
-                    node->resolved_type = xstrdup("unknown");
-                }
-            }
-            else
-            {
-                node->resolved_type = xstrdup("unknown");
             }
 
             lhs = node;
@@ -1061,8 +1053,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             call->call.arg_names = has_named ? arg_names : NULL;
             call->call.count = count;
 
-            call->resolved_type = xstrdup("unknown");
-
             if (resolved_sig)
             {
                 call->type_info = resolved_sig->ret_type;
@@ -1374,10 +1364,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         {
                             call->resolved_type = type_to_string(sig->ret_type);
                         }
-                        else
-                        {
-                            call->resolved_type = xstrdup("unknown");
-                        }
 
                         lhs = call;
                         zfree(mangled_get);
@@ -1520,10 +1506,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             if (node->type_info)
             {
                 node->resolved_type = type_to_string(node->type_info);
-            }
-            else
-            {
-                node->resolved_type = xstrdup("unknown");
             }
 
             // Handle Generic Method Call: object.method<T>

@@ -1564,7 +1564,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
             node->call.count = args_provided;
-            node->resolved_type = xstrdup("unknown");
 
             GenericFuncTemplate *tpl = find_func_template(ctx, acc);
             if (tpl && tpl->func_node && args_provided > 0 && head)
@@ -1654,27 +1653,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 node->resolved_type = xstrdup("void");
                             }
                         }
-                        else
-                        {
-                            node->resolved_type = xstrdup("unknown");
-                        }
-                    }
-                    else
-                    {
-                        node->resolved_type = xstrdup("unknown");
                     }
                     zfree(inferred_type);
                 }
-                else
-                {
-                    // Could not infer type - leave as unknown
-                    node->resolved_type = xstrdup("unknown");
-                }
-            }
-            else
-            {
-                // Unknown return type - let codegen infer it
-                node->resolved_type = xstrdup("unknown");
             }
             // Fall through to Postfix
         }
@@ -1740,7 +1721,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 }
                 else
                 {
-                    node->resolved_type = xstrdup("unknown");
                     if (sym || should_suppress_undef_warning(ctx, acc))
                     {
                         node->var_ref.suggestion = NULL;
@@ -2181,13 +2161,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             check_format_string(call, t);
 
             // Try to infer type if callee has function type info
-            call->resolved_type = xstrdup("unknown"); // Default (was int)
             if (node->type_info && node->type_info->kind == TYPE_FUNCTION && node->type_info->inner)
             {
                 call->type_info = node->type_info->inner;
-
-                // Update resolved_type based on real return
-                // (Optional: type_to_string(call->type_info))
             }
             node = call;
         }
