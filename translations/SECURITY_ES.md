@@ -17,7 +17,7 @@ Nos tomamos muy en serio la seguridad de Zen C. Si cree que ha encontrado una vu
 
 ### Cómo Reportar
 
-Por favor envíenos un correo electrónico a **security@zenc-lang.org**.
+Contacte con los mantenedores en el [servidor de Discord de Zen C](https://discord.com/invite/q6wEsCmkJP) y envíe el informe por **mensaje directo**. No publique los detalles en canales públicos.
 
 En su reporte, por favor incluya:
 

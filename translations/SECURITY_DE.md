@@ -17,7 +17,7 @@ Wir nehmen die Sicherheit von Zen C sehr ernst. Solltest du eine Sicherheitslüc
 
 ### So meldest du Sicherheitslücken
 
-Bitte sende uns eine E-Mail an **security@zenc-lang.org**.
+Kontaktiere die Maintainer auf dem [Zen C Discord-Server](https://discord.com/invite/q6wEsCmkJP) und sende den Bericht als **Direktnachricht**. Poste die Details nicht in öffentlichen Kanälen.
 
 Dein Bericht sollte Folgendes enthalten:
 

@@ -18,7 +18,7 @@ We take the security of Zen C seriously. If you believe you have found a securit
 
 ### How to Report
 
-Please email us at **security@zenc-lang.org**.
+Contact the maintainers on the [Zen C Discord server](https://discord.com/invite/q6wEsCmkJP) and send the report by **direct message**. Do not post the details in public channels.
 
 In your report, please include:
 

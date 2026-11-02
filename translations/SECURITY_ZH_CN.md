@@ -17,7 +17,7 @@
 
 ### 如何报告
 
-请发送电子邮件至 **security@zenc-lang.org**。
+请在 [Zen C 的 Discord 服务器](https://discord.com/invite/q6wEsCmkJP) 上联系维护者，并通过**私信**发送报告。不要在公开频道中发布细节。
 
 在您的报告中，请包括：
 
