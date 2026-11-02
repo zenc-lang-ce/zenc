@@ -198,7 +198,8 @@ static void emit_fstring_expr(ParserContext *ctx, ASTNode *part, const char *wri
     else
     {
         // A pointer that is not a string is written as an address.
-        char *type_name = t ? type_to_string(t) : part->fstring_part.symbol_type;
+        Type *named = t ? t : part->fstring_part.symbol_type;
+        char *type_name = named ? type_to_string(named) : NULL;
         if (type_name && strstr(type_name, "*") && !strstr(type_name, "char") &&
             strcmp(type_name, "string") != 0 && strcmp(type_name, "str") != 0)
         {

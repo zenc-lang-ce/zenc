@@ -967,7 +967,7 @@ static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brac
     // The codegen no longer has this scope: keep what the name says the type is.
     if (!expr_node->type_info)
     {
-        part->fstring_part.symbol_type = find_symbol_type(ctx, src);
+        part->fstring_part.symbol_type = find_symbol_type_info(ctx, src);
     }
     return part;
 }

@@ -702,7 +702,7 @@ struct ASTNode
             char *text;        ///< Literal text, braces unescaped (NULL for a `{expr}`).
             ASTNode *expr;     ///< The interpolated expression (NULL for text).
             char *fmt;         ///< printf conversion written after ':' (`.2f`), or NULL.
-            char *symbol_type; ///< Type of `expr` found by name when it has no type_info.
+            Type *symbol_type; ///< Type of `expr` found by name when it has no type_info.
         } fstring_part;
 
         struct
