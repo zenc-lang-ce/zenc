@@ -799,12 +799,6 @@ void add_to_global_list(ParserContext *ctx, ASTNode *node);
 void register_builtins(ParserContext *ctx);
 void register_comptime_builtins(ParserContext *ctx);
 void register_tuple(ParserContext *ctx, Type *tuple);
-/**
- * @brief The tuple whose C struct is named `name` (`Tuple__int32_t__bool`), or NULL.
- *
- * Generic instances are still built from text, where a tuple argument is that name.
- */
-Type *find_tuple_type(ParserContext *ctx, const char *name);
 ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, Type *tuple, ASTNode *expr);
 /** @brief Whether a tuple literal comes next: `(` and a comma before its `)`. */
 int tuple_literal_follows(Lexer *l);

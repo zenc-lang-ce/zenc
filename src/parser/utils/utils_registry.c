@@ -316,25 +316,6 @@ Type *instantiate_slice(ParserContext *ctx, Type *elem, Token token)
     return slice;
 }
 
-Type *find_tuple_type(ParserContext *ctx, const char *name)
-{
-    if (strncmp(name, "Tuple__", 7) != 0)
-    {
-        return NULL;
-    }
-    for (TupleType *c = ctx->used_tuples; c; c = c->next)
-    {
-        char *tuple_name = type_to_string(c->type);
-        int same = strcmp(tuple_name, name) == 0;
-        zfree(tuple_name);
-        if (same)
-        {
-            return type_clone(c->type);
-        }
-    }
-    return NULL;
-}
-
 void register_tuple(ParserContext *ctx, Type *tuple)
 {
     char *struct_name = type_to_string(tuple);

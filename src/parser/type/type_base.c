@@ -45,11 +45,6 @@ Type *type_from_name(ParserContext *ctx, const char *name)
     {
         return alias_type(alias_node);
     }
-    Type *tuple = ctx ? find_tuple_type(ctx, name) : NULL;
-    if (tuple)
-    {
-        return tuple;
-    }
     Type *t = type_new(TYPE_STRUCT);
     t->name = xstrdup(name);
     return t;
@@ -108,12 +103,6 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         {
             zfree(name);
             return alias_type(alias_node);
-        }
-        Type *tuple = find_tuple_type(ctx, name);
-        if (tuple)
-        {
-            zfree(name);
-            return tuple;
         }
 
         // Self type alias: Replace "Self" with current impl struct type
