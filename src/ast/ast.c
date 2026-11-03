@@ -393,6 +393,15 @@ char *type_def_name(Type *t)
     return t ? t->name : NULL;
 }
 
+Type *type_new_instance(const char *tpl, Type **args, int count)
+{
+    Type *t = type_new(TYPE_STRUCT);
+    t->name = xstrdup(tpl);
+    t->args = args;
+    t->count = count;
+    return t;
+}
+
 Type *type_new_tuple(Type **elements, int count)
 {
     Type *t = type_new(TYPE_TUPLE);
@@ -919,7 +928,8 @@ static char *type_to_string_impl(Type *t)
     case TYPE_U128:
         return xstrdup("unsigned __int128");
     case TYPE_RUNE:
-        return xstrdup("int32_t");
+        // Not `int32_t`, which `int` also is: an instance of `rune` is not one of `int`.
+        return xstrdup("rune");
     case TYPE_UINT:
         return xstrdup("unsigned int");
 

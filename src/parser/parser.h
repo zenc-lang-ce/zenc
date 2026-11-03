@@ -161,10 +161,10 @@ typedef struct GenericImplTemplate
  */
 typedef struct Instantiation
 {
-    char *name;           ///< Mangled name of the instantiation (e.g. "Vec_int").
-    char *template_name;  ///< Original template name (e.g. "Vec").
-    char *concrete_arg;   ///< Concrete type argument string.
-    char *unmangled_arg;  ///< Unmangled argument for substitution code.
+    char *name;          ///< Mangled name of the instantiation (e.g. "Vec_int").
+    char *template_name; ///< Original template name (e.g. "Vec").
+    Type **args;         ///< The type each parameter of the template takes.
+    int count;
     ASTNode *struct_node; ///< The AST node of the instantiated struct.
     struct Instantiation *next;
 } Instantiation;
@@ -709,6 +709,32 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
 ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index);
 
 /**
+ * @brief What each parameter of a generic stands for in one of its instances: `T` is `int`.
+ */
+typedef struct Bindings
+{
+    char **params; ///< The template's parameters: `K`, `V`.
+    Type **args;   ///< The type each one takes: `int`, `String`.
+    int count;
+    char *params_text; ///< `K,V`, for the AST fields that still hold text (names, raw C).
+    char *args_text;   ///< `int32_t,String`, for the same fields.
+} Bindings;
+
+/** @brief `parts` joined by commas: `K,V`. */
+char *join_with_commas(char **parts, int count);
+/** @brief The bindings of `params` (`K,V`) to `args`. */
+Bindings bindings_new(const char *params, Type **args, int count);
+/**
+ * @brief A copy of `t` for an instance: each parameter becomes the type it is bound to, and the
+ * template's name `os` without arguments (`Self`) becomes the instance's `ns`.
+ */
+Type *replace_type_formal(ParserContext *ctx, Type *t, const Bindings *b, const char *os,
+                          const char *ns);
+/** @brief A copy of the AST `n` for an instance, with replace_type_formal on its types. */
+ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, const char *os,
+                            const char *ns);
+
+/**
  * @brief Registers a function template.
  */
 void register_func_template(ParserContext *ctx, const char *name, const char *param, ASTNode *node);
@@ -961,6 +987,8 @@ char *function_instance_name(FunctionInstance instance);
  * @return Its C name, or NULL if `instance.name` is not a generic function.
  */
 char *instantiate_function(ParserContext *ctx, FunctionInstance instance);
+/** @brief The instance of a generic whose C name is `name`, or NULL. */
+Instantiation *find_instantiation(ParserContext *ctx, const char *name);
 /** @brief The generic struct or enum template named `name`, or NULL. */
 GenericTemplate *find_generic_template(ParserContext *ctx, const char *name);
 /**
@@ -968,9 +996,6 @@ GenericTemplate *find_generic_template(ParserContext *ctx, const char *name);
  * generic parameter.
  */
 void instantiate_type(ParserContext *ctx, Type *instance, Token token);
-void instantiate_generic(ParserContext *ctx, const char *name, const char *arg, Token t);
-void instantiate_generic_multi(ParserContext *ctx, const char *name, char **args, int count,
-                               Token t);
 
 // stmt/ declarations
 ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_token);
@@ -986,7 +1011,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l);
 void audit_section_5(ParserContext *ctx, Scope *scope, const char *name, const char *link_name,
                      Token tok);
 void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
-                         const char *mangled_struct_name, const char *args);
+                         const char *mangled_struct_name, Type **args, int count);
 const char *get_closest_type_hint(ParserContext *ctx, const char *name);
 void add_instantiated_func(ParserContext *ctx, ASTNode *fn);
 char *ast_to_string(ASTNode *node);

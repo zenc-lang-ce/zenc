@@ -327,18 +327,15 @@ static const char *aggregate_type_name(ParserContext *ctx, Type *t)
     return name;
 }
 
-static Instantiation *find_instantiation(ParserContext *ctx, const char *name)
+// An instance's arguments as the message spells them: `int32_t,String`.
+static char *instance_args_text(Instantiation *inst)
 {
-    Instantiation *inst = ctx->instantiations;
-    while (inst)
+    char **spelled = xmalloc(sizeof(char *) * (size_t)(inst->count > 0 ? inst->count : 1));
+    for (int i = 0; i < inst->count; i++)
     {
-        if (strcmp(inst->name, name) == 0)
-        {
-            return inst;
-        }
-        inst = inst->next;
+        spelled[i] = type_to_string(inst->args[i]);
     }
-    return NULL;
+    return join_with_commas(spelled, inst->count);
 }
 
 // Two instances of one generic with different arguments (`Handle<A>` and
@@ -372,10 +369,10 @@ static void check_generic_instance_argument(ParserContext *ctx, Type *expected, 
     const char *stars = STARS + (8 - depth);
     char want[MAX_SHORT_MSG_LEN];
     char have[MAX_SHORT_MSG_LEN];
-    snprintf(want, sizeof(want), "%s<%s>%s", want_inst->template_name, want_inst->unmangled_arg,
-             stars);
-    snprintf(have, sizeof(have), "%s<%s>%s", have_inst->template_name, have_inst->unmangled_arg,
-             stars);
+    snprintf(want, sizeof(want), "%s<%s>%s", want_inst->template_name,
+             instance_args_text(want_inst), stars);
+    snprintf(have, sizeof(have), "%s<%s>%s", have_inst->template_name,
+             instance_args_text(have_inst), stars);
     zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want, have);
     return;
 }

@@ -288,7 +288,7 @@ void register_impl_template(ParserContext *ctx, const char *sname, const char *p
     {
         if (inst->template_name && strcmp(inst->template_name, sname) == 0)
         {
-            instantiate_methods(ctx, t, inst->name, inst->unmangled_arg);
+            instantiate_methods(ctx, t, inst->name, inst->args, inst->count);
         }
         inst = inst->next;
     }

@@ -372,10 +372,10 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     slice_decl->token = tk;
                     slice_decl->var_decl.name = xstrdup("__zc_arr_slice");
 
-                    char *elem_type_str = type_to_string(obj_expr->type_info->inner);
-                    // `Slice<T>` as the type parser names the instance.
-                    Type *slice_type = type_new(TYPE_STRUCT);
-                    slice_type->name = mangle_generic_name("Slice", &elem_type_str, 1);
+                    // `Slice<T>`, and the iterator and the Option its loop uses.
+                    Type **elem = xmalloc(sizeof(Type *));
+                    elem[0] = obj_expr->type_info->inner;
+                    Type *slice_type = type_new_instance("Slice", elem, 1);
                     slice_decl->type_info = slice_type;
                     slice_decl->var_decl.type_info = slice_type;
 
@@ -383,9 +383,8 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     from_array_call->token = tk;
                     ASTNode *static_method = ast_create(NODE_EXPR_VAR);
 
-                    char func_name[MAX_FUNC_NAME_LEN];
-                    snprintf(func_name, sizeof(func_name), "Slice__%s__from_array", elem_type_str);
-                    static_method->var_ref.name = xstrdup(func_name);
+                    static_method->var_ref.name =
+                        mangle_method_symbol(type_def_name(slice_type), NULL, "from_array");
 
                     from_array_call->call.callee = static_method;
 
@@ -412,17 +411,14 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     slice_decl->var_decl.init_expr = from_array_call;
 
                     auto_import_std_slice(ctx);
-                    Token dummy_tok = {0};
-                    instantiate_generic(ctx, "Slice", elem_type_str, dummy_tok);
-                    instantiate_generic(ctx, "SliceIter", elem_type_str, dummy_tok);
-                    instantiate_generic(ctx, "Option", elem_type_str, dummy_tok);
+                    instantiate_type(ctx, slice_type, tk);
+                    instantiate_type(ctx, type_new_instance("SliceIter", elem, 1), tk);
+                    instantiate_type(ctx, type_new_instance("Option", elem, 1), tk);
 
                     ASTNode *slice_ref = ast_create(NODE_EXPR_VAR);
                     slice_ref->var_ref.name = xstrdup("__zc_arr_slice");
                     slice_ref->type_info = slice_type;
                     obj_expr = slice_ref;
-
-                    zfree(elem_type_str);
                 }
 
                 ASTNode *it_decl = ast_create(NODE_VAR_DECL);
