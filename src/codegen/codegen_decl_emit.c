@@ -768,27 +768,6 @@ void print_type_defs(ParserContext *ctx, ASTNode *nodes)
     }
     EMIT(ctx, "\n");
 
-    SliceType *rev = NULL;
-    SliceType *c = ctx->used_slices;
-    while (c)
-    {
-        SliceType *next = c->next;
-        c->next = rev;
-        rev = c;
-        c = next;
-    }
-    ctx->used_slices = rev;
-
-    c = ctx->used_slices;
-    while (c)
-    {
-        EMIT(ctx,
-             "typedef struct Slice__%s Slice__%s;\nstruct Slice__%s { %s *data; size_t len; size_t "
-             "cap; };\n",
-             c->name, c->name, c->name, c->name);
-        c = c->next;
-    }
-
     // Tuple structs (`Tuple__...`) are part of the topologically sorted list:
     // their forward typedef comes from the loop above and their body from
     // emit_struct_defs, after the types they contain.

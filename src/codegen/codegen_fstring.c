@@ -91,14 +91,6 @@ static int is_char_data_len_type(ParserContext *ctx, Type *t, int *is_ptr)
         }
     }
 
-    if (base && base->kind == TYPE_ARRAY && base->array_size == 0)
-    {
-        char *inner_name = type_to_string(base->inner);
-        char slice_name[MAX_TYPE_NAME_LEN];
-        snprintf(slice_name, sizeof(slice_name), "Slice__%s", inner_name);
-        zfree(inner_name);
-        return is_char_data_len_struct(find_struct_def(ctx, slice_name));
-    }
     if (base && base->kind == TYPE_STRUCT && base->name)
     {
         return is_char_data_len_struct(find_struct_def(ctx, type_def_name(base)));

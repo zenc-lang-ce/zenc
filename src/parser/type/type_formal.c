@@ -12,6 +12,9 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
+// A dimension written `[]`: a slice, not an array.
+#define SLICE_DIM (-1)
+
 static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
 {
     int is_restrict = 0;
@@ -183,12 +186,7 @@ static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
         if (lexer_peek(l).kind == TOK_RBRACKET)
         {
             lexer_next(l);
-
-            char *inner_str = type_to_string(t);
-            register_slice(ctx, inner_str);
-            zfree(inner_str);
-
-            dims[dims_count++] = 0;
+            dims[dims_count++] = SLICE_DIM;
             continue;
         }
 
@@ -232,6 +230,11 @@ static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
 
     for (int i = dims_count - 1; i >= 0; i--)
     {
+        if (dims[i] == SLICE_DIM)
+        {
+            t = instantiate_slice(ctx, t, lexer_peek(l));
+            continue;
+        }
         Type *arr = type_new(TYPE_ARRAY);
         arr->inner = t;
         arr->array_size = dims[i];

@@ -592,7 +592,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             // overload's return value is not an lvalue. This matches the
             // parser/codegen policy ("Pointers should use array indexing by
             // default, not operator overload").
-            if (t->kind == TYPE_STRUCT && t->name && !is_ptr)
+            // A slice is indexed directly, although `Slice<T>` has a `get`.
+            if (t->kind == TYPE_STRUCT && t->name && !is_ptr && !slice_element(t))
             {
                 char *mangled_get = mangle_method_symbol(type_def_name(t), NULL, "get");
 
@@ -625,7 +626,12 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             {
                 t = node->index.array->type_info;
             }
-            if (t->kind == TYPE_ARRAY || t->kind == TYPE_POINTER || t->kind == TYPE_VECTOR)
+            if (slice_element(t))
+            {
+                node->type_info = type_clone(slice_element(t));
+                node->type_info->lifetime_depth = node->index.array->type_info->lifetime_depth;
+            }
+            else if (t->kind == TYPE_ARRAY || t->kind == TYPE_POINTER || t->kind == TYPE_VECTOR)
             {
                 if (t->kind == TYPE_VECTOR && !t->inner && t->name)
                 {

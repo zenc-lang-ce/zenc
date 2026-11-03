@@ -508,19 +508,17 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         int has_defers = (ctx->cg.defer_count > ctx->cg.func_defer_boundary);
         int handled = 0;
 
-        // A slice return type, `[T]` or `Slice<T>` (an instance, named Slice__T).
-        char *ret_name = ctx->cg.current_func_ret_type_info
-                             ? type_to_string(ctx->cg.current_func_ret_type_info)
-                             : NULL;
-        if (node->ret.value && node->ret.value->kind == NODE_EXPR_ARRAY_LITERAL && ret_name &&
-            strncmp(ret_name, "Slice__", 7) == 0)
+        // A slice return type, `[T]` or `Slice<T>`.
+        Type *ret_elem = slice_element(ctx->cg.current_func_ret_type_info);
+        if (node->ret.value && node->ret.value->kind == NODE_EXPR_ARRAY_LITERAL && ret_elem)
         {
             // Heap allocation for slice literals to prevent use-after-return
             ASTNode *arr = node->ret.value;
             int count = arr->array_literal.count;
+            char *ret_name = c_type_spelling(ctx, ctx->cg.current_func_ret_type_info);
             // The element type comes from the function's return type, so that literals of
             // another type (`[1.0, 2.0]` in a `-> [float]`) give the pointer it expects.
-            char *elem_type = ret_name + 7;
+            char *elem_type = c_type_spelling(ctx, ret_elem);
 
             EMIT(ctx, "{ %s *_tmp_arr = (%s*)malloc(%d * sizeof(%s));\n", elem_type, elem_type,
                  count, elem_type);
@@ -538,13 +536,12 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
 
             if (ctx->config->use_cpp)
             {
-                // Traditional initializer: (Slice){data, len, cap}
-                EMIT(ctx, "return (%s){_tmp_arr, %d, %d};\n", ret_name, count, count);
+                // Traditional initializer: (Slice){data, len}
+                EMIT(ctx, "return (%s){_tmp_arr, %d};\n", ret_name, count);
             }
             else
             {
-                EMIT(ctx, "return (%s){.data = _tmp_arr, .len = %d, .cap = %d};\n", ret_name, count,
-                     count);
+                EMIT(ctx, "return (%s){.data = _tmp_arr, .len = %d};\n", ret_name, count);
             }
             emitter_dedent(&ctx->cg.emitter);
             EMIT(ctx, "}\n");

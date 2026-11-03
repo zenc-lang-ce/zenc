@@ -200,15 +200,6 @@ typedef struct
 } StructHashEntry;
 
 /**
- * @brief Track used slice types for generation.
- */
-typedef struct SliceType
-{
-    char *name;
-    struct SliceType *next;
-} SliceType;
-
-/**
  * @brief The tuples the program uses, each once, for the C structs codegen emits.
  */
 typedef struct TupleType
@@ -393,7 +384,6 @@ struct ParserContext
     unsigned int struct_registry_gen; ///< Bumped whenever a struct or enum is registered.
 
     // Types
-    SliceType *used_slices;  ///< Cache of generated slice types.
     TupleType *used_tuples;  ///< Cache of generated tuple types.
     TypeAlias *type_aliases; ///< Defined type aliases.
 
@@ -966,7 +956,8 @@ void register_impl(ParserContext *ctx, const char *trait, const char *type);
 void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node);
 void register_type_alias(ParserContext *ctx, const char *alias, Type *type, int is_opaque,
                          const char *defined_in_file, Token tok, int is_export);
-void register_slice(ParserContext *ctx, const char *type);
+/** @brief The type of a slice of `elem`, `[T]`: the instance `Slice<T>` of a built-in template. */
+Type *instantiate_slice(ParserContext *ctx, Type *elem, Token token);
 void register_lambda(ParserContext *ctx, ASTNode *node);
 void register_template(ParserContext *ctx, const char *name, ASTNode *node);
 void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag);

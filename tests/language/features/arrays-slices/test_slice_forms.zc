@@ -1,0 +1,57 @@
+// arrays/slices: `[T]`, `T[]` and `Slice<T>` are one type
+import "std/slice.zc"
+
+fn sum(xs: [int]) -> int {
+    let total = 0;
+    for x in xs {
+        total = total + x;
+    }
+    return total;
+}
+
+fn view(data: int*, len: usize) -> Slice<int> {
+    return Slice<int>{data: data, len: len};
+}
+
+@link_name("c_point")
+struct Point {
+    x: int;
+}
+
+fn first_x(points: [Point]) -> int {
+    return points[0].x;
+}
+
+fn first_target(targets: [int*]) -> int {
+    return *targets[0];
+}
+
+struct Holder {
+    items: int[];
+}
+
+test "a Slice<T> is a [T]" {
+    let arr: int[3] = [1, 2, 3];
+    let s: [int] = view((int*)&arr, 3);
+    assert(sum(s) == 6, "for over a slice parameter");
+    assert(s[1] == 2, "indexing a [T] gives the element");
+
+    let explicit: Slice<int> = s;
+    assert(explicit[2] == 3, "indexing a Slice<T> gives the element");
+    assert(explicit.len == 3, "len");
+}
+
+test "slices of @link_name structs and of pointers" {
+    let points: Point[1] = [Point{x: 5}];
+    assert(first_x(points) == 5, "[Point] with @link_name");
+
+    let v = 7;
+    let targets: int*[1] = [&v];
+    assert(first_target(targets) == 7, "[int*]");
+}
+
+test "a T[] field is a slice" {
+    let arr: int[2] = [4, 5];
+    let h = Holder{items: view((int*)&arr, 2)};
+    assert(h.items[1] == 5, "T[] field");
+}

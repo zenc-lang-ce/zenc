@@ -395,22 +395,13 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         }
 
         // Otherwise it's a slice [T]
-        if (lexer_next(l).kind != TOK_RBRACKET)
+        Token close = lexer_next(l);
+        if (close.kind != TOK_RBRACKET)
         {
             zpanic_at(lexer_peek(l), "Expected ] in type");
             return NULL;
         }
-
-        char *inner_str = type_to_string(inner);
-        if (!is_known_generic(ctx, inner_str))
-        {
-            register_slice(ctx, inner_str);
-        }
-
-        Type *arr = type_new(TYPE_ARRAY);
-        arr->inner = inner;
-        arr->array_size = 0; // 0 means slice, not fixed-size
-        return arr;
+        return instantiate_slice(ctx, inner, close);
     }
 
     if (t.kind == TOK_LPAREN)

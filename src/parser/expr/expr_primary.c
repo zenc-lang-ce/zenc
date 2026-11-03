@@ -2095,8 +2095,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
 
             int overloaded_get = 0;
-            if (node->type_info && node->type_info->kind != TYPE_ARRAY &&
-                node->type_info->kind == TYPE_STRUCT)
+            // A slice is indexed directly, although `Slice<T>` has a `get`.
+            if (node->type_info && node->type_info->kind == TYPE_STRUCT &&
+                !slice_element(node->type_info))
             {
                 Type *st = node->type_info;
                 char *struct_name =
@@ -2174,7 +2175,11 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     arr_type = find_symbol_type_info(ctx, node->var_ref.name);
                 }
 
-                if (arr_type && arr_type->inner)
+                if (slice_element(arr_type))
+                {
+                    idx_node->type_info = slice_element(arr_type);
+                }
+                else if (arr_type && arr_type->inner)
                 {
                     idx_node->type_info = arr_type->inner;
                 }

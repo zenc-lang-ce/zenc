@@ -1385,8 +1385,9 @@ void misra_check_external_array_size(ParserContext *ctx, Type *t, Token token, i
         return;
     }
 
+    // A slice (`int[]`) counts as an array without size, as it did when it was one.
     Type *resolved = resolve_alias(t);
-    if (resolved->kind == TYPE_ARRAY && resolved->array_size == 0)
+    if (slice_element(resolved) || (resolved->kind == TYPE_ARRAY && resolved->array_size == 0))
     {
         zerror_at(token, "MISRA Rule 8.11: External array shall have explicit size");
     }

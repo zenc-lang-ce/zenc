@@ -103,22 +103,8 @@ void handle_expr_member(ParserContext *ctx, ASTNode *node)
 
 void handle_expr_index(ParserContext *ctx, ASTNode *node)
 {
-    int is_slice_struct = 0;
-    if (node->index.array->type_info)
-    {
-        if (node->index.array->type_info->kind == TYPE_ARRAY &&
-            node->index.array->type_info->array_size == 0)
-        {
-            is_slice_struct = 1;
-        }
-    }
-
-    // A `Slice<T>` instance.
     Type *array_type = node->index.array->type_info;
-    if (!is_slice_struct && array_type && strncmp(type_to_string(array_type), "Slice__", 7) == 0)
-    {
-        is_slice_struct = 1;
-    }
+    int is_slice_struct = slice_element(array_type) != NULL;
 
     if (!is_slice_struct && !array_type)
     {
@@ -226,24 +212,14 @@ void handle_expr_index(ParserContext *ctx, ASTNode *node)
 
 void handle_expr_slice(ParserContext *ctx, ASTNode *node)
 {
-    int known_size = -1;
-    int is_slice_struct = 0;
-    if (node->slice.array->type_info)
-    {
-        if (node->slice.array->type_info->kind == TYPE_ARRAY)
-        {
-            known_size = node->slice.array->type_info->array_size;
-            if (known_size == 0)
-            {
-                is_slice_struct = 1;
-            }
-        }
-    }
+    Type *array_type = node->slice.array->type_info;
+    int known_size = array_type && array_type->kind == TYPE_ARRAY ? array_type->array_size : -1;
+    int is_slice_struct = slice_element(array_type) != NULL;
 
     char *tname = "unknown";
-    if (node->type_info && node->type_info->inner)
+    if (slice_element(node->type_info))
     {
-        tname = c_type_spelling(ctx, node->type_info->inner);
+        tname = c_type_spelling(ctx, node->type_info);
     }
 
     EMIT(ctx, "({ ");
@@ -284,11 +260,11 @@ void handle_expr_slice(ParserContext *ctx, ASTNode *node)
 
     if (is_slice_struct)
     {
-        EMIT(ctx, "(Slice__%s){ .data = _arr.data + _start, .len = _len, .cap = _len }; })", tname);
+        EMIT(ctx, "(%s){ .data = _arr.data + _start, .len = _len }; })", tname);
     }
     else
     {
-        EMIT(ctx, "(Slice__%s){ .data = _arr + _start, .len = _len, .cap = _len }; })", tname);
+        EMIT(ctx, "(%s){ .data = _arr + _start, .len = _len }; })", tname);
     }
     if (tname && strcmp(tname, "unknown") != 0)
     {

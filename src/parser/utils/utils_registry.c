@@ -307,57 +307,13 @@ void add_to_global_list(ParserContext *ctx, ASTNode *node)
     ctx->parsed_globals_list = r;
 }
 
-void register_slice(ParserContext *ctx, const char *type)
+Type *instantiate_slice(ParserContext *ctx, Type *elem, Token token)
 {
-    if (is_known_generic(ctx, (char *)type))
-    {
-        return;
-    }
-
-    SliceType *c = ctx->used_slices;
-    while (c)
-    {
-        if (c->name[0] == type[0] && strcmp(c->name, type) == 0)
-        {
-            return;
-        }
-        c = c->next;
-    }
-    SliceType *n = xmalloc(sizeof(SliceType));
-    n->name = xstrdup(type);
-    n->next = ctx->used_slices;
-    ctx->used_slices = n;
-
-    char slice_name[MAX_TYPE_NAME_LEN];
-    snprintf(slice_name, sizeof(slice_name), "Slice__%s", type);
-
-    ASTNode *len_f = ast_create(NODE_FIELD);
-    len_f->field.name = xstrdup("len");
-    len_f->type_info = type_new(TYPE_USIZE);
-    ASTNode *cap_f = ast_create(NODE_FIELD);
-    cap_f->field.name = xstrdup("cap");
-    cap_f->type_info = type_new(TYPE_USIZE);
-    ASTNode *data_f = ast_create(NODE_FIELD);
-    data_f->field.name = xstrdup("data");
-    data_f->type_info = type_new_ptr(type_from_string_helper(ctx, type));
-
-    data_f->next = len_f;
-    len_f->next = cap_f;
-
-    ASTNode *def = ast_create(NODE_STRUCT);
-    def->strct.name = xstrdup(slice_name);
-    def->strct.fields = data_f;
-
-    register_struct_def(ctx, slice_name, def);
-
-    char legacy_name[MAX_VAR_NAME_LEN];
-    snprintf(legacy_name, sizeof(legacy_name), "Slice_%s", type);
-    if (slice_name[0] != legacy_name[0] || strcmp(slice_name, legacy_name) != 0)
-    {
-        Type *slice_type = type_new(TYPE_STRUCT);
-        slice_type->name = xstrdup(slice_name);
-        register_type_alias(ctx, legacy_name, slice_type, 0, NULL, TOKEN_UNKNOWN, 0);
-    }
+    Type **args = xmalloc(sizeof(Type *));
+    args[0] = elem;
+    Type *slice = type_new_instance("Slice", args, 1);
+    instantiate_type(ctx, slice, token);
+    return slice;
 }
 
 Type *find_tuple_type(ParserContext *ctx, const char *name)

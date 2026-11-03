@@ -193,28 +193,30 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
     int in_func = (ctx->current_scope != ctx->global_scope);
     int use_cpp_stmt = (ctx->config->use_cpp && in_func);
 
-    // Default Type if none
+    // Without a type, the bytes are a `[char]`.
     if (!target_type)
     {
-        // Default: Slice__char
-        register_slice(ctx, "char");
+        target_type = instantiate_slice(ctx, type_new(TYPE_CHAR), t);
+    }
 
-        Type *slice_type = type_new(TYPE_STRUCT);
-        slice_type->name = xstrdup("Slice__char");
-        target_type = slice_type;
-
+    Type *slice_elem = slice_element(target_type);
+    if (slice_elem)
+    {
+        char *slice_name = type_to_string(target_type);
+        char *inner_ts = type_to_string(slice_elem);
         if (use_cpp_stmt)
         {
-            snprintf(o, oc, "({ static const char __tmp[] = {");
+            snprintf(o, oc, "({ static const %s __tmp[] = {", inner_ts);
         }
         else if (ctx->config->use_cpp)
         {
-            snprintf(o, oc, "(Slice__char){(char[]){");
+            snprintf(o, oc, "(%s){(%s[]){", slice_name, inner_ts);
         }
         else
         {
-            snprintf(o, oc, "(Slice__char){.data=(char[]){");
+            snprintf(o, oc, "(%s){.data=(%s[]){", slice_name, inner_ts);
         }
+        zfree(inner_ts);
     }
     else
     {
@@ -224,41 +226,15 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
         if (target_type->kind == TYPE_ARRAY)
         {
             char *inner_ts = type_to_string(target_type->inner);
-            if (target_type->array_size > 0)
+            Type *ptr_type = type_new_ptr(target_type->inner); // Reuse inner
+            target_type = ptr_type;
+            if (use_cpp_stmt)
             {
-                Type *ptr_type = type_new_ptr(target_type->inner); // Reuse inner
-                target_type = ptr_type;
-                if (use_cpp_stmt)
-                {
-                    snprintf(o, oc, "({ static const %s __tmp[] = {", inner_ts);
-                }
-                else
-                {
-                    snprintf(o, oc, "(%s[]){", inner_ts);
-                }
+                snprintf(o, oc, "({ static const %s __tmp[] = {", inner_ts);
             }
             else
             {
-                // Slice -> Slice__T struct
-                register_slice(ctx, inner_ts);
-                char slice_name[MAX_TYPE_NAME_LEN];
-                snprintf(slice_name, sizeof(slice_name), "Slice__%s", inner_ts);
-                Type *slice_t = type_new(TYPE_STRUCT);
-                slice_t->name = xstrdup(slice_name);
-                target_type = slice_t;
-
-                if (use_cpp_stmt)
-                {
-                    snprintf(o, oc, "({ static const %s __tmp[] = {", inner_ts);
-                }
-                else if (ctx->config->use_cpp)
-                {
-                    snprintf(o, oc, "(%s){(%s[]){", slice_name, inner_ts);
-                }
-                else
-                {
-                    snprintf(o, oc, "(%s){.data=(%s[]){", slice_name, inner_ts);
-                }
+                snprintf(o, oc, "(%s[]){", inner_ts);
             }
             zfree(inner_ts);
         }
@@ -312,25 +288,22 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
         }
         else
         {
-            char *actual_ts = type_to_string(target_type);
-            int is_slice = (actual_ts && strncmp(actual_ts, "Slice__", 7) == 0);
-            zfree(actual_ts);
-
-            if (is_slice)
+            if (slice_elem)
             {
                 if (use_cpp_stmt)
                 {
                     char *ts = type_to_string(target_type);
                     if (ctx->config->use_cpp)
                     {
-                        snprintf(p, oc - cur_len, "}; (%s){(%s*)__tmp, %ld, %ld}; })", ts,
-                                 (strncmp(ts, "Slice__", 7) == 0 ? ts + 7 : "char"), (long)len,
+                        char *inner_ts = type_to_string(slice_elem);
+                        snprintf(p, oc - cur_len, "}; (%s){(%s*)__tmp, %ld}; })", ts, inner_ts,
                                  (long)len);
+                        zfree(inner_ts);
                     }
                     else
                     {
-                        snprintf(p, oc - cur_len, "}; (%s){.data=__tmp, .len=%ld, .cap=%ld}; })",
-                                 ts, (long)len, (long)len);
+                        snprintf(p, oc - cur_len, "}; (%s){.data=__tmp, .len=%ld}; })", ts,
+                                 (long)len);
                     }
                     zfree(ts);
                 }
@@ -338,11 +311,11 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
                 {
                     if (ctx->config->use_cpp)
                     {
-                        snprintf(p, oc - cur_len, "}, %ld, %ld}", (long)len, (long)len);
+                        snprintf(p, oc - cur_len, "}, %ld}", (long)len);
                     }
                     else
                     {
-                        snprintf(p, oc - cur_len, "},.len=%ld,.cap=%ld}", (long)len, (long)len);
+                        snprintf(p, oc - cur_len, "},.len=%ld}", (long)len);
                     }
                 }
             }

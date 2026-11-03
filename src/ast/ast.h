@@ -816,6 +816,8 @@ Type *type_new_instance(const char *tpl, Type **args, int count);
 char *type_def_name(Type *t);
 /** @brief Whether `t` is the generic parameter `param` (`T`). */
 int type_is_generic_param(Type *t, const char *param);
+/** @brief The element type of a slice, `[T]` or `Slice<T>`; NULL if `t` is not one. */
+Type *slice_element(Type *t);
 /** @brief `t` if it is a tuple, or the tuple it points to; else NULL. */
 Type *tuple_of(Type *t);
 /** @brief The type of the element `field` (`0` or `v0`) of `tuple`, or NULL. */
