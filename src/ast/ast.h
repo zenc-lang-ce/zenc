@@ -828,6 +828,8 @@ int is_integer_type(Type *t);
 int is_incomplete_type(struct ParserContext *ctx, Type *t);
 int is_unsigned_type(Type *t);
 Type *resolve_alias(Type *t);
+/** @brief Whether `t`, after aliases, is a character: `char`, `c_char` or `c_uchar`. */
+int is_char_type(Type *t);
 int integer_type_width(Type *t);
 Type *common_integer_type(Type *a, Type *b);
 /**

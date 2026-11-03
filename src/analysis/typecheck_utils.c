@@ -425,16 +425,6 @@ void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const c
     zerror_with_hints(t, msg, hints);
 }
 
-int is_char_type(Type *t)
-{
-    if (!t)
-    {
-        return 0;
-    }
-    Type *res = resolve_alias(t);
-    return (res->kind == TYPE_CHAR || res->kind == TYPE_C_CHAR || res->kind == TYPE_C_UCHAR);
-}
-
 // tc_check_misra_10_4 moved to misra_check_binary_op_essential_types in misra.c
 
 void tc_enter_scope(TypeChecker *tc)

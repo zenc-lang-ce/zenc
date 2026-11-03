@@ -40,13 +40,17 @@ static int is_char_data_len_struct(ASTNode *def)
         return 0;
     }
     int has_len = 0;
-    char *data_type = NULL;
+    int char_data = 0;
     ASTNode *field = def->strct.fields;
     while (field)
     {
         if (strcmp(field->field.name, "data") == 0)
         {
-            data_type = type_to_string(field->type_info);
+            Type *data = resolve_alias(field->type_info);
+            Type *elem = (data && (data->kind == TYPE_POINTER || data->kind == TYPE_ARRAY))
+                             ? data->inner
+                             : NULL;
+            char_data = elem && is_char_type(elem);
         }
         else if (strcmp(field->field.name, "len") == 0)
         {
@@ -54,8 +58,7 @@ static int is_char_data_len_struct(ASTNode *def)
         }
         field = field->next;
     }
-    return has_len && data_type &&
-           (strstr(data_type, "char") || strstr(data_type, "u8") || strstr(data_type, "byte"));
+    return has_len && char_data;
 }
 
 // Whether a value of type `t` (or a pointer to one, *is_ptr), after aliases, is a slice or a

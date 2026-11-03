@@ -548,6 +548,16 @@ int is_unsigned_type(Type *t)
 }
 
 // The type an alias stands for, through every alias of an alias.
+int is_char_type(Type *t)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    Type *res = resolve_alias(t);
+    return (res->kind == TYPE_CHAR || res->kind == TYPE_C_CHAR || res->kind == TYPE_C_UCHAR);
+}
+
 Type *resolve_alias(Type *t)
 {
     while (t && t->kind == TYPE_ALIAS && t->inner)

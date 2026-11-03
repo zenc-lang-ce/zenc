@@ -33,7 +33,6 @@ void tc_exit_scope(TypeChecker *tc);
 void tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int is_immutable);
 ZenSymbol *tc_lookup(TypeChecker *tc, const char *name);
 void mark_type_as_used(TypeChecker *tc, Type *t);
-int is_char_type(Type *t);
 void check_side_effect_collision(TypeChecker *tc, ASTNode *left, ASTNode *right, Token token);
 void check_all_args_side_effects(TypeChecker *tc, ASTNode *receiver, ASTNode *args, Token token);
 
