@@ -1397,7 +1397,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     ASTNode *def = copy_default_value(ctx, sig, i);
                     Type *expected = sig->arg_types[i];
-                    if (expected && expected->name && is_trait(expected->name))
+                    if (expected && expected->name && is_trait(type_def_name(expected)))
                     {
                         Type *arg_type = def->type_info
                                              ? def->type_info
@@ -1414,7 +1414,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                     find_symbol_type_info(ctx, def->unary.operand->var_ref.name);
                                 if (inner && inner->kind == TYPE_STRUCT)
                                 {
-                                    if (check_impl(ctx, expected->name, inner->name))
+                                    if (check_impl(ctx, type_def_name(expected),
+                                                   type_def_name(inner)))
                                     {
                                         ASTNode *init = ast_create(NODE_EXPR_STRUCT_INIT);
                                         init->struct_init.struct_name = xstrdup(expected->name);
@@ -1427,8 +1428,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                         f_self->var_decl.name = xstrdup("self");
                                         f_self->var_decl.init_expr = def;
 
-                                        char *vtable_name =
-                                            mangle_vtable_symbol(inner->name, expected->name);
+                                        char *vtable_name = mangle_vtable_symbol(
+                                            type_def_name(inner), type_def_name(expected));
 
                                         ASTNode *vtable_var = ast_create(NODE_EXPR_VAR);
                                         vtable_var->var_ref.name = xstrdup(vtable_name);
@@ -1452,7 +1453,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         else if (arg_type && arg_type->kind == TYPE_POINTER && arg_type->inner &&
                                  arg_type->inner->kind == TYPE_STRUCT)
                         {
-                            if (check_impl(ctx, expected->name, arg_type->inner->name))
+                            if (check_impl(ctx, type_def_name(expected),
+                                           type_def_name(arg_type->inner)))
                             {
                                 ASTNode *init = ast_create(NODE_EXPR_STRUCT_INIT);
                                 init->struct_init.struct_name = xstrdup(expected->name);
@@ -1465,8 +1467,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 f_self->var_decl.name = xstrdup("self");
                                 f_self->var_decl.init_expr = def;
 
-                                char *vtable_name =
-                                    mangle_vtable_symbol(arg_type->inner->name, expected->name);
+                                char *vtable_name = mangle_vtable_symbol(
+                                    type_def_name(arg_type->inner), type_def_name(expected));
 
                                 ASTNode *vtable_var = ast_create(NODE_EXPR_VAR);
                                 vtable_var->var_ref.name = xstrdup(vtable_name);
@@ -2196,7 +2198,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node->type_info->kind == TYPE_STRUCT)
             {
                 Type *st = node->type_info;
-                char *struct_name = (st->kind == TYPE_STRUCT) ? st->name : st->inner->name;
+                char *struct_name =
+                    (st->kind == TYPE_STRUCT) ? type_def_name(st) : type_def_name(st->inner);
                 int is_ptr = (st->kind == TYPE_POINTER);
 
                 char *mangled = mangle_method_symbol(struct_name, NULL, "get");
@@ -2279,7 +2282,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                           arr_type->kind == TYPE_ARRAY))
                 {
                     // Look up struct def to check if it's a vector type
-                    ASTNode *def = find_struct_def(ctx, arr_type->name);
+                    ASTNode *def = find_struct_def(ctx, type_def_name(arr_type));
                     if (def && def->kind == NODE_STRUCT && def->type_info &&
                         def->type_info->kind == TYPE_VECTOR && def->strct.fields &&
                         def->strct.fields->type_info)

@@ -354,6 +354,11 @@ Type *type_new_array(Type *inner, int size)
     return t;
 }
 
+char *type_def_name(Type *t)
+{
+    return t ? t->name : NULL;
+}
+
 Type *type_new_tuple(Type **elements, int count)
 {
     Type *t = type_new(TYPE_TUPLE);
@@ -638,7 +643,7 @@ int is_incomplete_type(struct ParserContext *ctx, Type *t)
     {
         return 0;
     }
-    ASTNode *def = find_struct_def(ctx, t->name);
+    ASTNode *def = find_struct_def(ctx, type_def_name(t));
     if (!def)
     {
         return 1;
@@ -1108,11 +1113,18 @@ char *type_to_c_string(Type *t, int misra_mode)
     return type_to_c_string_with(t, misra_mode, NULL, NULL);
 }
 
-// The C name of a struct or enum: the one `lookup` gives, else the Zen C name.
+// The C name a struct or enum declares for itself with @link_name, or NULL.
+static const char *link_name_of_type(Type *t, CNameLookup lookup, void *context)
+{
+    const char *name = type_def_name(t);
+    return (lookup && name) ? lookup(context, name) : NULL;
+}
+
+// The C name of a struct or enum: its @link_name, else the name its definition has.
 static const char *c_name_of(Type *t, CNameLookup lookup, void *context)
 {
-    const char *c_name = (lookup && t->name) ? lookup(context, t->name) : NULL;
-    return c_name ? c_name : t->name;
+    const char *link_name = link_name_of_type(t, lookup, context);
+    return link_name ? link_name : type_def_name(t);
 }
 
 char *type_to_c_string_with(Type *t, int misra_mode, CNameLookup lookup, void *context)
@@ -1152,7 +1164,7 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         const char *c_name = c_name_of(t, lookup, context);
         // A struct with a C name of its own is written by it alone; otherwise "struct Foo" only
         // when written so (else a typedef).
-        if (!c_name || c_name != t->name || !t->is_explicit_struct)
+        if (!c_name || link_name_of_type(t, lookup, context) || !t->is_explicit_struct)
         {
             return xstrdup(c_name);
         }

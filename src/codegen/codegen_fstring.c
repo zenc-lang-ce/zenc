@@ -101,7 +101,7 @@ static int is_char_data_len_type(ParserContext *ctx, Type *t, int *is_ptr)
     }
     if (base && base->kind == TYPE_STRUCT && base->name)
     {
-        return is_char_data_len_struct(find_struct_def(ctx, base->name));
+        return is_char_data_len_struct(find_struct_def(ctx, type_def_name(base)));
     }
     return 0;
 }
@@ -127,11 +127,11 @@ static void emit_fstring_expr(ParserContext *ctx, ASTNode *part, const char *wri
         char *struct_name = NULL;
         if (t->kind == TYPE_STRUCT)
         {
-            struct_name = t->name;
+            struct_name = type_def_name(t);
         }
         else if (t->kind == TYPE_POINTER && t->inner && t->inner->kind == TYPE_STRUCT)
         {
-            struct_name = t->inner->name;
+            struct_name = type_def_name(t->inner);
             to_string_is_ptr = 1;
         }
         if (struct_name)

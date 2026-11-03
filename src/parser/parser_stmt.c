@@ -910,7 +910,7 @@ static ASTNode *parse_block_impl(ParserContext *ctx, Lexer *l, int is_value)
                 int has_drop = (sym->type_info && sym->type_info->traits.has_drop);
                 if (!has_drop && sym->type_info && sym->type_info->name)
                 {
-                    ASTNode *def = find_struct_def(ctx, sym->type_info->name);
+                    ASTNode *def = find_struct_def(ctx, type_def_name(sym->type_info));
                     if (def && def->type_info && def->type_info->traits.has_drop)
                     {
                         has_drop = 1;

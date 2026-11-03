@@ -486,10 +486,11 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
                 Type *ft = field->type_info;
                 if (ft && ft->kind == TYPE_STRUCT && ft->name)
                 {
-                    ASTNode *fdef = find_struct_def(ctx, ft->name);
+                    ASTNode *fdef = find_struct_def(ctx, type_def_name(ft));
                     if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
                     {
-                        EMIT(ctx, "    %s__Drop__glue(&self->%s);\n", ft->name, field->field.name);
+                        EMIT(ctx, "    %s__Drop__glue(&self->%s);\n", type_def_name(ft),
+                             field->field.name);
                     }
                 }
                 field = field->next;

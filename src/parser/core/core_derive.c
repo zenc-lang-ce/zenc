@@ -235,7 +235,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                     }
                     Type *ft = f->type_info;
                     int cloned = ft && ft->kind == TYPE_STRUCT && ft->name &&
-                                 type_has_clone_method(ctx, ft->name);
+                                 type_has_clone_method(ctx, type_def_name(ft));
                     written = snprintf(body + used, sizeof(body) - used, "%s: self.%s%s, ",
                                        f->field.name, f->field.name, cloned ? ".clone()" : "");
                     if (written < 0 || (size_t)written >= sizeof(body) - used - 2)

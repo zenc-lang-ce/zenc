@@ -150,7 +150,7 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
 
     if (expr_type && expr_type->name)
     {
-        type_name = expr_type->name;
+        type_name = type_def_name(expr_type);
     }
     else if (func_ret_name)
     {

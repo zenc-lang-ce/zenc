@@ -115,9 +115,9 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         if (!sig && node->call.callee->member.target && node->call.callee->member.target->type_info)
         {
             Type *target_type = get_inner_type(node->call.callee->member.target->type_info);
-            if (target_type->name && is_trait(target_type->name))
+            if (target_type->name && is_trait(type_def_name(target_type)))
             {
-                ASTNode *trait_def = find_trait_def(tc->pctx, target_type->name);
+                ASTNode *trait_def = find_trait_def(tc->pctx, type_def_name(target_type));
                 if (trait_def)
                 {
                     ASTNode *method = trait_def->trait.methods;

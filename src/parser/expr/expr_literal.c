@@ -1211,7 +1211,7 @@ ASTNode *parse_size_or_typeof(ParserContext *ctx, Lexer *l, Token tk, int is_typ
         }
         if (base->kind == TYPE_STRUCT && base->name)
         {
-            if (!is_primitive_type_name(base->name) && !find_struct_def(ctx, base->name) &&
+            if (!is_primitive_type_name(base->name) && !find_struct_def(ctx, type_def_name(base)) &&
                 !find_type_alias_node(ctx, base->name) && find_symbol_entry(ctx, base->name))
             {
                 is_actually_var = 1;

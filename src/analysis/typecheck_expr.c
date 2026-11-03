@@ -1064,10 +1064,10 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     }
 
     // Trait object compatibility: Struct -> Trait
-    if (resolved_target->name && is_trait(resolved_target->name) &&
+    if (resolved_target->name && is_trait(type_def_name(resolved_target)) &&
         resolved_value->kind == TYPE_STRUCT && resolved_value->name)
     {
-        if (check_impl(tc->pctx, resolved_target->name, resolved_value->name))
+        if (check_impl(tc->pctx, type_def_name(resolved_target), type_def_name(resolved_value)))
         {
             return 1;
         }
@@ -1232,7 +1232,7 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
     // The struct the literal builds: the one its type names, also through an alias.
     Type *struct_type = resolve_alias(node->type_info);
     ASTNode *def = find_struct_def(tc->pctx, (struct_type && struct_type->name)
-                                                 ? struct_type->name
+                                                 ? type_def_name(struct_type)
                                                  : node->struct_init.struct_name);
     if (!def)
     {

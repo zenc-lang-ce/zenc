@@ -26,7 +26,7 @@ static Type *method_return_type(ParserContext *ctx, Type *t, const char *method)
     {
         return NULL;
     }
-    FuncSig *sig = find_func(ctx, mangle_method_symbol(t->name, NULL, method));
+    FuncSig *sig = find_func(ctx, mangle_method_symbol(type_def_name(t), NULL, method));
     return sig ? sig->ret_type : NULL;
 }
 

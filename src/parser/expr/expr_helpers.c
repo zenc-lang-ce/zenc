@@ -268,7 +268,7 @@ void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
         if (rhs_t && rhs_t->kind == TYPE_POINTER && rhs_t->inner &&
             rhs_t->inner->kind == TYPE_STRUCT)
         {
-            *out_struct_name = rhs_t->inner->name;
+            *out_struct_name = type_def_name(rhs_t->inner);
             *out_var_ref_name = node->var_ref.name;
         }
         else
@@ -464,9 +464,9 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
             if (sig && sig->arg_types && res.count < sig->total_args && arg)
             {
                 Type *expected = sig->arg_types[res.count];
-                if (expected && expected->name && is_trait(expected->name))
+                if (expected && expected->name && is_trait(type_def_name(expected)))
                 {
-                    arg = transform_to_trait_object(ctx, expected->name, arg);
+                    arg = transform_to_trait_object(ctx, type_def_name(expected), arg);
                 }
                 else if (!res.has_named)
                 {

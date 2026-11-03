@@ -175,69 +175,22 @@ char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out
     {
         return NULL;
     }
-    char *struct_name = NULL;
     *allocated_out = NULL;
     *is_ptr_out = 0;
-
-    if (t->kind == TYPE_ALIAS && t->alias.is_opaque_alias)
-    {
-        struct_name = t->name;
-        *is_ptr_out = 0;
-        return struct_name;
-    }
-
-    if (t->kind == TYPE_POINTER && t->inner && t->inner->kind == TYPE_ALIAS &&
-        t->inner->alias.is_opaque_alias)
-    {
-        struct_name = t->inner->name;
-        *is_ptr_out = 1;
-        return struct_name;
-    }
 
     if (t->kind == TYPE_POINTER && t->inner)
     {
         *is_ptr_out = 1;
         int inner_ptr = 0;
         char *inner_name = resolve_struct_name_from_type(ctx, t->inner, &inner_ptr, allocated_out);
-        if (!inner_name)
-        {
-            if (t->inner->kind == TYPE_STRUCT)
-            {
-                struct_name = t->inner->name;
-                *is_ptr_out = 1;
-                return struct_name;
-            }
-            return NULL;
-        }
         return inner_name;
     }
 
-    if (t->kind == TYPE_STRUCT)
+    // Opaque aliases, structs and enums have methods (`impl Value { fn as_hour(self) ... }`).
+    if ((t->kind == TYPE_ALIAS && t->alias.is_opaque_alias) || t->kind == TYPE_STRUCT ||
+        (t->kind == TYPE_ENUM && t->name))
     {
-        struct_name = t->name;
-        *is_ptr_out = 0;
-        if (t->args)
-        {
-            char *original_arg = xstrdup(t->name);
-            // Detect and process mangled generic instantiation
-            if (strchr(original_arg, '_'))
-            {
-                // Mark generic usage
-                struct_name = original_arg;
-                *allocated_out = original_arg;
-                return struct_name;
-            }
-            zfree(original_arg);
-        }
-        return struct_name;
+        return type_def_name(t);
     }
-
-    // Enums have methods too (`impl Value { fn as_hour(self) ... }`).
-    if (t->kind == TYPE_ENUM && t->name)
-    {
-        *is_ptr_out = 0;
-        return t->name;
-    }
-
     return NULL;
 }

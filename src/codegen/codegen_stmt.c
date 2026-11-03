@@ -94,7 +94,7 @@ static char *discarded_drop_type(ParserContext *ctx, ASTNode *node)
     char *tname = NULL;
     if (node->type_info && node->type_info->kind == TYPE_STRUCT && node->type_info->name)
     {
-        tname = node->type_info->name;
+        tname = type_def_name(node->type_info);
     }
     else
     {

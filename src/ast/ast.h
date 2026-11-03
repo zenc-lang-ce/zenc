@@ -789,6 +789,12 @@ Type *type_new(TypeKind kind);
 Type *type_new_ptr(Type *inner);
 Type *type_new_array(Type *inner, int size);
 Type *type_new_tuple(Type **elements, int count);
+/**
+ * @brief The name the definition of a struct, enum, alias or trait type is registered under,
+ * which its C name and its methods' C names build on: for a generic instance, the mangled name
+ * (`Vec__int32_t`), not the template's.
+ */
+char *type_def_name(Type *t);
 /** @brief `t` if it is a tuple, or the tuple it points to; else NULL. */
 Type *tuple_of(Type *t);
 /** @brief The type of the element `field` (`0` or `v0`) of `tuple`, or NULL. */

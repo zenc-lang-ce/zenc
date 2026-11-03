@@ -65,9 +65,9 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
             if (index < sig->total_args)
             {
                 Type *expected = sig->arg_types[index];
-                if (expected && expected->name && is_trait(expected->name))
+                if (expected && expected->name && is_trait(type_def_name(expected)))
                 {
-                    ASTNode *cast = transform_to_trait_object(ctx, expected->name, arg);
+                    ASTNode *cast = transform_to_trait_object(ctx, type_def_name(expected), arg);
                     if (cast != arg)
                     {
                         cast->next = next;
@@ -1179,7 +1179,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 {
                     if (inner_t->kind == TYPE_STRUCT)
                     {
-                        struct_name = inner_t->name;
+                        struct_name = type_def_name(inner_t);
                     }
                     /*
                     else if (t->kind == TYPE_POINTER && t->inner && t->inner->kind == TYPE_STRUCT)
@@ -1458,11 +1458,11 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 Type *st = lhs->type_info;
                 if (st->kind == TYPE_STRUCT)
                 {
-                    struct_name = st->name;
+                    struct_name = type_def_name(st);
                 }
                 else if (st->kind == TYPE_POINTER && st->inner && st->inner->kind == TYPE_STRUCT)
                 {
-                    struct_name = st->inner->name;
+                    struct_name = type_def_name(st->inner);
                 }
 
                 if (struct_name)
@@ -1559,12 +1559,12 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     {
                         if (lhs->type_info->kind == TYPE_STRUCT)
                         {
-                            struct_name = lhs->type_info->name;
+                            struct_name = type_def_name(lhs->type_info);
                         }
                         else if (lhs->type_info->kind == TYPE_POINTER && lhs->type_info->inner &&
                                  lhs->type_info->inner->kind == TYPE_STRUCT)
                         {
-                            struct_name = lhs->type_info->inner->name;
+                            struct_name = type_def_name(lhs->type_info->inner);
                         }
                     }
 
