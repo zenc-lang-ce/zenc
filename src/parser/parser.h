@@ -805,8 +805,6 @@ ASTNode *parse_comptime_body(ParserContext *ctx, Lexer *l);
  * @brief Patches self arguments in a function.
  */
 char *escape_c_string(const char *input);
-/** @brief `src`, a C type, with `param` written as `concrete` (also inside a mangled name). */
-char *replace_type_str(const char *src, const char *param, const char *concrete);
 char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out,
                                     char **allocated_out);
 /**

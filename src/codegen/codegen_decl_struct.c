@@ -387,26 +387,22 @@ void emit_struct_defs(ParserContext *ctx, ASTNode *node, VisitedModules **visite
     }
 }
 
-// Helper to substitute 'Self' with replacement string
-static char *substitute_proto_self(const char *type_str, const char *replacement)
+// A type of a trait method spelled in C, with `Self` (also written `self`) standing for `self`:
+// `void*` in the vtable, the trait itself in its wrappers.
+static char *trait_c_type(ParserContext *ctx, Type *t, Type *self)
 {
-    if (!type_str)
-    {
-        return NULL;
-    }
-    if (strcasecmp(type_str, "Self") == 0)
-    {
-        return xstrdup(replacement);
-    }
-    // Handle pointers (Self* -> replacement*)
-    if (strncasecmp(type_str, "Self", 4) == 0)
-    {
-        const char *rest = type_str + 4;
-        char *buf = xmalloc(strlen(replacement) + strlen(rest) + 1);
-        sprintf(buf, "%s%s", replacement, rest);
-        return buf;
-    }
-    return xstrdup(type_str);
+    Type **args = xmalloc(sizeof(Type *) * 2);
+    args[0] = self;
+    args[1] = self;
+    Bindings b = bindings_new("Self,self", args, 2);
+    return c_type_spelling(ctx, replace_type_formal(ctx, t, &b, NULL, NULL));
+}
+
+// Whether a trait method returns `Self` (also written `self`).
+static int returns_self(ASTNode *m)
+{
+    return type_is_generic_param(m->func.ret_type_info, "Self") ||
+           type_is_generic_param(m->func.ret_type_info, "self");
 }
 
 // Whether a parameter of a trait method is its receiver.
@@ -417,8 +413,8 @@ static int is_self_param(ASTNode *m, int i)
 }
 
 // The parameters of a trait method after its receiver, spelled in C from their Types and with
-// `Self` written as `self_c`: "int32_t n, void* other". Empty when there are none.
-static char *trait_method_params(ParserContext *ctx, ASTNode *m, const char *self_c)
+// `Self` standing for `self`: "int32_t n, void* other". Empty when there are none.
+static char *trait_method_params(ParserContext *ctx, ASTNode *m, Type *self)
 {
     char *out = xstrdup("");
     for (int i = 0; i < m->func.count; i++)
@@ -427,10 +423,9 @@ static char *trait_method_params(ParserContext *ctx, ASTNode *m, const char *sel
         {
             continue;
         }
-        char *type = (m->func.arg_types && m->func.arg_types[i])
-                         ? c_type_spelling(ctx, m->func.arg_types[i])
-                         : xstrdup("void*");
-        char *c_type = replace_type_str(type, "Self", self_c);
+        char *c_type = (m->func.arg_types && m->func.arg_types[i])
+                           ? trait_c_type(ctx, m->func.arg_types[i], self)
+                           : xstrdup("void*");
         const char *name =
             (m->func.param_names && m->func.param_names[i]) ? m->func.param_names[i] : "";
         size_t size = strlen(out) + strlen(c_type) + strlen(name) + 4;
@@ -492,11 +487,11 @@ static void emit_trait_defs_internal(ParserContext *ctx, ASTNode *node, VisitedM
             }
             EMIT(ctx, "typedef struct %s_VTable {\n", node->trait.name);
             emitter_indent(&ctx->cg.emitter);
+            Type *erased_self = type_new_ptr(type_new(TYPE_VOID));
             ASTNode *m = node->trait.methods;
             while (m)
             {
-                char *ret_safe =
-                    substitute_proto_self(type_to_string(m->func.ret_type_info), "void*");
+                char *ret_safe = trait_c_type(ctx, m->func.ret_type_info, erased_self);
                 const char *orig = parse_original_method_name(m->func.name);
                 EMIT(ctx, "%s (*%s)(", ret_safe, orig);
                 zfree(ret_safe);
@@ -509,7 +504,7 @@ static void emit_trait_defs_internal(ParserContext *ctx, ASTNode *node, VisitedM
                 // `const self` marks what self points to (parse_and_convert_args).
                 int is_const_self = self_type && self_type->kind == TYPE_POINTER &&
                                     self_type->inner && self_type->inner->is_const;
-                char *params = trait_method_params(ctx, m, "void*");
+                char *params = trait_method_params(ctx, m, erased_self);
                 EMIT(ctx, "%svoid* self%s%s", is_const_self ? "const " : "", params[0] ? ", " : "",
                      params);
                 EMIT(ctx, ");\n");
@@ -575,11 +570,12 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
             {
                 EMIT(ctx, "#if %s\n", node->cfg_condition);
             }
+            Type *trait_type = type_new(TYPE_STRUCT);
+            trait_type->name = xstrdup(node->trait.name);
             ASTNode *m = node->trait.methods;
             while (m)
             {
-                char *ret_sub =
-                    substitute_proto_self(type_to_string(m->func.ret_type_info), node->trait.name);
+                char *ret_sub = trait_c_type(ctx, m->func.ret_type_info, trait_type);
                 const char *orig = parse_original_method_name(m->func.name);
                 int is_const_self = (m->func.count > 0 && m->func.arg_types &&
                                      m->func.arg_types[0] && m->func.arg_types[0]->is_const);
@@ -587,7 +583,7 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                      mangle_method_symbol(node->trait.name, NULL, orig),
                      is_const_self ? "const " : "", node->trait.name);
 
-                char *params = trait_method_params(ctx, m, node->trait.name);
+                char *params = trait_method_params(ctx, m, trait_type);
                 if (params[0])
                 {
                     EMIT(ctx, ", %s", params);
@@ -595,7 +591,7 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                 EMIT(ctx, ") {\n");
                 emitter_indent(&ctx->cg.emitter);
 
-                int ret_is_self = strcasecmp(type_to_string(m->func.ret_type_info), "Self") == 0;
+                int ret_is_self = returns_self(m);
                 if (ret_is_self)
                 {
                     EMIT(ctx, "void* res = self->vtable->%s(self->self", orig);
