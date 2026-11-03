@@ -968,8 +968,7 @@ GenericTemplate *find_generic_template(ParserContext *ctx, const char *name);
  * generic parameter.
  */
 void instantiate_type(ParserContext *ctx, Type *instance, Token token);
-void instantiate_generic(ParserContext *ctx, const char *name, const char *arg_str,
-                         const char *arg_name, Token t);
+void instantiate_generic(ParserContext *ctx, const char *name, const char *arg, Token t);
 void instantiate_generic_multi(ParserContext *ctx, const char *name, char **args, int count,
                                Token t);
 
@@ -987,8 +986,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l);
 void audit_section_5(ParserContext *ctx, Scope *scope, const char *name, const char *link_name,
                      Token tok);
 void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
-                         const char *mangled_struct_name, const char *arg,
-                         const char *unmangled_arg);
+                         const char *mangled_struct_name, const char *args);
 const char *get_closest_type_hint(ParserContext *ctx, const char *name);
 void add_instantiated_func(ParserContext *ctx, ASTNode *fn);
 char *ast_to_string(ASTNode *node);

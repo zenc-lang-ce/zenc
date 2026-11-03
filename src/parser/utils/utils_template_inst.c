@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-char *unmangle_ptr_suffix(const char *s);
 Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char *c, const char *os,
                           const char *ns);
 ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const char *c,
@@ -50,7 +49,7 @@ void instantiate_type(ParserContext *ctx, Type *instance, Token token)
     }
     if (instance->count == 1)
     {
-        instantiate_generic(ctx, instance->name, args[0], args[0], token);
+        instantiate_generic(ctx, instance->name, args[0], token);
     }
     else
     {
@@ -246,20 +245,14 @@ static ASTNode *copy_fields_replacing(ParserContext *ctx, ASTNode *fields, const
 }
 
 void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
-                         const char *mangled_struct_name, const char *arg,
-                         const char *unmangled_arg)
+                         const char *mangled_struct_name, const char *args)
 {
     ASTNode *backup_next = it->impl_node->next;
     it->impl_node->next = NULL; // Break link to isolate node
 
-    // Use unmangled_arg if provided, otherwise arg
-    char *raw = (char *)(unmangled_arg ? unmangled_arg : arg);
-    char *subst_arg = unmangle_ptr_suffix(raw);
-
-    ASTNode *new_impl = copy_ast_replacing(ctx, it->impl_node, it->generic_param, subst_arg,
+    ASTNode *new_impl = copy_ast_replacing(ctx, it->impl_node, it->generic_param, args,
                                            it->struct_name, mangled_struct_name);
 
-    zfree(subst_arg);
     it->impl_node->next = backup_next; // Restore
 
     ASTNode *meth = NULL;
@@ -349,8 +342,7 @@ static void register_enum_constructor(ParserContext *ctx, const char *m, const c
     zfree(mangled_var);
 }
 
-void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
-                         const char *unmangled_arg, Token token)
+void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg, Token token)
 {
     // Ignore generic placeholders
     if (strlen(arg) == 1 && isupper(arg[0]))
@@ -395,9 +387,8 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
     ni->name = xstrdup(m);
     ni->template_name = xstrdup(tpl);
     ni->concrete_arg = xstrdup(arg);
-    ni->unmangled_arg = unmangled_arg ? xstrdup(unmangled_arg)
-                                      : xstrdup(arg); // Fallback to arg if unmangled is generic
-    ni->struct_node = NULL;                           // Placeholder to break cycles
+    ni->unmangled_arg = xstrdup(arg);
+    ni->struct_node = NULL; // Placeholder to break cycles
     ni->next = ctx->instantiations;
     ctx->instantiations = ni;
 
@@ -428,8 +419,7 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
         const char *gp = (t->struct_node->strct.generic_param_count > 0)
                              ? t->struct_node->strct.generic_params[0]
                              : "T";
-        const char *subst_arg = unmangled_arg ? unmangled_arg : arg;
-        i->strct.fields = copy_fields_replacing(ctx, t->struct_node->strct.fields, gp, subst_arg);
+        i->strct.fields = copy_fields_replacing(ctx, t->struct_node->strct.fields, gp, arg);
         struct_node_copy = i;
         register_struct_def(ctx, m, i);
 
@@ -468,9 +458,8 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
             nv->variant.name = xstrdup(v->variant.name);
             nv->variant.tag_id = v->variant.tag_id;
             nv->variant.payload_count = v->variant.payload_count;
-            const char *subst_arg = unmangled_arg ? unmangled_arg : arg;
             nv->variant.payload = replace_type_formal(
-                ctx, v->variant.payload, t->struct_node->enm.generic_param, subst_arg, NULL, NULL);
+                ctx, v->variant.payload, t->struct_node->enm.generic_param, arg, NULL, NULL);
 
             register_enum_constructor(ctx, m, nv->variant.name, nv->variant.tag_id,
                                       nv->variant.payload, token, i->enm.is_export);
@@ -515,7 +504,7 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
     {
         if (strcmp(it->struct_name, tpl) == 0)
         {
-            instantiate_methods(ctx, it, m, arg, unmangled_arg);
+            instantiate_methods(ctx, it, m, arg);
         }
         it = it->next;
     }

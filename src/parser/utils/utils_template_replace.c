@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 static char *replace_in_string(const char *src, const char *old_w, const char *new_w)
 {
     if (!src || !old_w || !new_w)
@@ -1478,44 +1477,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         break;
     }
     return new_node;
-}
-
-char *unmangle_ptr_suffix(const char *s);
-
-// Helper to unmangle Ptr suffix back to pointer type ("intPtr" -> "int*")
-char *unmangle_ptr_suffix(const char *s)
-{
-    if (!s)
-    {
-        return NULL;
-    }
-
-    size_t len = strlen(s);
-    if (len <= 3 || strcmp(s + len - 3, "Ptr") != 0)
-    {
-        return xstrdup(s); // No Ptr suffix, return as-is
-    }
-
-    // Extract base type (everything before "Ptr")
-    char *base = xmalloc(len - 2);
-    strncpy(base, s, len - 3);
-    base[len - 3] = '\0';
-
-    char *result = xmalloc(strlen(base) + 16);
-
-    // Check if base is a primitive type
-    if (is_primitive_type_name(base))
-    {
-        sprintf(result, "%s*", base); /* safe */
-    }
-    else
-    {
-        // Don't unmangle non-primitives ending in Ptr (like Vec_intPtr)
-        strcpy(result, s);
-    }
-
-    zfree(base);
-    return result;
 }
 
 ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index)

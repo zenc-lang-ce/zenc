@@ -15,8 +15,6 @@
 #include "zprep_plugin.h"
 #include "analysis/move_check.h"
 
-char *unmangle_ptr_suffix(const char *s);
-
 ASTNode *parse_match(ParserContext *ctx, Lexer *l)
 {
     init_builtins();

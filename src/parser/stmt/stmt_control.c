@@ -413,9 +413,9 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
 
                     auto_import_std_slice(ctx);
                     Token dummy_tok = {0};
-                    instantiate_generic(ctx, "Slice", elem_type_str, elem_type_str, dummy_tok);
-                    instantiate_generic(ctx, "SliceIter", elem_type_str, elem_type_str, dummy_tok);
-                    instantiate_generic(ctx, "Option", elem_type_str, elem_type_str, dummy_tok);
+                    instantiate_generic(ctx, "Slice", elem_type_str, dummy_tok);
+                    instantiate_generic(ctx, "SliceIter", elem_type_str, dummy_tok);
+                    instantiate_generic(ctx, "Option", elem_type_str, dummy_tok);
 
                     ASTNode *slice_ref = ast_create(NODE_EXPR_VAR);
                     slice_ref->var_ref.name = xstrdup("__zc_arr_slice");
