@@ -301,11 +301,6 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
                          const char *mangled_struct_name, const char *arg,
                          const char *unmangled_arg)
 {
-    if (check_impl(ctx, "Methods", mangled_struct_name))
-    {
-        return; // Simple dedupe check
-    }
-
     ASTNode *backup_next = it->impl_node->next;
     it->impl_node->next = NULL; // Break link to isolate node
 
@@ -316,34 +311,6 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
     ASTNode *new_impl = copy_ast_replacing(ctx, it->impl_node, it->generic_param, subst_arg,
                                            it->struct_name, mangled_struct_name);
 
-    // Also replace mangled template name (both List__G and List_G)
-    if (strchr(it->struct_name, '<'))
-    {
-        char *sanitized = sanitize_mangled_name(it->struct_name);
-        if (strcmp(sanitized, it->struct_name) != 0)
-        {
-            ASTNode *tmp =
-                copy_ast_replacing(ctx, new_impl, NULL, NULL, sanitized, mangled_struct_name);
-            new_impl = tmp;
-        }
-
-        char *old_sanitized = xstrdup(sanitized);
-        char *double_underscore = (char *)strstr(old_sanitized, "__");
-        if (double_underscore)
-        {
-            memmove(double_underscore, double_underscore + 1, strlen(double_underscore + 1) + 1);
-        }
-
-        if (strcmp(old_sanitized, it->struct_name) != 0 && strcmp(old_sanitized, sanitized) != 0)
-        {
-            ASTNode *tmp =
-                copy_ast_replacing(ctx, new_impl, NULL, NULL, old_sanitized, mangled_struct_name);
-            new_impl = tmp;
-        }
-
-        zfree(old_sanitized);
-        zfree(sanitized);
-    }
     zfree(subst_arg);
     it->impl_node->next = backup_next; // Restore
 
