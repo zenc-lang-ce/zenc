@@ -16,6 +16,9 @@ zencraft_bin
 
 # Build output directories
 obj/
+# The portable build (make ape) and the release zips (scripts/package_release.sh)
+obj-ape/
+out/
 
 # Generated files
 out.c

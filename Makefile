@@ -25,9 +25,13 @@ ifneq ($(GIT_DESC),)
 else
   GIT_VERSION := $(shell cat .version 2>/dev/null || echo "unknown")
 endif
-# Re-check for CI overrides
+# The release tag of the commit being built, if it has one (v0.5.1, v0.5.1-rc1)
+RELEASE_TAG := $(shell git describe --tags --exact-match 2>/dev/null)
+# A CI build that is not a release says which run made it
 ifneq ($(GITHUB_RUN_NUMBER),)
-  GIT_VERSION := $(GIT_VERSION)+ci.$(GITHUB_RUN_NUMBER)
+  ifeq ($(RELEASE_TAG),)
+    GIT_VERSION := $(GIT_VERSION)+ci.$(GITHUB_RUN_NUMBER)
+  endif
 endif
 SHAREDIR ?= /usr/local/share/zenc
 DEFINES = -DZEN_VERSION=\"$(GIT_VERSION)\" -DZEN_SHARE_DIR=\"$(SHAREDIR)\" -DZC_ALLOW_INTERNAL
@@ -182,6 +186,13 @@ ZC_COM = $(OUT_BIN)/zc.com
 ZC_BOOT_SRC = ape/boot/boot.zc
 ZC_BOOT_COM_BIN = $(OUT_STAGE)/zc-boot.com
 ZC_BOOT_COM = $(OUT_BIN)/zc-boot.com
+# The standalone tools as portable executables too: `zc.com lsp|repl|doc|format` launches them
+APE_TOOLS = zc-lsp zc-repl zc-doc zc-format
+APE_TOOL_COMS = $(addprefix $(OUT_BIN)/,$(addsuffix .com,$(APE_TOOLS)))
+APE_TOOLS_STAMP = $(OUT_STAGE)/tools.stamp
+# zc-boot.com built from a release tag downloads the zc.com of that release, not the latest one
+ZC_BOOT_RELEASE = $(if $(RELEASE_TAG),releases/download/$(RELEASE_TAG),releases/latest/download)
+ZC_BOOT_BRANCH = $(if $(RELEASE_TAG),$(RELEASE_TAG),main)
 
 # Discover plugins for static linking
 PLUGIN_FILES = $(wildcard plugins/*.zc)
@@ -197,7 +208,7 @@ sanitize_name = $(shell echo $(1) | sed 's/[^a-zA-Z0-9]/_/g')
 all: $(TARGET) $(PLUGINS) $(TOOLS)
 
 # APE target
-ape: $(ZC_COM) $(ZC_BOOT_COM)
+ape: $(ZC_COM) $(APE_TOOL_COMS) $(ZC_BOOT_COM)
 
 # Build plugins
 
@@ -274,23 +285,26 @@ $(TARGET): $(ZC_BASE_OBJS)
 	$(CC) $(CFLAGS) -o $@ $(ZC_BASE_OBJS) $(LIBS)
 	@echo "=> Build complete: $(TARGET)"
 
-# Standalone tools (Unix-style: one focused program each)
-zc-lsp: $(TOOL_BASE_OBJS) $(LSP_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_lsp.o
+# Standalone tools (Unix-style: one focused program each). TOOL_OUT (a directory, with its
+# trailing /) and TOOL_EXT name the output: the portable build makes out/stage/zc-lsp.com.
+TOOL_OUT ?=
+TOOL_EXT ?=
+$(TOOL_OUT)zc-lsp$(TOOL_EXT): $(TOOL_BASE_OBJS) $(LSP_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_lsp.o
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 	@echo "=> Build complete: $@"
 
-zc-repl: $(TOOL_BASE_OBJS) $(REPL_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_repl.o
+$(TOOL_OUT)zc-repl$(TOOL_EXT): $(TOOL_BASE_OBJS) $(REPL_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_repl.o
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 	@echo "=> Build complete: $@"
 
-zc-doc: $(TOOL_BASE_OBJS) $(ZEN_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_doc.o
+$(TOOL_OUT)zc-doc$(TOOL_EXT): $(TOOL_BASE_OBJS) $(ZEN_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_doc.o
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 	@echo "=> Build complete: $@"
 
-zc-format: $(TOOL_BASE_OBJS) $(LSP_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_format.o
+$(TOOL_OUT)zc-format$(TOOL_EXT): $(TOOL_BASE_OBJS) $(LSP_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_format.o
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 	@echo "=> Build complete: $@"
@@ -344,19 +358,26 @@ $(ZC_ENTRY_O): ape/zc_entry.c
 	@$(MKDIR) $(@D)
 	$(COSMOCC) -c $< -o $@
 
+# Builds programs with cosmocc, into obj-ape, with ape/zc_entry.c around their main
+APE_MAKE = $(MAKE) \
+	PLUGINS= \
+	ZC_HAS_JIT=0 \
+	CC=$(COSMOCC) \
+	OBJ_DIR=obj-ape \
+	CFLAGS='$(CFLAGS) -DZC_STATIC_PLUGINS -fno-stack-protector -Wno-redundant-decls -Wno-switch-default -Wno-sign-conversion -Wno-sign-compare -Wno-cast-align -Wno-implicit-fallthrough' \
+	DEFINES='$(DEFINES) -DZC_STATIC_PLUGINS' \
+	LIBS="$(abspath $(ZC_ENTRY_O)) $(PLUGIN_APE_OBJS) -Wl,--wrap=main" \
+	SRCS="$(SRCS)"
+
 $(ZC_COM_BIN): $(ZC_ENTRY_O) $(SRCS) src/plugins/static_plugins.c $(PLUGIN_APE_OBJS)
 	@$(MKDIR) $(@D)
-	$(MAKE) \
-		PLUGINS= \
-		ZC_HAS_JIT=0 \
-		CC=$(COSMOCC) \
-		OBJ_DIR=obj-ape \
-		CFLAGS='$(CFLAGS) -DZC_STATIC_PLUGINS -fno-stack-protector -Wno-redundant-decls -Wno-switch-default -Wno-sign-conversion -Wno-sign-compare -Wno-cast-align -Wno-implicit-fallthrough' \
-		DEFINES='$(DEFINES) -DZC_STATIC_PLUGINS' \
-		LIBS="$(abspath $(ZC_ENTRY_O)) $(PLUGIN_APE_OBJS) -Wl,--wrap=main" \
-		SRCS="$(SRCS)" \
-		TARGET="$(abspath $@)" \
-		monolith
+	$(APE_MAKE) TARGET="$(abspath $@)" monolith
+
+# After zc.com, whose objects they share: two builds into obj-ape at once would race
+$(APE_TOOLS_STAMP): $(ZC_COM_BIN)
+	$(APE_MAKE) TOOL_OUT="$(abspath $(OUT_STAGE))/" TOOL_EXT=.com \
+		$(addprefix $(abspath $(OUT_STAGE))/,$(addsuffix .com,$(APE_TOOLS)))
+	@touch $@
 
 src/plugins/static_plugins.c: $(PLUGIN_FILES)
 	@echo "=> Generating static plugin registry: $@"
@@ -389,13 +410,22 @@ obj-ape/plugins/%.o: obj-ape/plugins/%.c
 		-fno-stack-protector \
 		-DZC_STATIC_PLUGIN -Dz_plugin_init=z_plugin_init_$$psafe -c $< -o $@
 
-$(ZC_COM): $(ZC_COM_BIN)
+# Copies the staged program $(1) (and the files cosmocc writes next to it) to out/bin, and adds
+# the standard library and the compiler's data to its zip, where ZC_ROOT=/zip finds them
+define ape_bundle
 	@$(MKDIR) $(@D)
-	@$(CP) $(ZC_COM_BIN) $(wildcard $(ZC_COM_BIN).*) "$(@D)"; \
+	@$(CP) $(1) $(wildcard $(1).*) "$(@D)"; \
 	cp src/misc/zenc.json zenc.json; \
 	cp src/repl/docs.json docs.json; \
 	zip -r "$(abspath $@)" std.zc std LICENSE zenc.json docs.json; \
-	rm -f zenc.json docs.json
+	status=$$?; rm -f zenc.json docs.json; exit $$status
+endef
+
+$(ZC_COM): $(ZC_COM_BIN)
+	$(call ape_bundle,$(ZC_COM_BIN))
+
+$(APE_TOOL_COMS): $(OUT_BIN)/%.com: $(APE_TOOLS_STAMP)
+	$(call ape_bundle,$(OUT_STAGE)/$*.com)
 
 $(ZC_BOOT_COM_BIN): $(ZC_BOOT_SRC) $(ZC_COM)
 	@$(MKDIR) $(@D)
@@ -405,11 +435,15 @@ $(ZC_BOOT_COM_BIN): $(ZC_BOOT_SRC) $(ZC_COM)
 	}
 
 $(ZC_BOOT_COM): $(ZC_BOOT_COM_BIN) ape/boot/.args
-	@$(MKDIR) $(@D)
+	@$(MKDIR) $(@D) $(OUT_STAGE)/boot
 	@$(CP) $(ZC_BOOT_COM_BIN) $(wildcard $(ZC_BOOT_COM_BIN).*) "$(@D)"; \
 	cp src/misc/zenc.json zenc.json; \
 	cp src/repl/docs.json docs.json; \
-	(cd ape/boot && zip "$(abspath $@)" .args hello.zc instructions.txt Makefile); \
+	cp ape/boot/hello.zc ape/boot/instructions.txt ape/boot/Makefile $(OUT_STAGE)/boot/; \
+	sed -e 's|releases/latest/download|$(ZC_BOOT_RELEASE)|' \
+		-e 's|zenc-lang-ce/zenc/main/|zenc-lang-ce/zenc/$(ZC_BOOT_BRANCH)/|' \
+		ape/boot/.args > $(OUT_STAGE)/boot/.args; \
+	(cd $(OUT_STAGE)/boot && zip "$(abspath $@)" .args hello.zc instructions.txt Makefile); \
 	zip "$(abspath $@)" LICENSE zenc.json docs.json; \
 	rm -f zenc.json docs.json
 
@@ -475,6 +509,7 @@ install-ape: ape
 	$(INSTALL) -d $(BINDIR)
 	$(INSTALL) -m 755 $(ZC_COM) $(BINDIR)/zc.com
 	$(INSTALL) -m 755 $(ZC_BOOT_COM) $(BINDIR)/zc-boot.com
+	for t in $(APE_TOOLS); do $(INSTALL) -m 755 $(OUT_BIN)/$$t.com $(BINDIR)/$$t.com; done
 	$(LN) $(BINDIR)/zc.com $(BINDIR)/zc
 
 	# Install standard library (shared)
@@ -490,6 +525,7 @@ uninstall-ape:
 	$(RM) $(BINDIR)/zc
 	$(RM) $(BINDIR)/zc.com
 	$(RM) $(BINDIR)/zc-boot.com
+	for t in $(APE_TOOLS); do $(RM) $(BINDIR)/$$t.com; done
 	$(RM) $(SHAREDIR)
 	@echo "=> Uninstalled APE binaries from $(BINDIR)"
 	@echo "=> Removed $(SHAREDIR)"
