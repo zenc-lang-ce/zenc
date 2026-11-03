@@ -1,5 +1,5 @@
    Compiling tests/compiler/diagnostics_output/error_hints.zc...
-error: Type mismatch: expected 'int32_t', but found 'string'
+error: Type mismatch: expected 'i32', but found 'string'
   --> tests/compiler/diagnostics_output/error_hints.zc:10:10
    |
 10 |     take(s);

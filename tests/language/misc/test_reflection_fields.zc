@@ -1,5 +1,6 @@
-// Reflection: @fields(T) gives the name and the type of each field of T. A struct with
-// @link_name appears by the name the program uses, not by its C name.
+// Reflection: @fields(T) gives the name and the type of each field of T, and @type_name(T) the
+// name of T. Types appear by the names the program uses: a struct with @link_name by its own
+// name, not its C name, and a primitive as `i32`, not `int32_t`.
 
 // The layout of an entry of the table @fields returns.
 struct FieldInfo {
@@ -24,4 +25,16 @@ test "@fields names a @link_name struct as the program does" {
     assert(strcmp(fields[0].name, "count") == 0, "the first field");
     assert(strcmp(fields[1].name, "point") == 0, "the second field");
     assert(strcmp(fields[1].kind, "Point") == 0, "a @link_name struct by its Zen C name");
+}
+
+test "@fields and @type_name name primitives as the program does" {
+    let table = @fields(Wrapper);
+    let fields = (FieldInfo*)table;
+    assert(strcmp(fields[0].kind, "i32") == 0, "an int field is an i32");
+    let byte_name = @type_name(u8);
+    assert(strcmp(byte_name, "u8") == 0, "@type_name(u8)");
+    let size_name = @type_name(usize);
+    assert(strcmp(size_name, "usize") == 0, "@type_name(usize)");
+    let point_name = @type_name(Point);
+    assert(strcmp(point_name, "Point") == 0, "@type_name of a @link_name struct");
 }
