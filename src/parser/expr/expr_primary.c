@@ -245,6 +245,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         char *acc = ident;
         // Set when acc ends up naming an enum variant: its enum and its name.
         QualifiedName variant = {0};
+        // Set when acc ends up naming an instance of a generic function.
+        FunctionInstance instance = {0};
         while (1)
         {
             if (lexer_peek(l).kind == TOK_EOF)
@@ -747,6 +749,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                     char **concrete_types = xmalloc(sizeof(char *) * 8);
                     char **unmangled_types = xmalloc(sizeof(char *) * 8);
+                    Type **arg_types = xmalloc(sizeof(Type *) * 8);
                     int count = 0;
 
                     while (1)
@@ -763,6 +766,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
                         concrete_types[count] = type_to_string(formal_type);
                         unmangled_types[count] = type_to_string(formal_type);
+                        arg_types[count] = formal_type;
                         count++;
 
                         if (lexer_peek(l).kind == TOK_COMMA)
@@ -845,37 +849,16 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     else
                     {
                         // Function Template
-                        // Join types with comma
-                        char full_concrete[MAX_ERROR_MSG_LEN] = {0};
-                        char full_unmangled[MAX_ERROR_MSG_LEN] = {0};
-
-                        for (int i = 0; i < count; ++i)
-                        {
-                            if (i > 0)
-                            {
-                                strncat(full_concrete, ",",
-                                        sizeof(full_concrete) - strlen(full_concrete) - 1);
-                                strncat(full_unmangled, ",",
-                                        sizeof(full_unmangled) - strlen(full_unmangled) - 1);
-                            }
-                            strncat(full_concrete, concrete_types[i],
-                                    sizeof(full_concrete) - strlen(full_concrete) - 1);
-                            strncat(full_unmangled, unmangled_types[i],
-                                    sizeof(full_unmangled) - strlen(full_unmangled) - 1);
-                        }
-
-                        char *m =
-                            instantiate_function_template(ctx, acc, full_concrete, full_unmangled);
-                        if (m)
-                        {
-                            zfree(acc);
-                            acc = m;
-                        }
-                        else
+                        instance.name = acc;
+                        instance.args = arg_types;
+                        instance.count = count;
+                        char *m = instantiate_function(ctx, instance);
+                        if (!m)
                         {
                             zpanic_at(t, "Unknown generic %s", acc);
                             return NULL;
                         }
+                        acc = m;
                     }
 
                     // Cleanup
@@ -1515,6 +1498,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             ASTNode *callee = ast_create(NODE_EXPR_VAR);
             callee->var_ref.name = acc;
             callee->var_ref.variant = variant;
+            callee->var_ref.instance = instance;
             node->call.callee = callee;
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
@@ -1546,6 +1530,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             callee->token = t;
             callee->var_ref.name = acc;
             callee->var_ref.variant = variant;
+            callee->var_ref.instance = instance;
             node->call.callee = callee;
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
@@ -1554,7 +1539,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             GenericFuncTemplate *tpl = find_func_template(ctx, acc);
             if (tpl && tpl->func_node && args_provided > 0 && head)
             {
-                char *inferred_type = NULL;
+                Type *inferred_type = NULL;
                 ASTNode *func_node = tpl->func_node;
                 char *gen_param = tpl->generic_param;
 
@@ -1583,7 +1568,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                         if (type_is_generic_param(formal, gen_param))
                         {
-                            inferred_type = type_to_string(actual_type);
+                            inferred_type = actual_type;
                             break;
                         }
 
@@ -1592,7 +1577,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         {
                             if (actual_type->kind == TYPE_ARRAY && actual_type->inner)
                             {
-                                inferred_type = type_to_string(actual_type->inner);
+                                inferred_type = actual_type->inner;
                             }
                             break;
                         }
@@ -1602,7 +1587,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         {
                             if (actual_type->kind == TYPE_POINTER && actual_type->inner)
                             {
-                                inferred_type = type_to_string(actual_type->inner);
+                                inferred_type = actual_type->inner;
                             }
                             break;
                         }
@@ -1613,13 +1598,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                 if (inferred_type)
                 {
-                    char *mangled =
-                        instantiate_function_template(ctx, acc, inferred_type, inferred_type);
+                    FunctionInstance inferred = {acc, xmalloc(sizeof(Type *)), 1};
+                    inferred.args[0] = inferred_type;
+                    char *mangled = instantiate_function(ctx, inferred);
                     if (mangled)
                     {
                         // Rewrite the callee to point to the instantiated function
-                        zfree(callee->var_ref.name);
                         callee->var_ref.name = mangled;
+                        callee->var_ref.instance = inferred;
 
                         // Update type info from the newly registered FuncSig
                         FuncSig *inst_sig = find_func(ctx, mangled);
@@ -1630,7 +1616,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 inst_sig->ret_type ? inst_sig->ret_type : type_new(TYPE_VOID);
                         }
                     }
-                    zfree(inferred_type);
                 }
             }
             // Fall through to Postfix
@@ -1680,6 +1665,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node->token = t;
                 node->var_ref.name = acc;
                 node->var_ref.variant = variant;
+                node->var_ref.instance = instance;
                 node->type_info = find_symbol_type_info(ctx, acc);
 
                 if (sym)

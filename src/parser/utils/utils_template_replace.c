@@ -1067,6 +1067,18 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         break;
     case NODE_EXPR_VAR:
     {
+        if (n->var_ref.instance.name)
+        {
+            FunctionInstance *instance = &new_node->var_ref.instance;
+            instance->args = xmalloc(sizeof(Type *) * (size_t)instance->count);
+            for (int i = 0; i < instance->count; i++)
+            {
+                instance->args[i] =
+                    replace_type_formal(ctx, n->var_ref.instance.args[i], p, c, os, ns);
+            }
+            new_node->var_ref.name = function_instance_name(*instance);
+            break;
+        }
         char *n1 = n->var_ref.name ? xstrdup(n->var_ref.name) : NULL;
         if (p && c && strchr(p, ','))
         {

@@ -1514,24 +1514,21 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     lexer_next(l); // consume <
 
                     int cap = 8;
-                    char **concrete = xmalloc((size_t)(cap) * sizeof(char *));
-                    char **unmangled = xmalloc((size_t)(cap) * sizeof(char *));
+                    Type **args = xmalloc((size_t)(cap) * sizeof(Type *));
                     int argc = 0;
                     while (1)
                     {
                         if (argc >= cap)
                         {
                             cap *= 2;
-                            concrete = xrealloc(concrete, (size_t)(cap) * sizeof(char *));
-                            unmangled = xrealloc(unmangled, (size_t)(cap) * sizeof(char *));
+                            args = xrealloc(args, (size_t)(cap) * sizeof(Type *));
                         }
                         Type *inner_t = parse_type_formal(ctx, l);
                         if (!inner_t)
                         {
                             return NULL;
                         }
-                        concrete[argc] = type_to_string(inner_t);
-                        unmangled[argc] = type_to_string(inner_t);
+                        args[argc] = inner_t;
                         argc++;
                         if (lexer_peek(l).kind == TOK_COMMA)
                         {
@@ -1572,49 +1569,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     {
                         full_name = mangle_method_symbol(struct_name, NULL, node->member.field);
 
-                        // Join types
-                        size_t ac_sz = 1024, au_sz = 1024;
-                        char *all_concrete = xmalloc((size_t)(ac_sz));
-                        char *all_unmangled = xmalloc((size_t)(au_sz));
-                        all_concrete[0] = 0;
-                        all_unmangled[0] = 0;
-                        for (int i = 0; i < argc; i++)
-                        {
-                            if (i > 0)
-                            {
-                                if (strlen(all_concrete) + 2 >= ac_sz)
-                                {
-                                    ac_sz *= 2;
-                                    all_concrete = xrealloc(all_concrete, ac_sz);
-                                }
-                                if (strlen(all_unmangled) + 2 >= au_sz)
-                                {
-                                    au_sz *= 2;
-                                    all_unmangled = xrealloc(all_unmangled, au_sz);
-                                }
-                                strcat(all_concrete, ",");
-                                strcat(all_unmangled, ",");
-                            }
-                            if (strlen(all_concrete) + strlen(concrete[i]) + 1 >= ac_sz)
-                            {
-                                ac_sz += strlen(concrete[i]) + 1;
-                                all_concrete = xrealloc(all_concrete, ac_sz);
-                            }
-                            if (strlen(all_unmangled) + strlen(unmangled[i]) + 1 >= au_sz)
-                            {
-                                au_sz += strlen(unmangled[i]) + 1;
-                                all_unmangled = xrealloc(all_unmangled, au_sz);
-                            }
-                            strcat(all_concrete, concrete[i]);
-                            strcat(all_unmangled, unmangled[i]);
-                            zfree(concrete[i]);
-                            zfree(unmangled[i]);
-                        }
-                        zfree(concrete);
-                        zfree(unmangled);
-
-                        mn = instantiate_function_template(ctx, full_name, all_concrete,
-                                                           all_unmangled);
+                        FunctionInstance instance = {full_name, args, argc};
+                        mn = instantiate_function(ctx, instance);
                         if (mn)
                         {
                             char *p = (char *)strstr(mn, "__");
@@ -1632,18 +1588,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                 ft->inner = isig->ret_type;
                             }
                             node->type_info = ft;
-                        }
-                        if (full_name)
-                        {
-                            zfree(full_name);
-                        }
-                        if (all_concrete)
-                        {
-                            zfree(all_concrete);
-                        }
-                        if (all_unmangled)
-                        {
-                            zfree(all_unmangled);
                         }
                     }
                 }

@@ -112,29 +112,9 @@ static void trigger_instantiations(ParserContext *ctx, ASTNode *node)
     {
         trigger_type_instantiation(ctx, node->size_of.target_type_info);
     }
-    else if (node->kind == NODE_EXPR_VAR)
+    else if (node->kind == NODE_EXPR_VAR && node->var_ref.instance.name)
     {
-        const char *name = node->var_ref.name;
-        if (strchr(name, '_'))
-        {
-            GenericFuncTemplate *t = ctx->func_templates;
-            while (t)
-            {
-                size_t tlen = strlen(t->name);
-                if (strncmp(name, t->name, (size_t)(tlen)) == 0 && name[tlen] == '_' &&
-                    name[tlen + 1] == '_')
-                {
-                    char *template_name = t->name;
-                    char *concrete_arg = (char *)name + tlen + 2;
-
-                    char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                    instantiate_function_template(ctx, template_name, concrete_arg, unmangled);
-                    zfree(unmangled);
-                    break; // Found match, stop searching
-                }
-                t = t->next;
-            }
-        }
+        instantiate_function(ctx, node->var_ref.instance);
     }
     else if (node->kind == NODE_EXPR_STRUCT_INIT && node->struct_init.struct_name)
     {
@@ -187,43 +167,52 @@ static void trigger_instantiations(ParserContext *ctx, ASTNode *node)
     trigger_instantiations(ctx, node->next);
 }
 
-char *instantiate_function_template(ParserContext *ctx, const char *name, const char *concrete_type,
-                                    const char *unmangled_type)
+char *function_instance_name(FunctionInstance instance)
 {
-    GenericFuncTemplate *tpl = find_func_template(ctx, name);
+    char **args = xmalloc(sizeof(char *) * (size_t)instance.count);
+    for (int i = 0; i < instance.count; i++)
+    {
+        args[i] = type_to_string(instance.args[i]);
+    }
+    return mangle_generic_name(instance.name, args, instance.count);
+}
+
+char *instantiate_function(ParserContext *ctx, FunctionInstance instance)
+{
+    GenericFuncTemplate *tpl = find_func_template(ctx, instance.name);
     if (!tpl)
     {
         return NULL;
     }
 
-    char *clean_type = sanitize_mangled_name(concrete_type);
+    char *mangled = function_instance_name(instance);
 
-    int is_still_generic = 0;
-    if (strlen(clean_type) == 1 && isupper(clean_type[0]))
+    // Instances are still built from the text of their arguments.
+    char *subst_arg = NULL;
+    for (int i = 0; i < instance.count; i++)
     {
-        is_still_generic = 1;
-    }
-
-    if (is_known_generic(ctx, clean_type))
-    {
-        is_still_generic = 1;
-    }
-
-    char *one_type = (char *)concrete_type;
-    char *mangled = mangle_generic_name(name, &one_type, 1);
-    zfree(clean_type);
-
-    if (is_still_generic)
-    {
-        return mangled;
+        char *arg = type_to_string(instance.args[i]);
+        if (is_generic_dependent_str(ctx, arg))
+        {
+            return mangled;
+        }
+        if (!subst_arg)
+        {
+            subst_arg = arg;
+        }
+        else
+        {
+            size_t size = strlen(subst_arg) + 1 + strlen(arg) + 1;
+            char *joined = xmalloc(size);
+            snprintf(joined, size, "%s,%s", subst_arg, arg);
+            subst_arg = joined;
+        }
     }
 
     if (find_func(ctx, mangled))
     {
         return mangled;
     }
-
-    const char *subst_arg = unmangled_type ? unmangled_type : concrete_type;
 
     ASTNode *new_fn =
         copy_ast_replacing(ctx, tpl->func_node, tpl->generic_param, subst_arg, NULL, NULL);

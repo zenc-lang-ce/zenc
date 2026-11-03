@@ -954,8 +954,13 @@ const char *resolve_plugin(ParserContext *ctx, const char *name_or_alias);
 char *parse_array_literal(ParserContext *ctx, Lexer *l, const char *slice_type);
 ASTNode *parse_embed(ParserContext *ctx, Lexer *l);
 ASTNode *parse_macro_call(ParserContext *ctx, Lexer *l, char *macro_name);
-char *instantiate_function_template(ParserContext *ctx, const char *name, const char *arg1,
-                                    const char *arg2);
+/** @brief The C name of an instance of a generic function: `f__int32_t` for `f<int>`. */
+char *function_instance_name(FunctionInstance instance);
+/**
+ * @brief Instantiates a generic function, unless its arguments still name a generic parameter.
+ * @return Its C name, or NULL if `instance.name` is not a generic function.
+ */
+char *instantiate_function(ParserContext *ctx, FunctionInstance instance);
 /** @brief The generic struct or enum template named `name`, or NULL. */
 GenericTemplate *find_generic_template(ParserContext *ctx, const char *name);
 /**

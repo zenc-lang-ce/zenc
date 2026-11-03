@@ -221,6 +221,17 @@ typedef struct QualifiedName
     char *name;  ///< `Variant` or `method`.
 } QualifiedName;
 
+/**
+ * @brief An instance of a generic function, `f<int>`: the function and the types its
+ *        parameters take. Its C name is computed from them.
+ */
+typedef struct FunctionInstance
+{
+    char *name;  ///< The generic function: `f`, or `Type__method` for a generic method.
+    Type **args; ///< One type per generic parameter: `int`.
+    int count;
+} FunctionInstance;
+
 /** The kind of one alternative of a match case. */
 typedef enum
 {
@@ -439,7 +450,8 @@ struct ASTNode
             char *name;
             char *suggestion;
             struct ZenSymbol *symbol;
-            QualifiedName variant; ///< An enum variant: its enum (resolved) and its name.
+            QualifiedName variant;     ///< An enum variant: its enum (resolved) and its name.
+            FunctionInstance instance; ///< An instance of a generic function: `f<int>`.
         } var_ref;
 
         struct
