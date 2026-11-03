@@ -100,13 +100,11 @@ int main(int argc, char **argv)
 
     int i;
     const char *optimization_level = NULL;
-    char *env_root;
     char *input_file_copy;
 
     i = 0;
     (void)i;
     (void)optimization_level;
-    (void)env_root;
     (void)input_file_copy;
 
     if (argc < 2)

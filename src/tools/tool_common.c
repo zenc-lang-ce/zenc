@@ -134,4 +134,13 @@ void z_compiler_setup(ZenCompiler *compiler)
             cfg->root_path = xstrdup(cfg->std_root);
         }
     }
+
+    // ZC_ROOT names the standard library's location and wins over the discovery above. The
+    // portable build (ape/zc_entry.c) sets it to /zip, where its std is bundled.
+    const char *env_root = getenv("ZC_ROOT");
+    if (env_root && env_root[0])
+    {
+        zfree(cfg->root_path);
+        cfg->root_path = xstrdup(env_root);
+    }
 }

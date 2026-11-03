@@ -376,6 +376,17 @@ else
     echo "$out" | head -5
 fi
 
+# A zc with no stdlib next to it finds the one ZC_ROOT names.
+mkdir -p "$workdir/bare"
+cp "$ZC" "$workdir/bare/zc"
+out=$(cd "$workdir" && ZC_ROOT="$repo_root" "$workdir/bare/zc" run uses_std.zc -o uses_std 2>&1)
+if echo "$out" | grep -q "installed-std-ok 1"; then
+    check "ZC_ROOT names the stdlib" 1
+else
+    check "ZC_ROOT names the stdlib" 0
+    echo "$out" | head -5
+fi
+
 echo "----------------------------------------"
 echo "Results (CLI):"
 echo "-> Passed:  $PASSED"

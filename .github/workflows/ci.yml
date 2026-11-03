@@ -585,6 +585,17 @@ jobs:
         cp out/bin/zc.com ./zc
         ./tests/scripts/run_tests.sh --no-source
 
+    - name: Test APE outside the repository
+      run: |
+        # The suite above runs in the repository, whose ./std hides the one bundled in zc.com.
+        dir=$(mktemp -d)
+        cp out/bin/zc.com "$dir/"
+        printf 'import "std/io.zc"\nfn main() { println(f"ape-std-ok"); }\n' > "$dir/hello.zc"
+        cd "$dir"
+        out=$(./zc.com run hello.zc 2>&1) || true
+        echo "$out"
+        echo "$out" | grep -q ape-std-ok
+
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v2
