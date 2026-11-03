@@ -956,6 +956,13 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l);
 ASTNode *parse_macro_call(ParserContext *ctx, Lexer *l, char *macro_name);
 char *instantiate_function_template(ParserContext *ctx, const char *name, const char *arg1,
                                     const char *arg2);
+/** @brief The generic struct or enum template named `name`, or NULL. */
+GenericTemplate *find_generic_template(ParserContext *ctx, const char *name);
+/**
+ * @brief Instantiates the generic a type names (`Vec<int>`), unless its arguments still name a
+ * generic parameter.
+ */
+void instantiate_type(ParserContext *ctx, Type *instance, Token token);
 void instantiate_generic(ParserContext *ctx, const char *name, const char *arg_str,
                          const char *arg_name, Token t);
 void instantiate_generic_multi(ParserContext *ctx, const char *name, char **args, int count,

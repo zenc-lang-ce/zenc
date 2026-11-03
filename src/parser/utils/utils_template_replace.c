@@ -610,7 +610,9 @@ Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char
 
     if (t->name)
     {
-        if (os && ns && strcmp(t->name, os) == 0)
+        // The template's own name without arguments (`Self`, a method's receiver) is the
+        // instance; with arguments (`Vec<Vec<T>>`), they are substituted below.
+        if (os && ns && t->count == 0 && strcmp(t->name, os) == 0)
         {
             n->name = xstrdup(ns);
             n->kind = TYPE_STRUCT;

@@ -354,8 +354,42 @@ Type *type_new_array(Type *inner, int size)
     return t;
 }
 
+// Whether a type still names a generic parameter (`T`, `Vec<T>*`).
+static int type_names_generic(Type *t)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    if (t->kind == TYPE_GENERIC || type_names_generic(t->inner))
+    {
+        return 1;
+    }
+    for (int i = 0; t->args && i < t->count; i++)
+    {
+        if (type_names_generic(t->args[i]))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int type_is_generic_param(Type *t, const char *param)
+{
+    // Parsed outside its template's body, a parameter is still a struct of its name.
+    return t && param && (t->kind == TYPE_GENERIC || t->kind == TYPE_STRUCT) && t->name &&
+           strcmp(t->name, param) == 0;
+}
+
 char *type_def_name(Type *t)
 {
+    // An instance has a definition of its own; inside its template (`Vec<T>`), the template's.
+    if (t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->count > 0 && t->args &&
+        !type_names_generic(t))
+    {
+        return type_to_string(t);
+    }
     return t ? t->name : NULL;
 }
 
@@ -1079,9 +1113,12 @@ static char *type_to_string_impl(Type *t)
     }
 
     case TYPE_STRUCT:
+    case TYPE_ENUM:
     case TYPE_GENERIC:
     {
-        if (t->count > 0 && t->name && strstr(t->name, "__") == NULL)
+        // An instance of a generic is named after its template and its arguments.
+        if (t->count > 0 && t->args && t->name &&
+            (t->kind != TYPE_GENERIC || strstr(t->name, "__") == NULL))
         {
             char **args = xmalloc((size_t)t->count * sizeof(char *));
             for (int i = 0; i < t->count; i++)
@@ -1095,7 +1132,6 @@ static char *type_to_string_impl(Type *t)
     case TYPE_TUPLE:
         return tuple_struct_name(t);
     case TYPE_ALIAS:
-    case TYPE_ENUM:
         // The name the program uses: a @link_name only shows in C (type_to_c_string).
         return xstrdup(t->name);
 

@@ -1581,16 +1581,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             continue;
                         }
 
-                        if (formal->kind == TYPE_STRUCT && formal->name &&
-                            strcmp(formal->name, gen_param) == 0)
+                        if (type_is_generic_param(formal, gen_param))
                         {
                             inferred_type = type_to_string(actual_type);
                             break;
                         }
 
-                        if (formal->kind == TYPE_ARRAY && formal->inner &&
-                            formal->inner->kind == TYPE_STRUCT && formal->inner->name &&
-                            strcmp(formal->inner->name, gen_param) == 0)
+                        if (formal->kind == TYPE_ARRAY &&
+                            type_is_generic_param(formal->inner, gen_param))
                         {
                             if (actual_type->kind == TYPE_ARRAY && actual_type->inner)
                             {
@@ -1599,9 +1597,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             break;
                         }
 
-                        if (formal->kind == TYPE_POINTER && formal->inner &&
-                            formal->inner->kind == TYPE_STRUCT && formal->inner->name &&
-                            strcmp(formal->inner->name, gen_param) == 0)
+                        if (formal->kind == TYPE_POINTER &&
+                            type_is_generic_param(formal->inner, gen_param))
                         {
                             if (actual_type->kind == TYPE_POINTER && actual_type->inner)
                             {

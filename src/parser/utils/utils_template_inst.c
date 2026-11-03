@@ -20,6 +20,45 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
 
 // Helper function to recursively scan AST for sizeof types AND generic calls to trigger
 // instantiation
+GenericTemplate *find_generic_template(ParserContext *ctx, const char *name)
+{
+    for (GenericTemplate *gt = ctx->templates; gt; gt = gt->next)
+    {
+        if (strcmp(gt->name, name) == 0)
+        {
+            return gt;
+        }
+    }
+    return NULL;
+}
+
+void instantiate_type(ParserContext *ctx, Type *instance, Token token)
+{
+    if (!instance || (instance->kind != TYPE_STRUCT && instance->kind != TYPE_ENUM) ||
+        instance->count == 0 || !instance->args)
+    {
+        return;
+    }
+    // Instances are still built from the text of their arguments.
+    char **args = xmalloc(sizeof(char *) * (size_t)instance->count);
+    for (int i = 0; i < instance->count; i++)
+    {
+        args[i] = type_to_string(instance->args[i]);
+        if (is_generic_dependent_str(ctx, args[i]))
+        {
+            return;
+        }
+    }
+    if (instance->count == 1)
+    {
+        instantiate_generic(ctx, instance->name, args[0], args[0], token);
+    }
+    else
+    {
+        instantiate_generic_multi(ctx, instance->name, args, instance->count, token);
+    }
+}
+
 static void trigger_type_instantiation(ParserContext *ctx, Type *t)
 {
     if (!t)
@@ -35,8 +74,16 @@ static void trigger_type_instantiation(ParserContext *ctx, Type *t)
         zfree(inner_str);
     }
 
-    // Handle mangled types (instantiations)
-    if (t->name && strchr(t->name, '_'))
+    if ((t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->count > 0 && t->args && t->name)
+    {
+        if (find_generic_template(ctx, t->name))
+        {
+            Token no_token = {0};
+            instantiate_type(ctx, t, no_token);
+        }
+    }
+    // A mangled name read from text (`Vec__int32_t`), without arguments.
+    else if (t->name && strchr(t->name, '_'))
     {
         char *type_copy = xstrdup(t->name);
         char *underscore = (char *)strchr(type_copy, '_');
@@ -400,113 +447,8 @@ static ASTNode *copy_fields_replacing(ParserContext *ctx, ASTNode *fields, const
     // Replace formal types (Deep Copy)
     n->type_info = replace_type_formal(ctx, fields->type_info, param, concrete, NULL, NULL);
 
-    // An instance names its generic in its mangled name: "MapEntry__int" instantiates MapEntry.
-    char *field_type = n->type_info ? type_to_string(n->type_info) : NULL;
-    if (field_type && strchr(field_type, '_'))
-    {
-        // Parse potential generic: e.g. "MapEntry_int" -> instantiate("MapEntry",
-        // "int")
-        char *underscore = (char *)strrchr(field_type, '_');
-        if (underscore && underscore > field_type)
-        {
-            // Remove trailing '*' if present
-            char *type_copy = xstrdup(field_type);
-            char *star = (char *)strchr(type_copy, '*');
-            if (star)
-            {
-                *star = '\0';
-            }
-
-            underscore = strrchr(type_copy, '_');
-            if (underscore)
-            {
-                *underscore = '\0';
-                char *template_name = type_copy;
-                char *concrete_arg = underscore + 1;
-
-                // Check if this is actually a known generic template
-                GenericTemplate *gt = ctx->templates;
-                int found = 0;
-                while (gt)
-                {
-                    if (strcmp(gt->name, template_name) == 0)
-                    {
-                        found = 1;
-                        break;
-                    }
-                    gt = gt->next;
-                }
-
-                if (found)
-                {
-                    char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                    if (concrete)
-                    {
-                        char *clean_concrete = sanitize_mangled_name(concrete);
-                        if (strcmp(concrete_arg, clean_concrete) == 0)
-                        {
-                            zfree(unmangled);
-                            unmangled = xstrdup(concrete);
-                        }
-                        zfree(clean_concrete);
-                    }
-
-                    instantiate_generic(ctx, template_name, concrete_arg, unmangled, fields->token);
-                    zfree(unmangled);
-                }
-            }
-            zfree(type_copy);
-        }
-    }
-
-    // Additional check: if type_info is a pointer to a struct with a mangled name,
-    // instantiate that struct as well (fixes cases like RcInner<T>* where the
-    // string check above might not catch it)
-    if (n->type_info && n->type_info->kind == TYPE_POINTER && n->type_info->inner)
-    {
-        Type *inner = n->type_info->inner;
-        if (inner->kind == TYPE_STRUCT && inner->name && strchr(inner->name, '_'))
-        {
-            // Extract template name by checking against known templates
-            // We can't use strrchr because types like "Inner_int32_t" have multiple underscores
-            char *template_name = NULL;
-            char *concrete_arg = NULL;
-
-            // Try each known template to see if the type name starts with it
-            GenericTemplate *gt = ctx->templates;
-            while (gt)
-            {
-                size_t tlen = strlen(gt->name);
-                // Check if name starts with template name followed by double underscore
-                if (strncmp(inner->name, gt->name, (size_t)(tlen)) == 0 &&
-                    inner->name[tlen] == '_' && inner->name[tlen + 1] == '_')
-                {
-                    template_name = gt->name;
-                    concrete_arg =
-                        inner->name + tlen + 2; // Skip template name and double underscore
-                    break;
-                }
-                gt = gt->next;
-            }
-
-            if (template_name && concrete_arg)
-            {
-                char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                if (concrete)
-                {
-                    char *clean_concrete = sanitize_mangled_name(concrete);
-                    if (strcmp(concrete_arg, clean_concrete) == 0)
-                    {
-                        zfree(unmangled);
-                        unmangled = xstrdup(concrete);
-                    }
-                    zfree(clean_concrete);
-                }
-                instantiate_generic(ctx, template_name, concrete_arg, unmangled, fields->token);
-                zfree(unmangled);
-            }
-        }
-    }
+    // The instances the field's type names (`Node<T>*`).
+    trigger_type_instantiation(ctx, n->type_info);
 
     n->next = copy_fields_replacing(ctx, fields->next, param, concrete);
     return n;

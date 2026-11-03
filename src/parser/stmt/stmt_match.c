@@ -334,94 +334,42 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 // Struct constructor pattern, e.g. `Ok(val)` matching a
                 // `Result<String>`. The payload type is the constructor's
                 // argument type with the struct's generic parameter substituted
-                // by the concrete argument in the mangled type name.
+                // by the instance's argument.
                 Type *mt = expr->type_info;
-                if (mt->name)
+                GenericTemplate *gt = (mt->count > 0 && mt->args && mt->name)
+                                          ? find_generic_template(ctx, mt->name)
+                                          : NULL;
+                if (gt && gt->struct_node && gt->struct_node->kind == NODE_STRUCT &&
+                    gt->struct_node->strct.generic_param_count > 0)
                 {
-                    GenericTemplate *gt = ctx->templates;
-                    while (gt)
+                    char *ctor = mangle_method_symbol(named->scope ? named->scope : gt->name, NULL,
+                                                      named->name);
+                    GenericFuncTemplate *ft = find_func_template(ctx, ctor);
+                    zfree(ctor);
+                    if (ft && ft->func_node && ft->func_node->kind == NODE_FUNCTION &&
+                        ft->func_node->func.count >= 1 && ft->func_node->func.arg_types[0])
                     {
-                        size_t glen = strlen(gt->name);
-                        if (strncmp(mt->name, gt->name, glen) == 0 && mt->name[glen] == '_')
+                        // The constructor's parameter, with the struct's generic parameter
+                        // replaced by the instance's argument (`T` or `T*`); or a concrete type
+                        // (`char*` for Err).
+                        const char *gparam = gt->struct_node->strct.generic_params[0];
+                        Type *param = ft->func_node->func.arg_types[0];
+                        Type *named_type = param->kind == TYPE_POINTER ? param->inner : param;
+                        int is_param =
+                            named_type && named_type->name &&
+                            (named_type->kind == TYPE_STRUCT || named_type->kind == TYPE_GENERIC) &&
+                            strcmp(named_type->name, gparam) == 0;
+                        if (!is_param)
                         {
-                            break;
+                            payload_type = param;
                         }
-                        gt = gt->next;
-                    }
-                    if (gt && gt->struct_node && gt->struct_node->kind == NODE_STRUCT &&
-                        gt->struct_node->strct.generic_param_count > 0)
-                    {
-                        const char *base = gt->name;
-                        const char *arg_start = mt->name + strlen(base);
-                        while (*arg_start == '_')
+                        else if (param->kind == TYPE_POINTER)
                         {
-                            arg_start++;
+                            payload_type = type_new_ptr(mt->args[0]);
                         }
-
-                        char *ctor = mangle_method_symbol(named->scope ? named->scope : base, NULL,
-                                                          named->name);
-                        GenericFuncTemplate *ft = find_func_template(ctx, ctor);
-                        zfree(ctor);
-                        if (ft && ft->func_node && ft->func_node->kind == NODE_FUNCTION &&
-                            ft->func_node->func.count >= 1 && ft->func_node->func.arg_types[0] &&
-                            ft->func_node->func.arg_types[0]->name)
+                        else
                         {
-                            const char *gparam = gt->struct_node->strct.generic_params[0];
-                            const char *pname = ft->func_node->func.arg_types[0]->name;
-                            char *real = NULL;
-                            size_t plen = strlen(pname);
-                            int is_generic_ptr = 0;
-                            if (plen > 1 && pname[plen - 1] == '*')
-                            {
-                                size_t blen = strlen(gparam);
-                                if (plen - 1 == blen && strncmp(pname, gparam, blen) == 0)
-                                {
-                                    is_generic_ptr = 1;
-                                }
-                            }
-                            if (is_generic_ptr || strcmp(pname, gparam) == 0)
-                            {
-                                // Substitute the generic param with the concrete
-                                // argument, unmangling a trailing "Ptr" to '*'.
-                                const char *ap = arg_start;
-                                size_t al = strlen(arg_start);
-                                if (al > 3 && strcmp(arg_start + al - 3, "Ptr") == 0)
-                                {
-                                    size_t blen = al - 3;
-                                    char *b = xmalloc(blen + 2);
-                                    strncpy(b, arg_start, blen);
-                                    b[blen] = 0;
-                                    strcat(b, "*");
-                                    real = b;
-                                    ap = NULL;
-                                }
-                                if (ap)
-                                {
-                                    real = xstrdup(ap);
-                                }
-                                if (is_generic_ptr)
-                                {
-                                    char *t = xmalloc(strlen(real) + 2);
-                                    sprintf(t, "%s*", real); /* safe */
-                                    zfree(real);
-                                    real = t;
-                                }
-                            }
-                            else
-                            {
-                                // Concrete payload (e.g. `char*` for Err).
-                                real = xstrdup(pname);
-                            }
-                            if (real)
-                            {
-                                payload_type = type_from_string_helper(ctx, real);
-                                if (!payload_type)
-                                {
-                                    payload_type = type_new(TYPE_STRUCT);
-                                    payload_type->name = xstrdup(real);
-                                }
-                                zfree(real);
-                            }
+                            payload_type = mt->args[0];
                         }
                     }
                 }

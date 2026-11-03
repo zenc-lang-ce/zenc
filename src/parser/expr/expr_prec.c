@@ -837,7 +837,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                     (first_param->inner->kind == TYPE_ALIAS &&
                                      first_param->inner->alias.is_opaque_alias))
                                 {
-                                    inner_name = first_param->inner->name;
+                                    inner_name = type_def_name(first_param->inner);
                                 }
 
                                 if (!inner_name || strcmp(inner_name, struct_name) != 0)

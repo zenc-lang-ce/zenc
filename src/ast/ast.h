@@ -792,9 +792,12 @@ Type *type_new_tuple(Type **elements, int count);
 /**
  * @brief The name the definition of a struct, enum, alias or trait type is registered under,
  * which its C name and its methods' C names build on: for a generic instance, the mangled name
- * (`Vec__int32_t`), not the template's.
+ * (`Vec__int32_t`), computed from its template and arguments; for one that still names a generic
+ * parameter (`Vec<T>` inside the template), the template's.
  */
 char *type_def_name(Type *t);
+/** @brief Whether `t` is the generic parameter `param` (`T`). */
+int type_is_generic_param(Type *t, const char *param);
 /** @brief `t` if it is a tuple, or the tuple it points to; else NULL. */
 Type *tuple_of(Type *t);
 /** @brief The type of the element `field` (`0` or `v0`) of `tuple`, or NULL. */
