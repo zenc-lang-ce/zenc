@@ -68,7 +68,7 @@ static void node_deps_build(ParserContext *ctx, ASTNode *node, NodeDeps *deps)
         {
             if (field->kind == NODE_FIELD)
             {
-                node_deps_add(deps, type_to_string(resolve_alias(field->type_info)));
+                node_deps_add(deps, type_mangle_spelling(resolve_alias(field->type_info)));
             }
             field = field->next;
         }
@@ -205,7 +205,7 @@ static void collect_sortable_nodes(ASTNode *head, ASTNode **nodes, int *idx)
 static ASTNode *tuple_struct(Type *tuple)
 {
     ASTNode *def = ast_create(NODE_STRUCT);
-    def->strct.name = type_to_string(tuple);
+    def->strct.name = type_mangle_spelling(tuple);
     ASTNode *tail = NULL;
     for (int i = 0; i < tuple->count; i++)
     {

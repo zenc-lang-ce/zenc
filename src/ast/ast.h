@@ -839,6 +839,12 @@ int is_signed_type(Type *t);
 int is_boolean_type(Type *t);
 int is_float_type(Type *t);
 int is_composite_expression(ASTNode *node);
+/**
+ * @brief The spelling of a type inside a C name (`Vec__int32_t`, `Tuple__int32_t__bool`):
+ * primitives by their C name, structs and enums by the name the program gives them. The names
+ * of instances and tuples are built from it.
+ */
+char *type_mangle_spelling(Type *t);
 char *type_to_string(Type *t);
 char *type_to_c_string(Type *t, int misra_mode);
 /**

@@ -316,7 +316,7 @@ void emit_lambda_defs(ParserContext *ctx)
                     {
                         EMIT(ctx, "if (ctx->__z_drop_flag_%s) %s__Drop__glue(&ctx->%s);\n",
                              node->lambda.captured_vars[i],
-                             type_to_string(node->lambda.captured_types_info[i]),
+                             type_def_name(node->lambda.captured_types_info[i]),
                              node->lambda.captured_vars[i]);
                     }
                 }

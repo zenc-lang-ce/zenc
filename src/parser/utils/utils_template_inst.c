@@ -129,7 +129,7 @@ char *function_instance_name(FunctionInstance instance)
     char **args = xmalloc(sizeof(char *) * (size_t)instance.count);
     for (int i = 0; i < instance.count; i++)
     {
-        args[i] = type_to_string(instance.args[i]);
+        args[i] = type_mangle_spelling(instance.args[i]);
     }
     return mangle_generic_name(instance.name, args, instance.count);
 }
