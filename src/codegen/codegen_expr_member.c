@@ -106,19 +106,6 @@ void handle_expr_index(ParserContext *ctx, ASTNode *node)
     Type *array_type = node->index.array->type_info;
     int is_slice_struct = slice_element(array_type) != NULL;
 
-    if (!is_slice_struct && !array_type)
-    {
-        char *inferred = infer_type(ctx, node->index.array);
-        if (inferred && strncmp(inferred, "Slice__", 7) == 0)
-        {
-            is_slice_struct = 1;
-        }
-        if (inferred)
-        {
-            zfree(inferred);
-        }
-    }
-
     if (is_slice_struct)
     {
         if (node->index.array->kind == NODE_EXPR_VAR)

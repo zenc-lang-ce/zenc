@@ -1772,11 +1772,6 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
                 return buf;
             }
 
-            if (strncmp(array_type, "Slice__", 7) == 0)
-            {
-                return xstrdup(array_type + 7);
-            }
-
             char *search_name = array_type;
             if (strncmp(search_name, "struct ", 7) == 0)
             {
