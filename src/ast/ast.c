@@ -722,11 +722,12 @@ int type_eq(Type *a, Type *b)
 
     if (a->kind == TYPE_STRUCT || a->kind == TYPE_GENERIC || a->kind == TYPE_ENUM)
     {
+        // The same definition: for instances of a generic, the same template and arguments.
         if (!a->name || !b->name)
         {
             return 0;
         }
-        return 0 == strcmp(a->name, b->name);
+        return 0 == strcmp(type_def_name(a), type_def_name(b));
     }
     if (a->kind == TYPE_ALIAS)
     {

@@ -96,7 +96,7 @@ static char *canonical_type_name(TypeChecker *tc, Type *t, int depth)
     {
         return NULL;
     }
-    const char *name = resolve_alias_name(tc, t->name);
+    const char *name = resolve_alias_name(tc, type_def_name(t));
     // Template instantiation spells a pointer argument as `<Name>Ptr`
     // (`Vec<DirEntry*>` substitutes T by `DirEntryPtr`): read it back as
     // `<Name>*` when `<Name>Ptr` is not a type of its own.

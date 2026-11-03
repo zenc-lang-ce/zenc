@@ -86,7 +86,7 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
     }
     ASTNode *def = find_struct_def(tc->pctx, type_def_name(t));
     if (def && def->kind == NODE_STRUCT &&
-        (str_is_option_type(t->name) || str_is_result_type(t->name)))
+        (str_is_option_type(type_def_name(t)) || str_is_result_type(type_def_name(t))))
     {
         return option_result_binding_type(def, variant, count);
     }

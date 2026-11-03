@@ -312,7 +312,7 @@ static const char *aggregate_type_name(ParserContext *ctx, Type *t)
     {
         return NULL;
     }
-    const char *name = t->name;
+    const char *name = type_def_name(t);
     TypeAlias *alias = find_type_alias_node(ctx, name);
     for (int depth = 0; alias && !alias->is_opaque && depth < 16; depth++)
     {
@@ -321,7 +321,7 @@ static const char *aggregate_type_name(ParserContext *ctx, Type *t)
         {
             return NULL;
         }
-        name = target->name;
+        name = type_def_name(target);
         alias = find_type_alias_node(ctx, name);
     }
     return name;
