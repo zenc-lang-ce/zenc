@@ -1,0 +1,12 @@
+// ARGS: build
+// A variant constructor called without its payload reports the missing argument
+
+enum Shape { Circle(int), Empty }
+
+fn make() -> Shape {
+    return Shape::Circle();
+}
+
+fn main() {
+    make();
+}
