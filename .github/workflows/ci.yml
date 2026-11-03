@@ -655,7 +655,9 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: zenc-${{ matrix.system }}
-        path: out/dist/*.zip
+        path: |
+          out/dist/*.zip
+          out/dist/*.tar.gz
 
   release:
     name: Publish release

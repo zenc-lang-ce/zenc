@@ -4,7 +4,7 @@ Every download needs a C compiler on the system (GCC or Clang; on Windows, GCC f
 
 | File | What it is |
 |---|---|
-| `zenc-<version>-linux-x86_64.zip`, `zenc-<version>-linux-arm64.zip` | Native binaries for Linux (glibc 2.34 or later): `zc`, `zc-lsp`, `zc-repl`, `zc-format`, `zc-doc` and the standard library. Unpack it and add the directory to your `PATH`. |
+| `zenc-<version>-linux-x86_64.tar.gz`, `zenc-<version>-linux-arm64.tar.gz` | Native binaries for Linux (glibc 2.34 or later): `zc`, `zc-lsp`, `zc-repl`, `zc-format`, `zc-doc` and the standard library. Unpack it (`tar -xzf`) and add the directory to your `PATH`. |
 | `zenc-<version>-macos-arm64.zip`, `zenc-<version>-macos-x86_64.zip` | The same for macOS 11 or later, on Apple silicon and Intel. They are not signed: `xattr -dr com.apple.quarantine <directory>`. |
 | `zenc-<version>-windows-x86_64.zip` | The same for Windows: `zc.exe` and the tools. |
 | `zc.com` | The compiler as a portable executable: one file that runs on Linux, macOS, Windows and the BSDs, on x86_64 and arm64, with the standard library inside. On Windows, rename it to `zc.exe`. |
