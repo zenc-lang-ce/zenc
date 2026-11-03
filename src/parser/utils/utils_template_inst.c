@@ -11,9 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Helper function to recursively scan AST for sizeof types AND generic calls to trigger
-// instantiation
-Instantiation *find_instantiation(ParserContext *ctx, const char *name)
+// The instance of a generic whose C name is `name`, or NULL.
+static Instantiation *find_instantiation(ParserContext *ctx, const char *name)
 {
     for (Instantiation *inst = ctx->instantiations; inst; inst = inst->next)
     {

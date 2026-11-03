@@ -966,8 +966,6 @@ char *function_instance_name(FunctionInstance instance);
  * @return Its C name, or NULL if `instance.name` is not a generic function.
  */
 char *instantiate_function(ParserContext *ctx, FunctionInstance instance);
-/** @brief The instance of a generic whose C name is `name`, or NULL. */
-Instantiation *find_instantiation(ParserContext *ctx, const char *name);
 /** @brief The generic struct or enum template named `name`, or NULL. */
 GenericTemplate *find_generic_template(ParserContext *ctx, const char *name);
 /**
