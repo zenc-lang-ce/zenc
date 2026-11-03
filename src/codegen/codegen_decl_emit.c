@@ -665,62 +665,9 @@ int emit_tests_and_runner(ParserContext *ctx, ASTNode *node)
     return test_count;
 }
 
-// Helper to emit typedefs for mangled pointer types (e.g., StringPtr for String*)
-// used as generic parameters. This resolves "unknown type name StringPtr" errors.
-static void emit_mangled_pointer_typedefs(ParserContext *ctx)
-{
-    char *emitted[2048];
-    int count = 0;
-
-    Instantiation *inst = ctx->instantiations;
-    while (inst)
-    {
-        if (inst->concrete_arg && inst->unmangled_arg && strstr(inst->concrete_arg, "Ptr") &&
-            strchr(inst->unmangled_arg, '*'))
-        {
-            // Check if already emitted
-            int found = 0;
-            for (int i = 0; i < count; i++)
-            {
-                if (strcmp(emitted[i], inst->concrete_arg) == 0)
-                {
-                    found = 1;
-                    break;
-                }
-            }
-
-            if (!found && count < 2048)
-            {
-                // In C, structs are usually typedef'd, so "typedef String* StringPtr;" is valid.
-                EMIT(ctx, "typedef %s %s;\n", inst->unmangled_arg, inst->concrete_arg);
-                emitted[count++] = inst->concrete_arg;
-            }
-        }
-        inst = inst->next;
-    }
-
-    // Also scan instantiated functions which might have unique pointer arguments
-    ASTNode *ifn = ctx->instantiated_funcs;
-    while (ifn)
-    {
-        if (ifn->kind == NODE_FUNCTION && ifn->func.name && strstr(ifn->func.name, "__"))
-        {
-            char *mangled_part = (char *)strstr(ifn->func.name, "__") + 2;
-            if (strstr(mangled_part, "Ptr"))
-            {
-                // This is more complex because we need the original type.
-                // For now, struct instantiations cover 99% of cases via collections.
-            }
-        }
-        ifn = ifn->next;
-    }
-}
-
 // Emit type definitions-
 void print_type_defs(ParserContext *ctx, ASTNode *nodes)
 {
-    emit_mangled_pointer_typedefs(ctx);
-
     if (!ctx->config->is_freestanding && !ctx->config->misra_mode)
     {
         EMIT(ctx, "typedef char* string;\n");
