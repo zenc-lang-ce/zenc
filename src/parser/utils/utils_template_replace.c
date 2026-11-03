@@ -628,79 +628,15 @@ Type *replace_type_formal(ParserContext *ctx, Type *t, const Bindings *b, const 
     return n;
 }
 
-// A piece of text of a generic (a match pattern) for an instance: the parameters `p` become
-// the concrete types `c` (each of "K,V" in turn), and the template's name `os` becomes the
-// instance's `ns`.
-static char *replace_generic_text(const char *text, const char *p, const char *c, const char *os,
-                                  const char *ns)
+// A piece of a match pattern for an instance: the template's name `os` becomes the
+// instance's `ns` (`Maybe::Some` inside `impl Maybe<T>`).
+static char *rename_template(const char *text, const char *os, const char *ns)
 {
-    char *s1 = xstrdup(text);
-    if (p && c && strchr(p, ','))
-    {
-        char *p_ptr = (char *)p;
-        char *c_ptr = (char *)c;
-        while (*p_ptr && *c_ptr)
-        {
-            char *p_end = (char *)strchr(p_ptr, ',');
-            int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
-            char *c_end = (char *)strchr(c_ptr, ',');
-            int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
-
-            char *p_part = xmalloc((size_t)(p_len + 1));
-            strncpy(p_part, p_ptr, (size_t)(p_len));
-            p_part[p_len] = 0;
-
-            char *c_part = xmalloc((size_t)(c_len + 1));
-            strncpy(c_part, c_ptr, (size_t)(c_len));
-            c_part[c_len] = 0;
-
-            char *t1 = replace_mangled_part(s1, p_part, c_part);
-            zfree(s1);
-            s1 = t1;
-
-            zfree(p_part);
-            zfree(c_part);
-
-            if (p_end)
-            {
-                p_ptr = p_end + 1;
-            }
-            else
-            {
-                break;
-            }
-            if (c_end)
-            {
-                c_ptr = c_end + 1;
-            }
-            else
-            {
-                break;
-            }
-        }
-    }
-    else
-    {
-        char *t1 = replace_in_string(s1, p, c);
-        zfree(s1);
-        s1 = t1;
-        char *t2 = replace_mangled_part(s1, p, c);
-        zfree(s1);
-        s1 = t2;
-    }
-
-    if (os && ns)
-    {
-        char *s2 = replace_in_string(s1, os, ns);
-        zfree(s1);
-        s1 = s2;
-    }
-    return s1;
+    return os && ns ? replace_in_string(text, os, ns) : xstrdup(text);
 }
 
-// A copy of the alternatives of a match case, with replace_generic_text applied to their text.
-static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char *p, const char *c,
-                                             const char *os, const char *ns)
+// A copy of the alternatives of a match case, with rename_template applied to their text.
+static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char *os, const char *ns)
 {
     MatchPattern *head = NULL;
     MatchPattern *last = NULL;
@@ -711,23 +647,23 @@ static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char 
         copy->is_inclusive = src->is_inclusive;
         if (src->name.scope)
         {
-            copy->name.scope = replace_generic_text(src->name.scope, p, c, os, ns);
+            copy->name.scope = rename_template(src->name.scope, os, ns);
         }
         if (src->name.name)
         {
-            copy->name.name = replace_generic_text(src->name.name, p, c, os, ns);
+            copy->name.name = rename_template(src->name.name, os, ns);
         }
         if (src->literal)
         {
-            copy->literal = replace_generic_text(src->literal, p, c, os, ns);
+            copy->literal = rename_template(src->literal, os, ns);
         }
         if (src->range_start)
         {
-            copy->range_start = replace_generic_text(src->range_start, p, c, os, ns);
+            copy->range_start = rename_template(src->range_start, os, ns);
         }
         if (src->range_end)
         {
-            copy->range_end = replace_generic_text(src->range_end, p, c, os, ns);
+            copy->range_end = rename_template(src->range_end, os, ns);
         }
         if (last)
         {
@@ -1035,8 +971,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         break;
 
     case NODE_MATCH_CASE:
-        new_node->match_case.patterns =
-            copy_patterns_replacing(n->match_case.patterns, p, c, os, ns);
+        new_node->match_case.patterns = copy_patterns_replacing(n->match_case.patterns, os, ns);
         new_node->match_case.binding_count = n->match_case.binding_count;
         if (n->match_case.binding_names)
         {
@@ -1072,14 +1007,14 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         break;
 
     case NODE_IMPL:
-        new_node->impl.struct_name = replace_type_str(n->impl.struct_name, p, c, os, ns);
+        // instantiate_methods names the copy after the instance.
+        new_node->impl.struct_name = xstrdup(n->impl.struct_name);
         new_node->impl.methods = copy_ast_replacing(ctx, n->impl.methods, b, os, ns);
         break;
     case NODE_IMPL_TRAIT:
         new_node->impl_trait.trait_name =
             n->impl_trait.trait_name ? xstrdup(n->impl_trait.trait_name) : NULL;
-        new_node->impl_trait.target_type =
-            replace_type_str(n->impl_trait.target_type, p, c, os, ns);
+        new_node->impl_trait.target_type = xstrdup(n->impl_trait.target_type);
         new_node->impl_trait.methods = copy_ast_replacing(ctx, n->impl_trait.methods, b, os, ns);
         break;
     case NODE_TYPEOF:
@@ -1159,7 +1094,8 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
             }
         }
         new_node->destruct.init_expr = copy_ast_replacing(ctx, n->destruct.init_expr, b, os, ns);
-        new_node->destruct.struct_name = replace_type_str(n->destruct.struct_name, p, c, os, ns);
+        new_node->destruct.struct_name =
+            n->destruct.struct_name ? rename_template(n->destruct.struct_name, os, ns) : NULL;
         new_node->destruct.else_block = copy_ast_replacing(ctx, n->destruct.else_block, b, os, ns);
         break;
     case NODE_MATCH:
