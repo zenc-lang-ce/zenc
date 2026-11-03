@@ -18,57 +18,6 @@ static char *replace_in_string(const char *src, const char *old_w, const char *n
         return src ? xstrdup(src) : NULL;
     }
 
-    // Check for multiple parameters (comma separated)
-    if (strchr(old_w, ','))
-    {
-        char *running_src = xstrdup(src);
-
-        char *p_ptr = (char *)old_w;
-        char *c_ptr = (char *)new_w;
-
-        while (*p_ptr && *c_ptr)
-        {
-            char *p_end = (char *)strchr(p_ptr, ',');
-            int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
-
-            char *c_end = (char *)strchr(c_ptr, ',');
-            int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
-
-            char *curr_p = xmalloc((size_t)(p_len + 1));
-            strncpy(curr_p, p_ptr, (size_t)(p_len));
-            curr_p[p_len] = 0;
-
-            char *curr_c = xmalloc((size_t)(c_len + 1));
-            strncpy(curr_c, c_ptr, (size_t)(c_len));
-            curr_c[c_len] = 0;
-
-            char *next_src = replace_in_string(running_src, curr_p, curr_c);
-            zfree(running_src);
-            running_src = next_src;
-
-            zfree(curr_p);
-            zfree(curr_c);
-
-            if (p_end)
-            {
-                p_ptr = p_end + 1;
-            }
-            else
-            {
-                break;
-            }
-            if (c_end)
-            {
-                c_ptr = c_end + 1;
-            }
-            else
-            {
-                break;
-            }
-        }
-        return running_src;
-    }
-
     char *result;
     int i, cnt = 0;
     size_t newWlen = strlen(new_w);
@@ -262,8 +211,7 @@ static char *replace_mangled_part(const char *src, const char *param, const char
     return result;
 }
 
-char *replace_type_str(const char *src, const char *param, const char *concrete,
-                       const char *old_struct, const char *new_struct)
+char *replace_type_str(const char *src, const char *param, const char *concrete)
 {
     if (!src)
     {
@@ -287,12 +235,7 @@ char *replace_type_str(const char *src, const char *param, const char *concrete,
         char *base = xmalloc((size_t)(intptr_t)(slen));
         strncpy(base, src, slen - 1);
         base[slen - 1] = 0;
-        char *nb = replace_type_str(base, param, concrete, old_struct, new_struct);
-        if (!nb)
-        {
-            zfree(base);
-            return NULL;
-        }
+        char *nb = replace_type_str(base, param, concrete);
         char *res = xmalloc(strlen(nb) + 2);
         sprintf(res, "%s*", nb); /* safe */
         zfree(base);
@@ -300,97 +243,12 @@ char *replace_type_str(const char *src, const char *param, const char *concrete,
         return res;
     }
 
-    // 3. Structural fallback for complex strings (e.g. "Self", "Option<T>")
-    char *res = xstrdup(src);
-
-    // Case 3a: Explicit template replacement (e.g. Vec<T> -> Vec__int32_t)
-    if (old_struct && new_struct && param)
-    {
-        char tpl_w[MAX_TYPE_NAME_LEN];
-        snprintf(tpl_w, sizeof(tpl_w), "%s<%s>", old_struct, param);
-        if (strstr(res, tpl_w))
-        {
-            char *tmp = replace_in_string(res, tpl_w, new_struct);
-            zfree(res);
-            res = tmp;
-        }
-    }
-
-    // Case 3b: Base struct replacement (e.g. Vec -> Vec__int32_t)
-    if (!res)
-    {
-        return NULL;
-    }
-    if (old_struct && new_struct && strstr(res, old_struct))
-    {
-        char *tmp = replace_in_string(res, old_struct, new_struct);
-        zfree(res);
-        res = tmp;
-    }
-
-    // 4. Boundary-safe mangled replacement (e.g. "Option_T" or "Option__T")
-    // Split multi-param strings (X, Y, Z) and replace each individually
-    char *final_res = xstrdup(res);
-    if (param && concrete && strchr(param, ','))
-    {
-        char *p_ptr = (char *)param;
-        char *c_ptr = (char *)concrete;
-        while (*p_ptr && *c_ptr)
-        {
-            char *p_end = (char *)strchr(p_ptr, ',');
-            int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
-            char *c_end = (char *)strchr(c_ptr, ',');
-            int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
-
-            char *p_part = xmalloc((size_t)(p_len + 1));
-            strncpy(p_part, p_ptr, (size_t)(p_len));
-            p_part[p_len] = 0;
-
-            char *c_part = xmalloc((size_t)(c_len + 1));
-            strncpy(c_part, c_ptr, (size_t)(c_len));
-            c_part[c_len] = 0;
-
-            char *clean_c = sanitize_mangled_name(c_part);
-            char *tmp = replace_mangled_part(final_res, p_part, clean_c);
-            zfree(final_res);
-            final_res = tmp;
-
-            zfree(p_part);
-            zfree(c_part);
-            zfree(clean_c);
-
-            if (p_end)
-            {
-                p_ptr = p_end + 1;
-            }
-            else
-            {
-                break;
-            }
-            if (c_end)
-            {
-                c_ptr = c_end + 1;
-            }
-            else
-            {
-                break;
-            }
-        }
-    }
-    else
-    {
-        char *t1 = replace_in_string(final_res, param, concrete);
-        zfree(final_res);
-        final_res = t1;
-
-        char *clean_c = sanitize_mangled_name(concrete);
-        char *tmp = replace_mangled_part(final_res, param, clean_c);
-        zfree(final_res);
-        final_res = tmp;
-        zfree(clean_c);
-    }
-
+    // 3. Boundary-safe replacement, also inside a mangled name ("Option__T")
+    char *res = replace_in_string(src, param, concrete);
+    char *clean_c = sanitize_mangled_name(concrete);
+    char *final_res = replace_mangled_part(res, param, clean_c);
     zfree(res);
+    zfree(clean_c);
     return final_res;
 }
 
@@ -577,13 +435,6 @@ Bindings bindings_new(const char *params, Type **args, int count)
     }
     b.args = args;
 
-    char **spelled = xmalloc(sizeof(char *) * (size_t)(b.count > 0 ? b.count : 1));
-    for (int i = 0; i < b.count; i++)
-    {
-        spelled[i] = type_to_string(args[i]);
-    }
-    b.params_text = join_with_commas(b.params, b.count);
-    b.args_text = join_with_commas(spelled, b.count);
     return b;
 }
 
@@ -685,10 +536,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
     {
         return NULL;
     }
-    // The bindings as text, for the fields that still hold text.
-    const char *p = b ? b->params_text : NULL;
-    const char *c = b ? b->args_text : NULL;
-
     ASTNode *new_node = ast_create(n->kind);
     ASTNode *old_next =
         new_node->next; // Preserve next if ast_create did something (it doesn't currently)
@@ -738,84 +585,8 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         new_node->block.statements = copy_ast_replacing(ctx, n->block.statements, b, os, ns);
         break;
     case NODE_RAW_STMT:
-    {
-        char *s1 = xstrdup(n->raw_stmt.content);
-        if (p && c && strchr(p, ','))
-        {
-            char *p_ptr = (char *)p;
-            char *c_ptr = (char *)c;
-            while (*p_ptr && *c_ptr)
-            {
-                char *p_end = (char *)strchr(p_ptr, ',');
-                int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
-                char *c_end = (char *)strchr(c_ptr, ',');
-                int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
-
-                char *p_part = xmalloc((size_t)(p_len + 1));
-                strncpy(p_part, p_ptr, (size_t)(p_len));
-                p_part[p_len] = 0;
-
-                char *c_part = xmalloc((size_t)(c_len + 1));
-                strncpy(c_part, c_ptr, (size_t)(c_len));
-                c_part[c_len] = 0;
-
-                char *t1 = replace_in_string(s1, p_part, c_part);
-                zfree(s1);
-                s1 = t1;
-
-                char *clean_c = sanitize_mangled_name(c_part);
-                char *t2 = replace_mangled_part(s1, p_part, clean_c);
-                zfree(s1);
-                s1 = t2;
-
-                zfree(p_part);
-                zfree(c_part);
-                zfree(clean_c);
-
-                if (p_end)
-                {
-                    p_ptr = p_end + 1;
-                }
-                else
-                {
-                    break;
-                }
-                if (c_end)
-                {
-                    c_ptr = c_end + 1;
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-        else
-        {
-            char *t1 = replace_in_string(s1, p, c);
-            zfree(s1);
-            s1 = t1;
-
-            if (p && c)
-            {
-                char *clean_c = sanitize_mangled_name(c);
-                char *t2 = replace_mangled_part(s1, p, clean_c);
-                zfree(s1);
-                s1 = t2;
-                zfree(clean_c);
-            }
-        }
-
-        if (os && ns)
-        {
-            char *s2 = replace_in_string(s1, os, ns);
-            zfree(s1);
-            s1 = s2;
-        }
-
-        new_node->raw_stmt.content = s1;
-    }
-    break;
+        new_node->raw_stmt.content = xstrdup(n->raw_stmt.content);
+        break;
     case NODE_VAR_DECL:
     case NODE_FIELD_INIT:
         new_node->var_decl.name = n->var_decl.name ? xstrdup(n->var_decl.name) : NULL;

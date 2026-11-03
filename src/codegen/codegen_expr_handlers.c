@@ -1222,18 +1222,9 @@ skip_callee_gen:
             if (sig && arg_idx < sig->total_args)
             {
                 Type *param_t = sig->arg_types[arg_idx];
-                Type *arg_t = arg->type_info;
 
-                if (slice_element(param_t) && arg_t && arg_t->kind == TYPE_ARRAY &&
-                    arg_t->array_size > 0)
-                {
-                    EMIT(ctx, "(%s){.data = ", c_type_spelling(ctx, param_t));
-                    codegen_expression(ctx, arg);
-                    EMIT(ctx, ", .len = %d}", arg_t->array_size);
-                    handled = 1;
-                }
-                else if (param_t && param_t->kind == TYPE_TUPLE && sig->total_args == 1 &&
-                         node->call.count > 1)
+                if (param_t && param_t->kind == TYPE_TUPLE && sig->total_args == 1 &&
+                    node->call.count > 1)
                 {
                     EMIT(ctx, "(%s){", c_type_spelling(ctx, param_t));
                     ASTNode *curr = arg;

@@ -206,6 +206,39 @@ ASTNode *parse_expect(ParserContext *ctx, Lexer *l)
     return n;
 }
 
+// A function that returns a slice cannot return one of an array literal or of a local array:
+// it would point at elements on the function's stack, which are gone after the return.
+static void check_returned_slice(ParserContext *ctx, ASTNode *value)
+{
+    if (!value || !slice_element(curr_func_ret))
+    {
+        return;
+    }
+    const char *what = NULL;
+    if (value->kind == NODE_EXPR_ARRAY_LITERAL)
+    {
+        what = "an array literal";
+    }
+    else if (value->kind == NODE_EXPR_VAR && value->type_info &&
+             value->type_info->kind == TYPE_ARRAY)
+    {
+        ZenSymbol *sym = find_symbol_entry(ctx, value->var_ref.name);
+        if (sym && sym->is_local && !sym->is_static)
+        {
+            what = "a local array";
+        }
+    }
+    if (what)
+    {
+        const char *hints[] = {"its elements live on this function's stack, which is gone after "
+                               "the return",
+                               "return a fixed-size array (`-> float[3]`) or a `Vec<T>`", NULL};
+        char msg[MAX_SHORT_MSG_LEN];
+        snprintf(msg, sizeof(msg), "cannot return a slice of %s", what);
+        zerror_with_hints(value->token, msg, hints);
+    }
+}
+
 ASTNode *parse_return(ParserContext *ctx, Lexer *l)
 {
     Token return_token = lexer_next(l);
@@ -242,6 +275,8 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
             n->ret.value = parse_expression(ctx, l);
         }
     }
+
+    check_returned_slice(ctx, n->ret.value);
 
     if (lexer_peek(l).kind == TOK_SEMICOLON)
     {

@@ -303,17 +303,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 lexer_next(l);
             }
         }
-        else if (next.kind == TOK_LBRACKET && type && strncmp(type, "Slice__", 7) == 0)
-        {
-            char *code = parse_array_literal(ctx, l, type);
-            init = ast_create(NODE_RAW_STMT);
-            init->token = next;
-            init->raw_stmt.content = code;
-            if (lexer_peek(l).kind == TOK_SEMICOLON)
-            {
-                lexer_next(l);
-            }
-        }
         else if (type_obj && type_obj->kind == TYPE_TUPLE && tuple_literal_follows(l))
         {
             init = parse_tuple_expression(ctx, l, type_obj, NULL);

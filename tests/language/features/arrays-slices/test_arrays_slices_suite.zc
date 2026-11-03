@@ -6,31 +6,34 @@ fn test_slice_return_fn() {
     assert(s[2] == 3.0, "slice[2] != 3.0");
 }
 
-fn test_float_slice_return_fn() -> [float] {
-    // implicit cast from double to float
-    return [1.0, 2.0, 3.0]
+fn second_float(s: [float]) -> float {
+    return s[1];
 }
 
-fn test_double_slice_return_fn() -> [double] {
-    return [4.0, 5.0, 6.0]
+fn first_double(s: [double]) -> double {
+    return s[0];
 }
 
-test "slice_literal_return_heap_allocation" {
+test "slice_literal_local" {
     test_slice_return_fn();
 }
 
-test "slice_literal_return_mixed_types" {
-    let f = test_float_slice_return_fn();
+test "slice_literal_mixed_types" {
+    // implicit cast from double to float
+    let f: [float] = [1.0, 2.0, 3.0];
     assert(f[0] >= 0.9 && f[0] <= 1.1, "float slice[0] wrong");
     assert(f[1] >= 1.9 && f[1] <= 2.1, "float slice[1] wrong");
     assert(f[2] >= 2.9 && f[2] <= 3.1, "float slice[2] wrong");
+    let second = second_float([1.0, 2.0, 3.0]);
+    assert(second >= 1.9 && second <= 2.1, "float slice argument wrong");
 }
 
-test "slice_literal_return_double" {
-    let d = test_double_slice_return_fn();
+test "slice_literal_double" {
+    let d: [double] = [4.0, 5.0, 6.0];
     assert(d[0] == 4.0, "double slice[0] wrong");
     assert(d[1] == 5.0, "double slice[1] wrong");
     assert(d[2] == 6.0, "double slice[2] wrong");
+    assert(first_double([4.0, 5.0]) == 4.0, "double slice argument wrong");
 }
 
 test "empty_slice_return" {

@@ -706,8 +706,6 @@ typedef struct Bindings
     char **params; ///< The template's parameters: `K`, `V`.
     Type **args;   ///< The type each one takes: `int`, `String`.
     int count;
-    char *params_text; ///< `K,V`, for the AST fields that still hold text (names, raw C).
-    char *args_text;   ///< `int32_t,String`, for the same fields.
 } Bindings;
 
 /** @brief `parts` joined by commas: `K,V`. */
@@ -818,8 +816,8 @@ ASTNode *parse_comptime_body(ParserContext *ctx, Lexer *l);
  * @brief Patches self arguments in a function.
  */
 char *escape_c_string(const char *input);
-char *replace_type_str(const char *src, const char *param, const char *concrete,
-                       const char *old_struct, const char *new_struct);
+/** @brief `src`, a C type, with `param` written as `concrete` (also inside a mangled name). */
+char *replace_type_str(const char *src, const char *param, const char *concrete);
 char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out,
                                     char **allocated_out);
 /**
@@ -970,7 +968,6 @@ void parser_audit_preprocessor(ParserContext *ctx, Token t);
 char *normalize_raw_content(const char *content);
 char *parse_condition_raw(ParserContext *ctx, Lexer *l);
 const char *resolve_plugin(ParserContext *ctx, const char *name_or_alias);
-char *parse_array_literal(ParserContext *ctx, Lexer *l, const char *slice_type);
 ASTNode *parse_embed(ParserContext *ctx, Lexer *l);
 ASTNode *parse_macro_call(ParserContext *ctx, Lexer *l, char *macro_name);
 /** @brief The C name of an instance of a generic function: `f__int32_t` for `f<int>`. */
