@@ -115,46 +115,6 @@ static void trigger_instantiations(ParserContext *ctx, ASTNode *node)
     {
         instantiate_function(ctx, node->var_ref.instance);
     }
-    else if (node->kind == NODE_EXPR_STRUCT_INIT && node->struct_init.struct_name)
-    {
-        const char *name = node->struct_init.struct_name;
-        if (strchr(name, '_'))
-        {
-            char *type_copy = xstrdup(name);
-            char *underscore = (char *)strchr(type_copy, '_');
-            if (underscore)
-            {
-                char *concrete_arg = underscore;
-                while (*concrete_arg == '_')
-                {
-                    concrete_arg++;
-                }
-                *underscore = '\0';
-                char *template_name = type_copy;
-
-                GenericTemplate *gt = ctx->templates;
-                int found = 0;
-                while (gt)
-                {
-                    if (strcmp(gt->name, template_name) == 0)
-                    {
-                        found = 1;
-                        break;
-                    }
-                    gt = gt->next;
-                }
-
-                if (found)
-                {
-                    char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                    Token dummy_tok = {0};
-                    instantiate_generic(ctx, template_name, concrete_arg, unmangled, dummy_tok);
-                    zfree(unmangled);
-                }
-            }
-            zfree(type_copy);
-        }
-    }
 
     ASTChildren children = ast_children(node);
     for (int i = 0; i < children.count; i++)

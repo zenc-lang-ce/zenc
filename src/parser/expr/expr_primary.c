@@ -18,6 +18,26 @@ ASTNode *parse_primary(ParserContext *ctx, Lexer *l)
     return parse_primary_impl(ctx, l);
 }
 
+// The type a struct literal's field gives the template's parameter `param`: the value's
+// type for a `T` field, its element for `[T]`, its target for `T*`.
+static Type *generic_arg_from_value(Type *field, Type *value, const char *param)
+{
+    if (!field || !value)
+    {
+        return NULL;
+    }
+    if (type_is_generic_param(field, param))
+    {
+        return value;
+    }
+    if ((field->kind == TYPE_ARRAY || field->kind == TYPE_POINTER) && value->kind == field->kind &&
+        type_is_generic_param(field->inner, param))
+    {
+        return value->inner;
+    }
+    return NULL;
+}
+
 ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 {
     ASTNode *node = NULL;
@@ -247,6 +267,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         QualifiedName variant = {0};
         // Set when acc ends up naming an instance of a generic function.
         FunctionInstance instance = {0};
+        // Set when acc ends up naming an instance of a generic struct or enum.
+        Type *generic_type = NULL;
         while (1)
         {
             if (lexer_peek(l).kind == TOK_EOF)
@@ -256,6 +278,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             int changed = 0;
             if (lexer_peek(l).kind == TOK_DCOLON)
             {
+                // acc names a member of the type from here on.
+                generic_type = NULL;
                 lexer_next(l);
                 Token suffix = lexer_next(l);
                 if (suffix.kind != TOK_IDENT)
@@ -747,8 +771,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     lexer_next(l); // eat <
 
-                    char **concrete_types = xmalloc(sizeof(char *) * 8);
-                    char **unmangled_types = xmalloc(sizeof(char *) * 8);
                     Type **arg_types = xmalloc(sizeof(Type *) * 8);
                     int count = 0;
 
@@ -764,8 +786,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         {
                             return NULL;
                         }
-                        concrete_types[count] = type_to_string(formal_type);
-                        unmangled_types[count] = type_to_string(formal_type);
                         arg_types[count] = formal_type;
                         count++;
 
@@ -796,55 +816,12 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                     if (is_struct)
                     {
-                        // Calculate mangled length
-                        size_t mangled_len = strlen(acc) + 1;
-                        for (int i = 0; i < count; ++i)
-                        {
-                            char *clean = sanitize_mangled_name(concrete_types[i]);
-                            mangled_len += 2 + strlen(clean);
-                            zfree(clean);
-                        }
-                        char *mangled = xmalloc(mangled_len);
-                        strcpy(mangled, acc);
-                        for (int i = 0; i < count; ++i)
-                        {
-                            char *clean = sanitize_mangled_name(concrete_types[i]);
-                            strcat(mangled, "__");
-                            strcat(mangled, clean);
-                            zfree(clean);
-                        }
-
-                        int is_generic_dep = 0;
-                        for (int i = 0; i < count; ++i)
-                        {
-                            if (is_generic_dependent_str(ctx, concrete_types[i]))
-                            {
-                                is_generic_dep = 1;
-                                break;
-                            }
-                        }
-
-                        if (count == 1)
-                        {
-                            // Single-arg: only instantiate if not generic dependent
-                            if (!is_generic_dep)
-                            {
-                                instantiate_generic(ctx, acc, concrete_types[0], unmangled_types[0],
-                                                    t);
-                            }
-                            zfree(acc);
-                            acc = mangled;
-                        }
-                        else
-                        {
-                            // Multi-arg struct instantiation
-                            if (!is_generic_dep)
-                            {
-                                instantiate_generic_multi(ctx, acc, concrete_types, count, t);
-                            }
-                            zfree(acc);
-                            acc = mangled;
-                        }
+                        generic_type = type_new(TYPE_STRUCT);
+                        generic_type->name = acc;
+                        generic_type->args = arg_types;
+                        generic_type->count = count;
+                        instantiate_type(ctx, generic_type, t);
+                        acc = type_to_string(generic_type);
                     }
                     else
                     {
@@ -860,15 +837,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
                         acc = m;
                     }
-
-                    // Cleanup
-                    for (int i = 0; i < count; ++i)
-                    {
-                        zfree(concrete_types[i]);
-                        zfree(unmangled_types[i]);
-                    }
-                    zfree(concrete_types);
-                    zfree(unmangled_types);
 
                     changed = 1;
                 }
@@ -1165,115 +1133,47 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 }
                 node->struct_init.fields = head;
 
-                GenericTemplate *gtpl = ctx->templates;
-                while (gtpl)
+                // `Box{val: 5}` names the instance its fields give the parameter: `Box<int>`.
+                GenericTemplate *gtpl = generic_type ? NULL : find_generic_template(ctx, acc);
+                if (gtpl && gtpl->struct_node && gtpl->struct_node->kind == NODE_STRUCT &&
+                    gtpl->struct_node->strct.generic_param_count > 0)
                 {
-                    if (strcmp(gtpl->name, acc) == 0 || strcmp(gtpl->name, struct_name) == 0)
+                    const char *param = gtpl->struct_node->strct.generic_params[0];
+                    Type *inferred = NULL;
+                    for (ASTNode *init = head; init && !inferred; init = init->next)
                     {
-                        break;
-                    }
-                    gtpl = gtpl->next;
-                }
-                if (gtpl && gtpl->struct_node && gtpl->struct_node->kind == NODE_STRUCT)
-                {
-                    const char *gen_param = (gtpl->struct_node->strct.generic_param_count > 0)
-                                                ? gtpl->struct_node->strct.generic_params[0]
-                                                : "T";
-
-                    char *inferred = NULL;
-                    ASTNode *init_field = head;
-                    while (init_field && !inferred)
-                    {
-                        if (init_field->var_decl.init_expr && init_field->var_decl.name)
+                        ASTNode *field = gtpl->struct_node->strct.fields;
+                        while (field && !(field->kind == NODE_FIELD && field->field.name &&
+                                          init->var_decl.name &&
+                                          strcmp(field->field.name, init->var_decl.name) == 0))
                         {
-                            ASTNode *tpl_field = gtpl->struct_node->strct.fields;
-                            while (tpl_field)
-                            {
-                                if (tpl_field->kind == NODE_FIELD && tpl_field->field.name &&
-                                    strcmp(tpl_field->field.name, init_field->var_decl.name) == 0)
-                                {
-                                    break;
-                                }
-                                tpl_field = tpl_field->next;
-                            }
-
-                            if (tpl_field && tpl_field->type_info)
-                            {
-                                const char *ft = type_to_string(tpl_field->type_info);
-                                Type *val_type = init_field->var_decl.init_expr->type_info;
-
-                                if (strcmp(ft, gen_param) == 0 && val_type)
-                                {
-                                    inferred = type_to_string(val_type);
-                                }
-                                else if (val_type && strncmp(ft, "Slice__", 7) == 0 &&
-                                         strcmp(ft + 7, gen_param) == 0)
-                                {
-                                    if (val_type->kind == TYPE_ARRAY && val_type->inner)
-                                    {
-                                        inferred = type_to_string(val_type->inner);
-                                    }
-                                }
-                                else if (val_type && ft[0] == '[')
-                                {
-                                    size_t ftl = strlen(ft);
-                                    if (ftl >= 3 && ft[ftl - 1] == ']')
-                                    {
-                                        char inner_name[MAX_TYPE_NAME_LEN];
-                                        size_t inner_len = ftl - 2;
-                                        if (inner_len < sizeof(inner_name))
-                                        {
-                                            memcpy(inner_name, ft + 1, (size_t)(inner_len));
-                                            inner_name[inner_len] = '\0';
-                                            if (strcmp(inner_name, gen_param) == 0 &&
-                                                val_type->kind == TYPE_ARRAY && val_type->inner)
-                                            {
-                                                inferred = type_to_string(val_type->inner);
-                                            }
-                                        }
-                                    }
-                                }
-                                else if (val_type)
-                                {
-                                    size_t ftl = strlen(ft);
-                                    if (ftl >= 2 && ft[ftl - 1] == '*')
-                                    {
-                                        char base_name[MAX_TYPE_NAME_LEN];
-                                        size_t base_len = ftl - 1;
-                                        if (base_len < sizeof(base_name))
-                                        {
-                                            memcpy(base_name, ft, (size_t)(base_len));
-                                            base_name[base_len] = '\0';
-                                            if (strcmp(base_name, gen_param) == 0 &&
-                                                val_type->kind == TYPE_POINTER && val_type->inner)
-                                            {
-                                                inferred = type_to_string(val_type->inner);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            field = field->next;
                         }
-                        init_field = init_field->next;
+                        if (field && init->var_decl.init_expr)
+                        {
+                            inferred = generic_arg_from_value(
+                                field->type_info, init->var_decl.init_expr->type_info, param);
+                        }
                     }
-
                     if (inferred)
                     {
-                        Token t_tok = lexer_peek(l);
-                        instantiate_generic(ctx, gtpl->name, inferred, inferred, t_tok);
-
-                        char *mangled = mangle_generic_name(gtpl->name, &inferred, 1);
-
-                        node->struct_init.struct_name = mangled;
-                        struct_name = mangled;
-
-                        zfree(inferred);
+                        generic_type = type_new(TYPE_STRUCT);
+                        generic_type->name = acc;
+                        generic_type->args = xmalloc(sizeof(Type *));
+                        generic_type->args[0] = inferred;
+                        generic_type->count = 1;
+                        instantiate_type(ctx, generic_type, lexer_peek(l));
                     }
                 }
 
                 // A literal named by an alias (`StringView{...}`) has the alias's type.
-                TypeAlias *alias_node = find_type_alias_node(ctx, struct_name);
-                if (alias_node)
+                TypeAlias *alias_node =
+                    generic_type ? NULL : find_type_alias_node(ctx, struct_name);
+                if (generic_type)
+                {
+                    node->type_info = generic_type;
+                }
+                else if (alias_node)
                 {
                     node->type_info = alias_type(alias_node);
                 }
@@ -1282,6 +1182,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     node->type_info = type_new(TYPE_STRUCT);
                     node->type_info->name = xstrdup(struct_name);
                 }
+                node->struct_init.struct_name = type_def_name(node->type_info);
                 return node;
             }
         }

@@ -1187,27 +1187,20 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         break;
     case NODE_EXPR_STRUCT_INIT:
     {
-        char *new_name = replace_type_str(n->struct_init.struct_name, p, c, os, ns);
-
-        int is_ptr = 0;
-        size_t len = strlen(new_name);
-        if (len > 0 && new_name[len - 1] == '*')
-        {
-            is_ptr = 1;
-        }
-
-        int is_primitive = is_primitive_type_name(new_name);
-
-        if ((is_ptr || is_primitive) && !n->struct_init.fields)
+        // The literal's type is substituted above: `T{}` with T a pointer or a primitive is a
+        // zero.
+        Type *literal_type = new_node->type_info;
+        if (!n->struct_init.fields && literal_type &&
+            (literal_type->kind == TYPE_POINTER ||
+             is_primitive_type_name(type_to_string(literal_type))))
         {
             new_node->kind = NODE_EXPR_LITERAL;
             new_node->literal.kind = LITERAL_INT;
             new_node->literal.int_val = 0;
-            zfree(new_name);
         }
         else
         {
-            new_node->struct_init.struct_name = new_name;
+            new_node->struct_init.struct_name = type_def_name(literal_type);
             ASTNode *h = NULL, *t = NULL, *curr = n->struct_init.fields;
             while (curr)
             {
