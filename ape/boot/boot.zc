@@ -1,8 +1,8 @@
+//> define: _COSMO_SOURCE
 import "std/io.zc"
-#define _COSMO_SOURCE
-#include <libc/cosmo.h>
-#include <string.h>
-#include <stdlib.h>
+include <libc/cosmo.h>
+include <string.h>
+include <stdlib.h>
 
 raw {
   extern char **environ;
