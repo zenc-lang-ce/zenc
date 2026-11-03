@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-int is_unmangle_primitive(const char *base);
 char *unmangle_ptr_suffix(const char *s);
 Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char *c, const char *os,
                           const char *ns);
@@ -356,71 +355,8 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
                       meth->func.is_varargs, meth->func.pure, meth->link_name, meth->token,
                       meth->func.is_export);
 
-        // Handle generic return types in methods (e.g., Option<T> -> Option_int)
-        const char *meth_ret =
-            meth->func.ret_type_info ? type_to_string(meth->func.ret_type_info) : NULL;
-        if (meth_ret && (strchr(meth_ret, '_') || strchr(meth_ret, '<')))
-        {
-            GenericTemplate *gt = ctx->templates;
-
-            while (gt)
-            {
-                size_t tlen = strlen(gt->name);
-                size_t rlen = strlen(meth_ret);
-                if (tlen > rlen)
-                {
-                    gt = gt->next;
-                    continue;
-                }
-                char delim = meth_ret[tlen];
-                if (strncmp(meth_ret, gt->name, (size_t)(tlen)) == 0 &&
-                    (delim == '_' || delim == '<'))
-                {
-                    // Found matching template prefix
-                    const char *type_arg = meth_ret + tlen;
-                    while (*type_arg == '_' || *type_arg == '<')
-                    {
-                        type_arg++;
-                    }
-
-                    // Simple approach: instantiate 'Template' with 'Arg'.
-                    char *clean_arg = xstrdup(type_arg);
-                    if (delim == '<')
-                    {
-                        char *closer = (char *)strrchr(clean_arg, '>');
-                        if (closer)
-                        {
-                            *closer = 0;
-                        }
-                    }
-
-                    // Unmangle Ptr suffix if present (e.g., intPtr -> int*)
-                    char *inner_unmangled_arg = xstrdup(clean_arg);
-                    size_t alen = strlen(clean_arg);
-                    if (alen > 3 && strcmp(clean_arg + alen - 3, "Ptr") == 0)
-                    {
-                        char *base = xstrdup(clean_arg);
-                        base[alen - 3] = '\0';
-                        zfree(inner_unmangled_arg);
-                        inner_unmangled_arg = xmalloc(strlen(base) + 16);
-                        // Check if base is a primitive type
-                        if (is_unmangle_primitive(base))
-                        {
-                            sprintf(inner_unmangled_arg, "%s*", base); /* safe */
-                        }
-                        else
-                        {
-                            sprintf(inner_unmangled_arg, "struct %s*", base); /* safe */
-                        }
-                        zfree(base);
-                    }
-
-                    instantiate_generic(ctx, gt->name, clean_arg, inner_unmangled_arg, meth->token);
-                    zfree(clean_arg);
-                }
-                gt = gt->next;
-            }
-        }
+        // The instances the method's return type names (`-> Option<T>`).
+        trigger_type_instantiation(ctx, meth->func.ret_type_info);
 
         trigger_instantiations(ctx, meth->func.body);
 

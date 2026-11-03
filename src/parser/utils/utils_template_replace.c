@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-int is_unmangle_primitive(const char *base);
 
 static char *replace_in_string(const char *src, const char *old_w, const char *new_w)
 {
@@ -1524,22 +1523,6 @@ char *unmangle_ptr_suffix(const char *s)
 
     zfree(base);
     return result;
-}
-
-// Helper function to recursively scan AST for sizeof types AND generic calls to trigger
-int is_unmangle_primitive(const char *base)
-{
-    return (strcmp(base, "int") == 0 || strcmp(base, "uint") == 0 || strcmp(base, "char") == 0 ||
-            strcmp(base, "bool") == 0 || strcmp(base, "void") == 0 || strcmp(base, "byte") == 0 ||
-            strcmp(base, "rune") == 0 || strcmp(base, "float") == 0 ||
-            strcmp(base, "double") == 0 || strcmp(base, "f32") == 0 || strcmp(base, "f64") == 0 ||
-            strcmp(base, "size_t") == 0 || strcmp(base, "usize") == 0 ||
-            strcmp(base, "isize") == 0 || strcmp(base, "ptrdiff_t") == 0 ||
-            strncmp(base, "i8", 2) == 0 || strncmp(base, "u8", 2) == 0 ||
-            strncmp(base, "int8", 4) == 0 || strncmp(base, "int16", 5) == 0 ||
-            strncmp(base, "int32", 5) == 0 || strncmp(base, "int64", 5) == 0 ||
-            strncmp(base, "uint8", 5) == 0 || strncmp(base, "uint16", 6) == 0 ||
-            strncmp(base, "uint32", 6) == 0 || strncmp(base, "uint64", 6) == 0);
 }
 
 ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index)
