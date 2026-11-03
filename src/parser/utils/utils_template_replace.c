@@ -478,7 +478,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         if (n->var_ref.owner)
         {
             Type *owner = replace_type_formal(ctx, n->var_ref.owner, b, os, ns);
-            char *owner_name = type_to_string(owner);
+            char *owner_name = type_mangle_spelling(owner);
             new_node->var_ref.owner = owner;
             if (n->var_ref.variant.scope)
             {
@@ -540,7 +540,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         Type *literal_type = new_node->type_info;
         if (!n->struct_init.fields && literal_type &&
             (literal_type->kind == TYPE_POINTER ||
-             is_primitive_type_name(type_to_string(literal_type))))
+             is_primitive_type_name(type_mangle_spelling(literal_type))))
         {
             new_node->kind = NODE_EXPR_LITERAL;
             new_node->literal.kind = LITERAL_INT;

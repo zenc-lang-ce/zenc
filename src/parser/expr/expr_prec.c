@@ -1180,7 +1180,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     }
                     */
                 }
-                char *lhs_type_name = lhs->type_info ? type_to_string(lhs->type_info) : NULL;
+                char *lhs_type_name = lhs->type_info ? type_mangle_spelling(lhs->type_info) : NULL;
                 if (!struct_name && lhs_type_name && !slice_elem)
                 {
                     char *s = lhs_type_name;
@@ -1673,7 +1673,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
             if (!raw_lhs_type && lhs->type_info)
             {
-                raw_lhs_type = type_to_string(lhs->type_info);
+                raw_lhs_type = type_mangle_spelling(lhs->type_info);
                 allocated_lhs = 1;
             }
 

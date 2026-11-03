@@ -318,11 +318,11 @@ Type *instantiate_slice(ParserContext *ctx, Type *elem, Token token)
 
 void register_tuple(ParserContext *ctx, Type *tuple)
 {
-    char *struct_name = type_to_string(tuple);
+    char *struct_name = type_mangle_spelling(tuple);
     TupleType *c = ctx->used_tuples;
     while (c)
     {
-        char *name = type_to_string(c->type);
+        char *name = type_mangle_spelling(c->type);
         int same = strcmp(name, struct_name) == 0;
         zfree(name);
         if (same)

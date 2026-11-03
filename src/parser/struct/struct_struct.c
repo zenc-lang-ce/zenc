@@ -183,7 +183,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             {
                 return NULL;
             }
-            char *use_name = type_to_string(use_type);
+            char *use_name = type_mangle_spelling(use_type);
 
             z_parse_expect(l, TOK_SEMICOLON, "Expected ; after use");
 
@@ -193,8 +193,8 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             {
                 // Try to force instantiation if not found?
                 // For now, rely on parse_type having triggered instantiation.
-                char *mangled =
-                    type_to_string(use_type); // This works if type_to_string returns mangled name
+                char *mangled = type_mangle_spelling(
+                    use_type); // This works if type_to_string returns mangled name
                 def = find_struct_def(ctx, mangled);
                 zfree(mangled);
             }

@@ -76,7 +76,7 @@ char *find_symbol_type(ParserContext *ctx, const char *n)
     if (sym)
     {
         return (sym->type_info && sym->type_info->kind != TYPE_UNKNOWN)
-                   ? type_to_string(sym->type_info)
+                   ? type_mangle_spelling(sym->type_info)
                    : NULL;
     }
 

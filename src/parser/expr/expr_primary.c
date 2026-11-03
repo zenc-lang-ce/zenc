@@ -430,7 +430,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                     if (aliased)
                                     {
                                         zfree(acc);
-                                        acc = type_to_string(aliased);
+                                        acc = type_mangle_spelling(aliased);
                                         def = find_struct_def(ctx, acc);
                                     }
                                 }
@@ -830,7 +830,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         generic_type->args = arg_types;
                         generic_type->count = count;
                         instantiate_type(ctx, generic_type, t);
-                        acc = type_to_string(generic_type);
+                        acc = type_mangle_spelling(generic_type);
                     }
                     else
                     {
@@ -1787,7 +1787,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     }
                     ASTNode *target = parse_expr_prec(ctx, l, PREC_UNARY);
 
-                    char *cast_type = type_to_string(cast_type_obj);
+                    char *cast_type = type_mangle_spelling(cast_type_obj);
                     if (is_trait(cast_type))
                     {
                         return transform_to_trait_object(ctx, cast_type, target);
