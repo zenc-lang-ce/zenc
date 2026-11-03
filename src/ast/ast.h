@@ -452,6 +452,10 @@ struct ASTNode
             struct ZenSymbol *symbol;
             QualifiedName variant;     ///< An enum variant: its enum (resolved) and its name.
             FunctionInstance instance; ///< An instance of a generic function: `f<int>`.
+            /// `Vec<T>` in `Vec<T>::new` inside a template: the instance whose `member` this
+            /// names. The copy for an instance of the template renames it from this type.
+            Type *owner;
+            char *member;
         } var_ref;
 
         struct

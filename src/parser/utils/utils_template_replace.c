@@ -918,73 +918,24 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
             new_node->var_ref.name = function_instance_name(*instance);
             break;
         }
+        if (n->var_ref.owner)
+        {
+            Type *owner = replace_type_formal(ctx, n->var_ref.owner, b, os, ns);
+            char *owner_name = type_to_string(owner);
+            new_node->var_ref.owner = owner;
+            if (n->var_ref.variant.scope)
+            {
+                new_node->var_ref.variant.scope = owner_name;
+                new_node->var_ref.name = mangle_variant_symbol(owner_name, n->var_ref.member);
+            }
+            else
+            {
+                new_node->var_ref.name = mangle_method_symbol(owner_name, NULL, n->var_ref.member);
+            }
+            break;
+        }
+        // A method of the template (`Vec__push`, inside its impl) is the instance's.
         char *n1 = n->var_ref.name ? xstrdup(n->var_ref.name) : NULL;
-        if (p && c && strchr(p, ','))
-        {
-            char *p_ptr = (char *)p;
-            char *c_ptr = (char *)c;
-            while (*p_ptr && *c_ptr)
-            {
-                char *p_end = (char *)strchr(p_ptr, ',');
-                int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
-                char *c_end = (char *)strchr(c_ptr, ',');
-                int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
-
-                char *p_part = xmalloc((size_t)(p_len + 1));
-                strncpy(p_part, p_ptr, (size_t)(p_len));
-                p_part[p_len] = 0;
-
-                char *c_part = xmalloc((size_t)(c_len + 1));
-                strncpy(c_part, c_ptr, (size_t)(c_len));
-                c_part[c_len] = 0;
-
-                char *t1 = replace_in_string(n1, p_part, c_part);
-                zfree(n1);
-                n1 = t1;
-
-                char *clean_c = sanitize_mangled_name(c_part);
-                char *t2 = replace_mangled_part(n1, p_part, clean_c);
-                zfree(n1);
-                n1 = t2;
-
-                zfree(p_part);
-                zfree(c_part);
-                zfree(clean_c);
-
-                if (p_end)
-                {
-                    p_ptr = p_end + 1;
-                }
-                else
-                {
-                    break;
-                }
-                if (c_end)
-                {
-                    c_ptr = c_end + 1;
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-        else
-        {
-            if (p && c)
-            {
-                char *t1 = replace_in_string(n1, p, c);
-                zfree(n1);
-                n1 = t1;
-
-                char *clean_c = sanitize_mangled_name(c);
-                char *n2 = replace_mangled_part(n1, p, clean_c);
-                zfree(clean_c);
-                zfree(n1);
-                n1 = n2;
-            }
-        }
-
         if (os && ns)
         {
             size_t os_len = strlen(os);

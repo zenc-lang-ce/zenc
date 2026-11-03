@@ -43,7 +43,7 @@ static int args_name_generic(ParserContext *ctx, Type **args, int count)
 {
     for (int i = 0; i < count; i++)
     {
-        if (is_generic_dependent_str(ctx, type_to_string(args[i])))
+        if (type_is_generic_dependent(ctx, args[i]))
         {
             return 1;
         }

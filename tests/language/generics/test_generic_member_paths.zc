@@ -1,0 +1,46 @@
+// language/generics: test_generic_member_paths
+// Inside a generic function, a path whose type names a parameter (`T::make`,
+// `Option<T>::Some`) names the member of the type the parameter is bound to.
+import "std/option.zc"
+
+struct Point {
+    x: int;
+}
+
+impl Point {
+    fn make() -> Point {
+        return Point { x: 7 };
+    }
+}
+
+fn build<T>() -> T {
+    return T::make();
+}
+
+fn wrap<T>(v: T) -> Option<T> {
+    return Option<T>::Some(v);
+}
+
+fn first_or<T>(o: Option<T>, d: T) -> T {
+    match o {
+        Option<T>::Some(v) => { return v; },
+        Option<T>::None => { return d; },
+    }
+    return d;
+}
+
+test "a static method of a parameter" {
+    let p = build<Point>();
+    assert(p.x == 7, "T::make() is Point::make()");
+}
+
+test "a variant of an instance that names a parameter" {
+    let o = wrap<int>(4);
+    assert(o.is_some(), "Option<T>::Some is Option<int>::Some");
+    assert(o.unwrap() == 4, "it holds the value");
+}
+
+test "a pattern of an instance that names a parameter" {
+    assert(first_or<int>(Option<int>::Some(4), 9) == 4, "Some matches");
+    assert(first_or<int>(Option<int>::None(), 9) == 9, "None matches");
+}

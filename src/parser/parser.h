@@ -760,6 +760,8 @@ int is_known_generic(ParserContext *ctx, char *name);
  * (e.g. "T*" returns 1 if T is a known generic).
  */
 int is_generic_dependent_str(ParserContext *ctx, const char *type_str);
+/** @brief Whether `t` still names a generic parameter (`Vec<T>` inside its template). */
+int type_is_generic_dependent(ParserContext *ctx, Type *t);
 
 /**
  * @brief Checks if a name is a primitive type.

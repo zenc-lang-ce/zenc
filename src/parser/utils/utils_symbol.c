@@ -236,6 +236,11 @@ int is_known_generic(ParserContext *ctx, char *name)
     return 0;
 }
 
+int type_is_generic_dependent(ParserContext *ctx, Type *t)
+{
+    return t && is_generic_dependent_str(ctx, type_to_string(t));
+}
+
 int is_generic_dependent_str(ParserContext *ctx, const char *type_str)
 {
     if (!type_str || !ctx)

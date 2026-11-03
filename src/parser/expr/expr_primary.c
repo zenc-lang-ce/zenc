@@ -269,6 +269,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         FunctionInstance instance = {0};
         // Set when acc ends up naming an instance of a generic struct or enum.
         Type *generic_type = NULL;
+        // Set when acc names a member of an instance that still names a generic parameter.
+        Type *owner = NULL;
+        char *owner_member = NULL;
         while (1)
         {
             if (lexer_peek(l).kind == TOK_EOF)
@@ -278,8 +281,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             int changed = 0;
             if (lexer_peek(l).kind == TOK_DCOLON)
             {
-                // acc names a member of the type from here on.
-                generic_type = NULL;
                 lexer_next(l);
                 Token suffix = lexer_next(l);
                 if (suffix.kind != TOK_IDENT)
@@ -287,6 +288,16 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     zpanic_at(suffix, "Expected identifier after ::");
                     return NULL;
                 }
+                // acc names a member of the type from here on: `Vec<T>::new`, `T::make`.
+                Type *path_type = generic_type;
+                if (!path_type && is_known_generic(ctx, acc))
+                {
+                    path_type = type_new(TYPE_GENERIC);
+                    path_type->name = xstrdup(acc);
+                }
+                owner = type_is_generic_dependent(ctx, path_type) ? path_type : NULL;
+                owner_member = owner ? token_strdup(suffix) : NULL;
+                generic_type = NULL;
 
                 SelectiveImport *si =
                     (!ctx->imports.current_module_prefix) ? find_selective_import(ctx, acc) : NULL;
@@ -1400,6 +1411,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             callee->var_ref.name = acc;
             callee->var_ref.variant = variant;
             callee->var_ref.instance = instance;
+            callee->var_ref.owner = owner;
+            callee->var_ref.member = owner_member;
             node->call.callee = callee;
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
@@ -1432,6 +1445,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             callee->var_ref.name = acc;
             callee->var_ref.variant = variant;
             callee->var_ref.instance = instance;
+            callee->var_ref.owner = owner;
+            callee->var_ref.member = owner_member;
             node->call.callee = callee;
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
@@ -1567,6 +1582,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node->var_ref.name = acc;
                 node->var_ref.variant = variant;
                 node->var_ref.instance = instance;
+                node->var_ref.owner = owner;
+                node->var_ref.member = owner_member;
                 node->type_info = find_symbol_type_info(ctx, acc);
 
                 if (sym)
