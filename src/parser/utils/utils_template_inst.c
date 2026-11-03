@@ -82,43 +82,6 @@ static void trigger_type_instantiation(ParserContext *ctx, Type *t)
             instantiate_type(ctx, t, no_token);
         }
     }
-    // A mangled name read from text (`Vec__int32_t`), without arguments.
-    else if (t->name && strchr(t->name, '_'))
-    {
-        char *type_copy = xstrdup(t->name);
-        char *underscore = (char *)strchr(type_copy, '_');
-        if (underscore)
-        {
-            char *concrete_arg = underscore;
-            while (*concrete_arg == '_')
-            {
-                concrete_arg++;
-            }
-            *underscore = '\0';
-            char *template_name = type_copy;
-
-            GenericTemplate *gt = ctx->templates;
-            int found = 0;
-            while (gt)
-            {
-                if (strcmp(gt->name, template_name) == 0)
-                {
-                    found = 1;
-                    break;
-                }
-                gt = gt->next;
-            }
-
-            if (found)
-            {
-                char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                Token dummy_tok = {0};
-                instantiate_generic(ctx, template_name, concrete_arg, unmangled, dummy_tok);
-                zfree(unmangled);
-            }
-        }
-        zfree(type_copy);
-    }
 
     // Recursive scan
     trigger_type_instantiation(ctx, t->inner);
@@ -262,133 +225,6 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
 
     const char *subst_arg = unmangled_type ? unmangled_type : concrete_type;
 
-    // Scan the original return type for generic struct patterns like "Triple_X_Y_Z"
-    // and instantiate them with the concrete types
-    if (tpl->func_node && tpl->func_node->func.ret_type_info)
-    {
-        const char *ret = type_to_string(tpl->func_node->func.ret_type_info);
-
-        // Build the param suffix (e.g., for "X,Y,Z" -> "_X_Y_Z")
-        size_t suffix_cap = strlen(tpl->generic_param) * 2 + 64;
-        char *param_suffix = xmalloc((size_t)(suffix_cap));
-        param_suffix[0] = 0;
-        const char *p_ptr = tpl->generic_param;
-        while (p_ptr && *p_ptr)
-        {
-            strcat(param_suffix, "__");
-            const char *p_next = (char *)strchr(p_ptr, ',');
-            int sub_len = p_next ? (int)(p_next - p_ptr) : (int)strlen(p_ptr);
-            strncat(param_suffix, p_ptr, (size_t)(sub_len));
-            if (p_next)
-            {
-                p_ptr = p_next + 1;
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        // Check if ret_type ends with param_suffix (e.g., "Triple_X_Y_Z" ends with "_X_Y_Z")
-        size_t ret_len = strlen(ret);
-        size_t suffix_len = strlen(param_suffix);
-        if (ret_len > suffix_len && strcmp(ret + ret_len - suffix_len, param_suffix) == 0)
-        {
-            // Extract base struct name (e.g., "Triple" from "Triple_X_Y_Z")
-            size_t base_len = (size_t)(ret_len - suffix_len);
-            char *struct_base = xmalloc((size_t)(base_len + 1));
-            strncpy(struct_base, ret, (size_t)(base_len));
-            struct_base[base_len] = 0;
-
-            // Check if it's a known generic template
-            GenericTemplate *gt = ctx->templates;
-            while (gt && strcmp(gt->name, struct_base) != 0)
-            {
-                gt = gt->next;
-            }
-            if (gt)
-            {
-                // Parse the concrete types from unmangled_type or concrete_type
-                const char *types_src = unmangled_type ? unmangled_type : concrete_type;
-
-                // Count params in template
-                int template_param_count = 1;
-                for (const char *p = tpl->generic_param; *p; p++)
-                {
-                    if (*p == ',')
-                    {
-                        template_param_count++;
-                    }
-                }
-
-                // Split concrete types
-                char **args = xmalloc(sizeof(char *) * (size_t)(template_param_count));
-                int count = 0;
-                const char *types_ptr = types_src;
-                while (types_ptr && *types_ptr && count < template_param_count)
-                {
-                    const char *types_next = (char *)strchr(types_ptr, ',');
-                    int types_len =
-                        types_next ? (int)(types_next - types_ptr) : (int)strlen(types_ptr);
-
-                    args[count] = xmalloc((size_t)(types_len + 1));
-                    strncpy(args[count], types_ptr, (size_t)(types_len));
-                    args[count][types_len] = 0;
-                    count++;
-
-                    if (types_next)
-                    {
-                        types_ptr = types_next + 1;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-
-                // Now instantiate the struct with these args
-                Token dummy_tok = {0};
-                if (count == 1)
-                {
-                    // Unmangle Ptr suffix if needed (e.g., intPtr -> int*)
-                    char *unmangled = xstrdup(args[0]);
-                    size_t alen = strlen(args[0]);
-                    if (alen > 3 && strcmp(args[0] + alen - 3, "Ptr") == 0)
-                    {
-                        char *base = xstrdup(args[0]);
-                        base[alen - 3] = '\0';
-                        zfree(unmangled);
-                        unmangled = xmalloc(strlen(base) + 16);
-                        if (is_unmangle_primitive(base))
-                        {
-                            sprintf(unmangled, "%s*", base); /* safe */
-                        }
-                        else
-                        {
-                            sprintf(unmangled, "struct %s*", base); /* safe */
-                        }
-                        zfree(base);
-                    }
-                    instantiate_generic(ctx, struct_base, args[0], unmangled, dummy_tok);
-                    zfree(unmangled);
-                }
-                else if (count > 1)
-                {
-                    instantiate_generic_multi(ctx, struct_base, args, count, dummy_tok);
-                }
-
-                // Cleanup
-                for (int i = 0; i < count; i++)
-                {
-                    zfree(args[i]);
-                }
-                zfree(args);
-            }
-            zfree(struct_base);
-        }
-        zfree(param_suffix);
-    }
-
     ASTNode *new_fn =
         copy_ast_replacing(ctx, tpl->func_node, tpl->generic_param, subst_arg, NULL, NULL);
     if (!new_fn || new_fn->kind != NODE_FUNCTION)
@@ -399,6 +235,13 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
     zfree(new_fn->func.name);
     new_fn->func.name = xstrdup(mangled);
     new_fn->func.generic_params = NULL;
+
+    // The instances the copy's signature names (`-> Triple<X, Y, Z>`).
+    trigger_type_instantiation(ctx, new_fn->func.ret_type_info);
+    for (int i = 0; i < new_fn->func.count; i++)
+    {
+        trigger_type_instantiation(ctx, new_fn->func.arg_types[i]);
+    }
 
     add_instantiated_func(ctx, new_fn);
 
