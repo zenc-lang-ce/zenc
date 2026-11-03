@@ -39,7 +39,9 @@ static const char *strip_c_tag(const char *type_str)
     return type_str;
 }
 
-static void node_deps_add(ParserContext *ctx, NodeDeps *deps, const char *type_str)
+// `type_str` is the spelling of a field's type with its aliases resolved: an opaque alias holds
+// what it names by value.
+static void node_deps_add(NodeDeps *deps, const char *type_str)
 {
     // Pointers do not create an ordering dependency.
     if (strchr(type_str, '*'))
@@ -48,11 +50,6 @@ static void node_deps_add(ParserContext *ctx, NodeDeps *deps, const char *type_s
     }
 
     const char *clean = strip_c_tag(type_str);
-    Type *alias = find_type_alias(ctx, clean);
-    if (alias)
-    {
-        clean = type_to_string(alias);
-    }
 
     deps->mangled = xrealloc(deps->mangled, (size_t)(deps->count + 1) * sizeof(char *));
     deps->clean = xrealloc(deps->clean, (size_t)(deps->count + 1) * sizeof(char *));
@@ -71,7 +68,7 @@ static void node_deps_build(ParserContext *ctx, ASTNode *node, NodeDeps *deps)
         {
             if (field->kind == NODE_FIELD)
             {
-                node_deps_add(ctx, deps, type_to_string(field->type_info));
+                node_deps_add(deps, type_to_string(resolve_alias(field->type_info)));
             }
             field = field->next;
         }
@@ -84,10 +81,10 @@ static void node_deps_build(ParserContext *ctx, ASTNode *node, NodeDeps *deps)
         {
             if (variant->kind == NODE_ENUM_VARIANT && variant->variant.payload)
             {
-                char *type_str = c_type_spelling(ctx, variant->variant.payload);
+                char *type_str = c_type_spelling(ctx, resolve_alias(variant->variant.payload));
                 if (type_str)
                 {
-                    node_deps_add(ctx, deps, type_str);
+                    node_deps_add(deps, type_str);
                 }
             }
             variant = variant->next;
@@ -973,18 +970,10 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
                     continue;
                 }
 
-                // Resolve opaque alias
-                Type *aliased = find_type_alias(ctx, sname);
-                const char *resolved = aliased ? type_to_string(aliased) : NULL;
-
+                // An impl of a template is emitted with each instance. An alias is never a
+                // template, nor is the type it names.
                 char *mangled = replace_string_type(sname);
                 ASTNode *def = find_struct_def(ctx, mangled);
-                if (!def && resolved)
-                {
-                    zfree(mangled);
-                    mangled = replace_string_type(resolved);
-                    def = find_struct_def(ctx, mangled);
-                }
                 int skip = 0;
                 if (def)
                 {
