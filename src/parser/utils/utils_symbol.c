@@ -238,42 +238,23 @@ int is_known_generic(ParserContext *ctx, char *name)
 
 int type_is_generic_dependent(ParserContext *ctx, Type *t)
 {
-    return t && is_generic_dependent_str(ctx, type_to_string(t));
-}
-
-int is_generic_dependent_str(ParserContext *ctx, const char *type_str)
-{
-    if (!type_str || !ctx)
+    if (!t)
     {
         return 0;
     }
-    for (int i = 0; i < ctx->known_generics_count; i++)
+    if (t->kind == TYPE_GENERIC || (t->name && t->count == 0 && is_known_generic(ctx, t->name)))
     {
-        const char *g = ctx->known_generics[i];
-        const char *p = (char *)strstr(type_str, g);
-        while (p)
+        return 1;
+    }
+    if (type_is_generic_dependent(ctx, t->inner))
+    {
+        return 1;
+    }
+    for (int i = 0; t->args && i < t->count; i++)
+    {
+        if (type_is_generic_dependent(ctx, t->args[i]))
         {
-            int valid = 1;
-            if (p > type_str && is_ident_char(*(p - 1)) && *(p - 1) != '_')
-            {
-                valid = 0;
-            }
-            if (valid)
-            {
-                const char *next = p + strlen(g);
-                if (*next != '\0' && is_ident_char(*next) && *next != '_')
-                {
-                    if (strncmp(next, "Ptr", 3) != 0)
-                    {
-                        valid = 0;
-                    }
-                }
-            }
-            if (valid)
-            {
-                return 1;
-            }
-            p = strstr(p + 1, g);
+            return 1;
         }
     }
     return 0;

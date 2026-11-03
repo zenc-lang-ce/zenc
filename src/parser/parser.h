@@ -743,11 +743,6 @@ void register_generic(ParserContext *ctx, char *name);
  */
 int is_known_generic(ParserContext *ctx, char *name);
 
-/**
- * @brief Checks if a type name string depends on any known generic parameters.
- * (e.g. "T*" returns 1 if T is a known generic).
- */
-int is_generic_dependent_str(ParserContext *ctx, const char *type_str);
 /** @brief Whether `t` still names a generic parameter (`Vec<T>` inside its template). */
 int type_is_generic_dependent(ParserContext *ctx, Type *t);
 
