@@ -2,6 +2,15 @@
 
 The most significant changes of each release. Every change is listed in the [full changelog](https://zenc-lang-ce.github.io/docs/changelog/).
 
+## 0.5.1
+
+A bug-fix release, with downloads for each platform.
+
+- Release downloads: `zc.com` finds its standard library in any directory, `zc-boot.com` installs the `zc.com` of this release, the tools come as portable executables too, and there are native binaries for Linux, macOS and Windows. All of them need a C compiler on the system.
+- The language server no longer crashes when two files declare the same enum, one with a payload on a variant and one without.
+
+See the [full changelog](https://zenc-lang-ce.github.io/docs/changelog/#0-5-1) for every change.
+
 ## 0.5.0
 
 ### Language changes
