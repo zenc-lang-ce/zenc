@@ -133,14 +133,7 @@ void handle_expr_index(ParserContext *ctx, ASTNode *node)
 
         if (base_type && !strchr(base_type, '*'))
         {
-            char clean[MAX_TYPE_NAME_LEN];
-            strncpy(clean, base_type, sizeof(clean) - 1);
-            clean[sizeof(clean) - 1] = '\0';
-            if (strncmp(clean, "struct ", 7) == 0)
-            {
-                memmove(clean, clean + 7, strlen(clean + 7) + 1);
-            }
-
+            const char *clean = str_strip_struct_prefix(base_type);
             method_name = mangle_method_symbol(clean, NULL, "get");
             if (find_func(ctx, method_name))
             {
