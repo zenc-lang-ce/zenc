@@ -357,6 +357,19 @@ void warn_array_bounds(Token t, int index, int size)
     zwarn_with_suggestion(t, msg, note);
 }
 
+void warn_slice_bounds(Token t, int bound, int size)
+{
+    if (!is_diag_enabled(DIAG_SAFETY_ARRAY_BOUNDS))
+    {
+        return;
+    }
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "Slice bound %d is out of bounds for array of size %d", bound, size);
+    char note[MAX_SHORT_MSG_LEN];
+    snprintf(note, sizeof(note), "Valid bounds are 0 to %d", size);
+    zwarn_with_suggestion(t, msg, note);
+}
+
 void warn_format_string(Token t, int arg_num, const char *expected, const char *got)
 {
     if (!is_diag_enabled(DIAG_STYLE_FORMAT))

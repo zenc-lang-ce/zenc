@@ -1058,8 +1058,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
         if (op.kind == TOK_LBRACKET || (op.kind == TOK_OP && is_token(op, "[")))
         {
             ASTNode *start = NULL;
-            ASTNode *end = NULL;
-            int is_slice = 0;
 
             // Fallback: If LHS is a variable but missing type info, look it up now
             if (!lhs->type_info && lhs->kind == NODE_EXPR_VAR)
@@ -1071,52 +1069,37 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
             }
 
-            // Case: [..] or [..end]
-            if (lexer_peek(l).kind == TOK_DOTDOT || lexer_peek(l).kind == TOK_DOTDOT_LT)
+            // `[..end]` and `[start..end]` are slices.
+            if (slice_follows(l))
             {
-                is_slice = 1;
-                lexer_next(l); // consume .. or ..<
-                if (lexer_peek(l).kind != TOK_RBRACKET)
-                {
-                    end = parse_expression(ctx, l);
-                }
+                lhs = parse_slice_rest(ctx, l, lhs, NULL, t);
+                continue;
             }
-            else
+            start = parse_expression(ctx, l);
+            if (slice_follows(l))
             {
-                // Case: [start] or [start..] or [start..end] or [start, expr, ...]
-                start = parse_expression(ctx, l);
-                if (lexer_peek(l).kind == TOK_DOTDOT || lexer_peek(l).kind == TOK_DOTDOT_LT)
-                {
-                    is_slice = 1;
-                    lexer_next(l); // consume ..
-                    if (lexer_peek(l).kind != TOK_RBRACKET)
-                    {
-                        end = parse_expression(ctx, l);
-                    }
-                }
+                lhs = parse_slice_rest(ctx, l, lhs, start, t);
+                continue;
             }
 
             // Multi-index: [expr, expr, ...] -> collect extra indices
             ASTNode *extra_head = NULL;
             ASTNode *extra_tail = NULL;
             int extra_count = 0;
-            if (!is_slice)
+            while (lexer_peek(l).kind == TOK_COMMA)
             {
-                while (lexer_peek(l).kind == TOK_COMMA)
+                lexer_next(l); // eat comma
+                ASTNode *idx = parse_expression(ctx, l);
+                if (!extra_head)
                 {
-                    lexer_next(l); // eat comma
-                    ASTNode *idx = parse_expression(ctx, l);
-                    if (!extra_head)
-                    {
-                        extra_head = idx;
-                    }
-                    else
-                    {
-                        extra_tail->next = idx;
-                    }
-                    extra_tail = idx;
-                    extra_count++;
+                    extra_head = idx;
                 }
+                else
+                {
+                    extra_tail->next = idx;
+                }
+                extra_tail = idx;
+                extra_count++;
             }
 
             if (lexer_next(l).kind != TOK_RBRACKET)
@@ -1124,31 +1107,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 zpanic_at(lexer_peek(l), "Expected ]");
             }
 
-            if (is_slice)
-            {
-                ASTNode *node = ast_create(NODE_EXPR_SLICE);
-                node->slice.array = lhs;
-                node->slice.start = start;
-                node->slice.end = end;
-
-                // `a[i..j]` is a slice of the elements of `a`.
-                if (lhs->type_info)
-                {
-                    Type *inner = slice_element(lhs->type_info);
-                    if (!inner && (lhs->type_info->kind == TYPE_ARRAY ||
-                                   lhs->type_info->kind == TYPE_POINTER))
-                    {
-                        inner = lhs->type_info->inner;
-                    }
-                    if (inner)
-                    {
-                        node->type_info = instantiate_slice(ctx, inner, t);
-                    }
-                }
-
-                lhs = node;
-            }
-            else
             {
                 ASTNode *node = ast_create(NODE_EXPR_INDEX);
                 node->token = t;

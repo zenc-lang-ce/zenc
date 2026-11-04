@@ -202,11 +202,22 @@ void handle_expr_slice(ParserContext *ctx, ASTNode *node)
         tname = c_type_spelling(ctx, node->type_info);
     }
 
+    // A slice is copied (it is a view); an array or a pointer is held as a pointer to its
+    // first element, so the new slice points into it.
     EMIT(ctx, "({ ");
-    emit_auto_type(ctx, node->slice.array, node->token);
-    EMIT(ctx, " _arr = ");
+    if (is_slice_struct)
+    {
+        emit_auto_type(ctx, node->slice.array, node->token);
+        EMIT(ctx, " _arr = ");
+    }
+    else
+    {
+        char *elem = c_type_spelling(ctx, slice_element(node->type_info));
+        EMIT(ctx, "%s *_arr = ", elem);
+        zfree(elem);
+    }
     codegen_expression(ctx, node->slice.array);
-    EMIT(ctx, "; int _start = ");
+    EMIT(ctx, "; size_t _start = ");
     if (node->slice.start)
     {
         codegen_expression(ctx, node->slice.start);
@@ -215,7 +226,7 @@ void handle_expr_slice(ParserContext *ctx, ASTNode *node)
     {
         EMIT(ctx, "0");
     }
-    EMIT(ctx, "; int _len = ");
+    EMIT(ctx, "; size_t _len = ");
 
     if (node->slice.end)
     {

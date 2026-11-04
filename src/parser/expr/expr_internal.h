@@ -53,6 +53,14 @@ ASTNode *parse_typeof_expr(ParserContext *ctx, Lexer *l);
 void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
                      char **out_var_name);
 ASTNode *find_function_definition(ParserContext *ctx, const char *name);
+/** @brief Whether a slice's `..` (or `..<`) comes next, inside `[...]`. */
+int slice_follows(Lexer *l);
+/**
+ * @brief The slice `array[start..end]`, parsed from the `..` (or `..<`) after its start, which
+ * is NULL in `array[..end]`, up to and including the `]`.
+ */
+ASTNode *parse_slice_rest(ParserContext *ctx, Lexer *l, ASTNode *array, ASTNode *start,
+                          Token token);
 int type_is_unsigned(Type *t);
 char *infer_scan_format(ParserContext *ctx, ASTNode **args, int ac);
 

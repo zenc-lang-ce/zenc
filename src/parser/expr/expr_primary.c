@@ -2055,7 +2055,18 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         else if (lexer_peek(l).kind == TOK_LBRACKET)
         {
             Token bracket = lexer_next(l); // consume '['
+            // `[..end]` and `[start..end]` are slices.
+            if (slice_follows(l))
+            {
+                node = parse_slice_rest(ctx, l, node, NULL, bracket);
+                continue;
+            }
             ASTNode *index = parse_expression(ctx, l);
+            if (slice_follows(l))
+            {
+                node = parse_slice_rest(ctx, l, node, index, bracket);
+                continue;
+            }
 
             ASTNode *extra_head = NULL;
             ASTNode *extra_tail = NULL;
