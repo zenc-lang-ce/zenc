@@ -576,6 +576,11 @@ Type *slice_element(Type *t)
     return NULL;
 }
 
+int is_owning_closure(Type *t)
+{
+    return t && t->kind == TYPE_FUNCTION && t->traits.has_drop && !t->is_raw;
+}
+
 Type *tuple_of(Type *t)
 {
     if (t && t->kind == TYPE_POINTER)

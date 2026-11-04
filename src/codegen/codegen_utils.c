@@ -88,9 +88,9 @@ char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index)
 int capture_needs_drop(ParserContext *ctx, ASTNode *lambda, int index)
 {
     Type *t = lambda->lambda.captured_types_info[index];
-    if (is_owning_closure(t))
+    if (t && (t->kind == TYPE_FUNCTION || t->kind == TYPE_TUPLE))
     {
-        return 1;
+        return type_needs_drop(ctx, t);
     }
     ASTNode *def = t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name
                        ? find_struct_def(ctx, type_def_name(t))
@@ -387,6 +387,10 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
 
 char *value_drop_struct(ParserContext *ctx, ASTNode *value)
 {
+    if (value->type_info && value->type_info->kind == TYPE_TUPLE)
+    {
+        return type_needs_drop(ctx, value->type_info) ? drop_glue_name(value->type_info) : NULL;
+    }
     char *tname = NULL;
     if (value->type_info && value->type_info->kind == TYPE_STRUCT && value->type_info->name)
     {
@@ -412,9 +416,9 @@ char *value_drop_struct(ParserContext *ctx, ASTNode *value)
     return NULL;
 }
 
-int is_owning_closure(Type *t)
+char *drop_glue_name(Type *t)
 {
-    return t && t->kind == TYPE_FUNCTION && t->traits.has_drop && !t->is_raw;
+    return (t && t->kind == TYPE_TUPLE) ? type_mangle_spelling(t) : type_def_name(t);
 }
 
 int moves_drop_value(ParserContext *ctx, ASTNode *node)
@@ -436,9 +440,9 @@ int moves_drop_value(ParserContext *ctx, ASTNode *node)
     {
         return def && def->type_info && def->type_info->traits.has_drop;
     }
-    if (t->kind == TYPE_FUNCTION)
+    if (t->kind == TYPE_FUNCTION || t->kind == TYPE_TUPLE)
     {
-        return is_owning_closure(t);
+        return type_needs_drop(ctx, t);
     }
     if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
     {
