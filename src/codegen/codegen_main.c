@@ -963,7 +963,7 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         {
             if (iter->kind == NODE_IMPL)
             {
-                char *sname = iter->impl.struct_name;
+                char *sname = type_impl_name(iter->impl.target);
                 if (!sname)
                 {
                     iter = iter->next;
@@ -1011,7 +1011,7 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
             }
             if (iter->kind == NODE_IMPL_TRAIT)
             {
-                char *sname = iter->impl_trait.target_type;
+                char *sname = type_impl_name(iter->impl_trait.target);
                 if (!sname)
                 {
                     iter = iter->next;

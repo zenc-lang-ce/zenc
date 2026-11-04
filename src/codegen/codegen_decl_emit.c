@@ -237,7 +237,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
         }
         else if (f->kind == NODE_IMPL)
         {
-            char *sname = f->impl.struct_name;
+            char *sname = type_impl_name(f->impl.target);
             if (!sname)
             {
                 f = f->next;
@@ -345,7 +345,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
         }
         else if (f->kind == NODE_IMPL_TRAIT)
         {
-            char *sname = f->impl_trait.target_type;
+            char *sname = type_impl_name(f->impl_trait.target);
             if (!sname)
             {
                 f = f->next;
@@ -486,7 +486,7 @@ void emit_impl_vtables(ParserContext *ctx)
                 continue;
             }
 
-            char *strct = node->impl_trait.target_type;
+            char *strct = type_impl_name(node->impl_trait.target);
 
             // Filter templates
             char *mangled = replace_string_type(strct);

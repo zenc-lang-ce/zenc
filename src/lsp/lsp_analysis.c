@@ -904,9 +904,10 @@ static int add_impl_completions(cJSON *items, const char *type_name, int with_se
         {
             continue;
         }
-        const char *target = impl->kind == NODE_IMPL         ? impl->impl.struct_name
-                             : impl->kind == NODE_IMPL_TRAIT ? impl->impl_trait.target_type
-                                                             : NULL;
+        const char *target = impl->kind == NODE_IMPL ? type_impl_name(impl->impl.target)
+                             : impl->kind == NODE_IMPL_TRAIT
+                                 ? type_impl_name(impl->impl_trait.target)
+                                 : NULL;
         size_t target_len = target ? strlen(target) : 0;
         int same = target && target_len == base_len && strncmp(target, type_name, base_len) == 0;
         int instance = target && from_template && strncmp(type_name, target, target_len) == 0 &&
@@ -1852,12 +1853,12 @@ void lsp_workspace_symbol(const char *query, const cJSON *id)
             if (node->kind == NODE_IMPL)
             {
                 methods = node->impl.methods;
-                container = node->impl.struct_name;
+                container = type_impl_name(node->impl.target);
             }
             else if (node->kind == NODE_IMPL_TRAIT)
             {
                 methods = node->impl_trait.methods;
-                container = node->impl_trait.target_type;
+                container = type_impl_name(node->impl_trait.target);
             }
             for (ASTNode *method = methods; method && count < MAX_WORKSPACE_SYMBOLS;
                  method = method->next)

@@ -377,7 +377,7 @@ static void check_redefinitions_in(ASTNode *node, DefinedFunctions *set, int *er
         {
             for (ASTNode *m = node->impl.methods; m; m = m->next)
             {
-                check_function_definition(m, node->impl.struct_name, set, errors);
+                check_function_definition(m, type_impl_name(node->impl.target), set, errors);
             }
         }
         else if (node->kind == NODE_IMPL_TRAIT)
