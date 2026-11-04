@@ -13,7 +13,6 @@
  */
 
 // String manipulation
-char *strip_template_suffix(const char *name);
 const char *parse_original_method_name(const char *mangled);
 char *replace_string_type(const char *args);
 

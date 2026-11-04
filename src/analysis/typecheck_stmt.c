@@ -513,12 +513,6 @@ void tc_check_trait(TypeChecker *tc, ASTNode *node, int depth)
 
 void tc_check_impl(TypeChecker *tc, ASTNode *node, int depth)
 {
-    // Skip templates
-    if (type_impl_name(node->impl.target) && strchr(type_impl_name(node->impl.target), '<'))
-    {
-        return;
-    }
-
     ASTNode *method = node->impl.methods;
     while (method)
     {
@@ -529,12 +523,6 @@ void tc_check_impl(TypeChecker *tc, ASTNode *node, int depth)
 
 void tc_check_impl_trait(TypeChecker *tc, ASTNode *node, int depth)
 {
-    // Skip templates
-    if (type_impl_name(node->impl_trait.target) && strchr(type_impl_name(node->impl_trait.target), '<'))
-    {
-        return;
-    }
-
     ASTNode *method = node->impl_trait.methods;
     while (method)
     {

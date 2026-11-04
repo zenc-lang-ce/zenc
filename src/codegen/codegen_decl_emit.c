@@ -237,62 +237,13 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
         }
         else if (f->kind == NODE_IMPL)
         {
+            // An impl of a template is emitted with each instance.
+            if (impl_on_template(ctx, f))
+            {
+                f = f->next;
+                continue;
+            }
             char *sname = type_impl_name(f->impl.target);
-            if (!sname)
-            {
-                f = f->next;
-                continue;
-            }
-
-            // Resolve opaque alias (e.g. StringView -> Slice__char)
-            TypeAlias *ta = find_type_alias_node(ctx, sname);
-            const char *resolved =
-                (ta && !ta->is_opaque) ? type_mangle_spelling(ta->type_info) : NULL;
-            const char *effective_name = resolved ? resolved : sname;
-
-            char *mangled = replace_string_type(sname);
-            ASTNode *def = find_struct_def(ctx, mangled);
-            if (!def && resolved)
-            {
-                zfree(mangled);
-                mangled = replace_string_type(resolved);
-                def = find_struct_def(ctx, mangled);
-            }
-            int skip = 0;
-            if (def)
-            {
-                if (def->kind == NODE_STRUCT && def->strct.is_template)
-                {
-                    skip = 1;
-                }
-                else if (def->kind == NODE_ENUM && def->enm.is_template)
-                {
-                    skip = 1;
-                }
-            }
-            else
-            {
-                char *buf = strip_template_suffix(sname);
-                if (buf)
-                {
-                    def = find_struct_def(ctx, buf);
-                    if (def && def->strct.is_template)
-                    {
-                        skip = 1;
-                    }
-                    zfree(buf);
-                }
-            }
-            if (mangled)
-            {
-                zfree(mangled);
-            }
-
-            if (skip)
-            {
-                f = f->next;
-                continue;
-            }
 
             if (f->cfg_condition)
             {
@@ -312,21 +263,12 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 }
                 char *fname = m->func.name;
 
-                // Build proto: if fname starts with sname__, replace with effective_name__
-                char *proto = NULL;
+                // The prototype is `sname__method`: the method's name, or that name prefixed.
                 size_t slen = strlen(sname);
-                if (strncmp(fname, sname, (size_t)(slen)) == 0 && fname[slen] == '_' &&
-                    fname[slen + 1] == '_')
-                {
-                    // Replace alias prefix with resolved name
-                    const char *method_part = fname + slen; // "__method"
-                    proto = xmalloc(strlen(effective_name) + strlen(method_part) + 1);
-                    sprintf(proto, "%s%s", effective_name, method_part);
-                }
-                else
-                {
-                    proto = mangle_method_symbol(effective_name, NULL, fname);
-                }
+                char *proto =
+                    strncmp(fname, sname, slen) == 0 && fname[slen] == '_' && fname[slen + 1] == '_'
+                        ? xstrdup(fname)
+                        : mangle_method_symbol(sname, NULL, fname);
 
                 emit_func_signature(ctx, m, proto);
                 EMIT(ctx, ";\n");
@@ -345,42 +287,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
         }
         else if (f->kind == NODE_IMPL_TRAIT)
         {
-            char *sname = type_impl_name(f->impl_trait.target);
-            if (!sname)
-            {
-                f = f->next;
-                continue;
-            }
-
-            char *mangled = replace_string_type(sname);
-            ASTNode *def = find_struct_def(ctx, mangled);
-            int skip = 0;
-            if (def)
-            {
-                if (def->strct.is_template)
-                {
-                    skip = 1;
-                }
-            }
-            else
-            {
-                char *buf = strip_template_suffix(sname);
-                if (buf)
-                {
-                    def = find_struct_def(ctx, buf);
-                    if (def && def->strct.is_template)
-                    {
-                        skip = 1;
-                    }
-                    zfree(buf);
-                }
-            }
-            if (mangled)
-            {
-                zfree(mangled);
-            }
-
-            if (skip)
+            if (impl_on_template(ctx, f))
             {
                 f = f->next;
                 continue;
@@ -488,39 +395,7 @@ void emit_impl_vtables(ParserContext *ctx)
 
             char *strct = type_impl_name(node->impl_trait.target);
 
-            // Filter templates
-            char *mangled = replace_string_type(strct);
-            ASTNode *def = find_struct_def(ctx, mangled);
-            int skip = 0;
-            if (def)
-            {
-                if (def->kind == NODE_STRUCT && def->strct.is_template)
-                {
-                    skip = 1;
-                }
-                else if (def->kind == NODE_ENUM && def->enm.is_template)
-                {
-                    skip = 1;
-                }
-            }
-            else
-            {
-                char *buf = strip_template_suffix(strct);
-                if (buf)
-                {
-                    def = find_struct_def(ctx, buf);
-                    if (def && def->strct.is_template)
-                    {
-                        skip = 1;
-                    }
-                    zfree(buf);
-                }
-            }
-            if (mangled)
-            {
-                zfree(mangled);
-            }
-            if (skip)
+            if (impl_on_template(ctx, node))
             {
                 ref = ref->next;
                 continue;

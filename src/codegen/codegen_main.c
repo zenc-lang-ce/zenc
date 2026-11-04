@@ -961,95 +961,12 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         ASTNode *iter = merged_funcs;
         while (iter)
         {
-            if (iter->kind == NODE_IMPL)
+            // An impl of a template is emitted with each instance.
+            if ((iter->kind == NODE_IMPL || iter->kind == NODE_IMPL_TRAIT) &&
+                impl_on_template(ctx, iter))
             {
-                char *sname = type_impl_name(iter->impl.target);
-                if (!sname)
-                {
-                    iter = iter->next;
-                    continue;
-                }
-
-                // An impl of a template is emitted with each instance. An alias is never a
-                // template, nor is the type it names.
-                char *mangled = replace_string_type(sname);
-                ASTNode *def = find_struct_def(ctx, mangled);
-                int skip = 0;
-                if (def)
-                {
-                    if (def->kind == NODE_STRUCT && def->strct.is_template)
-                    {
-                        skip = 1;
-                    }
-                    else if (def->kind == NODE_ENUM && def->enm.is_template)
-                    {
-                        skip = 1;
-                    }
-                }
-                else
-                {
-                    char *buf = strip_template_suffix(sname);
-                    if (buf)
-                    {
-                        def = find_struct_def(ctx, buf);
-                        if (def && def->strct.is_template)
-                        {
-                            skip = 1;
-                        }
-                        zfree(buf);
-                    }
-                }
-                if (mangled)
-                {
-                    zfree(mangled);
-                }
-                if (skip)
-                {
-                    iter = iter->next;
-                    continue;
-                }
-            }
-            if (iter->kind == NODE_IMPL_TRAIT)
-            {
-                char *sname = type_impl_name(iter->impl_trait.target);
-                if (!sname)
-                {
-                    iter = iter->next;
-                    continue;
-                }
-
-                char *mangled = replace_string_type(sname);
-                ASTNode *def = find_struct_def(ctx, mangled);
-                int skip = 0;
-                if (def)
-                {
-                    if (def->strct.is_template)
-                    {
-                        skip = 1;
-                    }
-                }
-                else
-                {
-                    char *buf = strip_template_suffix(sname);
-                    if (buf)
-                    {
-                        def = find_struct_def(ctx, buf);
-                        if (def && def->strct.is_template)
-                        {
-                            skip = 1;
-                        }
-                        zfree(buf);
-                    }
-                }
-                if (mangled)
-                {
-                    zfree(mangled);
-                }
-                if (skip)
-                {
-                    iter = iter->next;
-                    continue;
-                }
+                iter = iter->next;
+                continue;
             }
             if (iter->cfg_condition)
             {
