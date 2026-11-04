@@ -1,0 +1,52 @@
+// features/closures: a local closure can be passed by value, moved to another local and
+// returned, and what it captured by value is dropped once, when the closure is.
+
+struct Tracked {
+    id: int;
+}
+
+let drops: int = 0;
+
+impl Drop for Tracked {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+fn call(f: fn(int) -> int) -> int {
+    return f(1);
+}
+
+fn make(k: int) -> fn(int) -> int {
+    let f = fn(x: int) -> int { return x + k; };
+    return f;
+}
+
+test "a local closure passed by value" {
+    let k = 10;
+    let f = fn(x: int) -> int { return x + k; };
+    let r = call(f);
+    assert(r == 11, "passed");
+}
+
+test "a local closure moved to another local" {
+    let k = 5;
+    let f = fn(x: int) -> int { return x + k; };
+    let g = f;
+    assert(g(1) == 6, "moved");
+}
+
+test "a local closure returned" {
+    let f = make(20);
+    assert(f(1) == 21, "returned");
+}
+
+test "a local closure drops what it captured" {
+    drops = 0;
+    {
+        let t = Tracked { id: 7 };
+        let f = fn() -> int { return t.id; };
+        assert(f() == 7, "called");
+    }
+    assert(drops == 1, "captured value dropped once");
+}
