@@ -394,6 +394,12 @@ char *type_def_name(Type *t)
     return t ? t->name : NULL;
 }
 
+int type_is_instance_of(Type *t, const char *tpl)
+{
+    return t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->count > 0 && t->args &&
+           t->name && strcmp(t->name, tpl) == 0;
+}
+
 Type *type_new_instance(const char *tpl, Type **args, int count)
 {
     Type *t = type_new(TYPE_STRUCT);

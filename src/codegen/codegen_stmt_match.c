@@ -202,9 +202,11 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
         EMIT(ctx, "%s _r_%d; ", ret_type, id);
     }
 
-    char *expr_type = infer_type(ctx, node->match_stmt.expr);
-    int is_option = str_is_option_type(expr_type);
-    int is_result = str_is_result_type(expr_type);
+    Type *scrutinee = get_inner_type(node->match_stmt.expr->type_info);
+    Type *subject = match_subject_type(scrutinee);
+    int is_option = type_is_instance_of(subject, "Option");
+    int is_result = type_is_instance_of(subject, "Result");
+    int subject_is_ptr = scrutinee && scrutinee->kind == TYPE_POINTER;
 
     // `has_wildcard` also decides the MISRA warnings further down.
     int has_wildcard = 0;
@@ -213,7 +215,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
         has_wildcard = has_wildcard || case_is_wildcard(chk);
     }
 
-    const char *missing = match_missing_variant(ctx, node, expr_type);
+    const char *missing = match_missing_variant(ctx, node, node->match_stmt.expr->type_info);
     if (missing && strcmp(missing, "_") != 0)
     {
         zwarn_at(node->token, "Non-exhaustive match: Missing variant '%s'", missing);
@@ -242,7 +244,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
             }
             else if (is_option)
             {
-                int m_is_ptr = has_ref_binding || (expr_type && strchr(expr_type, '*'));
+                int m_is_ptr = has_ref_binding || subject_is_ptr;
                 const char *acc = m_is_ptr ? "->" : ".";
 
                 if (case_variant(c) && strcmp(case_variant(c), "Some") == 0)
@@ -260,7 +262,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
             }
             else if (is_result)
             {
-                int m_is_ptr = has_ref_binding || (expr_type && strchr(expr_type, '*'));
+                int m_is_ptr = has_ref_binding || subject_is_ptr;
                 const char *acc = m_is_ptr ? "->" : ".";
 
                 if (case_variant(c) && strcmp(case_variant(c), "Ok") == 0)

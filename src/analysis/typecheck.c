@@ -16,15 +16,6 @@
 // ** Internal Helpers **
 
 // The type a match looks at: its subject's, through aliases and pointers (a `ref` match).
-static Type *match_subject_type(Type *scrutinee)
-{
-    Type *t = get_inner_type(scrutinee);
-    while (t && t->kind == TYPE_POINTER)
-    {
-        t = get_inner_type(t->inner);
-    }
-    return t;
-}
 
 // Type of the binding of an Option or Result case. They are structs in the standard library,
 // as codegen reads them: Some and Ok bind the field `val`, Err binds `err`.
@@ -86,7 +77,7 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
     }
     ASTNode *def = find_struct_def(tc->pctx, type_def_name(t));
     if (def && def->kind == NODE_STRUCT &&
-        (str_is_option_type(type_def_name(t)) || str_is_result_type(type_def_name(t))))
+        (type_is_instance_of(t, "Option") || type_is_instance_of(t, "Result")))
     {
         return option_result_binding_type(def, variant, count);
     }
@@ -496,9 +487,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     move_state_merge_into(&merged_state, match_initial_state);
                 }
 
-                Type *subject = match_subject_type(node->match_stmt.expr->type_info);
                 const char *missing =
-                    match_missing_variant(tc->pctx, node, subject ? type_def_name(subject) : NULL);
+                    match_missing_variant(tc->pctx, node, node->match_stmt.expr->type_info);
                 if (missing && strcmp(missing, "_") == 0 && !tc->pctx->config->misra_mode)
                 {
                     const char *hints[] = {"Add a default '_' case to handle all possibilities",

@@ -404,8 +404,20 @@ static int match_covers(ASTNode *match, const char *variant)
     return 0;
 }
 
-const char *match_missing_variant(ParserContext *ctx, ASTNode *match, const char *subject_type)
+Type *match_subject_type(Type *scrutinee)
 {
+    Type *t = get_inner_type(scrutinee);
+    while (t && t->kind == TYPE_POINTER)
+    {
+        t = get_inner_type(t->inner);
+    }
+    return t;
+}
+
+const char *match_missing_variant(ParserContext *ctx, ASTNode *match, Type *scrutinee)
+{
+    Type *subject = match_subject_type(scrutinee);
+    const char *subject_type = subject ? type_def_name(subject) : NULL;
     // A default case without a guard covers everything.
     for (ASTNode *c = match->match_stmt.cases; c; c = c->next)
     {
@@ -420,12 +432,12 @@ const char *match_missing_variant(ParserContext *ctx, ASTNode *match, const char
 
     // Option and Result are structs in the standard library, with two variants each.
     const char *pair[2] = {NULL, NULL};
-    if (str_is_option_type(subject_type))
+    if (type_is_instance_of(subject, "Option"))
     {
         pair[0] = "Some";
         pair[1] = "None";
     }
-    else if (str_is_result_type(subject_type))
+    else if (type_is_instance_of(subject, "Result"))
     {
         pair[0] = "Ok";
         pair[1] = "Err";

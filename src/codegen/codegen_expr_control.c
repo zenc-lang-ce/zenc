@@ -173,14 +173,16 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
     // The constructor name (Result__int32_t__Err, Option__X__None, ...) is
     // therefore derived from the function's return type, falling back to the
     // expression's type when the function does not return a Result/Option.
+    Type *ret_type = ctx->cg.current_func_ret_type_info;
     const char *ret_name = func_ret_name ? str_strip_struct_prefix(func_ret_name) : NULL;
-    if (!ret_name || !(str_is_result_type(ret_name) || str_is_option_type(ret_name)))
+    if (!type_is_instance_of(ret_type, "Result") && !type_is_instance_of(ret_type, "Option"))
     {
         ret_name = search_name;
     }
 
     int is_enum = type_is_enum(ctx, search_name);
-    int is_option = str_is_option_type(search_name);
+    int is_option =
+        type_is_instance_of(expr_type && expr_type->name ? expr_type : ret_type, "Option");
 
     EMIT(ctx, "({ ");
     emit_auto_type(ctx, node->try_stmt.expr, node->token);

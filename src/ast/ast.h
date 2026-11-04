@@ -818,6 +818,11 @@ Type *type_new_instance(const char *tpl, Type **args, int count);
  * parameter (`Vec<T>` inside the template), the template's.
  */
 char *type_def_name(Type *t);
+
+/**
+ * @brief Whether `t` is an instance of the generic `tpl` (`Option<int>` of "Option").
+ */
+int type_is_instance_of(Type *t, const char *tpl);
 /** @brief Whether `t` is the generic parameter `param` (`T`). */
 int type_is_generic_param(Type *t, const char *param);
 /** @brief The element type of a slice, `[T]` or `Slice<T>`; NULL if `t` is not one. */
