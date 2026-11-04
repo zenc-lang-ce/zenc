@@ -513,7 +513,9 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, "*");
             }
             codegen_expression(ctx, node->ret.value);
-            EMIT(ctx, "; memset(&");
+            // A `const` variable is still owned: it is cleared through a mutable pointer.
+            Type *ret_type = node->ret.value->type_info;
+            EMIT(ctx, "; memset(%s&", (ret_type && ret_type->is_const) ? "(void *)" : "");
             if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
             {
                 EMIT(ctx, "*");
