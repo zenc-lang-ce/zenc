@@ -18,7 +18,7 @@
  * (`grep -rn FF_COMPATIBILITY_0_5 src tests`).
  */
 #ifndef FF_COMPATIBILITY_0_5
-#define FF_COMPATIBILITY_0_5 1
+#define FF_COMPATIBILITY_0_5 0
 #endif
 
 #endif
