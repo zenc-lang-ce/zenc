@@ -865,6 +865,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         while (elem)
         {
             check_node(tc, elem, depth + 1);
+            check_move_for_rvalue(tc, elem);
             elem = elem->next;
         }
     }
