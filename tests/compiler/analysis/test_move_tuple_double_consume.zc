@@ -1,0 +1,12 @@
+// EXPECT: FAIL
+// compiler/analysis: test_move_tuple_double_consume  --  should fail compilation
+// A tuple that holds a value with Drop is moved like a struct with such a field.
+import "std/string.zc"
+
+fn consume(t: (String, int)) {}
+
+fn main() {
+    let t = (String::new("hello"), 1);
+    consume(t);
+    consume(t);
+}

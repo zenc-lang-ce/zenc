@@ -1,0 +1,12 @@
+// EXPECT: FAIL
+// compiler/analysis: test_move_tuple_literal_element  --  should fail compilation
+// A tuple literal moves the values it is built from, like a struct literal.
+import "std/string.zc"
+
+fn consume(t: (String, int)) {}
+
+fn main() {
+    let s = String::new("hello");
+    consume((s, 1));
+    consume((s, 2));
+}
