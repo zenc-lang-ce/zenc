@@ -1180,6 +1180,32 @@ ASTNode *parse_char_literal(Token t)
     return node;
 }
 
+// Whether `ty`, read where a type or an expression may follow (`sizeof(x)`), names a variable
+// instead of a type: its base, or an element of a tuple (`sizeof((a, b))`), is a symbol and not
+// a type.
+static int type_names_variable(ParserContext *ctx, Type *ty)
+{
+    Type *base = ty;
+    while (base->inner)
+    {
+        base = base->inner;
+    }
+    if (base->kind == TYPE_TUPLE)
+    {
+        for (int i = 0; i < base->count; i++)
+        {
+            if (type_names_variable(ctx, base->args[i]))
+            {
+                return 1;
+            }
+        }
+        return 0;
+    }
+    return base->kind == TYPE_STRUCT && base->name && !is_primitive_type_name(base->name) &&
+           !find_struct_def(ctx, type_def_name(base)) && !find_type_alias_node(ctx, base->name) &&
+           find_symbol_entry(ctx, base->name);
+}
+
 ASTNode *parse_size_or_typeof(ParserContext *ctx, Lexer *l, Token tk, int is_typeof)
 {
     if (lexer_peek(l).kind != TOK_LPAREN)
@@ -1200,26 +1226,9 @@ ASTNode *parse_size_or_typeof(ParserContext *ctx, Lexer *l, Token tk, int is_typ
         return NULL;
     }
 
-    int is_actually_var = 0;
-    if (ty->kind != TYPE_UNKNOWN)
-    {
-        Type *base = ty;
-        while (base->inner)
-        {
-            base = base->inner;
-        }
-        if (base->kind == TYPE_STRUCT && base->name)
-        {
-            if (!is_primitive_type_name(base->name) && !find_struct_def(ctx, type_def_name(base)) &&
-                !find_type_alias_node(ctx, base->name) && find_symbol_entry(ctx, base->name))
-            {
-                is_actually_var = 1;
-            }
-        }
-    }
-
     ASTNode *node;
-    if (ty->kind != TYPE_UNKNOWN && !is_actually_var && lexer_peek(l).kind == TOK_RPAREN)
+    if (ty->kind != TYPE_UNKNOWN && !type_names_variable(ctx, ty) &&
+        lexer_peek(l).kind == TOK_RPAREN)
     {
         lexer_next(l);
         node = ast_create(is_typeof ? NODE_TYPEOF : NODE_EXPR_SIZEOF);
