@@ -571,3 +571,11 @@ int is_simple_enum(ParserContext *ctx, const char *enum_name)
     }
     return 1;
 }
+
+int impl_on_template(ParserContext *ctx, ASTNode *impl)
+{
+    Type *target = impl->kind == NODE_IMPL ? impl->impl.target : impl->impl_trait.target;
+    ASTNode *def = target ? find_struct_def(ctx, type_impl_name(target)) : NULL;
+    return def && ((def->kind == NODE_STRUCT && def->strct.is_template) ||
+                   (def->kind == NODE_ENUM && def->enm.is_template));
+}

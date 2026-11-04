@@ -115,7 +115,7 @@ void handle_node_block(ParserContext *ctx, ASTNode *node)
 
 void handle_node_impl(ParserContext *ctx, ASTNode *node)
 {
-    ctx->cg.current_impl_type = node->impl.struct_name;
+    ctx->cg.current_impl_type = type_impl_name(node->impl.target);
     codegen_walker(ctx, node->impl.methods);
     ctx->cg.current_impl_type = NULL;
 }
@@ -363,7 +363,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
 
 void handle_node_impl_trait(ParserContext *ctx, ASTNode *node)
 {
-    ctx->cg.current_impl_type = node->impl_trait.target_type;
+    ctx->cg.current_impl_type = type_impl_name(node->impl_trait.target);
     codegen_walker(ctx, node->impl_trait.methods);
     ctx->cg.current_impl_type = NULL;
 }

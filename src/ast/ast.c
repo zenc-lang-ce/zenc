@@ -400,6 +400,15 @@ int type_is_instance_of(Type *t, const char *tpl)
            t->name && strcmp(t->name, tpl) == 0;
 }
 
+char *type_impl_name(Type *t)
+{
+    if (t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM || t->kind == TYPE_ALIAS))
+    {
+        return type_def_name(t);
+    }
+    return t ? type_mangle_spelling(t) : NULL;
+}
+
 Type *type_new_instance(const char *tpl, Type **args, int count)
 {
     Type *t = type_new(TYPE_STRUCT);

@@ -629,13 +629,13 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
 
     case NODE_IMPL:
         // instantiate_methods names the copy after the instance.
-        new_node->impl.struct_name = xstrdup(n->impl.struct_name);
+        new_node->impl.target = n->impl.target;
         new_node->impl.methods = copy_ast_replacing(ctx, n->impl.methods, b, os, ns);
         break;
     case NODE_IMPL_TRAIT:
         new_node->impl_trait.trait_name =
             n->impl_trait.trait_name ? xstrdup(n->impl_trait.trait_name) : NULL;
-        new_node->impl_trait.target_type = xstrdup(n->impl_trait.target_type);
+        new_node->impl_trait.target = n->impl_trait.target;
         new_node->impl_trait.methods = copy_ast_replacing(ctx, n->impl_trait.methods, b, os, ns);
         break;
     case NODE_TYPEOF:

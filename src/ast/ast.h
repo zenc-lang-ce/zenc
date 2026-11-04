@@ -552,14 +552,14 @@ struct ASTNode
 
         struct
         {
-            char *struct_name;
+            Type *target; // the type the methods belong to; type_impl_name gives their prefix
             ASTNode *methods;
         } impl;
 
         struct
         {
             char *trait_name;
-            char *target_type;
+            Type *target; // the type the methods belong to; type_impl_name gives their prefix
             ASTNode *methods;
         } impl_trait;
 
@@ -823,6 +823,13 @@ char *type_def_name(Type *t);
  * @brief Whether `t` is an instance of the generic `tpl` (`Option<int>` of "Option").
  */
 int type_is_instance_of(Type *t, const char *tpl);
+
+/**
+ * @brief The name the methods of an `impl` on `t` are registered under (`Point__len`): its
+ * type_def_name for a struct, an enum or an opaque alias, and the spelling of a C name for
+ * any other type (`uint32_t` for `impl Meters` with `alias Meters = u32`).
+ */
+char *type_impl_name(Type *t);
 /** @brief Whether `t` is the generic parameter `param` (`T`). */
 int type_is_generic_param(Type *t, const char *param);
 /** @brief The element type of a slice, `[T]` or `Slice<T>`; NULL if `t` is not one. */

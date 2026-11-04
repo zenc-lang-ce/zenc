@@ -531,7 +531,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                     while (ref)
                                     {
                                         if (ref->node && ref->node->kind == NODE_IMPL_TRAIT &&
-                                            strcmp(ref->node->impl_trait.target_type, acc) == 0)
+                                            strcmp(type_impl_name(ref->node->impl_trait.target),
+                                                   acc) == 0)
                                         {
                                             const char *tname = ref->node->impl_trait.trait_name;
                                             char *t_m =

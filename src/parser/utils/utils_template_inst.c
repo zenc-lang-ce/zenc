@@ -218,15 +218,16 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
     it->impl_node->next = backup_next; // Restore
 
     ASTNode *meth = NULL;
+    Type *target = type_new_instance(it->struct_name, args, count);
 
     if (new_impl->kind == NODE_IMPL)
     {
-        new_impl->impl.struct_name = xstrdup(mangled_struct_name);
+        new_impl->impl.target = target;
         meth = new_impl->impl.methods;
     }
     else if (new_impl->kind == NODE_IMPL_TRAIT)
     {
-        new_impl->impl_trait.target_type = xstrdup(mangled_struct_name);
+        new_impl->impl_trait.target = target;
         meth = new_impl->impl_trait.methods;
     }
 

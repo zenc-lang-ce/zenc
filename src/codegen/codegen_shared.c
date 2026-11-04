@@ -8,24 +8,6 @@
 
 // String manipulation
 
-char *strip_template_suffix(const char *name)
-{
-    if (!name)
-    {
-        return NULL;
-    }
-    char *lt = (char *)strchr(name, '<');
-    if (lt)
-    {
-        ptrdiff_t len = lt - name;
-        char *buf = xmalloc((size_t)(len + 1));
-        strncpy(buf, name, (size_t)(len));
-        buf[len] = 0;
-        return buf;
-    }
-    return xstrdup(name);
-}
-
 const char *parse_original_method_name(const char *mangled)
 {
     const char *sep = (char *)strstr(mangled, "__");

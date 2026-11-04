@@ -171,7 +171,7 @@ static FuncSig *find_method_sig(ParserContext *ctx, const char *struct_name, con
     {
         if (ref->node && ref->node->kind == NODE_IMPL_TRAIT)
         {
-            const char *t_struct = ref->node->impl_trait.target_type;
+            const char *t_struct = type_impl_name(ref->node->impl_trait.target);
             if (t_struct && strcmp(t_struct, struct_name) == 0)
             {
                 char *trait_mangled =

@@ -959,7 +959,7 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                     while (ref)
                     {
                         if (ref->node && ref->node->kind == NODE_IMPL_TRAIT &&
-                            strcmp(ref->node->impl_trait.target_type, base) == 0)
+                            strcmp(type_impl_name(ref->node->impl_trait.target), base) == 0)
                         {
                             char *trait_mangled = mangle_method_symbol(
                                 base, ref->node->impl_trait.trait_name, method);
