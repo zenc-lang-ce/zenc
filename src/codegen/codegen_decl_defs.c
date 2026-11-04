@@ -289,13 +289,9 @@ void emit_lambda_defs(ParserContext *ctx)
                 int by_ref = node->lambda.capture_modes && node->lambda.capture_modes[i] == 1;
                 emit_lambda_ctx_field(ctx, capture_c_type(ctx, node, i),
                                       c_name(ctx, node->lambda.captured_vars[i]), by_ref);
-                if (!by_ref)
+                if (!by_ref && capture_needs_drop(ctx, node, i))
                 {
-                    ASTNode *fdef = capture_struct_def(ctx, node, i);
-                    if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
-                    {
-                        EMIT(ctx, "int __z_drop_flag_%s;\n", node->lambda.captured_vars[i]);
-                    }
+                    EMIT(ctx, "int __z_drop_flag_%s;\n", node->lambda.captured_vars[i]);
                 }
             }
             emitter_dedent(&ctx->cg.emitter);
@@ -309,15 +305,23 @@ void emit_lambda_defs(ParserContext *ctx)
 
             for (int i = 0; i < node->lambda.capture_count; i++)
             {
-                if (node->lambda.capture_modes && node->lambda.capture_modes[i] == 0)
+                if (node->lambda.capture_modes && node->lambda.capture_modes[i] == 0 &&
+                    capture_needs_drop(ctx, node, i))
                 {
-                    ASTNode *fdef = capture_struct_def(ctx, node, i);
-                    if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
+                    const char *flag = node->lambda.captured_vars[i];
+                    const char *var = c_name(ctx, flag);
+                    Type *captured = node->lambda.captured_types_info[i];
+                    if (is_owning_closure(captured))
                     {
-                        EMIT(ctx, "if (ctx->__z_drop_flag_%s) %s__Drop__glue(&ctx->%s);\n",
-                             node->lambda.captured_vars[i],
-                             type_def_name(node->lambda.captured_types_info[i]),
-                             c_name(ctx, node->lambda.captured_vars[i]));
+                        EMIT(ctx,
+                             "if (ctx->__z_drop_flag_%s && ctx->%s.drop) "
+                             "ctx->%s.drop(ctx->%s.ctx);\n",
+                             flag, var, var, var);
+                    }
+                    else
+                    {
+                        EMIT(ctx, "if (ctx->__z_drop_flag_%s) %s__Drop__glue(&ctx->%s);\n", flag,
+                             type_def_name(captured), var);
                     }
                 }
             }

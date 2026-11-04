@@ -490,6 +490,11 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
                              field->field.name);
                     }
                 }
+                else if (is_owning_closure(ft))
+                {
+                    const char *f = field->field.name;
+                    EMIT(ctx, "    if (self->%s.drop) self->%s.drop(self->%s.ctx);\n", f, f, f);
+                }
                 field = field->next;
             }
             EMIT(ctx, "}\n\n");

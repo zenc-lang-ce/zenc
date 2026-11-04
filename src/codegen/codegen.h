@@ -91,9 +91,10 @@ char *declared_c_type(ParserContext *ctx, ASTNode *decl);
  */
 char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index);
 /**
- * @brief The struct that capture `index` of a lambda holds by value, or NULL.
+ * @brief Whether the value of capture `index` of a lambda needs dropping with the lambda's
+ *        context, if it is captured by value: a struct or enum with Drop, or an owning closure.
  */
-ASTNode *capture_struct_def(ParserContext *ctx, ASTNode *lambda, int index);
+int capture_needs_drop(ParserContext *ctx, ASTNode *lambda, int index);
 void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t);
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr);
 void emit_rvalue_address(ParserContext *ctx, ASTNode *expr);
