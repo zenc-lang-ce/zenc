@@ -943,6 +943,13 @@ void register_type_alias(ParserContext *ctx, const char *alias, Type *type, int 
                          const char *defined_in_file, Token tok, int is_export);
 /** @brief The type of a slice of `elem`, `[T]`: the instance `Slice<T>` of a built-in template. */
 Type *instantiate_slice(ParserContext *ctx, Type *elem, Token token);
+#if FF_COMPATIBILITY_0_5
+/**
+ * @brief The slice a 0.5.1 name stands for (`Slice_char` is `Slice<char>`), or NULL when the
+ * name is not `Slice_` followed by a primitive, a struct, an enum or an alias.
+ */
+Type *compat_slice_from_name(ParserContext *ctx, const char *name, Token token);
+#endif
 void register_lambda(ParserContext *ctx, ASTNode *node);
 void register_template(ParserContext *ctx, const char *name, ASTNode *node);
 void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag);

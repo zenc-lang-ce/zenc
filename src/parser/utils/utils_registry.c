@@ -316,6 +316,28 @@ Type *instantiate_slice(ParserContext *ctx, Type *elem, Token token)
     return slice;
 }
 
+#if FF_COMPATIBILITY_0_5
+Type *compat_slice_from_name(ParserContext *ctx, const char *name, Token token)
+{
+    if (strncmp(name, "Slice_", 6) != 0 || name[6] == '_' || name[6] == '\0')
+    {
+        return NULL;
+    }
+    const char *elem_name = name + 6;
+    TypeKind kind = find_primitive_kind(elem_name);
+    Type *elem = NULL;
+    if (kind != TYPE_UNKNOWN)
+    {
+        elem = type_new(kind);
+    }
+    else if (find_type_alias_node(ctx, elem_name) || find_struct_def(ctx, elem_name))
+    {
+        elem = type_from_name(ctx, elem_name);
+    }
+    return elem ? instantiate_slice(ctx, elem, token) : NULL;
+}
+#endif
+
 void register_tuple(ParserContext *ctx, Type *tuple)
 {
     char *struct_name = type_mangle_spelling(tuple);

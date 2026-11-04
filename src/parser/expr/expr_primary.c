@@ -1007,6 +1007,12 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     acc = xstrdup(ctx->current_impl_struct);
                 }
+#if FF_COMPATIBILITY_0_5
+                if (!generic_type)
+                {
+                    generic_type = compat_slice_from_name(ctx, acc, t);
+                }
+#endif
                 char *struct_name = acc;
                 if (!ctx->imports.current_module_prefix)
                 {

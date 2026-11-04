@@ -20,3 +20,7 @@ fn main() {
     let w = weights();
     printf("%d %d %d\n", (int)w.len, (int)local_weights().len, (int)table().len);
 }
+
+// FF_COMPATIBILITY_0_5 (src/feature_flags.h): while it is on, weights() copies its literal to
+// the heap as in 0.5.1, and the .expected holds only the local array error. With the flag
+// off, the literal is an error too.

@@ -240,12 +240,16 @@ void handle_expr_slice(ParserContext *ctx, ASTNode *node)
 
     if (is_slice_struct)
     {
-        EMIT(ctx, "(%s){ .data = _arr.data + _start, .len = _len }; })", tname);
+        EMIT(ctx, "(%s){ .data = _arr.data + _start, .len = _len", tname);
     }
     else
     {
-        EMIT(ctx, "(%s){ .data = _arr + _start, .len = _len }; })", tname);
+        EMIT(ctx, "(%s){ .data = _arr + _start, .len = _len", tname);
     }
+#if FF_COMPATIBILITY_0_5
+    EMIT(ctx, ", .cap = _len");
+#endif
+    EMIT(ctx, " }; })");
     if (tname && strcmp(tname, "unknown") != 0)
     {
         zfree(tname);

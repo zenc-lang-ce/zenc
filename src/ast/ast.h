@@ -13,6 +13,7 @@
 #define AST_H
 
 #include "token.h"
+#include "../feature_flags.h"
 #include <stdlib.h>
 
 typedef struct ParserContext ParserContext;
@@ -503,6 +504,9 @@ struct ASTNode
         {
             ASTNode *elements;
             int count;
+#if FF_COMPATIBILITY_0_5
+            int returned_as_slice; // `return [..]` in a `-> [T]`: copied to the heap
+#endif
         } array_literal;
 
         struct

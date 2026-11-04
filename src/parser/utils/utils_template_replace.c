@@ -734,6 +734,9 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         new_node->array_literal.elements =
             copy_ast_replacing(ctx, n->array_literal.elements, b, os, ns);
         new_node->array_literal.count = n->array_literal.count;
+#if FF_COMPATIBILITY_0_5
+        new_node->array_literal.returned_as_slice = n->array_literal.returned_as_slice;
+#endif
         break;
     case NODE_EXPR_TUPLE_LITERAL:
         new_node->tuple_literal.elements =

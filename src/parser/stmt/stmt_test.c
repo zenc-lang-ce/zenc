@@ -215,6 +215,14 @@ static void check_returned_slice(ParserContext *ctx, ASTNode *value)
         return;
     }
     const char *what = NULL;
+#if FF_COMPATIBILITY_0_5
+    if (value->kind == NODE_EXPR_ARRAY_LITERAL)
+    {
+        // As in 0.5.1, the literal is copied to the heap (emit_array_as_slice).
+        value->array_literal.returned_as_slice = 1;
+        return;
+    }
+#endif
     if (value->kind == NODE_EXPR_ARRAY_LITERAL)
     {
         what = "an array literal";
