@@ -62,7 +62,6 @@ static void emit_freestanding_preamble(ParserContext *ctx)
          "_Generic((x), _Bool: _z_bool_str(_z_safe_bool(x)) _z_128_arg_map(x), default: (x))\n");
     EMIT(ctx, "%s",
          "typedef struct { void *func; void *ctx; void (*drop)(void*); } z_closure_T;\n");
-    EMIT(ctx, "%s", "static void *_z_closure_ctx_stash[256];\n");
 
     // In true freestanding, explicit definitions of z_malloc/etc are removed.
     // The user must implement them if they use features requiring them.
@@ -167,7 +166,6 @@ void emit_preamble(ParserContext *ctx)
              "static\n#else\n#define ZC_FUNC\n#define ZC_GLOBAL\n#endif\n");
         EMIT(ctx, "%s",
              "typedef struct { void *func; void *ctx; void (*drop)(void*); } z_closure_T;\n");
-        EMIT(ctx, "%s", "static __attribute__((unused)) void *_z_closure_ctx_stash[256];\n");
         EMIT(ctx, "%s",
              "typedef void U0;\ntypedef int8_t I8;\ntypedef uint8_t U8;\ntypedef int16_t "
              "I16;\ntypedef uint16_t U16;\n");

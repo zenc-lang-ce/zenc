@@ -480,7 +480,6 @@ static void add_symbol_local(ParserContext *ctx, const char *name, Type *type_in
 
 void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 {
-    int saved_closure_frees = ctx->cg.pending_closure_free_count;
 
     if (strcmp(node->var_decl.name, "_") == 0 && node->var_decl.init_expr)
     {
@@ -694,8 +693,6 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             }
         }
     }
-
-    ctx->cg.pending_closure_free_count = saved_closure_frees;
 }
 
 void handle_node_const(ParserContext *ctx, ASTNode *node)
