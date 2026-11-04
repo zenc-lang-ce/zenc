@@ -288,7 +288,7 @@ void emit_lambda_defs(ParserContext *ctx)
             {
                 int by_ref = node->lambda.capture_modes && node->lambda.capture_modes[i] == 1;
                 emit_lambda_ctx_field(ctx, capture_c_type(ctx, node, i),
-                                      node->lambda.captured_vars[i], by_ref);
+                                      c_name(ctx, node->lambda.captured_vars[i]), by_ref);
                 if (!by_ref)
                 {
                     ASTNode *fdef = capture_struct_def(ctx, node, i);
@@ -317,7 +317,7 @@ void emit_lambda_defs(ParserContext *ctx)
                         EMIT(ctx, "if (ctx->__z_drop_flag_%s) %s__Drop__glue(&ctx->%s);\n",
                              node->lambda.captured_vars[i],
                              type_def_name(node->lambda.captured_types_info[i]),
-                             node->lambda.captured_vars[i]);
+                             c_name(ctx, node->lambda.captured_vars[i]));
                     }
                 }
             }
@@ -349,7 +349,7 @@ void emit_lambda_defs(ParserContext *ctx)
             Type *param = node->type_info->args[i];
             const char *param_c_type =
                 (param && param->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, param) : "void*";
-            EMIT(ctx, "%s %s", param_c_type, node->lambda.param_names[i]);
+            EMIT(ctx, "%s %s", param_c_type, c_name(ctx, node->lambda.param_names[i]));
         }
         EMIT(ctx, ") {\n");
         emitter_indent(&ctx->cg.emitter);

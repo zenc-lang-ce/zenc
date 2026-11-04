@@ -880,6 +880,12 @@ EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name);
  *        when it has none. A CNameLookup over a ParserContext.
  */
 const char *link_name_of(void *ctx, const char *name);
+/**
+ * @brief The C name a struct or enum definition takes: its @link_name (`link_name`, may be
+ *        NULL), else `name__zc` when `name` is a keyword of the C or C++ being generated, else
+ *        NULL (the definition goes by its name).
+ */
+char *definition_link_name(ParserContext *ctx, const char *link_name, const char *name);
 EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,
                                      const char *variant_name);
 /**

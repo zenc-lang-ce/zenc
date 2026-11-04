@@ -355,6 +355,16 @@ EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name)
     return NULL;
 }
 
+char *definition_link_name(ParserContext *ctx, const char *link_name, const char *name)
+{
+    if (link_name)
+    {
+        return xstrdup(link_name);
+    }
+    const char *safe = c_safe_name(name, ctx->config->use_cpp);
+    return safe != name ? (char *)safe : NULL;
+}
+
 const char *link_name_of(void *ctx, const char *name)
 {
     ASTNode *def = find_struct_def((ParserContext *)ctx, name);

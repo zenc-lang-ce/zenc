@@ -74,7 +74,7 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
                 else
                 {
                     emit_auto_type(ctx, node->var_decl.init_expr, node->token);
-                    EMIT(ctx, " %s", node->var_decl.name);
+                    EMIT(ctx, " %s", c_name(ctx, node->var_decl.name));
                 }
                 if (inferred)
                 {

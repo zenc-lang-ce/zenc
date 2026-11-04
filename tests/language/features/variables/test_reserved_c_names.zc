@@ -1,0 +1,113 @@
+// Names that are keywords of C or C++ (`class`, `new`, `bool`...) are valid Zen C names: codegen
+// writes them under another name, in C and with --cpp.
+import "std/option.zc"
+
+struct Node {
+    private: int;
+    class: int;
+}
+
+struct public {
+    template: int;
+}
+
+enum Shape {
+    Circle(int),
+    Empty
+}
+
+let virtual: int = 3;
+def mutable = 4;
+
+fn explicit(new: int, delete: int) -> int {
+    return new - delete;
+}
+
+fn namespace() -> int {
+    return 7;
+}
+
+impl Node {
+    fn sum(self, friend: int) -> int {
+        return self.private + self.class + friend;
+    }
+}
+
+fn first(this: Option<int>) -> int {
+    match this {
+        Some(operator) => { return operator; },
+        None => { return 0; }
+    }
+    return 0;
+}
+
+fn radius(s: Shape) -> int {
+    match s {
+        Circle(typename) => { return typename; },
+        Empty => { return 0; }
+    }
+    return 0;
+}
+
+test "locals, parameters and functions" {
+    let class = 1;
+    let bool = 2;
+    assert(class + bool == 3, "locals");
+    assert(explicit(5, 2) == 3, "parameters");
+    assert(namespace() == 7, "a function");
+    assert(virtual + mutable == 7, "a global and a constant");
+}
+
+test "fields, struct literals and methods" {
+    let n = Node{private: 1, class: 2};
+    assert(n.private + n.class == 3, "fields");
+    assert(n.sum(4) == 7, "a method's parameter");
+    let p = public{template: 5};
+    assert(p.template == 5, "a struct's name");
+}
+
+test "bindings, loops, captures and f-strings" {
+    assert(first(Option<int>::Some(9)) == 9, "a match binding");
+    assert(radius(Shape::Circle(4)) == 4, "a variant's binding");
+    let total = 0;
+    for new in 0..3 {
+        total = total + new;
+    }
+    assert(total == 3, "a loop variable");
+    let this = 10;
+    let add = fn[=](x: int) -> int { return x + this; };
+    assert(add(1) == 11, "a capture");
+    let (try, catch) = (1, 2);
+    assert(try + catch == 3, "a destructuring");
+    let s = f"{this}";
+    assert(strcmp(s, "10") == 0, "an f-string");
+}
+
+struct FieldInfo {
+    name: char*;
+    kind: char*;
+    offset: u64;
+}
+
+enum class {
+    Small,
+    Large(int)
+}
+
+fn size_of(c: class) -> int {
+    match c {
+        Small => { return 1; },
+        Large(n) => { return n; }
+    }
+    return 0;
+}
+
+test "lambda parameters, enums and reflection" {
+    let twice = fn(this: int) -> int { return this * 2; };
+    assert(twice(4) == 8, "a lambda's parameter");
+    assert(size_of(class::Large(5)) == 5, "an enum's name");
+    let table = @fields(Node);
+    let fields = (FieldInfo*)table;
+    assert(strcmp(fields[0].name, "private") == 0, "reflection names a field as the program does");
+    assert(fields[1].offset == 4, "the offset of a field");
+}

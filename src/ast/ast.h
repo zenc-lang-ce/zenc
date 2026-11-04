@@ -820,6 +820,13 @@ Type *type_new_instance(const char *tpl, Type **args, int count);
 char *type_def_name(Type *t);
 
 /**
+ * @brief The name a program's identifier takes in the generated code: `name` itself, or
+ * `name__zc` when it is a keyword of C, or of C++ when `cpp` is set (`class`, `new`). A C++
+ * keyword is a valid name in C, and can be the name of a C declaration (a field `class`).
+ */
+const char *c_safe_name(const char *name, int cpp);
+
+/**
  * @brief Whether `t` is an instance of the generic `tpl` (`Option<int>` of "Option").
  */
 int type_is_instance_of(Type *t, const char *tpl);

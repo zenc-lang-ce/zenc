@@ -163,14 +163,14 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 char *declared = declared_c_type(ctx, v);
                 if (declared)
                 {
-                    EMIT(ctx, "%s %s = (%s)(", declared, v->var_decl.name, declared);
+                    EMIT(ctx, "%s %s = (%s)(", declared, c_name(ctx, v->var_decl.name), declared);
                     codegen_expression(ctx, v->var_decl.init_expr);
                     EMIT(ctx, ")");
                 }
                 else
                 {
                     emit_auto_type(ctx, v->var_decl.init_expr, v->token);
-                    EMIT(ctx, " %s = ", v->var_decl.name);
+                    EMIT(ctx, " %s = ", c_name(ctx, v->var_decl.name));
                     codegen_expression(ctx, v->var_decl.init_expr);
                 }
             }
@@ -261,37 +261,37 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         {
             EMIT(ctx, "__typeof__((");
             codegen_expression(ctx, node->for_range.start);
-            EMIT(ctx, ")) %s = ", node->for_range.var_name);
+            EMIT(ctx, ")) %s = ", c_name(ctx, node->for_range.var_name));
         }
         else
         {
-            EMIT(ctx, "ZC_AUTO %s = ", node->for_range.var_name);
+            EMIT(ctx, "ZC_AUTO %s = ", c_name(ctx, node->for_range.var_name));
         }
         codegen_expression(ctx, node->for_range.start);
         if (node->for_range.step && node->for_range.step[0] == '-')
         {
             if (node->for_range.is_inclusive)
             {
-                EMIT(ctx, "; %s >= ", node->for_range.var_name);
+                EMIT(ctx, "; %s >= ", c_name(ctx, node->for_range.var_name));
             }
             else
             {
-                EMIT(ctx, "; %s > ", node->for_range.var_name);
+                EMIT(ctx, "; %s > ", c_name(ctx, node->for_range.var_name));
             }
         }
         else
         {
             if (node->for_range.is_inclusive)
             {
-                EMIT(ctx, "; %s <= ", node->for_range.var_name);
+                EMIT(ctx, "; %s <= ", c_name(ctx, node->for_range.var_name));
             }
             else
             {
-                EMIT(ctx, "; %s < ", node->for_range.var_name);
+                EMIT(ctx, "; %s < ", c_name(ctx, node->for_range.var_name));
             }
         }
         codegen_expression(ctx, node->for_range.end);
-        EMIT(ctx, "; %s", node->for_range.var_name);
+        EMIT(ctx, "; %s", c_name(ctx, node->for_range.var_name));
         if (node->for_range.step)
         {
             EMIT(ctx, " += %s) ", node->for_range.step);
@@ -677,11 +677,11 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         char *lt = infer_type(ctx, node->member.target);
         if (lt && (lt[strlen(lt) - 1] == '*' || strstr(lt, "*")))
         {
-            EMIT(ctx, "->%s", node->member.field);
+            EMIT(ctx, "->%s", c_name(ctx, node->member.field));
         }
         else
         {
-            EMIT(ctx, ".%s", node->member.field);
+            EMIT(ctx, ".%s", c_name(ctx, node->member.field));
         }
         if (lt)
         {

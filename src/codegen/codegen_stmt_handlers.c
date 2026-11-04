@@ -412,11 +412,12 @@ void handle_node_destruct_var(ParserContext *ctx, ASTNode *node)
         if (z_path_match_compiler(ctx->config->cc, "tcc"))
         {
             EMIT(ctx, "__typeof__(_tmp_%d.%s) %s = _tmp_%d.%s;\n", id, check,
-                 node->destruct.names[0], id, check);
+                 c_name(ctx, node->destruct.names[0]), id, check);
         }
         else
         {
-            EMIT(ctx, "ZC_AUTO %s = _tmp_%d.%s;\n", node->destruct.names[0], id, check);
+            EMIT(ctx, "ZC_AUTO %s = _tmp_%d.%s;\n", c_name(ctx, node->destruct.names[0]), id,
+                 check);
         }
     }
     else
@@ -426,16 +427,18 @@ void handle_node_destruct_var(ParserContext *ctx, ASTNode *node)
             emit_source_mapping_duplicate(ctx, node);
             if (node->destruct.is_struct_destruct)
             {
-                char *field = node->destruct.field_names ? node->destruct.field_names[i]
-                                                         : node->destruct.names[i];
+                const char *field =
+                    c_name(ctx, node->destruct.field_names ? node->destruct.field_names[i]
+                                                           : node->destruct.names[i]);
                 if (z_path_match_compiler(ctx->config->cc, "tcc"))
                 {
                     EMIT(ctx, "__typeof__(_tmp_%d.%s) %s = _tmp_%d.%s;\n", id, field,
-                         node->destruct.names[i], id, field);
+                         c_name(ctx, node->destruct.names[i]), id, field);
                 }
                 else
                 {
-                    EMIT(ctx, "ZC_AUTO %s = _tmp_%d.%s;\n", node->destruct.names[i], id, field);
+                    EMIT(ctx, "ZC_AUTO %s = _tmp_%d.%s;\n", c_name(ctx, node->destruct.names[i]),
+                         id, field);
                 }
             }
             else
@@ -445,16 +448,17 @@ void handle_node_destruct_var(ParserContext *ctx, ASTNode *node)
                 if (explicit_type)
                 {
                     EMIT(ctx, "%s %s = _tmp_%d.v%d;\n", c_type_spelling(ctx, explicit_type),
-                         node->destruct.names[i], id, i);
+                         c_name(ctx, node->destruct.names[i]), id, i);
                 }
                 else if (z_path_match_compiler(ctx->config->cc, "tcc"))
                 {
                     EMIT(ctx, "__typeof__(_tmp_%d.v%d) %s = _tmp_%d.v%d;\n", id, i,
-                         node->destruct.names[i], id, i);
+                         c_name(ctx, node->destruct.names[i]), id, i);
                 }
                 else
                 {
-                    EMIT(ctx, "ZC_AUTO %s = _tmp_%d.v%d;\n", node->destruct.names[i], id, i);
+                    EMIT(ctx, "ZC_AUTO %s = _tmp_%d.v%d;\n", c_name(ctx, node->destruct.names[i]),
+                         id, i);
                 }
             }
         }
@@ -532,7 +536,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 size_t stmt_sz = 256 + strlen(node->var_decl.name) * 2 + strlen(clean_type);
                 char *stmt_str = xmalloc(stmt_sz);
                 snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);",
-                         node->var_decl.name, clean_type, node->var_decl.name);
+                         node->var_decl.name, clean_type, c_name(ctx, node->var_decl.name));
                 defer_node->raw_stmt.content = stmt_str;
                 defer_node->line = node->line;
 
@@ -629,17 +633,17 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                     {
                         size_t stmt_sz = 256 + strlen(node->var_decl.name) * 4;
                         stmt_str = xmalloc(stmt_sz);
+                        const char *var = c_name(ctx, node->var_decl.name);
                         snprintf(stmt_str, stmt_sz,
                                  "if (__z_drop_flag_%s && %s.drop) %s.drop(%s.ctx);",
-                                 node->var_decl.name, node->var_decl.name, node->var_decl.name,
-                                 node->var_decl.name);
+                                 node->var_decl.name, var, var, var);
                     }
                     else
                     {
                         size_t stmt_sz = 256 + strlen(node->var_decl.name) * 2 + strlen(clean_type);
                         stmt_str = xmalloc(stmt_sz);
                         snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);",
-                                 node->var_decl.name, clean_type, node->var_decl.name);
+                                 node->var_decl.name, clean_type, c_name(ctx, node->var_decl.name));
                     }
                     defer_node->raw_stmt.content = stmt_str;
                     defer_node->line = node->line;
@@ -675,7 +679,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             else
             {
                 emit_auto_type(ctx, node->var_decl.init_expr, node->token);
-                EMIT(ctx, " %s", node->var_decl.name);
+                EMIT(ctx, " %s", c_name(ctx, node->var_decl.name));
 
                 add_symbol_local(ctx, node->var_decl.name, NULL);
 
@@ -700,12 +704,12 @@ void handle_node_const(ParserContext *ctx, ASTNode *node)
     char *declared = declared_c_type(ctx, node);
     if (declared)
     {
-        EMIT(ctx, "%s %s", declared, node->var_decl.name);
+        EMIT(ctx, "%s %s", declared, c_name(ctx, node->var_decl.name));
     }
     else
     {
         emit_auto_type(ctx, node->var_decl.init_expr, node->token);
-        EMIT(ctx, " %s", node->var_decl.name);
+        EMIT(ctx, " %s", c_name(ctx, node->var_decl.name));
     }
     EMIT(ctx, " = ");
     codegen_expression(ctx, node->var_decl.init_expr);
@@ -716,7 +720,7 @@ void handle_node_field(ParserContext *ctx, ASTNode *node)
 {
     if (node->field.bit_width > 0)
     {
-        EMIT(ctx, "%s %s : %d;\n", field_c_type(ctx, node), node->field.name,
+        EMIT(ctx, "%s %s : %d;\n", field_c_type(ctx, node), c_name(ctx, node->field.name),
              node->field.bit_width);
     }
     else

@@ -78,6 +78,8 @@ const char *field_c_type(ParserContext *ctx, ASTNode *field);
  *        @link_name), wherever the Type comes from.
  */
 char *c_type_spelling(ParserContext *ctx, Type *t);
+/** @brief A program's identifier as the generated C or C++ names it (c_safe_name). */
+const char *c_name(ParserContext *ctx, const char *name);
 /**
  * @brief The type of a declaration (`let`, `def`) spelled in C, as written or as the parser
  *        inferred it; NULL when the parser left it untyped and codegen has to infer it.
