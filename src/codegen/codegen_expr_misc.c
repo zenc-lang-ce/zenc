@@ -144,13 +144,15 @@ void handle_reflection(ParserContext *ctx, ASTNode *node)
              "({ static struct { char *name; char *type; unsigned long offset; } _fields_%s[] "
              "= {",
              sname);
+        // offsetof names the struct as C does: by its @link_name, if it has one.
+        const char *c_name = str_strip_struct_prefix(c_type_spelling(ctx, t));
         ASTNode *f = def->strct.fields;
         while (f)
         {
             if (f->kind == NODE_FIELD)
             {
                 EMIT(ctx, "{ \"%s\", \"%s\", __builtin_offsetof(struct %s, %s) }, ", f->field.name,
-                     type_to_string(f->type_info), sname, f->field.name);
+                     type_to_string(f->type_info), c_name, f->field.name);
             }
             f = f->next;
         }
