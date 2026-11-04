@@ -4,6 +4,7 @@
 #include "../constants.h"
 
 #include "typecheck.h"
+#include "../platform/os.h"
 #include "comptime_interpreter.h"
 #include "diagnostics/diagnostics.h"
 #include "move_check.h"
@@ -322,12 +323,30 @@ void check_all_args_side_effects(TypeChecker *tc, ASTNode *receiver, ASTNode *ar
 // Containers do not own what they store yet (the memory model is pending), so the
 // instances of `Vec<T>` with a T that implements Drop get false move errors inside
 // std/vec.zc. They are not the program's errors: they are not reported.
+// Two characters of a path are the same, taking any two separators as one (`D:\zenc\std\vec.zc`
+// on Windows, under a root that may be written with `/`).
+static int same_path_char(char a, char b)
+{
+    return a == b || (z_is_path_sep(a) && z_is_path_sep(b));
+}
+
 int tc_file_in_std(TypeChecker *tc, const char *file)
 {
     const CompilerConfig *cfg = tc->pctx->config;
     size_t len = strlen(cfg->std_root);
-    if (len == 0 || !file || strncmp(file, cfg->std_root, len) != 0 ||
-        strncmp(file + len, "/std/", 5) != 0)
+    if (len == 0 || !file)
+    {
+        return 0;
+    }
+    for (size_t i = 0; i < len; i++)
+    {
+        if (!same_path_char(file[i], cfg->std_root[i]))
+        {
+            return 0;
+        }
+    }
+    const char *rest = file + len;
+    if (!z_is_path_sep(rest[0]) || strncmp(rest + 1, "std", 3) != 0 || !z_is_path_sep(rest[4]))
     {
         return 0;
     }

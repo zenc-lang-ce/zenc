@@ -265,7 +265,8 @@ static void remember_c_declaration(ParserContext *ctx, int kind, const char *nam
 static const char *known_c_declaration(ParserContext *ctx, int kind, const char *name)
 {
     zmap_FileSet *declarations = c_declarations_of(ctx, kind);
-    const char **c_type = declarations->hash_func ? zmap_get(declarations, name) : NULL;
+    const char **c_type =
+        (declarations && declarations->hash_func) ? zmap_get(declarations, name) : NULL;
     return c_type ? *c_type : NULL;
 }
 

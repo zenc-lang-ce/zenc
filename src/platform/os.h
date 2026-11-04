@@ -60,6 +60,16 @@ static inline int z_is_abs_path(const char *p)
     return 0;
 }
 
+// Whether `c` separates the parts of a path: `/`, and also `\` on Windows.
+static inline int z_is_path_sep(char c)
+{
+#if ZC_OS_WINDOWS
+    return c == '/' || c == '\\';
+#else
+    return c == '/';
+#endif
+}
+
 static inline char *z_path_last_sep(const char *path)
 {
     char *last_slash = (char *)strrchr(path, '/');
