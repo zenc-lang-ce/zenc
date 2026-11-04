@@ -91,30 +91,7 @@ static char *discarded_drop_type(ParserContext *ctx, ASTNode *node)
         return NULL;
     }
 
-    char *tname = NULL;
-    if (node->type_info && node->type_info->kind == TYPE_STRUCT && node->type_info->name)
-    {
-        tname = type_def_name(node->type_info);
-    }
-    else
-    {
-        tname = infer_type(ctx, node);
-    }
-    if (!tname || strchr(tname, '*'))
-    {
-        return NULL;
-    }
-    if (strncmp(tname, "struct ", 7) == 0)
-    {
-        tname += 7;
-    }
-
-    ASTNode *def = find_struct_def(ctx, tname);
-    if (def && def->kind == NODE_STRUCT && def->type_info && def->type_info->traits.has_drop)
-    {
-        return tname;
-    }
-    return NULL;
+    return value_drop_struct(ctx, node);
 }
 
 void codegen_node_single(ParserContext *ctx, ASTNode *node)

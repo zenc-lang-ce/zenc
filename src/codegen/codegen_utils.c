@@ -380,20 +380,37 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
     }
 }
 
-int emit_move_invalidation(ParserContext *ctx, ASTNode *node)
+char *value_drop_struct(ParserContext *ctx, ASTNode *value)
 {
-    if (!node)
+    char *tname = NULL;
+    if (value->type_info && value->type_info->kind == TYPE_STRUCT && value->type_info->name)
     {
-        return 0;
+        tname = type_def_name(value->type_info);
     }
-
-    // Check if it's a valid l-value we can memset
-    if (node->kind != NODE_EXPR_VAR && node->kind != NODE_EXPR_MEMBER)
+    else
     {
-        return 0;
+        tname = infer_type(ctx, value);
     }
+    if (!tname || strchr(tname, '*'))
+    {
+        return NULL;
+    }
+    if (strncmp(tname, "struct ", 7) == 0)
+    {
+        tname += 7;
+    }
+    ASTNode *def = find_struct_def(ctx, tname);
+    if (def && def->kind == NODE_STRUCT && def->type_info && def->type_info->traits.has_drop)
+    {
+        return tname;
+    }
+    return NULL;
+}
 
-    // Common logic to find type and check Drop
+// Whether using `node` by value moves a value that is dropped, so the place it was read from must
+// be invalidated: a closure that owns its context, or a struct or enum with Drop.
+static int moves_drop_value(ParserContext *ctx, ASTNode *node)
+{
     char *type_name = infer_type(ctx, node);
     ASTNode *def = NULL;
     if (type_name)
@@ -407,31 +424,35 @@ int emit_move_invalidation(ParserContext *ctx, ASTNode *node)
     }
 
     Type *t = node->type_info;
-    int has_drop = 0;
-    if (t)
+    if (!t)
     {
-        if (t->kind == TYPE_FUNCTION)
-        {
-            has_drop = t->traits.has_drop && !t->is_raw;
-        }
-        else if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
-        {
-            if (def && def->type_info)
-            {
-                has_drop = def->type_info->traits.has_drop;
-            }
-            else
-            {
-                has_drop = t->traits.has_drop;
-            }
-        }
+        return def && def->type_info && def->type_info->traits.has_drop;
     }
-    else if (def && def->type_info)
+    if (t->kind == TYPE_FUNCTION)
     {
-        has_drop = def->type_info->traits.has_drop;
+        return t->traits.has_drop && !t->is_raw;
+    }
+    if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
+    {
+        return (def && def->type_info) ? def->type_info->traits.has_drop : t->traits.has_drop;
+    }
+    return 0;
+}
+
+int emit_move_invalidation(ParserContext *ctx, ASTNode *node)
+{
+    if (!node)
+    {
+        return 0;
     }
 
-    if (has_drop)
+    // Check if it's a valid l-value we can memset
+    if (node->kind != NODE_EXPR_VAR && node->kind != NODE_EXPR_MEMBER)
+    {
+        return 0;
+    }
+
+    if (moves_drop_value(ctx, node))
     {
         if (node->kind == NODE_EXPR_VAR)
         {
@@ -484,45 +505,7 @@ void codegen_expression_with_move(ParserContext *ctx, ASTNode *node)
 
     if (node && (node->kind == NODE_EXPR_VAR || node->kind == NODE_EXPR_MEMBER))
     {
-        // Re-use infer logic to see if we need invalidation
-        char *type_name = infer_type(ctx, node);
-        ASTNode *def = NULL;
-        if (type_name)
-        {
-            char *clean_type = type_name;
-            if (strncmp(clean_type, "struct ", 7) == 0)
-            {
-                clean_type += 7;
-            }
-            def = find_struct_def(ctx, clean_type);
-        }
-
-        Type *t = node->type_info;
-        int has_drop = 0;
-        if (t)
-        {
-            if (t->kind == TYPE_FUNCTION)
-            {
-                has_drop = t->traits.has_drop && !t->is_raw;
-            }
-            else if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
-            {
-                if (def && def->type_info)
-                {
-                    has_drop = def->type_info->traits.has_drop;
-                }
-                else
-                {
-                    has_drop = t->traits.has_drop;
-                }
-            }
-        }
-        else if (def && def->type_info)
-        {
-            has_drop = def->type_info->traits.has_drop;
-        }
-
-        if (has_drop)
+        if (moves_drop_value(ctx, node))
         {
             if (node->kind == NODE_EXPR_VAR)
             {

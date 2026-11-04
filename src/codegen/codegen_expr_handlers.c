@@ -622,30 +622,7 @@ static char *owned_temp_drop_type(ParserContext *ctx, ASTNode *arg)
     {
         return NULL;
     }
-    ASTNode *operand = arg->unary.operand;
-    char *tname = NULL;
-    if (operand->type_info && operand->type_info->kind == TYPE_STRUCT && operand->type_info->name)
-    {
-        tname = type_def_name(operand->type_info);
-    }
-    else
-    {
-        tname = infer_type(ctx, operand);
-    }
-    if (!tname || strchr(tname, '*'))
-    {
-        return NULL;
-    }
-    if (strncmp(tname, "struct ", 7) == 0)
-    {
-        tname += 7;
-    }
-    ASTNode *def = find_struct_def(ctx, tname);
-    if (def && def->kind == NODE_STRUCT && def->type_info && def->type_info->traits.has_drop)
-    {
-        return tname;
-    }
-    return NULL;
+    return value_drop_struct(ctx, arg->unary.operand);
 }
 
 // Emits a call that borrows temporaries with Drop (e.g. `a + make()` on an overloaded
