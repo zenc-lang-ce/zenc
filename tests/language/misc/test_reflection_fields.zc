@@ -38,3 +38,11 @@ test "@fields and @type_name name primitives as the program does" {
     let point_name = @type_name(Point);
     assert(strcmp(point_name, "Point") == 0, "@type_name of a @link_name struct");
 }
+
+test "@fields of a @link_name struct" {
+    let table = @fields(Point);
+    let fields = (FieldInfo*)table;
+    assert(strcmp(fields[0].name, "x") == 0, "its field");
+    assert(strcmp(fields[0].kind, "i32") == 0, "its field's type");
+    assert(fields[0].offset == 0, "its field's offset");
+}

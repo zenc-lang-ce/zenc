@@ -1,0 +1,10 @@
+   Compiling tests/compiler/diagnostics_output/warn_slice_bounds.zc...
+warning: Slice bound 9 is out of bounds for array of size 5
+  --> tests/compiler/diagnostics_output/warn_slice_bounds.zc:7:21
+   |
+7  |     let past = a[2..9];
+   |                     ^ here
+   |
+   = note: Valid bounds are 0 to 5
+    Finished build in Xs with 0 errors and 1 warnings
+[exit 0]

@@ -37,7 +37,6 @@ typedef struct
 
 // Global project instance
 extern LSPProject *g_project;
-extern int g_is_indexing;
 
 // The compiler the server works with: set once by lsp_main(), read by projects and
 // the C header support.

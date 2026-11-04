@@ -158,6 +158,15 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
         ref_check = ref_check->next;
     }
 
+    // A pointer subject is matched through the pointer: `_m_<id>` holds it as it is, and the
+    // cases read the value it points to with `->`, as they do for a `ref` binding.
+    Type *scrutinee = get_inner_type(node->match_stmt.expr->type_info);
+    Type *subject = match_subject_type(scrutinee);
+    int is_option = type_is_instance_of(subject, "Option");
+    int is_result = type_is_instance_of(subject, "Result");
+    int subject_is_ptr = scrutinee && scrutinee->kind == TYPE_POINTER;
+    int m_is_ptr = has_ref_binding || subject_is_ptr;
+
     int is_lvalue_opt = (node->match_stmt.expr->kind == NODE_EXPR_VAR ||
                          node->match_stmt.expr->kind == NODE_EXPR_MEMBER ||
                          node->match_stmt.expr->kind == NODE_EXPR_INDEX);
@@ -171,14 +180,14 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
         codegen_expression(ctx, node->match_stmt.expr);
         EMIT(ctx, "; ");
     }
-    else if (has_ref_binding && is_lvalue_opt)
+    else if (has_ref_binding && !subject_is_ptr && is_lvalue_opt)
     {
         // Take address for ref bindings
         EMIT(ctx, "ZC_AUTO_INIT(_m_%d, &", id);
         codegen_expression(ctx, node->match_stmt.expr);
         EMIT(ctx, "); ");
     }
-    else if (has_ref_binding)
+    else if (has_ref_binding && !subject_is_ptr)
     {
         // Non-lvalue with ref binding: create temporary
         emit_auto_type(ctx, node->match_stmt.expr, node->token);
@@ -190,7 +199,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     }
     else
     {
-        // No ref bindings: store value directly (not pointer)
+        // No ref bindings, or a pointer subject: store the value as it is
         emit_auto_type(ctx, node->match_stmt.expr, node->token);
         EMIT(ctx, " _m_%d = ", id);
         codegen_expression(ctx, node->match_stmt.expr);
@@ -201,12 +210,6 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     {
         EMIT(ctx, "%s _r_%d; ", ret_type, id);
     }
-
-    Type *scrutinee = get_inner_type(node->match_stmt.expr->type_info);
-    Type *subject = match_subject_type(scrutinee);
-    int is_option = type_is_instance_of(subject, "Option");
-    int is_result = type_is_instance_of(subject, "Result");
-    int subject_is_ptr = scrutinee && scrutinee->kind == TYPE_POINTER;
 
     // `has_wildcard` also decides the MISRA warnings further down.
     int has_wildcard = 0;
@@ -244,7 +247,6 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
             }
             else if (is_option)
             {
-                int m_is_ptr = has_ref_binding || subject_is_ptr;
                 const char *acc = m_is_ptr ? "->" : ".";
 
                 if (case_variant(c) && strcmp(case_variant(c), "Some") == 0)
@@ -262,7 +264,6 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
             }
             else if (is_result)
             {
-                int m_is_ptr = has_ref_binding || subject_is_ptr;
                 const char *acc = m_is_ptr ? "->" : ".";
 
                 if (case_variant(c) && strcmp(case_variant(c), "Ok") == 0)
@@ -283,7 +284,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                 // Use helper for OR patterns, range patterns, and simple patterns
                 if (c->match_case.patterns)
                 {
-                    emit_pattern_condition(ctx, c->match_case.patterns, id, has_ref_binding);
+                    emit_pattern_condition(ctx, c->match_case.patterns, id, m_is_ptr);
                 }
                 else
                 {
@@ -314,7 +315,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                     {
                         EMIT(ctx, "ZC_AUTO_INIT(%s, &_m_%d->val); ", bname, id);
                     }
-                    else if (has_ref_binding)
+                    else if (m_is_ptr)
                     {
                         EMIT(ctx, "ZC_AUTO_INIT(%s, _m_%d->val); ", bname, id);
                     }
@@ -335,7 +336,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                     {
                         EMIT(ctx, "ZC_AUTO_INIT(%s, &_m_%d->%s); ", bname, id, field);
                     }
-                    else if (has_ref_binding)
+                    else if (m_is_ptr)
                     {
                         EMIT(ctx, "ZC_AUTO_INIT(%s, _m_%d->%s); ", bname, id, field);
                     }
@@ -355,7 +356,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                         {
                             EMIT(ctx, "ZC_AUTO_INIT(%s, &_m_%d->data.%s.v%d); ", bname, id, v, i);
                         }
-                        else if (has_ref_binding)
+                        else if (m_is_ptr)
                         {
                             EMIT(ctx, "ZC_AUTO_INIT(%s, _m_%d->data.%s.v%d); ", bname, id, v, i);
                         }
@@ -371,7 +372,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                         {
                             EMIT(ctx, "ZC_AUTO_INIT(%s, &_m_%d->data.%s); ", bname, id, v);
                         }
-                        else if (has_ref_binding)
+                        else if (m_is_ptr)
                         {
                             EMIT(ctx, "ZC_AUTO_INIT(%s, _m_%d->data.%s); ", bname, id, v);
                         }

@@ -83,6 +83,7 @@ void warn_shadowing(Token t, const char *var_name);
 void warn_comparison_always_true(Token t, const char *reason);
 void warn_comparison_always_false(Token t, const char *reason);
 void warn_array_bounds(Token t, int index, int size);
+void warn_slice_bounds(Token t, int bound, int size);
 void warn_format_string(Token t, int arg_num, const char *expected, const char *got);
 void warn_void_main(Token t);
 void warn_misra_violation(Token t, const char *msg);

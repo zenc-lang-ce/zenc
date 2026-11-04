@@ -12,11 +12,6 @@
 // Local trait registry — avoids dependency on g_parser_ctx.
 static TraitReg *registered_traits_local = NULL;
 
-// Set by the language server while indexing a document; the parser uses it to
-// resolve tuple-indexing expressions during LSP completion. Defined here (not in
-// the LSP) so the compiler core stays self-contained.
-int g_is_indexing = 0;
-
 void register_trait(const char *name)
 {
     TraitReg *r = xmalloc(sizeof(TraitReg));
