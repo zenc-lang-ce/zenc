@@ -345,8 +345,7 @@ int tc_file_in_std(TypeChecker *tc, const char *file)
             return 0;
         }
     }
-    const char *rest = file + len;
-    if (!z_is_path_sep(rest[0]) || strncmp(rest + 1, "std", 3) != 0 || !z_is_path_sep(rest[4]))
+    if (z_find_std_dir(file + len) != file + len)
     {
         return 0;
     }

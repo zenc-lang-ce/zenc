@@ -206,7 +206,7 @@ static void maybe_lock_std_root(CompilerConfig *cfg, const char *resolved)
     {
         return;
     }
-    char *std_pos = (char *)strstr(resolved, "/std/");
+    const char *std_pos = z_find_std_dir(resolved);
     if (!std_pos)
     {
         return;

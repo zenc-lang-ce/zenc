@@ -70,6 +70,20 @@ static inline int z_is_path_sep(char c)
 #endif
 }
 
+// The separator that opens the first `std` directory of `path` (`/std/`, or `\\std\\` on
+// Windows), or NULL.
+static inline const char *z_find_std_dir(const char *path)
+{
+    for (const char *p = path; *p; p++)
+    {
+        if (z_is_path_sep(p[0]) && strncmp(p + 1, "std", 3) == 0 && z_is_path_sep(p[4]))
+        {
+            return p;
+        }
+    }
+    return NULL;
+}
+
 static inline char *z_path_last_sep(const char *path)
 {
     char *last_slash = (char *)strrchr(path, '/');
