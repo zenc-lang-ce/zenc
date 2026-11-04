@@ -1,0 +1,14 @@
+   Compiling tests/compiler/diagnostics_output/warn_match_missing_variant.zc...
+warning: Non-exhaustive match: Missing variant 'None'
+  --> tests/compiler/diagnostics_output/warn_match_missing_variant.zc:16:5
+   |
+16 |     match o {
+   |     ^ here
+   |
+warning: Non-exhaustive match: Missing variant 'Blue'
+  --> tests/compiler/diagnostics_output/warn_match_missing_variant.zc:9:5
+   |
+9  |     match c {
+   |     ^ here
+   |
+[exit 0]

@@ -1,0 +1,25 @@
+// ARGS: transpile
+// A match without `_` warns about the first variant it misses: of an enum, even when a case
+// lists several variants, and of an Option.
+import "std/option.zc"
+
+enum Color { Red, Green, Blue }
+
+fn warm(c: Color) -> int {
+    match c {
+        Red || Green => { return 1; },
+    }
+    return 0;
+}
+
+fn unwrap_or_zero(o: Option<int>) -> int {
+    match o {
+        Some(v) => { return v; },
+    }
+    return 0;
+}
+
+fn main() {
+    let _a = warm(Color::Red);
+    let _b = unwrap_or_zero(Option<int>::Some(1));
+}

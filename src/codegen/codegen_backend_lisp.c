@@ -703,6 +703,31 @@ static void lemit_expr(ParserContext *ctx, ASTNode *node, int depth)
     }
 }
 
+// The Lisp test that `ev` matches one alternative of a match case.
+static void lemit_alternative(ParserContext *ctx, const char *ev, MatchPattern *p)
+{
+    switch (p->kind)
+    {
+    case PATTERN_WILDCARD:
+        emitter_printf(&ctx->cg.emitter, "t");
+        break;
+    case PATTERN_RANGE:
+        emitter_printf(&ctx->cg.emitter, "(and (>= %s %s) (%s %s %s))", ev, p->range_start,
+                       p->is_inclusive ? "<=" : "<", ev, p->range_end);
+        break;
+    case PATTERN_LITERAL:
+        emitter_printf(&ctx->cg.emitter, "(equal %s %s)", ev, p->literal);
+        break;
+    case PATTERN_NAME:
+        emitter_printf(&ctx->cg.emitter, "(equal %s %s)", ev,
+                       p->name.scope ? mangle_variant_symbol(p->name.scope, p->name.name)
+                                     : p->name.name);
+        break;
+    default:
+        break;
+    }
+}
+
 static void lemit_stmt(ParserContext *ctx, ASTNode *node, int depth, int *first)
 {
     if (!node)
@@ -908,13 +933,23 @@ static void lemit_stmt(ParserContext *ctx, ASTNode *node, int depth, int *first)
             lemit_i(ctx, depth + 1);
             emitter_printf(&ctx->cg.emitter, "(");
             if (c->match_case.is_default ||
-                (c->match_case.pattern && strcmp(c->match_case.pattern, "_") == 0))
+                (c->match_case.patterns && c->match_case.patterns->kind == PATTERN_WILDCARD))
             {
                 emitter_printf(&ctx->cg.emitter, "t");
             }
-            else if (c->match_case.pattern)
+            else if (c->match_case.patterns && c->match_case.patterns->next)
             {
-                emitter_printf(&ctx->cg.emitter, "(= %s %s)", ev, c->match_case.pattern);
+                emitter_printf(&ctx->cg.emitter, "(or");
+                for (MatchPattern *p = c->match_case.patterns; p; p = p->next)
+                {
+                    emitter_printf(&ctx->cg.emitter, " ");
+                    lemit_alternative(ctx, ev, p);
+                }
+                emitter_printf(&ctx->cg.emitter, ")");
+            }
+            else if (c->match_case.patterns)
+            {
+                lemit_alternative(ctx, ev, c->match_case.patterns);
             }
             else
             {

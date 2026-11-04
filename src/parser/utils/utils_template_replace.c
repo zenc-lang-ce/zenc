@@ -788,6 +788,120 @@ Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char
     return n;
 }
 
+// A piece of text of a generic (a match pattern) for an instance: the parameters `p` become
+// the concrete types `c` (each of "K,V" in turn), and the template's name `os` becomes the
+// instance's `ns`.
+static char *replace_generic_text(const char *text, const char *p, const char *c, const char *os,
+                                  const char *ns)
+{
+    char *s1 = xstrdup(text);
+    if (p && c && strchr(p, ','))
+    {
+        char *p_ptr = (char *)p;
+        char *c_ptr = (char *)c;
+        while (*p_ptr && *c_ptr)
+        {
+            char *p_end = (char *)strchr(p_ptr, ',');
+            int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
+            char *c_end = (char *)strchr(c_ptr, ',');
+            int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
+
+            char *p_part = xmalloc((size_t)(p_len + 1));
+            strncpy(p_part, p_ptr, (size_t)(p_len));
+            p_part[p_len] = 0;
+
+            char *c_part = xmalloc((size_t)(c_len + 1));
+            strncpy(c_part, c_ptr, (size_t)(c_len));
+            c_part[c_len] = 0;
+
+            char *t1 = replace_mangled_part(s1, p_part, c_part);
+            zfree(s1);
+            s1 = t1;
+
+            zfree(p_part);
+            zfree(c_part);
+
+            if (p_end)
+            {
+                p_ptr = p_end + 1;
+            }
+            else
+            {
+                break;
+            }
+            if (c_end)
+            {
+                c_ptr = c_end + 1;
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+    else
+    {
+        char *t1 = replace_in_string(s1, p, c);
+        zfree(s1);
+        s1 = t1;
+        char *t2 = replace_mangled_part(s1, p, c);
+        zfree(s1);
+        s1 = t2;
+    }
+
+    if (os && ns)
+    {
+        char *s2 = replace_in_string(s1, os, ns);
+        zfree(s1);
+        s1 = s2;
+    }
+    return s1;
+}
+
+// A copy of the alternatives of a match case, with replace_generic_text applied to their text.
+static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char *p, const char *c,
+                                             const char *os, const char *ns)
+{
+    MatchPattern *head = NULL;
+    MatchPattern *last = NULL;
+    for (MatchPattern *src = patterns; src; src = src->next)
+    {
+        MatchPattern *copy = xcalloc(1, sizeof(MatchPattern));
+        copy->kind = src->kind;
+        copy->is_inclusive = src->is_inclusive;
+        if (src->name.scope)
+        {
+            copy->name.scope = replace_generic_text(src->name.scope, p, c, os, ns);
+        }
+        if (src->name.name)
+        {
+            copy->name.name = replace_generic_text(src->name.name, p, c, os, ns);
+        }
+        if (src->literal)
+        {
+            copy->literal = replace_generic_text(src->literal, p, c, os, ns);
+        }
+        if (src->range_start)
+        {
+            copy->range_start = replace_generic_text(src->range_start, p, c, os, ns);
+        }
+        if (src->range_end)
+        {
+            copy->range_end = replace_generic_text(src->range_end, p, c, os, ns);
+        }
+        if (last)
+        {
+            last->next = copy;
+        }
+        else
+        {
+            head = copy;
+        }
+        last = copy;
+    }
+    return head;
+}
+
 ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const char *c,
                             const char *os, const char *ns)
 {
@@ -1227,77 +1341,8 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         break;
 
     case NODE_MATCH_CASE:
-        if (n->match_case.pattern)
-        {
-            char *s1 = xstrdup(n->match_case.pattern);
-            if (p && c && strchr(p, ','))
-            {
-                char *p_ptr = (char *)p;
-                char *c_ptr = (char *)c;
-                while (*p_ptr && *c_ptr)
-                {
-                    char *p_end = (char *)strchr(p_ptr, ',');
-                    int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
-                    char *c_end = (char *)strchr(c_ptr, ',');
-                    int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
-
-                    char *p_part = xmalloc((size_t)(p_len + 1));
-                    strncpy(p_part, p_ptr, (size_t)(p_len));
-                    p_part[p_len] = 0;
-
-                    char *c_part = xmalloc((size_t)(c_len + 1));
-                    strncpy(c_part, c_ptr, (size_t)(c_len));
-                    c_part[c_len] = 0;
-
-                    char *t1 = replace_mangled_part(s1, p_part, c_part);
-                    zfree(s1);
-                    s1 = t1;
-
-                    zfree(p_part);
-                    zfree(c_part);
-
-                    if (p_end)
-                    {
-                        p_ptr = p_end + 1;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                    if (c_end)
-                    {
-                        c_ptr = c_end + 1;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                char *t1 = replace_in_string(s1, p, c);
-                zfree(s1);
-                s1 = t1;
-                char *t2 = replace_mangled_part(s1, p, c);
-                zfree(s1);
-                s1 = t2;
-            }
-
-            if (os && ns)
-            {
-                char *s2 = replace_in_string(s1, os, ns);
-                zfree(s1);
-                s1 = s2;
-                char *colons = (char *)strstr(s1, "::");
-                if (colons)
-                {
-                    colons[0] = '_';
-                    memmove(colons + 1, colons + 2, strlen(colons + 2) + 1);
-                }
-            }
-            new_node->match_case.pattern = s1;
-        }
+        new_node->match_case.patterns =
+            copy_patterns_replacing(n->match_case.patterns, p, c, os, ns);
         new_node->match_case.binding_count = n->match_case.binding_count;
         if (n->match_case.binding_names)
         {

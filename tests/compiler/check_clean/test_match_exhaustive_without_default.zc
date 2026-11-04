@@ -1,0 +1,40 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A match that names every variant needs no default case: an enum, with several variants
+// in one case and qualified variants, an Option and a Result.
+import "std/option.zc"
+import "std/result.zc"
+
+enum Color { Red, Green, Blue }
+
+fn warmth(c: Color) -> int {
+    match c {
+        Red || Green => { return 1; },
+        Color::Blue => { return 0; },
+    }
+    return -1;
+}
+
+fn or_zero(o: Option<int>) -> int {
+    match o {
+        Some(v) => { return v; },
+        None => { return 0; },
+    }
+    return -1;
+}
+
+fn code(r: Result<int>) -> int {
+    match r {
+        Ok(v) => { return v; },
+        Err(e) => { return -1; },
+    }
+    return -2;
+}
+
+test "a match naming every variant needs no default case" {
+    assert(warmth(Color::Red) == 1, "Red || Green");
+    assert(warmth(Color::Blue) == 0, "Color::Blue");
+    assert(or_zero(Option<int>::Some(3)) == 3, "Some");
+    assert(or_zero(Option<int>::None()) == 0, "None");
+    assert(code(Result<int>::Ok(7)) == 7, "Ok");
+    assert(code(Result<int>::Err("no")) == -1, "Err");
+}

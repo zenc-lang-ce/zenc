@@ -14,168 +14,86 @@
 #include "ast.h"
 #include "zprep_plugin.h"
 
-static void emit_single_pattern_cond(ParserContext *ctx, const char *pat, int id, int is_ptr)
+// The C condition that the subject `_m_<id>` matches one alternative of a case.
+static void emit_alternative_condition(ParserContext *ctx, MatchPattern *p, int id, int is_ptr)
 {
-    // Check for range pattern: "start..end" or "start..=end"
-    char *range_incl = (char *)strstr(pat, "..=");
-    char *range_excl = (char *)strstr(pat, "..");
-
-    if (range_incl)
+    const char *subject = is_ptr ? "*_m_" : "_m_";
+    switch (p->kind)
     {
-        // Inclusive range: start..=end -> _m_id >= start && _m_id <= end
-        int start_len = (int)(range_incl - pat);
-        char *start = xmalloc((size_t)(start_len + 1));
-        strncpy(start, pat, (size_t)(start_len));
-        start[start_len] = 0;
-        char *end = xstrdup(range_incl + 3);
-        if (is_ptr)
+    case PATTERN_WILDCARD:
+        EMIT(ctx, "1");
+        break;
+    case PATTERN_RANGE:
+        EMIT(ctx, "(%s%d >= %s && %s%d %s %s)", subject, id, p->range_start, subject, id,
+             p->is_inclusive ? "<=" : "<", p->range_end);
+        break;
+    case PATTERN_LITERAL:
+        if (p->literal[0] == '"')
         {
-            EMIT(ctx, "(*_m_%d >= %s && *_m_%d <= %s)", id, start, id, end);
+            EMIT(ctx, "strcmp(%s%d, %s) == 0", subject, id, p->literal);
         }
         else
         {
-            EMIT(ctx, "(_m_%d >= %s && _m_%d <= %s)", id, start, id, end);
+            EMIT(ctx, "%s%d == %s", subject, id, p->literal);
         }
-        zfree(start);
-        zfree(end);
+        break;
+    case PATTERN_NAME:
+    {
+        EnumVariantReg *reg = p->name.scope ? find_enum_variant_of(ctx, p->name.scope, p->name.name)
+                                            : find_enum_variant(ctx, p->name.name);
+        if (!reg)
+        {
+            // A constant, not a variant.
+            EMIT(ctx, "%s%d == %s", subject, id,
+                 p->name.scope ? mangle_module_symbol(p->name.scope, p->name.name) : p->name.name);
+        }
+        else if (is_simple_enum(ctx, reg->enum_name))
+        {
+            EMIT(ctx, "%s%d == %d", subject, id, reg->tag_id);
+        }
+        else
+        {
+            EMIT(ctx, "_m_%d%stag == %d", id, is_ptr ? "->" : ".", reg->tag_id);
+        }
+        break;
     }
-    else if (range_excl)
-    {
-        // Exclusive range: start..end -> _m_id >= start && _m_id < end
-        int start_len = (int)(range_excl - pat);
-        char *start = xmalloc((size_t)(start_len + 1));
-        strncpy(start, pat, (size_t)(start_len));
-        start[start_len] = 0;
-        char *end = xstrdup(range_excl + 2);
-        if (is_ptr)
-        {
-            EMIT(ctx, "(*_m_%d >= %s && *_m_%d < %s)", id, start, id, end);
-        }
-        else
-        {
-            EMIT(ctx, "(_m_%d >= %s && _m_%d < %s)", id, start, id, end);
-        }
-        zfree(start);
-        zfree(end);
-    }
-    else if (pat[0] == '"')
-    {
-        // String pattern - string comparison, _m is char* or similar
-        if (is_ptr)
-        {
-            EMIT(ctx, "strcmp(*_m_%d, %s) == 0", id, pat);
-        }
-        else
-        {
-            EMIT(ctx, "strcmp(_m_%d, %s) == 0", id, pat);
-        }
-    }
-    else
-    {
-        // Numeric, Char literal, or simple pattern
-        if (is_ptr)
-        {
-            EMIT(ctx, "*_m_%d == %s", id, pat);
-        }
-        else
-        {
-            EMIT(ctx, "_m_%d == %s", id, pat);
-        }
+    default:
+        break;
     }
 }
 
-// Helper: emit condition for a pattern (may contain OR patterns with '|')
-static void emit_pattern_condition(ParserContext *ctx, const char *pattern, int id, int is_ptr)
+// The C condition that the subject matches any alternative of a case (`A || B`).
+static void emit_pattern_condition(ParserContext *ctx, MatchPattern *patterns, int id, int is_ptr)
 {
-    // Check if pattern contains '|' for OR patterns
-    if (strchr(pattern, '|'))
+    if (!patterns->next)
     {
-        // Split by '|' and emit OR conditions
-        char *pattern_copy = xstrdup(pattern);
-        char *saveptr;
-        char *part = strtok_r(pattern_copy, "|", &saveptr);
-        int first = 1;
-        EMIT(ctx, "(");
-        while (part)
+        emit_alternative_condition(ctx, patterns, id, is_ptr);
+        return;
+    }
+    EMIT(ctx, "(");
+    for (MatchPattern *p = patterns; p; p = p->next)
+    {
+        if (p != patterns)
         {
-            if (!first)
-            {
-                EMIT(ctx, " || ");
-            }
+            EMIT(ctx, " || ");
+        }
+        emit_alternative_condition(ctx, p, id, is_ptr);
+    }
+    EMIT(ctx, ")");
+}
 
-            // Check if part is an enum variant
-            EnumVariantReg *reg = find_enum_variant(ctx, part);
-            if (reg)
-            {
-                int simple = is_simple_enum(ctx, reg->enum_name);
-                if (simple)
-                {
-                    if (is_ptr)
-                    {
-                        EMIT(ctx, "*_m_%d == %d", id, reg->tag_id);
-                    }
-                    else
-                    {
-                        EMIT(ctx, "_m_%d == %d", id, reg->tag_id);
-                    }
-                }
-                else
-                {
-                    if (is_ptr)
-                    {
-                        EMIT(ctx, "_m_%d->tag == %d", id, reg->tag_id);
-                    }
-                    else
-                    {
-                        EMIT(ctx, "_m_%d.tag == %d", id, reg->tag_id);
-                    }
-                }
-            }
-            else
-            {
-                emit_single_pattern_cond(ctx, part, id, is_ptr);
-            }
-            first = 0;
-            part = strtok_r(NULL, "|", &saveptr);
-        }
-        EMIT(ctx, ")");
-        zfree(pattern_copy);
-    }
-    else
-    {
-        // Single pattern (may be a range)
-        EnumVariantReg *reg = find_enum_variant(ctx, pattern);
-        if (reg)
-        {
-            int simple = is_simple_enum(ctx, reg->enum_name);
-            if (simple)
-            {
-                if (is_ptr)
-                {
-                    EMIT(ctx, "*_m_%d == %d", id, reg->tag_id);
-                }
-                else
-                {
-                    EMIT(ctx, "_m_%d == %d", id, reg->tag_id);
-                }
-            }
-            else
-            {
-                if (is_ptr)
-                {
-                    EMIT(ctx, "_m_%d->tag == %d", id, reg->tag_id);
-                }
-                else
-                {
-                    EMIT(ctx, "_m_%d.tag == %d", id, reg->tag_id);
-                }
-            }
-        }
-        else
-        {
-            emit_single_pattern_cond(ctx, pattern, id, is_ptr);
-        }
-    }
+// The variant a case names, as written ("Not_Found" for `Reply::Not_Found(n)`), or NULL.
+static const char *case_variant(ASTNode *c)
+{
+    MatchPattern *p = c->match_case.patterns;
+    return (p && p->kind == PATTERN_NAME) ? p->name.name : NULL;
+}
+
+// Whether the case is the wildcard `_` alone.
+static int case_is_wildcard(ASTNode *c)
+{
+    MatchPattern *p = c->match_case.patterns;
+    return p && p->kind == PATTERN_WILDCARD && !p->next;
 }
 
 // Helper
@@ -288,64 +206,24 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     int is_option = str_is_option_type(expr_type);
     int is_result = str_is_result_type(expr_type);
 
-    char *enum_name = NULL;
-    ASTNode *chk = node->match_stmt.cases;
+    // `has_wildcard` also decides the MISRA warnings further down.
     int has_wildcard = 0;
-    while (chk)
+    for (ASTNode *chk = node->match_stmt.cases; chk; chk = chk->next)
     {
-        if (strcmp(chk->match_case.pattern, "_") == 0)
-        {
-            has_wildcard = 1;
-        }
-        else if (!enum_name)
-        {
-            EnumVariantReg *reg = find_enum_variant(ctx, chk->match_case.pattern);
-            if (reg)
-            {
-                enum_name = reg->enum_name;
-            }
-        }
-        chk = chk->next;
+        has_wildcard = has_wildcard || case_is_wildcard(chk);
     }
 
-    if (enum_name && !has_wildcard)
+    const char *missing = match_missing_variant(ctx, node, expr_type);
+    if (missing && strcmp(missing, "_") != 0)
     {
-        // Iterate through all registered variants for this enum
-        EnumVariantReg *v = ctx->enum_variants;
-        while (v)
-        {
-            if (v->enum_name && strcmp(v->enum_name, enum_name) == 0)
-            {
-                int covered = 0;
-                ASTNode *c2 = node->match_stmt.cases;
-                while (c2)
-                {
-                    char mangled_v[512];
-                    snprintf(mangled_v, sizeof(mangled_v), "%s__%s", v->enum_name, v->variant_name);
-
-                    if (strcmp(c2->match_case.pattern, v->variant_name) == 0 ||
-                        strcmp(c2->match_case.pattern, mangled_v) == 0)
-                    {
-                        covered = 1;
-                        break;
-                    }
-                    c2 = c2->next;
-                }
-                if (!covered)
-                {
-                    zwarn_at(node->token, "Non-exhaustive match: Missing variant '%s'",
-                             v->variant_name);
-                }
-            }
-            v = v->next;
-        }
+        zwarn_at(node->token, "Non-exhaustive match: Missing variant '%s'", missing);
     }
 
     ASTNode *c = node->match_stmt.cases;
     int first = 1;
     while (c)
     {
-        int is_wildcard = (strcmp(c->match_case.pattern, "_") == 0);
+        int is_wildcard = case_is_wildcard(c);
         int is_final_wildcard = (is_wildcard && c->next == NULL);
 
         if (!first)
@@ -367,11 +245,11 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                 int m_is_ptr = has_ref_binding || (expr_type && strchr(expr_type, '*'));
                 const char *acc = m_is_ptr ? "->" : ".";
 
-                if (c->match_case.pattern && strcmp(c->match_case.pattern, "Some") == 0)
+                if (case_variant(c) && strcmp(case_variant(c), "Some") == 0)
                 {
                     EMIT(ctx, "_m_%d%sis_some", id, acc);
                 }
-                else if (c->match_case.pattern && strcmp(c->match_case.pattern, "None") == 0)
+                else if (case_variant(c) && strcmp(case_variant(c), "None") == 0)
                 {
                     EMIT(ctx, "!_m_%d%sis_some", id, acc);
                 }
@@ -385,11 +263,11 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                 int m_is_ptr = has_ref_binding || (expr_type && strchr(expr_type, '*'));
                 const char *acc = m_is_ptr ? "->" : ".";
 
-                if (c->match_case.pattern && strcmp(c->match_case.pattern, "Ok") == 0)
+                if (case_variant(c) && strcmp(case_variant(c), "Ok") == 0)
                 {
                     EMIT(ctx, "_m_%d%sis_ok", id, acc);
                 }
-                else if (c->match_case.pattern && strcmp(c->match_case.pattern, "Err") == 0)
+                else if (case_variant(c) && strcmp(case_variant(c), "Err") == 0)
                 {
                     EMIT(ctx, "!_m_%d%sis_ok", id, acc);
                 }
@@ -401,9 +279,9 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
             else
             {
                 // Use helper for OR patterns, range patterns, and simple patterns
-                if (c->match_case.pattern)
+                if (c->match_case.patterns)
                 {
-                    emit_pattern_condition(ctx, c->match_case.pattern, id, has_ref_binding);
+                    emit_pattern_condition(ctx, c->match_case.patterns, id, has_ref_binding);
                 }
                 else
                 {
@@ -446,7 +324,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                 else if (is_result)
                 {
                     char *field = "val";
-                    if (strcmp(c->match_case.pattern, "Err") == 0)
+                    if (case_variant(c) && strcmp(case_variant(c), "Err") == 0)
                     {
                         field = "err";
                     }
@@ -466,23 +344,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                 }
                 else
                 {
-                    char *v = (char *)strstr(c->match_case.pattern, "::");
-                    if (v)
-                    {
-                        v += 2;
-                    }
-                    else
-                    {
-                        v = strrchr(c->match_case.pattern, '_');
-                        if (v)
-                        {
-                            v++;
-                        }
-                        else
-                        {
-                            v = (char *)c->match_case.pattern;
-                        }
-                    }
+                    const char *v = case_variant(c);
 
                     if (c->match_case.binding_count > 1)
                     {
