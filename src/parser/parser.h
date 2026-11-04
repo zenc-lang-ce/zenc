@@ -205,6 +205,7 @@ typedef struct
 typedef struct TupleType
 {
     Type *type; ///< A TYPE_TUPLE.
+    char *name; ///< Its C struct name (type_mangle_spelling), to find it without spelling it again.
     struct TupleType *next;
 } TupleType;
 
