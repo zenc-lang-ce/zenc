@@ -36,9 +36,9 @@ test "a Slice<T> is a [T]" {
     assert(sum(s) == 6, "for over a slice parameter");
     assert(s[1] == 2, "indexing a [T] gives the element");
 
-    let explicit: Slice<int> = s;
-    assert(explicit[2] == 3, "indexing a Slice<T> gives the element");
-    assert(explicit.len == 3, "len");
+    let as_slice: Slice<int> = s;
+    assert(as_slice[2] == 3, "indexing a Slice<T> gives the element");
+    assert(as_slice.len == 3, "len");
 }
 
 test "slices of @link_name structs and of pointers" {
