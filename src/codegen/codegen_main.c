@@ -454,6 +454,12 @@ static void emit_raw_statements_internal(ParserContext *ctx, ASTNode *node,
     }
 }
 
+// The name of the struct node `s` in C: its `@link_name`, if it has one.
+static const char *struct_c_type(ASTNode *s)
+{
+    return s->link_name ? s->link_name : s->strct.name;
+}
+
 // Whether the struct node `s` gets a drop glue: a struct with Drop, or the struct of a tuple that
 // holds a value that needs dropping.
 static int struct_has_drop_glue(ParserContext *ctx, ASTNode *s)
@@ -483,7 +489,7 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
 
             char *sname = s->strct.name;
             EMIT(ctx, "// Auto-Generated RAII Glue for %s\n", sname);
-            EMIT(ctx, "void %s__Drop__glue(%s *self) {\n", sname, sname);
+            EMIT(ctx, "void %s__Drop__glue(%s *self) {\n", sname, struct_c_type(s));
 
             char glue_mangled[MAX_MANGLED_NAME_LEN];
             snprintf(glue_mangled, sizeof(glue_mangled), "%s__Drop__drop", sname);
@@ -540,8 +546,9 @@ static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
                     EMIT(ctx, "#if %s\n", s->cfg_condition);
                 }
                 char *sname = s->strct.name;
-                EMIT(ctx, "inline void _z_drop(%s& x) { %s__Drop__glue(&x); }\n", sname, sname);
-                EMIT(ctx, "inline void _z_drop(%s* x) { if(x) %s__Drop__glue(x); }\n", sname,
+                const char *ctype = struct_c_type(s);
+                EMIT(ctx, "inline void _z_drop(%s& x) { %s__Drop__glue(&x); }\n", ctype, sname);
+                EMIT(ctx, "inline void _z_drop(%s* x) { if(x) %s__Drop__glue(x); }\n", ctype,
                      sname);
                 if (s->cfg_condition)
                 {
@@ -564,7 +571,7 @@ static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
             if (struct_has_drop_glue(ctx, s))
             {
                 char *sname = s->strct.name;
-                EMIT(ctx, ", \\\n    %s: %s__Drop__glue((void*)&(x))", sname, sname);
+                EMIT(ctx, ", \\\n    %s: %s__Drop__glue((void*)&(x))", struct_c_type(s), sname);
             }
             s = s->next;
         }

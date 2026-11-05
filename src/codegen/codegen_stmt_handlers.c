@@ -503,9 +503,15 @@ static void defer_local_drop(ParserContext *ctx, ASTNode *node, const char *glue
     const char *var = c_name(ctx, name);
     EMIT(ctx, "int __z_drop_flag_%s = 1; ", name);
 
-    size_t stmt_sz = 256 + strlen(name) + strlen(var) * 3 + (glue ? strlen(glue) : 0);
+    size_t stmt_sz = 256 + strlen(name) + strlen(var) * 3 + (glue ? strlen(glue) * 2 : 0);
     char *stmt_str = xmalloc(stmt_sz);
-    if (glue)
+    if (glue && node->type_info && node->type_info->is_const)
+    {
+        // A `const` local is still owned: it is dropped through a mutable pointer.
+        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue((%s *)&%s);", name, glue,
+                 glue, var);
+    }
+    else if (glue)
     {
         snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);", name, glue, var);
     }
@@ -530,13 +536,26 @@ static void defer_local_drop(ParserContext *ctx, ASTNode *node, const char *glue
 // names no struct: a closure, or a tuple. Returns 0 for any other type.
 static int defer_typed_local_drop(ParserContext *ctx, ASTNode *node, Type *t)
 {
-    if (!t || (t->kind != TYPE_FUNCTION && t->kind != TYPE_TUPLE))
+    if (!t)
     {
         return 0;
     }
-    if (type_needs_drop(ctx, t))
+    if (t->kind == TYPE_FUNCTION || t->kind == TYPE_TUPLE)
     {
-        defer_local_drop(ctx, node, is_owning_closure(t) ? NULL : drop_glue_name(t));
+        if (type_needs_drop(ctx, t))
+        {
+            defer_local_drop(ctx, node, is_owning_closure(t) ? NULL : drop_glue_name(t));
+        }
+        return 1;
+    }
+    ASTNode *def = named_type_def(ctx, t);
+    if (!def)
+    {
+        return 0;
+    }
+    if (def->type_info && def->type_info->traits.has_drop)
+    {
+        defer_local_drop(ctx, node, type_def_name(t));
     }
     return 1;
 }

@@ -411,6 +411,13 @@ char *drop_glue_name(Type *t)
     return (t && t->kind == TYPE_TUPLE) ? type_mangle_spelling(t) : type_def_name(t);
 }
 
+ASTNode *named_type_def(ParserContext *ctx, Type *t)
+{
+    return (t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name)
+               ? find_struct_def(ctx, type_def_name(t))
+               : NULL;
+}
+
 int moves_drop_value(ParserContext *ctx, ASTNode *node)
 {
     char *type_name = infer_type(ctx, node);
@@ -436,6 +443,12 @@ int moves_drop_value(ParserContext *ctx, ASTNode *node)
     }
     if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
     {
+        // The definition the type names, or else the one its C spelling names.
+        ASTNode *tdef = named_type_def(ctx, t);
+        if (tdef)
+        {
+            def = tdef;
+        }
         return (def && def->type_info) ? def->type_info->traits.has_drop : t->traits.has_drop;
     }
     return 0;
