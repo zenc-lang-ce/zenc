@@ -409,7 +409,8 @@ char *value_drop_struct(ParserContext *ctx, ASTNode *value)
         tname += 7;
     }
     ASTNode *def = find_struct_def(ctx, tname);
-    if (def && def->kind == NODE_STRUCT && def->type_info && def->type_info->traits.has_drop)
+    if (def && (def->kind == NODE_STRUCT || def->kind == NODE_ENUM) && def->type_info &&
+        def->type_info->traits.has_drop)
     {
         return tname;
     }
@@ -459,6 +460,11 @@ char *drop_value_stmt(Type *t, const char *lvalue, int depth)
 
 int moves_drop_value(ParserContext *ctx, ASTNode *node)
 {
+    // An enum variant (`Slot::Empty`) builds a new value each time: there is nothing to invalidate.
+    if (node->kind == NODE_EXPR_VAR && node->var_ref.variant.name)
+    {
+        return 0;
+    }
     char *type_name = infer_type(ctx, node);
     ASTNode *def = NULL;
     if (type_name)
