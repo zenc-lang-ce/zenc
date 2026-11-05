@@ -1,0 +1,30 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A variant without a payload can be called as `Enum::Variant()`: it has no constructor
+// function, its value is the enum's. Also with a C name of its own, with a name that is a C
+// keyword, as a default argument, and in a comparison.
+enum Status { Idle, Running }
+
+@link_name("app_color")
+enum Color { Red, Green }
+
+enum Mode { default, long }
+
+enum Rate { Normal = 0, Double }
+
+fn scaled(amount: int, rate: Rate = Rate::Normal()) -> int {
+    if rate == Rate::Double() {
+        return amount * 2;
+    }
+    return amount;
+}
+
+test "a variant without a payload called as a function" {
+    let s = Status::Running();
+    assert(s == Status::Running(), "Status::Running()");
+    let c: Color = Color::Red();
+    assert(c != Color::Green(), "a link_name enum");
+    let m = Mode::default();
+    assert(m != Mode::long(), "variant names that are C keywords");
+    assert(scaled(3) == 3, "default argument");
+    assert(scaled(3, Rate::Double()) == 6, "explicit argument");
+}

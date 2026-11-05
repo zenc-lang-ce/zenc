@@ -42,6 +42,17 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
 
         if (!sig)
         {
+            // A variant without a payload called as `Enum::Variant()`: it has no constructor
+            // function, and check_expr_var already gave the callee the enum's type. A default
+            // argument is reparsed from text ("Enum__Variant()"), so the callee may not carry
+            // its QualifiedName: the type tells it too.
+            Type *callee_type = node->call.callee->type_info;
+            if (callee_type && callee_type->kind == TYPE_ENUM)
+            {
+                node->type_info = node->call.callee->type_info;
+                return;
+            }
+
             // Check if it's a built-in macro injected by the compiler
             if (strcmp(func_name, "_z_str") == 0)
             {

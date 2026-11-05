@@ -253,6 +253,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         }
 
         char *acc = ident;
+        // Set when acc ends up naming an enum variant: its enum and its name.
+        QualifiedName variant = {0};
         while (1)
         {
             if (lexer_peek(l).kind == TOK_EOF)
@@ -461,6 +463,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 }
                                 if (v_mangled)
                                 {
+                                    variant.scope = xstrdup(acc);
+                                    variant.name = xstrdup(method_name);
                                     zfree(acc);
                                     acc = v_mangled;
                                     tmp = acc;
@@ -651,6 +655,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                                 }
                                                 if (!handled_as_generic)
                                                 {
+                                                    variant.scope = xstrdup(acc);
+                                                    variant.name = token_strdup(suffix);
                                                     tmp = direct;
                                                 }
                                             }
@@ -1511,6 +1517,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             node->token = t;
             ASTNode *callee = ast_create(NODE_EXPR_VAR);
             callee->var_ref.name = acc;
+            callee->var_ref.variant = variant;
             node->call.callee = callee;
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
@@ -1549,6 +1556,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             ASTNode *callee = ast_create(NODE_EXPR_VAR);
             callee->token = t;
             callee->var_ref.name = acc;
+            callee->var_ref.variant = variant;
             node->call.callee = callee;
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
@@ -1711,6 +1719,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node = ast_create(NODE_EXPR_VAR);
                 node->token = t;
                 node->var_ref.name = acc;
+                node->var_ref.variant = variant;
                 node->type_info = find_symbol_type_info(ctx, acc);
 
                 if (sym)
