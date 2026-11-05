@@ -96,7 +96,7 @@ void handle_expr_array_literal(ParserContext *ctx, ASTNode *node)
         {
             EMIT(ctx, ", ");
         }
-        codegen_expression(ctx, elem);
+        codegen_expression_with_move(ctx, elem);
         elem = elem->next;
         first_arr = 0;
     }

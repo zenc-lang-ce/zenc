@@ -115,6 +115,10 @@ int type_needs_drop(ParserContext *ctx, Type *t)
     {
         return 1;
     }
+    if (t->kind == TYPE_ARRAY && t->array_size > 0)
+    {
+        return type_needs_drop(ctx, t->inner);
+    }
     if (t->kind == TYPE_TUPLE)
     {
         for (int i = 0; i < t->count; i++)

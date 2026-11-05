@@ -428,6 +428,35 @@ ASTNode *named_type_def(ParserContext *ctx, Type *t)
                : NULL;
 }
 
+char *drop_value_stmt(Type *t, const char *lvalue, int depth)
+{
+    size_t lv = strlen(lvalue);
+    if (is_owning_closure(t))
+    {
+        size_t sz = 32 + lv * 3;
+        char *out = xmalloc(sz);
+        snprintf(out, sz, "if (%s.drop) %s.drop(%s.ctx);", lvalue, lvalue, lvalue);
+        return out;
+    }
+    if (t->kind == TYPE_ARRAY)
+    {
+        size_t esz = lv + 32;
+        char *element = xmalloc(esz);
+        snprintf(element, esz, "%s[_zi%d]", lvalue, depth);
+        char *inner = drop_value_stmt(t->inner, element, depth + 1);
+        size_t sz = 128 + strlen(inner);
+        char *out = xmalloc(sz);
+        snprintf(out, sz, "for (size_t _zi%d = 0; _zi%d < %d; _zi%d++) { %s }", depth, depth,
+                 t->array_size, depth, inner);
+        return out;
+    }
+    const char *glue = drop_glue_name(t);
+    size_t sz = 32 + strlen(glue) + lv;
+    char *out = xmalloc(sz);
+    snprintf(out, sz, "%s__Drop__glue(&%s);", glue, lvalue);
+    return out;
+}
+
 int moves_drop_value(ParserContext *ctx, ASTNode *node)
 {
     char *type_name = infer_type(ctx, node);

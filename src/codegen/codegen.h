@@ -102,6 +102,9 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
 /** @brief Name of the drop glue of the value `value` holds by value, when it is a struct with
  * Drop or a tuple that needs dropping (the glue is `<name>__Drop__glue`); otherwise NULL. */
 char *value_drop_struct(ParserContext *ctx, ASTNode *value);
+/** @brief A C statement that drops `lvalue`, of type `t`, which needs dropping: its glue, a
+ * closure's `drop`, or a loop over the elements of an array (`depth` names its index). */
+char *drop_value_stmt(Type *t, const char *lvalue, int depth);
 /** @brief The struct or enum definition the named type `t` refers to, or NULL. */
 ASTNode *named_type_def(ParserContext *ctx, Type *t);
 /** @brief Name of the drop glue of a value of type `t` that needs dropping: a struct's name, or

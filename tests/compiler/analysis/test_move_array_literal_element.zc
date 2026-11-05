@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// compiler/analysis: test_move_array_literal_element  --  should fail compilation
+// An array literal moves the values it is built from, like a struct literal.
+import "std/string.zc"
+
+fn main() {
+    let s = String::new("hello");
+    let a = [s, s];
+}

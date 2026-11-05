@@ -841,6 +841,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         while (elem)
         {
             check_node(tc, elem, depth + 1);
+            check_move_for_rvalue(tc, elem);
             if (!elem_type && elem->type_info && elem->type_info->kind != TYPE_UNKNOWN)
             {
                 elem_type = elem->type_info;

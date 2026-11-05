@@ -512,6 +512,12 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
                 {
                     EMIT(ctx, "    %s__Drop__glue(&self->%s);\n", drop_glue_name(ft), f);
                 }
+                else if (ft && ft->kind == TYPE_ARRAY && type_needs_drop(ctx, ft))
+                {
+                    char lvalue[MAX_SHORT_MSG_LEN];
+                    snprintf(lvalue, sizeof(lvalue), "self->%s", f);
+                    EMIT(ctx, "    %s\n", drop_value_stmt(ft, lvalue, 0));
+                }
                 field = field->next;
             }
             EMIT(ctx, "}\n\n");

@@ -497,11 +497,25 @@ static void add_symbol_local(ParserContext *ctx, const char *name, Type *type_in
 
 // Declares the drop flag of the local `node` and drops it at the end of its scope: a closure
 // frees its context, any other value calls `<glue>__Drop__glue`.
+// Declares the drop flag of the local `node` and defers `stmt`, which drops it if the flag is set.
+static void push_local_drop(ParserContext *ctx, ASTNode *node, char *stmt)
+{
+    EMIT(ctx, "int __z_drop_flag_%s = 1; ", node->var_decl.name);
+    ASTNode *defer_node = xmalloc(sizeof(ASTNode));
+    defer_node->kind = NODE_RAW_STMT;
+    defer_node->token = node->token;
+    defer_node->raw_stmt.content = stmt;
+    defer_node->line = node->line;
+    if (ctx->cg.defer_count < MAX_DEFER)
+    {
+        ctx->cg.defer_stack[ctx->cg.defer_count++] = defer_node;
+    }
+}
+
 static void defer_local_drop(ParserContext *ctx, ASTNode *node, const char *glue)
 {
     const char *name = node->var_decl.name;
     const char *var = c_name(ctx, name);
-    EMIT(ctx, "int __z_drop_flag_%s = 1; ", name);
 
     size_t stmt_sz = 256 + strlen(name) + strlen(var) * 3 + (glue ? strlen(glue) * 2 : 0);
     char *stmt_str = xmalloc(stmt_sz);
@@ -520,16 +534,7 @@ static void defer_local_drop(ParserContext *ctx, ASTNode *node, const char *glue
         snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s && %s.drop) %s.drop(%s.ctx);", name, var,
                  var, var);
     }
-
-    ASTNode *defer_node = xmalloc(sizeof(ASTNode));
-    defer_node->kind = NODE_RAW_STMT;
-    defer_node->token = node->token;
-    defer_node->raw_stmt.content = stmt_str;
-    defer_node->line = node->line;
-    if (ctx->cg.defer_count < MAX_DEFER)
-    {
-        ctx->cg.defer_stack[ctx->cg.defer_count++] = defer_node;
-    }
+    push_local_drop(ctx, node, stmt_str);
 }
 
 // Drops the local `node` of type `t` when the type decides it and the C spelling of the type
@@ -545,6 +550,19 @@ static int defer_typed_local_drop(ParserContext *ctx, ASTNode *node, Type *t)
         if (type_needs_drop(ctx, t))
         {
             defer_local_drop(ctx, node, is_owning_closure(t) ? NULL : drop_glue_name(t));
+        }
+        return 1;
+    }
+    if (t->kind == TYPE_ARRAY)
+    {
+        if (type_needs_drop(ctx, t))
+        {
+            const char *name = node->var_decl.name;
+            char *drop = drop_value_stmt(t, c_name(ctx, name), 0);
+            size_t stmt_sz = 64 + strlen(name) + strlen(drop);
+            char *stmt_str = xmalloc(stmt_sz);
+            snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) { %s }", name, drop);
+            push_local_drop(ctx, node, stmt_str);
         }
         return 1;
     }
