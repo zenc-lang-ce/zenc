@@ -322,16 +322,21 @@ void check_all_args_side_effects(TypeChecker *tc, ASTNode *receiver, ASTNode *ar
 // Containers do not own what they store yet (the memory model is pending), so the
 // instances of `Vec<T>` with a T that implements Drop get false move errors inside
 // std/vec.zc. They are not the program's errors: they are not reported.
-static int tc_in_std(TypeChecker *tc, Token t)
+int tc_file_in_std(TypeChecker *tc, const char *file)
 {
     const CompilerConfig *cfg = tc->pctx->config;
     size_t len = strlen(cfg->std_root);
-    if (len == 0 || !t.file || strncmp(t.file, cfg->std_root, len) != 0 ||
-        strncmp(t.file + len, "/std/", 5) != 0)
+    if (len == 0 || !file || strncmp(file, cfg->std_root, len) != 0 ||
+        strncmp(file + len, "/std/", 5) != 0)
     {
         return 0;
     }
-    return !cfg->input_file || strcmp(t.file, cfg->input_file) != 0;
+    return !cfg->input_file || strcmp(file, cfg->input_file) != 0;
+}
+
+static int tc_in_std(TypeChecker *tc, Token t)
+{
+    return tc_file_in_std(tc, t.file);
 }
 
 void tc_error(TypeChecker *tc, Token t, const char *msg)
@@ -362,6 +367,16 @@ int is_expression_invariant(TypeChecker *tc, ASTNode *node, int *val)
 }
 
 // Global recursion guard
+
+void tc_warning(TypeChecker *tc, Token t, const char *msg)
+{
+    if (tc_in_std(tc, t))
+    {
+        return;
+    }
+    zwarn_at(t, "%s", msg);
+    tc->warning_count++;
+}
 
 void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
 {
@@ -527,50 +542,6 @@ int get_asm_register_size(Type *t)
         return 128;
     }
     return 32;
-}
-
-int integer_type_width(Type *t)
-{
-    if (!t)
-    {
-        return 0;
-    }
-    switch (t->kind)
-    {
-    case TYPE_I8:
-    case TYPE_U8:
-    case TYPE_BYTE:
-    case TYPE_C_CHAR:
-    case TYPE_C_UCHAR:
-        return 8;
-    case TYPE_I16:
-    case TYPE_U16:
-    case TYPE_C_SHORT:
-    case TYPE_C_USHORT:
-        return 16;
-    case TYPE_I32:
-    case TYPE_U32:
-    case TYPE_INT:
-    case TYPE_UINT:
-    case TYPE_RUNE:
-    case TYPE_C_INT:
-    case TYPE_C_UINT:
-        return 32;
-    case TYPE_I64:
-    case TYPE_U64:
-    case TYPE_ISIZE:
-    case TYPE_USIZE:
-    case TYPE_C_LONG:
-    case TYPE_C_ULONG:
-    case TYPE_C_LONGLONG:
-    case TYPE_C_ULONGLONG:
-        return 64;
-    case TYPE_I128:
-    case TYPE_U128:
-        return 128;
-    default:
-        return 0;
-    }
 }
 
 // EXPRESSION CHECKERS

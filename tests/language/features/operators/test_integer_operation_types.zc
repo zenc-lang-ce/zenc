@@ -1,0 +1,23 @@
+// operators: test_integer_operation_types
+// An operation on two integers has the type C computes it in: the wider one, so a local
+// declared from it does not truncate. An integer literal takes the other operand's type.
+test "integer arithmetic and ternaries have the type C computes in" {
+    let small: i32 = 1;
+    let big: i64 = 5000000000;
+    let sum = small + big;
+    assert(sum == 5000000001, "i32 + i64 is an i64");
+
+    let cap: usize = 3000000000;
+    let doubled = 2 * cap;
+    assert(doubled == 6000000000, "an int literal times a usize is a usize");
+
+    let grown = (cap == 0) ? 8 : cap * 2;
+    assert(grown == 6000000000, "a ternary of an int literal and a usize is a usize");
+}
+
+test "an integer literal takes the other operand's type" {
+    let byte: u8 = 200;
+    let low = byte & 15;
+    let check: u8 = low;
+    assert(check == 8, "u8 & 15 is a u8");
+}

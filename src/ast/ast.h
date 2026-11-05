@@ -790,6 +790,14 @@ int type_eq(Type *a, Type *b);
 int is_integer_type(Type *t);
 int is_incomplete_type(struct ParserContext *ctx, Type *t);
 int is_unsigned_type(Type *t);
+Type *resolve_alias(Type *t);
+int integer_type_width(Type *t);
+Type *common_integer_type(Type *a, Type *b);
+/**
+ * @brief The type of an operation on two integer operands: the other operand's for an integer
+ * literal without a suffix (`b & 15` with a u8 `b` is a u8), common_integer_type otherwise.
+ */
+Type *integer_operation_type(struct ASTNode *left, struct ASTNode *right);
 int is_signed_type(Type *t);
 int is_boolean_type(Type *t);
 int is_float_type(Type *t);

@@ -121,8 +121,11 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
         ASTNode **default_values = NULL;
         char **param_names = NULL;
         int is_varargs = 0;
+        // The parameters belong to the signature, as a function's: not to the enclosing scope.
+        enter_scope(ctx);
         parse_and_convert_args(ctx, l, &default_values, &count, &arg_types, &param_names,
                                &is_varargs, NULL);
+        exit_scope(ctx);
 
         Type *ret_type_obj = type_new(TYPE_VOID);
         if (lexer_peek(l).kind == TOK_ARROW)

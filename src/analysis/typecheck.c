@@ -181,8 +181,23 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         tc_check_impl_trait(tc, node, depth + 1);
         break;
     case NODE_IMPORT:
-        check_node(tc, node->import_stmt.module_root, depth + 1);
-        break;
+    {
+        // The module's nodes, a list as at the root of the program. The standard library is
+        // checked for what checking gives the AST (types, implicit `&` and `*`), but its
+        // diagnostics are not the program's.
+        int in_std = tc_file_in_std(tc, node->import_stmt.path);
+        int prev_suppress = tc->pctx->suppress_errors;
+        int prev_silent = tc->pctx->silent_warnings;
+        tc->pctx->suppress_errors = prev_suppress || in_std;
+        tc->pctx->silent_warnings = prev_silent || in_std;
+        for (ASTNode *child = node->import_stmt.module_root; child; child = child->next)
+        {
+            check_node(tc, child, depth + 1);
+        }
+        tc->pctx->suppress_errors = prev_suppress;
+        tc->pctx->silent_warnings = prev_silent;
+    }
+    break;
     case NODE_EXPR_VAR:
         check_expr_var(tc, node);
         break;
@@ -817,14 +832,16 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             Type *t2 = node->ternary.false_expr->type_info;
             if (t1 && t2)
             {
-                // Loose compatibility check
-                if (!check_type_compatibility(tc, t1, t2, node->token, NULL, 0))
+                // The type of both branches: for integers, the one C computes in. The other
+                // branch must convert to it (check_type_compatibility reports it if not).
+                Type *result =
+                    (is_integer_type(t1) && is_integer_type(t2))
+                        ? integer_operation_type(node->ternary.true_expr, node->ternary.false_expr)
+                        : t1;
+                Type *other = (result == t1) ? t2 : t1;
+                if (check_type_compatibility(tc, result, other, node->token, NULL, 0))
                 {
-                    // Error reported by check_type_compatibility
-                }
-                else
-                {
-                    node->type_info = t1; // Inherit type
+                    node->type_info = result;
                 }
             }
         }
@@ -1208,6 +1225,28 @@ static void check_program_prepass(TypeChecker *tc, ASTNode *root, int depth)
     RECURSION_EXIT(tc->pctx);
 }
 
+// The instances of generic functions and impls, which are not in the tree. Checking one can
+// instantiate more, so the list is walked until every instance has been checked.
+static void check_instantiations(TypeChecker *tc)
+{
+    int changed = 1;
+    while (changed)
+    {
+        changed = 0;
+        for (ASTNode *inst = tc->pctx->instantiated_funcs; inst; inst = inst->next)
+        {
+            if (!inst->is_checked)
+            {
+                check_node(tc, inst, 0);
+                inst->is_checked = 1;
+                changed = 1;
+                // Restart from head to catch newly added instantiations that might be before us
+                break;
+            }
+        }
+    }
+}
+
 // ** Entry Point **
 
 int check_program(ParserContext *ctx, ASTNode *root)
@@ -1225,26 +1264,7 @@ int check_program(ParserContext *ctx, ASTNode *root)
 
     check_node(&tc, root, 0);
     root->is_checked = 1;
-
-    // Fixed-point iteration to handle secondary instantiations
-    int changed = 1;
-    while (changed)
-    {
-        changed = 0;
-        ASTNode *inst_func = ctx->instantiated_funcs;
-        while (inst_func)
-        {
-            if (!inst_func->is_checked)
-            {
-                check_node(&tc, inst_func, 0);
-                inst_func->is_checked = 1;
-                changed = 1;
-                // Restart from head to catch newly added instantiations that might be before us
-                break;
-            }
-            inst_func = inst_func->next;
-        }
-    }
+    check_instantiations(&tc);
 
     if (ctx->move_state)
     {
@@ -1284,6 +1304,7 @@ int check_moves_only(ParserContext *ctx, ASTNode *root)
     }
 
     check_node(&tc, root, 0);
+    check_instantiations(&tc);
 
     if (ctx->move_state)
     {

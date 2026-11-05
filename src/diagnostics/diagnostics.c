@@ -148,7 +148,7 @@ static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char 
         }
         return;
     }
-    if (!is_error && diag_cfg()->quiet)
+    if (!is_error && (diag_cfg()->quiet || (pctx && pctx->silent_warnings)))
     {
         return;
     }

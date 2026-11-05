@@ -1,0 +1,24 @@
+// ARGS: check
+// The parameters of a trait's method signatures belong to the signature: a function or
+// method with a parameter of the same name does not shadow them.
+trait Greeter {
+    fn greet(self, msg: string);
+}
+
+struct Person { name: string; }
+
+impl Greeter for Person {
+    fn greet(self, msg: string) {
+        printf("%s: %s\n", self.name, msg);
+    }
+}
+
+fn shout(msg: string) {
+    printf("%s!\n", msg);
+}
+
+fn main() {
+    let p = Person { name: "Ana" };
+    p.greet("hello");
+    shout("hi");
+}

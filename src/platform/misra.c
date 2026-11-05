@@ -9,7 +9,6 @@
 #include <ctype.h>
 
 // Forward declarations from analysis headers (standalone functions only, no TypeChecker dependency)
-Type *resolve_alias(Type *t);
 int tc_expr_has_side_effects(ASTNode *node);
 int eval_const_int_expr(struct ASTNode *node, struct ParserContext *ctx, long long *out);
 
