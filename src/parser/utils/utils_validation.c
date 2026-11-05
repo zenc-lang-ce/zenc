@@ -159,8 +159,41 @@ static int propagate_drop_from_fields(ParserContext *ctx, ASTNode *strct)
     return 0;
 }
 
+// Marks `strct` as Drop if it implements Drop. `impl Drop for X` marks X when it is parsed, which
+// misses a struct declared below the impl, and an instance created before a generic impl.
+static void seed_drop_from_impl(ParserContext *ctx, ASTNode *strct)
+{
+    if (!strct || strct->kind != NODE_STRUCT || !strct->type_info ||
+        strct->type_info->traits.has_drop || strct->strct.is_template)
+    {
+        return;
+    }
+    // An instance (`Wrap__int32_t`) implements what its template (`Wrap`) implements.
+    const char *tpl = NULL;
+    for (Instantiation *inst = ctx->instantiations; inst && !tpl; inst = inst->next)
+    {
+        if (inst->template_name && strcmp(inst->name, strct->strct.name) == 0)
+        {
+            tpl = inst->template_name;
+        }
+    }
+    if (check_impl(ctx, "Drop", strct->strct.name) || (tpl && check_impl(ctx, "Drop", tpl)))
+    {
+        strct->type_info->traits.has_drop = 1;
+    }
+}
+
 void propagate_drop_traits(ParserContext *ctx)
 {
+    for (StructRef *ref = ctx->parsed_structs_list; ref; ref = ref->next)
+    {
+        seed_drop_from_impl(ctx, ref->node);
+    }
+    for (ASTNode *ins = ctx->instantiated_structs; ins; ins = ins->next)
+    {
+        seed_drop_from_impl(ctx, ins);
+    }
+
     int changed = 1;
     while (changed)
     {
