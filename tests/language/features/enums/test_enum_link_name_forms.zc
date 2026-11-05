@@ -1,0 +1,27 @@
+// enums: test_enum_link_name_forms
+// Every way of naming a variant of an enum with @link_name reaches the constructor C declares
+// (c_shade__Light): without (), with (), with payloads, as a default argument, and as a member
+// call on the enum.
+@link_name("c_shade")
+enum Shade { Dark, Light(int), Mix(int, int) }
+
+fn level(s: Shade = Shade::Light(3)) -> int {
+    match s {
+        Shade::Dark => { return 0; },
+        Shade::Light(n) => { return n; },
+        Shade::Mix(a, b) => { return a + b; },
+    }
+    return -1;
+}
+
+test "link_name enum variants" {
+    let d = Shade::Dark;
+    let d2 = Shade::Dark();
+    let l = Shade::Light(5);
+    let m = Shade::Mix(1, 2);
+    let k = Shade.Light(7);
+    assert(level(d) == 0 && level(d2) == 0, "no payload");
+    assert(level(l) == 5 && level(m) == 3, "payload");
+    assert(level() == 3, "default argument");
+    assert(level(k) == 7, "member call");
+}

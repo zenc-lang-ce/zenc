@@ -1,0 +1,23 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// `impl Trait for Alias` with a plain alias adds the methods to the type the alias names,
+// as `impl Alias` does: they are called on that type, and it converts to the trait.
+trait Show { fn show(self) -> int; }
+
+struct Point { x: int; }
+alias Spot = Point;
+
+impl Show for Spot {
+    fn show(self) -> int { return self.x; }
+}
+
+impl Spot {
+    fn doubled(self) -> int { return self.x * 2; }
+}
+
+test "impl Trait for a plain alias" {
+    let p = Point{x: 7};
+    assert(p.show() == 7, "trait method on the aliased type");
+    assert(p.doubled() == 14, "inherent method through the alias");
+    let s: Show = &p;
+    assert(s.show() == 7, "trait value");
+}

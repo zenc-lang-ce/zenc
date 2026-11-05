@@ -508,35 +508,19 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         int has_defers = (ctx->cg.defer_count > ctx->cg.func_defer_boundary);
         int handled = 0;
 
-        if (node->ret.value && node->ret.value->kind == NODE_EXPR_ARRAY_LITERAL &&
-            ctx->cg.current_func_ret_type &&
-            strncmp(ctx->cg.current_func_ret_type, "Slice__", 7) == 0)
+        // A slice return type, `[T]` or `Slice<T>` (an instance, named Slice__T).
+        char *ret_name = ctx->cg.current_func_ret_type_info
+                             ? type_to_string(ctx->cg.current_func_ret_type_info)
+                             : NULL;
+        if (node->ret.value && node->ret.value->kind == NODE_EXPR_ARRAY_LITERAL && ret_name &&
+            strncmp(ret_name, "Slice__", 7) == 0)
         {
             // Heap allocation for slice literals to prevent use-after-return
             ASTNode *arr = node->ret.value;
             int count = arr->array_literal.count;
-            char *elem_type = "void*"; // fallback
-
-            // Prioritize the function return type (Slice_T) to determine the pointer type
-            // This prevents "incompatible pointer type" errors in C when returning literals of
-            // different types
-            if (ctx->cg.current_func_ret_type &&
-                strncmp(ctx->cg.current_func_ret_type, "Slice__", 7) == 0)
-            {
-                elem_type = xstrdup(ctx->cg.current_func_ret_type + 7);
-            }
-            else if (arr->array_literal.elements && arr->array_literal.elements->type_info)
-            {
-                elem_type = c_type_spelling(ctx, arr->array_literal.elements->type_info);
-            }
-            else if (arr->type_info && arr->type_info->inner)
-            {
-                elem_type = c_type_spelling(ctx, arr->type_info->inner);
-            }
-            else
-            {
-                elem_type = xstrdup("void*");
-            }
+            // The element type comes from the function's return type, so that literals of
+            // another type (`[1.0, 2.0]` in a `-> [float]`) give the pointer it expects.
+            char *elem_type = ret_name + 7;
 
             EMIT(ctx, "{ %s *_tmp_arr = (%s*)malloc(%d * sizeof(%s));\n", elem_type, elem_type,
                  count, elem_type);
@@ -555,13 +539,12 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             if (ctx->config->use_cpp)
             {
                 // Traditional initializer: (Slice){data, len, cap}
-                EMIT(ctx, "return (%s){_tmp_arr, %d, %d};\n", ctx->cg.current_func_ret_type, count,
-                     count);
+                EMIT(ctx, "return (%s){_tmp_arr, %d, %d};\n", ret_name, count, count);
             }
             else
             {
-                EMIT(ctx, "return (%s){.data = _tmp_arr, .len = %d, .cap = %d};\n",
-                     ctx->cg.current_func_ret_type, count, count);
+                EMIT(ctx, "return (%s){.data = _tmp_arr, .len = %d, .cap = %d};\n", ret_name, count,
+                     count);
             }
             emitter_dedent(&ctx->cg.emitter);
             EMIT(ctx, "}\n");
@@ -637,17 +620,12 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             {
                 EMIT(ctx, "{ ");
                 emitter_indent(&ctx->cg.emitter);
-                if (ctx->cg.current_func_ret_type_info)
+                Type *ret = ctx->cg.current_func_ret_type_info;
+                if (ret && ret->kind != TYPE_VOID)
                 {
-                    char *tstr = c_type_spelling(ctx, ctx->cg.current_func_ret_type_info);
+                    char *tstr = c_type_spelling(ctx, ret);
                     EMIT(ctx, "%s", tstr);
                     zfree(tstr);
-                }
-                else if (ctx->cg.current_func_ret_type &&
-                         strcmp(ctx->cg.current_func_ret_type, "void") != 0 &&
-                         strcmp(ctx->cg.current_func_ret_type, "unknown") != 0)
-                {
-                    EMIT(ctx, "%s", ctx->cg.current_func_ret_type);
                 }
                 else
                 {
@@ -689,8 +667,8 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             {
                 if (ctx->config->misra_mode)
                 {
-                    if (ctx->cg.current_func_ret_type &&
-                        strcmp(ctx->cg.current_func_ret_type, "void") != 0)
+                    Type *ret = ctx->cg.current_func_ret_type_info;
+                    if (ret && ret->kind != TYPE_VOID)
                     {
                         EMIT(ctx, "_misra_ret = ");
                     }

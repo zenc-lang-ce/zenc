@@ -142,14 +142,19 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
 {
     char *type_name = "Result";
     Type *expr_type = node->try_stmt.expr->type_info;
+    // The enclosing function's return type, named: an Option or Result instance is a struct
+    // named after its arguments (Result__int32_t).
+    char *func_ret_name = ctx->cg.current_func_ret_type_info
+                              ? type_to_string(ctx->cg.current_func_ret_type_info)
+                              : NULL;
 
     if (expr_type && expr_type->name)
     {
         type_name = expr_type->name;
     }
-    else if (ctx->cg.current_func_ret_type)
+    else if (func_ret_name)
     {
-        type_name = ctx->cg.current_func_ret_type;
+        type_name = func_ret_name;
     }
 
     if (strcmp(type_name, "__auto_type") == 0 || strcmp(type_name, "unknown") == 0)
@@ -166,11 +171,9 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
     // may differ from the expression's type, e.g.
     //   fn f() -> Result<int> { let s = read_all()?; ... }  // read_all -> Result<string>
     // The constructor name (Result__int32_t__Err, Option__X__None, ...) is
-    // therefore derived from current_func_ret_type, falling back to the
+    // therefore derived from the function's return type, falling back to the
     // expression's type when the function does not return a Result/Option.
-    const char *ret_name = ctx->cg.current_func_ret_type
-                               ? str_strip_struct_prefix(ctx->cg.current_func_ret_type)
-                               : NULL;
+    const char *ret_name = func_ret_name ? str_strip_struct_prefix(func_ret_name) : NULL;
     if (!ret_name || !(str_is_result_type(ret_name) || str_is_option_type(ret_name)))
     {
         ret_name = search_name;

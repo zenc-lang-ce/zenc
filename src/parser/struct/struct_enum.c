@@ -173,10 +173,11 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             va->variant.payload = payload; // Store Type*
             va->variant.payload_count = tuple_count ? tuple_count : (payload ? 1 : 0);
 
-            // Register Variant (Mangled name to avoid collisions: Result_Ok)
-            char *base_for_mangling = link_name ? (char *)link_name : ename;
-            char *mangled = mangle_variant_symbol(base_for_mangling, vname);
-            register_enum_variant(ctx, vname, ename, link_name, va->variant.tag_id);
+            // Register Variant (Mangled name to avoid collisions: Result_Ok). The
+            // constructor is named after the enum; with @link_name, C calls it by that name.
+            char *mangled = mangle_variant_symbol(ename, vname);
+            char *c_mangled = link_name ? mangle_variant_symbol(link_name, vname) : mangled;
+            register_enum_variant(ctx, vname, ename, va->variant.tag_id);
 
             // Register Constructor Function Signature
             if (payload && !gp) // Only for non-generic enums for now
@@ -188,7 +189,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
 
                     // We can reuse the tuple_types collected during parsing!
                     register_func(ctx, ctx->current_scope, mangled, tuple_count, NULL, tuple_types,
-                                  ret_t, 0, 0, mangled, vt, is_export);
+                                  ret_t, 0, 0, c_mangled, vt, is_export);
                 }
                 else
                 {
@@ -197,7 +198,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
                     Type *ret_t = type_new(TYPE_ENUM);
                     ret_t->name = xstrdup(ename);
                     register_func(ctx, ctx->current_scope, mangled, 1, NULL, at, ret_t, 0, 0,
-                                  mangled, vt, is_export);
+                                  c_mangled, vt, is_export);
                 }
             }
             else if (!gp)

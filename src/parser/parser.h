@@ -224,7 +224,6 @@ typedef struct TupleType
 typedef struct EnumVariantReg
 {
     char *enum_name;    ///< Name of the enum.
-    char *link_name;    ///< Name of the enum in C, from @link_name (NULL if it has none).
     char *variant_name; ///< Name of the variant.
     char *mangled_name; ///< Mangled name (Enum__Variant).
     int tag_id;         ///< Integration tag value.
@@ -438,21 +437,20 @@ struct ParserContext
         int is_repl;        ///< 1 if running in REPL mode.
         int in_defer_block; ///< 1 if currently parsing inside a defer block.
 
-        ASTNode *global_user_structs; ///< List of user defined structs.
-        char *current_impl_type;      ///< Type currently being implemented (in impl block).
-        int tmp_counter;              ///< Counter for temporary variables.
-        int fstring_counter;          ///< Counter for the buffers of f-string values.
-        ASTNode *defer_stack[1024];   ///< Stack of deferred nodes (max 1024).
-        int defer_count;              ///< Counter for defer statements in current scope.
-        ASTNode *current_lambda;      ///< Current lambda being generated.
-        char *current_func_ret_type;  ///< Return type of current function.
-        Type *current_func_ret_type_info;
-        char *expected_init_type;      ///< Expected type for initializer (from let declaration).
-        int *loop_defer_boundary;      ///< Defer stack index at start of each enclosing loop.
-        int loop_defer_capacity;       ///< Allocated slots of loop_defer_boundary.
-        int loop_depth;                ///< Current loop nesting depth.
-        int func_defer_boundary;       ///< Defer stack index at function entry.
-        int pending_closure_frees[64]; ///< Lambda IDs whose ctx needs freeing (max 64).
+        ASTNode *global_user_structs;     ///< List of user defined structs.
+        char *current_impl_type;          ///< Type currently being implemented (in impl block).
+        int tmp_counter;                  ///< Counter for temporary variables.
+        int fstring_counter;              ///< Counter for the buffers of f-string values.
+        ASTNode *defer_stack[1024];       ///< Stack of deferred nodes (max 1024).
+        int defer_count;                  ///< Counter for defer statements in current scope.
+        ASTNode *current_lambda;          ///< Current lambda being generated.
+        Type *current_func_ret_type_info; ///< Return type of the function being generated.
+        char *expected_init_type;         ///< Expected type for initializer (from let declaration).
+        int *loop_defer_boundary;         ///< Defer stack index at start of each enclosing loop.
+        int loop_defer_capacity;          ///< Allocated slots of loop_defer_boundary.
+        int loop_depth;                   ///< Current loop nesting depth.
+        int func_defer_boundary;          ///< Defer stack index at function entry.
+        int pending_closure_frees[64];    ///< Lambda IDs whose ctx needs freeing (max 64).
         int pending_closure_free_count;
     } cg;
 
@@ -852,6 +850,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
 Type *parse_type_formal(ParserContext *ctx, Lexer *l);
 Type *type_from_string_helper(ParserContext *ctx, const char *c);
 Type *type_from_name(ParserContext *ctx, const char *name);
+Type *alias_type(TypeAlias *alias_node);
 FuncSig *find_func(ParserContext *ctx, const char *name);
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name);
 /**
@@ -898,8 +897,7 @@ void register_type_alias(ParserContext *ctx, const char *alias, Type *type, int 
 void register_slice(ParserContext *ctx, const char *type);
 void register_lambda(ParserContext *ctx, ASTNode *node);
 void register_template(ParserContext *ctx, const char *name, ASTNode *node);
-void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename,
-                           const char *link_name, int tag);
+void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag);
 void register_plugin(ParserContext *ctx, const char *name, const char *alias);
 void register_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
                                const char *source_module);

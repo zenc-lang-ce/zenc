@@ -1022,32 +1022,6 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         // in their respective node visitors.
     }
 
-    // Resolve type aliases (str -> string, etc.) for non-integer types
-    // (Integer aliases handled by resolve_alias above)
-    if (target->kind == TYPE_ALIAS && target->name)
-    {
-        Type *alias = find_type_alias(tc->pctx, target->name);
-        if (alias)
-        {
-            // Check if resolved names match
-            if (value->name && strcmp(type_to_string(alias), value->name) == 0)
-            {
-                return 1;
-            }
-        }
-    }
-    if (value->kind == TYPE_ALIAS && value->name)
-    {
-        Type *alias = find_type_alias(tc->pctx, value->name);
-        if (alias)
-        {
-            if (target->name && strcmp(type_to_string(alias), target->name) == 0)
-            {
-                return 1;
-            }
-        }
-    }
-
     // String types: str, string, *char are compatible
     if ((target->kind == TYPE_STRING || (target->name && strcmp(target->name, "str") == 0)) &&
         (value->kind == TYPE_STRING || (value->name && strcmp(value->name, "string") == 0)))
@@ -1252,12 +1226,11 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         }
     }
 
-    // Find struct definition (the literal may name it through an alias)
-    ASTNode *def = find_struct_def(tc->pctx, node->struct_init.struct_name);
-    if (!def)
-    {
-        def = find_struct_def(tc->pctx, resolve_alias_name(tc, node->struct_init.struct_name));
-    }
+    // The struct the literal builds: the one its type names, also through an alias.
+    Type *struct_type = resolve_alias(node->type_info);
+    ASTNode *def = find_struct_def(tc->pctx, (struct_type && struct_type->name)
+                                                 ? struct_type->name
+                                                 : node->struct_init.struct_name);
     if (!def)
     {
         char msg[MAX_SHORT_MSG_LEN];
@@ -1375,7 +1348,6 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         def_field = def_field->next;
     }
 
-    node->type_info = def->type_info;
     RECURSION_EXIT(tc->pctx);
 }
 

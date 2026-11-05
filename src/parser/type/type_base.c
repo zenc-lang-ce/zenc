@@ -24,15 +24,26 @@ static Type *opaque_alias_type(TypeAlias *alias_node)
     return wrapper;
 }
 
+// The type an alias name stands for: an opaque alias keeps its name, any other
+// alias is the type it names.
+Type *alias_type(TypeAlias *alias_node)
+{
+    if (alias_node->is_opaque)
+    {
+        return opaque_alias_type(alias_node);
+    }
+    return type_clone(alias_node->type_info);
+}
+
 // The type for a non-primitive type name that is not parsed from source (the
-// receiver of a method, a generic argument): the opaque alias of that name if
+// receiver of a method, a generic argument): the type of the alias of that name if
 // there is one, a struct otherwise.
 Type *type_from_name(ParserContext *ctx, const char *name)
 {
     TypeAlias *alias_node = ctx ? find_type_alias_node(ctx, name) : NULL;
-    if (alias_node && alias_node->is_opaque)
+    if (alias_node)
     {
-        return opaque_alias_type(alias_node);
+        return alias_type(alias_node);
     }
     Type *t = type_new(TYPE_STRUCT);
     t->name = xstrdup(name);
@@ -91,11 +102,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         if (alias_node)
         {
             zfree(name);
-            if (alias_node->is_opaque)
-            {
-                return opaque_alias_type(alias_node);
-            }
-            return type_clone(alias_node->type_info);
+            return alias_type(alias_node);
         }
 
         // Self type alias: Replace "Self" with current impl struct type
@@ -311,6 +318,10 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
                 return NULL;
             }
             char *first_arg_str = type_to_string(first_arg);
+            // The instance keeps the Types of its arguments; its name is the mangled one.
+            Type **arg_types = xmalloc(sizeof(Type *));
+            int arg_count = 0;
+            arg_types[arg_count++] = first_arg;
 
             // Check for multi-arg: <K, V>
             Token next_tok = lexer_peek(l);
@@ -329,6 +340,8 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
                     {
                         return NULL;
                     }
+                    arg_types = xrealloc(arg_types, sizeof(Type *) * (size_t)(arg_count + 1));
+                    arg_types[arg_count++] = arg;
                     char *arg_str = type_to_string(arg);
                     args = realloc(args, sizeof(char *) * (size_t)(count + 1));
                     args[count++] = xstrdup(arg_str);
@@ -407,8 +420,8 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
 
             zfree(first_arg_str);
             ty->kind = TYPE_STRUCT;
-            ty->args = NULL;
-            ty->count = 0;
+            ty->args = arg_types;
+            ty->count = arg_count;
         }
         return ty;
     }

@@ -117,6 +117,19 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
     return h;
 }
 
+// The type an impl adds methods to: a plain alias stands for the type it names, an opaque
+// alias keeps its own name.
+static char *impl_target_name(ParserContext *ctx, char *name)
+{
+    TypeAlias *ta = find_type_alias_node(ctx, name);
+    if (ta && !ta->is_opaque)
+    {
+        zfree(name);
+        return type_to_string(ta->type_info);
+    }
+    return name;
+}
+
 ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 {
 
@@ -202,6 +215,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             }
             register_generic(ctx, target_gen_param);
         }
+        name2 = impl_target_name(ctx, name2);
 
         // Check for common error: swapped Struct and Trait
         // impl MyStruct for MyTrait (Wrong) vs impl MyTrait for MyStruct (Correct)
@@ -337,13 +351,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             name1 = prefixed_name;
         }
 
-        // Resolve opaque alias (e.g. StringView -> Slice__char)
-        TypeAlias *ta = find_type_alias_node(ctx, name1);
-        if (ta && !ta->is_opaque)
-        {
-            zfree(name1);
-            name1 = type_to_string(ta->type_info);
-        }
+        name1 = impl_target_name(ctx, name1);
 
         ctx->current_impl_struct = name1; // For patch_self_args inside parse_function
 

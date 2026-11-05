@@ -425,10 +425,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                             if (is_variant)
                             {
-                                // The name parse_enum registers: the enum's link_name, if
-                                // it has one.
-                                char *v_mangled = mangle_variant_symbol(
-                                    def->link_name ? def->link_name : acc, method_name);
+                                char *v_mangled = mangle_variant_symbol(acc, method_name);
 
                                 if (!find_func(ctx, v_mangled))
                                 {
@@ -1089,9 +1086,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node = ast_create(NODE_EXPR_STRUCT_INIT);
                 node->token = t;
                 node->struct_init.struct_name = struct_name;
-                Type *init_type = type_new(TYPE_STRUCT);
-                init_type->name = xstrdup(struct_name);
-                node->type_info = init_type;
 
                 ASTNode *head = NULL, *tail = NULL;
                 int first = 1;
@@ -1294,9 +1288,17 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     }
                 }
 
-                Type *st = type_new(TYPE_STRUCT);
-                st->name = xstrdup(struct_name);
-                node->type_info = st;
+                // A literal named by an alias (`StringView{...}`) has the alias's type.
+                TypeAlias *alias_node = find_type_alias_node(ctx, struct_name);
+                if (alias_node)
+                {
+                    node->type_info = alias_type(alias_node);
+                }
+                else
+                {
+                    node->type_info = type_new(TYPE_STRUCT);
+                    node->type_info->name = xstrdup(struct_name);
+                }
                 return node;
             }
         }

@@ -204,6 +204,21 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
         zwarn_at(node->token, "%s\n   = help: %s", msg, help);
     }
 
+    // A variant of an enum with @link_name: C names it after the enum's C name.
+    const QualifiedName *variant = &node->var_ref.variant;
+    const char *enum_c_name = variant->name ? link_name_of(ctx, variant->scope) : NULL;
+    if (enum_c_name)
+    {
+        EMIT(ctx, "%s", mangle_variant_symbol(enum_c_name, variant->name));
+        // A variant without a payload is a call to its constructor, unless the parent
+        // NODE_EXPR_CALL adds the ().
+        if (!g_emitting_callee && find_enum_variant_of(ctx, variant->scope, variant->name))
+        {
+            EMIT(ctx, "()");
+        }
+        return;
+    }
+
     // Check for static method call pattern: Type::method or Type__method
     char *sep = (char *)strstr(node->var_ref.name, "::");
     int sep_len = 2;

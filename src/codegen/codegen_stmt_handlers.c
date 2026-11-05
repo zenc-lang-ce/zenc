@@ -115,36 +115,7 @@ void handle_node_block(ParserContext *ctx, ASTNode *node)
 
 void handle_node_impl(ParserContext *ctx, ASTNode *node)
 {
-    char *sname = node->impl.struct_name;
-    TypeAlias *ta = find_type_alias_node(ctx, sname);
-    const char *resolved = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
-
-    if (resolved)
-    {
-        size_t slen = strlen(sname);
-        ASTNode *m = node->impl.methods;
-        while (m)
-        {
-            if (m->kind == NODE_FUNCTION && m->func.name &&
-                strncmp(m->func.name, sname, (size_t)(slen)) == 0 && m->func.name[slen] == '_' &&
-                m->func.name[slen + 1] == '_')
-            {
-                const char *method_part = m->func.name + slen;
-                size_t new_name_sz = strlen(resolved) + strlen(method_part) + 1;
-                char *new_name = xmalloc(new_name_sz);
-                snprintf(new_name, new_name_sz, "%s%s", resolved, method_part);
-                zfree(m->func.name);
-                m->func.name = new_name;
-            }
-            m = m->next;
-        }
-        ctx->cg.current_impl_type = (char *)resolved;
-    }
-    else
-    {
-        ctx->cg.current_impl_type = sname;
-    }
-
+    ctx->cg.current_impl_type = node->impl.struct_name;
     codegen_walker(ctx, node->impl.methods);
     ctx->cg.current_impl_type = NULL;
 }
@@ -277,9 +248,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, "%s _misra_ret = 0;\n", safe_ret_type);
         zfree(safe_ret_type);
     }
-    char *prev_ret = ctx->cg.current_func_ret_type;
     Type *prev_ret_info = ctx->cg.current_func_ret_type_info;
-    ctx->cg.current_func_ret_type = type_to_string(node->func.ret_type_info);
     ctx->cg.current_func_ret_type_info = node->func.ret_type_info;
 
     // Set self_is_pointer flag for codegen of the body
@@ -368,7 +337,6 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
 
     codegen_walker(ctx, node->func.body);
     emit_defers_down_to(ctx, 0);
-    ctx->cg.current_func_ret_type = prev_ret;
     ctx->cg.current_func_ret_type_info = prev_ret_info;
     ctx->self_is_pointer = prev_self_is_ptr;
 
@@ -395,36 +363,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
 
 void handle_node_impl_trait(ParserContext *ctx, ASTNode *node)
 {
-    char *sname = node->impl_trait.target_type;
-    TypeAlias *ta = find_type_alias_node(ctx, sname);
-    const char *resolved = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
-
-    if (resolved)
-    {
-        size_t slen = strlen(sname);
-        ASTNode *m = node->impl_trait.methods;
-        while (m)
-        {
-            if (m->kind == NODE_FUNCTION && m->func.name &&
-                strncmp(m->func.name, sname, (size_t)(slen)) == 0 && m->func.name[slen] == '_' &&
-                m->func.name[slen + 1] == '_')
-            {
-                const char *method_part = m->func.name + slen;
-                size_t new_name_sz = strlen(resolved) + strlen(method_part) + 1;
-                char *new_name = xmalloc(new_name_sz);
-                snprintf(new_name, new_name_sz, "%s%s", resolved, method_part);
-                zfree(m->func.name);
-                m->func.name = new_name;
-            }
-            m = m->next;
-        }
-        ctx->cg.current_impl_type = (char *)resolved;
-    }
-    else
-    {
-        ctx->cg.current_impl_type = sname;
-    }
-
+    ctx->cg.current_impl_type = node->impl_trait.target_type;
     codegen_walker(ctx, node->impl_trait.methods);
     ctx->cg.current_impl_type = NULL;
 }

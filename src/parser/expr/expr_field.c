@@ -188,27 +188,6 @@ char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out
         return struct_name;
     }
 
-    const char *alias_target = NULL;
-    Type *aliased = t->kind == TYPE_STRUCT ? find_type_alias(ctx, t->name) : NULL;
-    if (aliased)
-    {
-        alias_target = type_to_string(aliased);
-    }
-
-    if (alias_target)
-    {
-        char *tpl = xstrdup(alias_target);
-        char *args_ptr = (char *)strchr(tpl, '<');
-        if (args_ptr)
-        {
-            *args_ptr = '\0';
-        }
-        struct_name = tpl;
-        *allocated_out = tpl;
-        *is_ptr_out = 0;
-        return struct_name;
-    }
-
     if (t->kind == TYPE_POINTER && t->inner)
     {
         *is_ptr_out = 1;
