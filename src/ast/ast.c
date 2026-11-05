@@ -548,6 +548,16 @@ int is_unsigned_type(Type *t)
 }
 
 // The type an alias stands for, through every alias of an alias.
+int is_char_type(Type *t)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    Type *res = resolve_alias(t);
+    return (res->kind == TYPE_CHAR || res->kind == TYPE_C_CHAR || res->kind == TYPE_C_UCHAR);
+}
+
 Type *resolve_alias(Type *t)
 {
     while (t && t->kind == TYPE_ALIAS && t->inner)
@@ -840,7 +850,7 @@ int type_eq(Type *a, Type *b)
     return 1;
 }
 
-static char *type_to_string_impl(Type *t);
+static char *type_spelling(Type *t, int c_names);
 
 // The name of the C struct a tuple is: `Tuple__` and its elements' names, as `(int, bool*)`
 // gives `Tuple__int__boolPtr`.
@@ -850,7 +860,7 @@ static char *tuple_struct_name(Type *t)
     char **elements = xmalloc(sizeof(char *) * (size_t)(t->count > 0 ? t->count : 1));
     for (int i = 0; i < t->count; i++)
     {
-        elements[i] = type_to_string(t->args[i]);
+        elements[i] = type_spelling(t->args[i], 1);
         length += strlen(elements[i]) + 2;
     }
     char *signature = xmalloc(length + 1);
@@ -873,13 +883,17 @@ static char *tuple_struct_name(Type *t)
     return name;
 }
 
-char *type_to_string(Type *t)
+static char *type_spelling_impl(Type *t, int c_names);
+
+// A type as type_to_string spells it, or, with `c_names`, as the C names built from it spell
+// it (type_mangle_spelling).
+static char *type_spelling(Type *t, int c_names)
 {
     if (!t)
     {
         return xstrdup("void");
     }
-    char *res = type_to_string_impl(t);
+    char *res = type_spelling_impl(t, c_names);
     if (t->is_const)
     {
         char *final = xmalloc(strlen(res) + 7);
@@ -890,7 +904,17 @@ char *type_to_string(Type *t)
     return res;
 }
 
-static char *type_to_string_impl(Type *t)
+char *type_to_string(Type *t)
+{
+    return type_spelling(t, 0);
+}
+
+char *type_mangle_spelling(Type *t)
+{
+    return type_spelling(t, 1);
+}
+
+static char *type_spelling_impl(Type *t, int c_names)
 {
     if (!t)
     {
@@ -988,7 +1012,7 @@ static char *type_to_string_impl(Type *t)
         {
             return xstrdup(t->name);
         }
-        char *inner = type_to_string(t->inner);
+        char *inner = type_spelling(t->inner, c_names);
         char *res = xmalloc(strlen(inner) + 20);
         sprintf(res, "%sx%d", inner, t->array_size); /* safe */
         zfree(inner);
@@ -997,7 +1021,7 @@ static char *type_to_string_impl(Type *t)
 
     case TYPE_POINTER:
     {
-        char *inner = type_to_string(t->inner);
+        char *inner = type_spelling(t->inner, c_names);
         if (t->is_restrict)
         {
             char *res = xmalloc(strlen(inner) + 16);
@@ -1030,7 +1054,7 @@ static char *type_to_string_impl(Type *t)
             base = base->inner;
         }
 
-        char *inner = type_to_string(base);
+        char *inner = type_spelling(base, c_names);
         size_t total_len = strlen(inner) + 1;
         for (int i = 0; i < dims_count; i++)
         {
@@ -1060,7 +1084,7 @@ static char *type_to_string_impl(Type *t)
         if (t->is_raw)
         {
             // fn*(Args)->Ret
-            char *ret = type_to_string(t->inner);
+            char *ret = type_spelling(t->inner, c_names);
             char *res = xmalloc(strlen(ret) + 64);
             snprintf(res, strlen(ret) + 64, "fn*(");
 
@@ -1073,7 +1097,7 @@ static char *type_to_string_impl(Type *t)
                     zfree(res);
                     res = tmp;
                 }
-                char *arg = type_to_string(t->args[i]);
+                char *arg = type_spelling(t->args[i], c_names);
                 char *tmp = xmalloc(strlen(res) + strlen(arg) + 1);
                 sprintf(tmp, "%s%s", res, arg); /* safe */
                 zfree(res);
@@ -1096,7 +1120,7 @@ static char *type_to_string_impl(Type *t)
         }
 
         // fn(Args) -> Ret
-        char *ret = type_to_string(t->inner);
+        char *ret = type_spelling(t->inner, c_names);
         char *res = xmalloc(strlen(ret) + 64);
         snprintf(res, strlen(ret) + 64, "fn(");
 
@@ -1109,7 +1133,7 @@ static char *type_to_string_impl(Type *t)
                 zfree(res);
                 res = tmp;
             }
-            char *arg = type_to_string(t->args[i]);
+            char *arg = type_spelling(t->args[i], c_names);
             char *tmp = xmalloc(strlen(res) + strlen(arg) + 1);
             sprintf(tmp, "%s%s", res, arg); /* safe */
             zfree(res);
@@ -1135,7 +1159,7 @@ static char *type_to_string_impl(Type *t)
             char **args = xmalloc((size_t)t->count * sizeof(char *));
             for (int i = 0; i < t->count; i++)
             {
-                args[i] = type_to_string(t->args[i]);
+                args[i] = type_spelling(t->args[i], 1);
             }
             return mangle_generic_name(t->name, args, t->count);
         }

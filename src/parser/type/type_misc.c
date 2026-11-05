@@ -23,6 +23,12 @@ char *parse_type(ParserContext *ctx, Lexer *l)
     return type_to_string(t);
 }
 
+// The C an embed writes spells its types in C.
+static char *embed_c_type(ParserContext *ctx, Type *t)
+{
+    return type_to_c_string(t, ctx->config->misra_mode);
+}
+
 ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
 {
     lexer_next(l);
@@ -91,8 +97,8 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
     Type *slice_elem = slice_element(target_type);
     if (slice_elem)
     {
-        char *slice_name = type_to_string(target_type);
-        char *inner_ts = type_to_string(slice_elem);
+        char *slice_name = embed_c_type(ctx, target_type);
+        char *inner_ts = embed_c_type(ctx, slice_elem);
         if (use_cpp_stmt)
         {
             snprintf(o, oc, "({ static const %s __tmp[] = {", inner_ts);
@@ -110,11 +116,11 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
     else
     {
         // Handle specific type
-        char *ts = type_to_string(target_type);
+        char *ts = embed_c_type(ctx, target_type);
 
         if (target_type->kind == TYPE_ARRAY)
         {
-            char *inner_ts = type_to_string(target_type->inner);
+            char *inner_ts = embed_c_type(ctx, target_type->inner);
             Type *ptr_type = type_new_ptr(target_type->inner); // Reuse inner
             target_type = ptr_type;
             if (use_cpp_stmt)
@@ -145,8 +151,9 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
     char *p = o + cur_len;
 
     // Check if string mode
-    int is_string = (target_type && (strcmp(type_to_string(target_type), "string") == 0 ||
-                                     strcmp(type_to_string(target_type), "char*") == 0));
+    int is_string = target_type && (target_type->kind == TYPE_STRING ||
+                                    (target_type->kind == TYPE_POINTER && target_type->inner &&
+                                     target_type->inner->kind == TYPE_CHAR));
 
     for (int i = 0; i < len; i++)
     {
@@ -181,10 +188,10 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
             {
                 if (use_cpp_stmt)
                 {
-                    char *ts = type_to_string(target_type);
+                    char *ts = embed_c_type(ctx, target_type);
                     if (ctx->config->use_cpp)
                     {
-                        char *inner_ts = type_to_string(slice_elem);
+                        char *inner_ts = embed_c_type(ctx, slice_elem);
                         snprintf(p, oc - cur_len, "}; (%s){(%s*)__tmp, %ld}; })", ts, inner_ts,
                                  (long)len);
                         zfree(inner_ts);
@@ -213,7 +220,7 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
                 if (use_cpp_stmt && target_type && target_type->kind == TYPE_POINTER &&
                     target_type->inner)
                 {
-                    char *inner_ts = type_to_string(target_type->inner);
+                    char *inner_ts = embed_c_type(ctx, target_type->inner);
                     snprintf(p, oc - cur_len, "}; (%s*)__tmp; })", inner_ts);
                     zfree(inner_ts);
                 }

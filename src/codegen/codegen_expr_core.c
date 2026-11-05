@@ -246,7 +246,7 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
         if (ctx)
         {
             TypeAlias *ta = find_type_alias_node(ctx, mangled_type);
-            const char *alias = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
+            const char *alias = (ta && !ta->is_opaque) ? type_mangle_spelling(ta->type_info) : NULL;
             if (alias)
             {
                 emit_mangled_name(ctx, alias, method_name);

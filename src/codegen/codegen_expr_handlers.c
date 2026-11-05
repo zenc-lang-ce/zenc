@@ -308,10 +308,10 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                     }
                     else if (!found_opaque)
                     {
-                        mangle_base = type_to_string(ta->type_info);
+                        mangle_base = type_mangle_spelling(ta->type_info);
                     }
 
-                    curr = type_to_string(ta->type_info);
+                    curr = type_mangle_spelling(ta->type_info);
                     resolved = 1;
                 }
 
@@ -826,7 +826,8 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             if (ctx)
             {
                 TypeAlias *ta = find_type_alias_node(ctx, base);
-                const char *alias = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
+                const char *alias =
+                    (ta && !ta->is_opaque) ? type_mangle_spelling(ta->type_info) : NULL;
                 if (alias)
                 {
                     base = (char *)alias;
@@ -942,7 +943,7 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                     TypeAlias *ta = ctx->type_aliases;
                     while (ta)
                     {
-                        if (strcmp(type_to_string(ta->type_info), call_base) == 0)
+                        if (strcmp(type_mangle_spelling(ta->type_info), call_base) == 0)
                         {
                             char *alias_func_name = mangle_method_symbol(ta->alias, NULL, method);
                             if (find_func(ctx, alias_func_name))

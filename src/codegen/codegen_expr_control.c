@@ -145,7 +145,7 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
     // The enclosing function's return type, named: an Option or Result instance is a struct
     // named after its arguments (Result__int32_t).
     char *func_ret_name = ctx->cg.current_func_ret_type_info
-                              ? type_to_string(ctx->cg.current_func_ret_type_info)
+                              ? type_mangle_spelling(ctx->cg.current_func_ret_type_info)
                               : NULL;
 
     if (expr_type && expr_type->name)

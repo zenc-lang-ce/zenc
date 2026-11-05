@@ -83,7 +83,9 @@ char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index)
 ASTNode *capture_struct_def(ParserContext *ctx, ASTNode *lambda, int index)
 {
     Type *t = lambda->lambda.captured_types_info[index];
-    return t ? find_struct_def(ctx, type_to_string(t)) : NULL;
+    return t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name
+               ? find_struct_def(ctx, type_def_name(t))
+               : NULL;
 }
 
 const char *field_c_type(ParserContext *ctx, ASTNode *field)
