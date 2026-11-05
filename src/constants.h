@@ -114,9 +114,4 @@ static inline bool str_is_vec_type(const char *t)
     return t && strncmp(t, "Vec__", 5) == 0;
 }
 
-static inline bool str_is_slice_type(const char *t)
-{
-    return t && strncmp(t, "Slice__", 7) == 0;
-}
-
 #endif // ZEN_CONSTANTS_H

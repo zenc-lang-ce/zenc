@@ -410,6 +410,16 @@ Type *type_new_tuple(Type **elements, int count)
     return t;
 }
 
+Type *slice_element(Type *t)
+{
+    if (t && t->kind == TYPE_STRUCT && t->count == 1 && t->args && t->name &&
+        strcmp(t->name, "Slice") == 0)
+    {
+        return t->args[0];
+    }
+    return NULL;
+}
+
 Type *tuple_of(Type *t)
 {
     if (t && t->kind == TYPE_POINTER)
@@ -1004,20 +1014,12 @@ static char *type_to_string_impl(Type *t)
 
     case TYPE_ARRAY:
     {
-        if (t->array_size == 0)
-        {
-            char *inner = type_to_string(t->inner);
-            char *res = xmalloc(strlen(inner) + 8);
-            sprintf(res, "Slice__%s", inner); /* safe */
-            return res;
-        }
-
         Type *base = t;
         int *dims = NULL;
         int dims_cap = 0;
         int dims_count = 0;
 
-        while (base->kind == TYPE_ARRAY && base->array_size > 0)
+        while (base->kind == TYPE_ARRAY)
         {
             if (dims_count == dims_cap)
             {
@@ -1349,21 +1351,12 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
 
     case TYPE_ARRAY:
     {
-        if (t->array_size == 0)
-        {
-            char *inner_zens = type_to_string(t->inner);
-            char *res = xmalloc(strlen(inner_zens) + 8);
-            sprintf(res, "Slice__%s", inner_zens); /* safe */
-            zfree(inner_zens);
-            return res;
-        }
-
         Type *base = t;
         int *dims = NULL;
         int dims_cap = 0;
         int dims_count = 0;
 
-        while (base->kind == TYPE_ARRAY && base->array_size > 0)
+        while (base->kind == TYPE_ARRAY)
         {
             if (dims_count == dims_cap)
             {
@@ -1777,11 +1770,6 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
                 strncpy(buf, array_type, (size_t)(len));
                 buf[len] = 0;
                 return buf;
-            }
-
-            if (strncmp(array_type, "Slice__", 7) == 0)
-            {
-                return xstrdup(array_type + 7);
             }
 
             char *search_name = array_type;

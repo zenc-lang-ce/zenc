@@ -148,7 +148,7 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
         mark_symbol_valid(tc->pctx, new_sym, node);
     }
 
-    if (tc->pctx->config->misra_mode && t && t->kind == TYPE_ARRAY)
+    if (tc->pctx->config->misra_mode && t && (t->kind == TYPE_ARRAY || slice_element(t)))
     {
         // Rule 8.11: Array with external linkage shall have explicit size
         ZenSymbol *existing = tc_lookup(tc, node->var_decl.name);

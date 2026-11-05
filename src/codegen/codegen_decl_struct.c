@@ -430,7 +430,7 @@ static char *trait_method_params(ParserContext *ctx, ASTNode *m, const char *sel
         char *type = (m->func.arg_types && m->func.arg_types[i])
                          ? c_type_spelling(ctx, m->func.arg_types[i])
                          : xstrdup("void*");
-        char *c_type = replace_type_str(type, "Self", self_c, NULL, NULL);
+        char *c_type = replace_type_str(type, "Self", self_c);
         const char *name =
             (m->func.param_names && m->func.param_names[i]) ? m->func.param_names[i] : "";
         size_t size = strlen(out) + strlen(c_type) + strlen(name) + 4;

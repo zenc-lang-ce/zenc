@@ -898,6 +898,51 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
     }
 }
 
+// Views the array `node` as a slice of type `slice`: the node becomes a cast to the slice, whose
+// operand is the array, so that codegen writes the conversion.
+static void view_array_as_slice(ASTNode *node, Type *slice)
+{
+    ASTNode *array = ast_create(NODE_EXPR_ARRAY_LITERAL);
+    *array = *node;
+    array->next = NULL;
+
+    node->kind = NODE_EXPR_CAST;
+    memset(&node->cast, 0, sizeof(node->cast));
+    node->cast.expr = array;
+    node->type_info = slice;
+}
+
+// An array, `value`, where the slice `target` is expected: each element must fit the slice's
+// element type (an array literal's, one by one).
+static int check_array_as_slice(TypeChecker *tc, Type *target, Type *value, Token t,
+                                ASTNode *value_node, int is_call_arg)
+{
+    Type *slice_elem = slice_element(resolve_alias(target));
+    if (value_node && value_node->kind == NODE_EXPR_ARRAY_LITERAL)
+    {
+        ASTNode *elem = value_node->array_literal.elements;
+        while (elem)
+        {
+            if (!check_type_compatibility(tc, slice_elem, elem->type_info, elem->token, elem,
+                                          is_call_arg))
+            {
+                return 0;
+            }
+            elem = elem->next;
+        }
+    }
+    else if (!check_type_compatibility(tc, slice_elem, resolve_alias(value)->inner, t, NULL,
+                                       is_call_arg))
+    {
+        return 0;
+    }
+    if (value_node)
+    {
+        view_array_as_slice(value_node, target);
+    }
+    return 1;
+}
+
 int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t,
                              ASTNode *value_node, int is_call_arg)
 {
@@ -1050,6 +1095,13 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
                 return 1;
             }
         }
+    }
+
+    // Array to slice: a fixed-size array or an array literal where a slice is expected.
+    Type *slice_elem = slice_element(resolved_target);
+    if (slice_elem && resolved_value->kind == TYPE_ARRAY && resolved_value->inner)
+    {
+        return check_array_as_slice(tc, target, value, t, value_node, is_call_arg);
     }
 
     if (is_integer_type(resolved_target) && is_integer_type(resolved_value))

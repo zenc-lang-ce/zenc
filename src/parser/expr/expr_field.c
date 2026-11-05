@@ -24,24 +24,10 @@ Type *get_field_type(ParserContext *ctx, Type *struct_type, const char *field_na
         return NULL;
     }
 
-    // Built-in Fields for Arrays/Slices
-    if (struct_type->kind == TYPE_ARRAY)
+    // `.len` of a fixed-size array; a slice's fields are those of its struct.
+    if (struct_type->kind == TYPE_ARRAY && strcmp(field_name, "len") == 0)
     {
-        if (strcmp(field_name, "len") == 0)
-        {
-            return type_new(TYPE_INT);
-        }
-        if (struct_type->array_size == 0)
-        { // Slice
-            if (strcmp(field_name, "cap") == 0)
-            {
-                return type_new(TYPE_INT);
-            }
-            if (strcmp(field_name, "data") == 0)
-            {
-                return type_new_ptr(struct_type->inner);
-            }
-        }
+        return type_new(TYPE_INT);
     }
 
     Type *tuple = tuple_of(struct_type);

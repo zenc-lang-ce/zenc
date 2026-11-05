@@ -200,15 +200,6 @@ typedef struct
 } StructHashEntry;
 
 /**
- * @brief Track used slice types for generation.
- */
-typedef struct SliceType
-{
-    char *name;
-    struct SliceType *next;
-} SliceType;
-
-/**
  * @brief The tuples the program uses, each once, for the C structs codegen emits.
  */
 typedef struct TupleType
@@ -393,7 +384,6 @@ struct ParserContext
     unsigned int struct_registry_gen; ///< Bumped whenever a struct or enum is registered.
 
     // Types
-    SliceType *used_slices;  ///< Cache of generated slice types.
     TupleType *used_tuples;  ///< Cache of generated tuple types.
     TypeAlias *type_aliases; ///< Defined type aliases.
 
@@ -716,8 +706,6 @@ typedef struct Bindings
     char **params; ///< The template's parameters: `K`, `V`.
     Type **args;   ///< The type each one takes: `int`, `String`.
     int count;
-    char *params_text; ///< `K,V`, for the AST fields that still hold text (names, raw C).
-    char *args_text;   ///< `int32_t,String`, for the same fields.
 } Bindings;
 
 /** @brief `parts` joined by commas: `K,V`. */
@@ -811,12 +799,6 @@ void add_to_global_list(ParserContext *ctx, ASTNode *node);
 void register_builtins(ParserContext *ctx);
 void register_comptime_builtins(ParserContext *ctx);
 void register_tuple(ParserContext *ctx, Type *tuple);
-/**
- * @brief The tuple whose C struct is named `name` (`Tuple__int32_t__bool`), or NULL.
- *
- * Generic instances are still built from text, where a tuple argument is that name.
- */
-Type *find_tuple_type(ParserContext *ctx, const char *name);
 ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, Type *tuple, ASTNode *expr);
 /** @brief Whether a tuple literal comes next: `(` and a comma before its `)`. */
 int tuple_literal_follows(Lexer *l);
@@ -828,8 +810,8 @@ ASTNode *parse_comptime_body(ParserContext *ctx, Lexer *l);
  * @brief Patches self arguments in a function.
  */
 char *escape_c_string(const char *input);
-char *replace_type_str(const char *src, const char *param, const char *concrete,
-                       const char *old_struct, const char *new_struct);
+/** @brief `src`, a C type, with `param` written as `concrete` (also inside a mangled name). */
+char *replace_type_str(const char *src, const char *param, const char *concrete);
 char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out,
                                     char **allocated_out);
 /**
@@ -966,7 +948,8 @@ void register_impl(ParserContext *ctx, const char *trait, const char *type);
 void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node);
 void register_type_alias(ParserContext *ctx, const char *alias, Type *type, int is_opaque,
                          const char *defined_in_file, Token tok, int is_export);
-void register_slice(ParserContext *ctx, const char *type);
+/** @brief The type of a slice of `elem`, `[T]`: the instance `Slice<T>` of a built-in template. */
+Type *instantiate_slice(ParserContext *ctx, Type *elem, Token token);
 void register_lambda(ParserContext *ctx, ASTNode *node);
 void register_template(ParserContext *ctx, const char *name, ASTNode *node);
 void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag);
@@ -979,7 +962,6 @@ void parser_audit_preprocessor(ParserContext *ctx, Token t);
 char *normalize_raw_content(const char *content);
 char *parse_condition_raw(ParserContext *ctx, Lexer *l);
 const char *resolve_plugin(ParserContext *ctx, const char *name_or_alias);
-char *parse_array_literal(ParserContext *ctx, Lexer *l, const char *slice_type);
 ASTNode *parse_embed(ParserContext *ctx, Lexer *l);
 ASTNode *parse_macro_call(ParserContext *ctx, Lexer *l, char *macro_name);
 /** @brief The C name of an instance of a generic function: `f__int32_t` for `f<int>`. */

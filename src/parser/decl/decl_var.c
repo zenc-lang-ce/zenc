@@ -293,23 +293,11 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
             {
                 init = ast_create(NODE_RAW_STMT);
                 init->token = next;
-                init->raw_stmt.content = xstrdup("((Slice__char){0})");
-                register_slice(ctx, "char");
-                Type *fallback_t = type_new(TYPE_STRUCT);
-                fallback_t->name = xstrdup("Slice__char");
-                init->type_info = fallback_t;
+                init->type_info = instantiate_slice(ctx, type_new(TYPE_CHAR), next);
+                char empty[MAX_TYPE_NAME_LEN + 16];
+                snprintf(empty, sizeof(empty), "((%s){0})", type_to_string(init->type_info));
+                init->raw_stmt.content = xstrdup(empty);
             }
-            if (lexer_peek(l).kind == TOK_SEMICOLON)
-            {
-                lexer_next(l);
-            }
-        }
-        else if (next.kind == TOK_LBRACKET && type && strncmp(type, "Slice__", 7) == 0)
-        {
-            char *code = parse_array_literal(ctx, l, type);
-            init = ast_create(NODE_RAW_STMT);
-            init->token = next;
-            init->raw_stmt.content = code;
             if (lexer_peek(l).kind == TOK_SEMICOLON)
             {
                 lexer_next(l);

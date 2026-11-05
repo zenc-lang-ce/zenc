@@ -1,0 +1,22 @@
+// ARGS: build
+// A slice of an array literal or of a local array cannot be returned: its elements live on the
+// function's stack. One of a global array can.
+let TABLE: float[2] = [0.5, 1.5];
+
+fn weights() -> [float] {
+    return [1.0, 2.0, 3.0];
+}
+
+fn local_weights() -> [float] {
+    let w: float[2] = [1.0, 2.0];
+    return w;
+}
+
+fn table() -> [float] {
+    return TABLE;
+}
+
+fn main() {
+    let w = weights();
+    printf("%d %d %d\n", (int)w.len, (int)local_weights().len, (int)table().len);
+}

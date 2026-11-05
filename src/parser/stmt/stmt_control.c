@@ -46,20 +46,6 @@ static void check_assignment_condition(ASTNode *cond)
     }
 }
 
-static void auto_import_std_slice(ParserContext *ctx)
-{
-    GenericTemplate *t = ctx->templates;
-    while (t)
-    {
-        if (strcmp(t->name, "Slice") == 0)
-        {
-            return; // slice module already loaded
-        }
-        t = t->next;
-    }
-    load_std_module(ctx, "std/slice.zc");
-}
-
 ASTNode *parse_loop(ParserContext *ctx, Lexer *l)
 {
     Token tk = lexer_next(l);
@@ -410,7 +396,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
 
                     slice_decl->var_decl.init_expr = from_array_call;
 
-                    auto_import_std_slice(ctx);
+                    load_std_module(ctx, "std/slice.zc");
                     instantiate_type(ctx, slice_type, tk);
                     instantiate_type(ctx, type_new_instance("SliceIter", elem, 1), tk);
                     instantiate_type(ctx, type_new_instance("Option", elem, 1), tk);
@@ -419,6 +405,17 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     slice_ref->var_ref.name = xstrdup("__zc_arr_slice");
                     slice_ref->type_info = slice_type;
                     obj_expr = slice_ref;
+                }
+
+                else if (slice_element(obj_expr->type_info))
+                {
+                    // A slice iterates with the methods of std/slice.zc.
+                    Type **elem = xmalloc(sizeof(Type *));
+                    elem[0] = slice_element(obj_expr->type_info);
+                    load_std_module(ctx, "std/slice.zc");
+                    instantiate_type(ctx, obj_expr->type_info, tk);
+                    instantiate_type(ctx, type_new_instance("SliceIter", elem, 1), tk);
+                    instantiate_type(ctx, type_new_instance("Option", elem, 1), tk);
                 }
 
                 ASTNode *it_decl = ast_create(NODE_VAR_DECL);

@@ -1192,7 +1192,6 @@ ASTNode *parse_size_or_typeof(ParserContext *ctx, Lexer *l, Token tk, int is_typ
     int col = l->col;
     int line = l->line;
     TypeUsage *old_pending = ctx->pending_type_validations;
-    SliceType *old_slices = ctx->used_slices;
     TupleType *old_tuples = ctx->used_tuples;
 
     Type *ty = parse_type_formal(ctx, l);
@@ -1236,7 +1235,6 @@ ASTNode *parse_size_or_typeof(ParserContext *ctx, Lexer *l, Token tk, int is_typ
     else
     {
         ctx->pending_type_validations = old_pending;
-        ctx->used_slices = old_slices;
         ctx->used_tuples = old_tuples;
 
         l->pos = pos;

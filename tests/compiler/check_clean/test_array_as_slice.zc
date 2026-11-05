@@ -1,0 +1,45 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// An array where a slice is expected is viewed as one: an array literal (in a `let`, an
+// argument, a struct field or a global, with elements of any expression) or a fixed-size array.
+let GLOBAL: [int] = [7, 8, 9];
+
+fn twice(x: int) -> int {
+    return x * 2;
+}
+
+fn total(xs: [int]) -> int {
+    let t = 0;
+    for x in xs {
+        t = t + x;
+    }
+    return t;
+}
+
+fn second(xs: [float]) -> float {
+    return xs[1];
+}
+
+struct Bag {
+    items: [int];
+}
+
+test "array literals where a slice is expected" {
+    let p = (3, 4);
+    let s: [int] = [p.0, twice(p.1)];
+    assert(total(s) == 11, "let");
+    assert(total([1, 1, 1]) == 3, "argument");
+    let b = Bag{items: [5, 6]};
+    assert(total(b.items) == 11, "struct field");
+    assert(total(GLOBAL) == 24, "global");
+    let empty: [int] = [];
+    assert(empty.len == 0, "empty literal");
+    let f = second([1.0, 2.0]);
+    assert(f > 1.9 && f < 2.1, "literal of doubles as a [float]");
+}
+
+test "a fixed-size array where a slice is expected" {
+    let fixed: int[2] = [1, 2];
+    let view: [int] = fixed;
+    assert(total(view) == 3, "let");
+    assert(total(fixed) == 3, "argument");
+}

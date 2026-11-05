@@ -1,10 +1,7 @@
 
 import "./option.zc"
 
-struct Slice<T> {
-    data: T*;
-    len: usize;
-}
+// `Slice<T>` (`[T]`) is built into the compiler: `struct Slice<T> { data: T*; len: usize; }`.
 
 struct SliceIter<T> {
     data: T*;

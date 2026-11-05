@@ -45,11 +45,6 @@ Type *type_from_name(ParserContext *ctx, const char *name)
     {
         return alias_type(alias_node);
     }
-    Type *tuple = ctx ? find_tuple_type(ctx, name) : NULL;
-    if (tuple)
-    {
-        return tuple;
-    }
     Type *t = type_new(TYPE_STRUCT);
     t->name = xstrdup(name);
     return t;
@@ -108,12 +103,6 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         {
             zfree(name);
             return alias_type(alias_node);
-        }
-        Type *tuple = find_tuple_type(ctx, name);
-        if (tuple)
-        {
-            zfree(name);
-            return tuple;
         }
 
         // Self type alias: Replace "Self" with current impl struct type
@@ -395,22 +384,13 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         }
 
         // Otherwise it's a slice [T]
-        if (lexer_next(l).kind != TOK_RBRACKET)
+        Token close = lexer_next(l);
+        if (close.kind != TOK_RBRACKET)
         {
             zpanic_at(lexer_peek(l), "Expected ] in type");
             return NULL;
         }
-
-        char *inner_str = type_to_string(inner);
-        if (!is_known_generic(ctx, inner_str))
-        {
-            register_slice(ctx, inner_str);
-        }
-
-        Type *arr = type_new(TYPE_ARRAY);
-        arr->inner = inner;
-        arr->array_size = 0; // 0 means slice, not fixed-size
-        return arr;
+        return instantiate_slice(ctx, inner, close);
     }
 
     if (t.kind == TOK_LPAREN)

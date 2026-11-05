@@ -1131,32 +1131,18 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 node->slice.start = start;
                 node->slice.end = end;
 
-                // Type Inference & Registration
+                // `a[i..j]` is a slice of the elements of `a`.
                 if (lhs->type_info)
                 {
-                    Type *inner = NULL;
-                    if (lhs->type_info->kind == TYPE_ARRAY)
+                    Type *inner = slice_element(lhs->type_info);
+                    if (!inner && (lhs->type_info->kind == TYPE_ARRAY ||
+                                   lhs->type_info->kind == TYPE_POINTER))
                     {
                         inner = lhs->type_info->inner;
                     }
-                    else if (lhs->type_info->kind == TYPE_POINTER)
-                    {
-                        inner = lhs->type_info->inner;
-                    }
-
                     if (inner)
                     {
-                        node->type_info = type_new(TYPE_ARRAY);
-                        node->type_info->inner = inner;
-                        node->type_info->array_size = 0; // Slice
-
-                        // Clean up string for registration (e.g. "int" from "int*")
-                        char *inner_str = type_to_string(inner);
-
-                        // Strip * if it somehow managed to keep one, though
-                        // parse_type_formal should handle it For now assume type_to_string
-                        // gives base type
-                        register_slice(ctx, inner_str);
+                        node->type_info = instantiate_slice(ctx, inner, t);
                     }
                 }
 
@@ -1174,8 +1160,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 char *struct_name = NULL;
                 Type *inner_t = lhs->type_info;
                 int is_ptr = 0;
+                // A slice is indexed directly, although `Slice<T>` has a `get`.
+                Type *slice_elem = slice_element(lhs->type_info);
 
-                if (inner_t)
+                if (inner_t && !slice_elem)
                 {
                     if (inner_t->kind == TYPE_STRUCT)
                     {
@@ -1193,7 +1181,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     */
                 }
                 char *lhs_type_name = lhs->type_info ? type_to_string(lhs->type_info) : NULL;
-                if (!struct_name && lhs_type_name)
+                if (!struct_name && lhs_type_name && !slice_elem)
                 {
                     char *s = lhs_type_name;
                     if (strncmp(s, "struct ", 7) == 0)
@@ -1366,8 +1354,12 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
 
                 // Assign type_info for index access (Fix for nested generics)
-                if (lhs->type_info &&
-                    (lhs->type_info->kind == TYPE_ARRAY || lhs->type_info->kind == TYPE_POINTER))
+                if (slice_elem)
+                {
+                    node->type_info = slice_elem;
+                }
+                else if (lhs->type_info && (lhs->type_info->kind == TYPE_ARRAY ||
+                                            lhs->type_info->kind == TYPE_POINTER))
                 {
                     node->type_info = lhs->type_info->inner;
                 }

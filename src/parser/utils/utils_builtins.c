@@ -30,6 +30,11 @@ void register_builtins(ParserContext *ctx)
     register_struct_def(ctx, "va_list", va_def);
     register_impl(ctx, "Copy", "va_list");
 
+    // A slice, `[T]`, is an instance of this template; std/slice.zc adds its methods.
+    Lexer slice_lexer;
+    lexer_init(&slice_lexer, "struct Slice<T> { data: T*; len: usize; }", ctx->config, "<builtin>");
+    parse_program_nodes(ctx, &slice_lexer);
+
     ctx->hook_check_standard_macro_name = check_standard_macro_name;
 }
 

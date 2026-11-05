@@ -72,14 +72,6 @@ static void trigger_type_instantiation(ParserContext *ctx, Type *t)
         return;
     }
 
-    // Handle slices
-    if (t->kind == TYPE_ARRAY && t->array_size == 0 && t->inner)
-    {
-        char *inner_str = type_to_string(t->inner);
-        register_slice(ctx, inner_str);
-        zfree(inner_str);
-    }
-
     if ((t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->count > 0 && t->args && t->name)
     {
         if (find_generic_template(ctx, t->name))
@@ -182,20 +174,6 @@ char *instantiate_function(ParserContext *ctx, FunctionInstance instance)
                   new_fn->func.pure, new_fn->link_name, new_fn->token, new_fn->func.is_export);
 
     trigger_instantiations(ctx, new_fn->func.body);
-
-    if (new_fn->func.arg_types)
-    {
-        for (int i = 0; i < new_fn->func.count; i++)
-        {
-            Type *at = new_fn->func.arg_types[i];
-            if (at && at->kind == TYPE_ARRAY && at->array_size == 0 && at->inner)
-            {
-                char *inner_str = type_to_string(at->inner);
-                register_slice(ctx, inner_str);
-                zfree(inner_str);
-            }
-        }
-    }
 
     return mangled;
 }
@@ -398,18 +376,6 @@ static void instantiate_generic(ParserContext *ctx, const char *tpl, Type **args
         i->strct.fields = copy_fields_replacing(ctx, t->struct_node->strct.fields, &b);
         copy = i;
         register_struct_def(ctx, m, i);
-
-        // Register slice types used in the instantiated struct's fields
-        ASTNode *fld = i->strct.fields;
-        while (fld)
-        {
-            char *field_type = fld->type_info ? type_to_string(fld->type_info) : NULL;
-            if (field_type && strncmp(field_type, "Slice__", 7) == 0)
-            {
-                register_slice(ctx, field_type + 7);
-            }
-            fld = fld->next;
-        }
     }
     else if (t->struct_node->kind == NODE_ENUM)
     {
