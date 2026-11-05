@@ -13,6 +13,47 @@
 
 ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l);
 
+// Whether `(name)` (or `(A::B)`, `(T*)`) followed by `next` is a cast, as C decides it: a name
+// that is a value in scope is a parenthesized expression (`(x) * y`); a type, or a pointer type,
+// is a cast of whatever expression follows (`(i64) -x`). A path, which may name an enum variant,
+// and a name that is neither keep the rule of the token that follows.
+static int cast_starts_here(ParserContext *ctx, Token name_token, int has_path, int has_stars,
+                            Token next)
+{
+    int starts_operand = next.kind == TOK_STRING || next.kind == TOK_INT ||
+                         next.kind == TOK_FLOAT || next.kind == TOK_CHAR ||
+                         next.kind == TOK_FSTRING || next.kind == TOK_RAW_STRING ||
+                         next.kind == TOK_IDENT || next.kind == TOK_LPAREN ||
+                         (next.kind == TOK_OP && (is_token(next, "&") || is_token(next, "*") ||
+                                                  is_token(next, "**") || is_token(next, "!")));
+    // A unary operator, an array literal or an intrinsic also start an operand, but after a
+    // value they are binary operators or an index: they only follow a known type.
+    int starts_typed_operand =
+        starts_operand || next.kind == TOK_LBRACKET || next.kind == TOK_AT ||
+        (next.kind == TOK_OP &&
+         (is_token(next, "-") || is_token(next, "+") || is_token(next, "~")));
+    if (has_path)
+    {
+        return starts_operand;
+    }
+    char *name = token_strdup(name_token);
+    int is_value = 0;
+    int is_type = has_stars;
+    if (!has_stars)
+    {
+        ZenSymbol *sym = find_symbol_entry(ctx, name);
+        is_value = sym && (sym->kind == SYM_VARIABLE || sym->kind == SYM_FUNCTION);
+        is_type = !is_value && (is_primitive_type_name(name) || find_struct_def(ctx, name) ||
+                                find_type_alias_node(ctx, name) || is_known_generic(ctx, name));
+    }
+    zfree(name);
+    if (is_value)
+    {
+        return 0;
+    }
+    return is_type ? starts_typed_operand : starts_operand;
+}
+
 ASTNode *parse_primary(ParserContext *ctx, Lexer *l)
 {
     return parse_primary_impl(ctx, l);
@@ -1736,9 +1777,12 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         if (lexer_peek(l).kind == TOK_IDENT)
         {
             Lexer cast_look = *l;
-            lexer_next(&cast_look);
+            Token cast_name = lexer_next(&cast_look);
+            int has_path = 0;
+            int has_stars = 0;
             while (lexer_peek(&cast_look).kind == TOK_DCOLON)
             { // handle A::B
+                has_path = 1;
                 lexer_next(&cast_look);
                 if (lexer_peek(&cast_look).kind == TOK_IDENT)
                 {
@@ -1764,6 +1808,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     break;
                 }
+                has_stars = 1;
                 lexer_next(&cast_look);
             }
 
@@ -1771,12 +1816,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 lexer_next(&cast_look);
                 Token next = lexer_peek(&cast_look);
-                if (next.kind == TOK_STRING || next.kind == TOK_INT || next.kind == TOK_FLOAT ||
-                    next.kind == TOK_CHAR || next.kind == TOK_FSTRING ||
-                    next.kind == TOK_RAW_STRING ||
-                    (next.kind == TOK_OP && (is_token(next, "&") || is_token(next, "*") ||
-                                             is_token(next, "**") || is_token(next, "!"))) ||
-                    next.kind == TOK_IDENT || next.kind == TOK_LPAREN)
+                if (cast_starts_here(ctx, cast_name, has_path, has_stars, next))
                 {
 
                     Type *cast_type_obj = parse_type_formal(ctx, l);
