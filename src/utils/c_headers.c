@@ -313,7 +313,7 @@ static int line_of(const CHeaderFile *header, int offset)
 
 static CHeaderEntry *add_header_symbol(CHeaderFile *header, const char *name, int name_length,
                                        int offset, int start_line, int end_line, int is_forward,
-                                       int kind)
+                                       CSymbolKind kind)
 {
     if (header->symbol_count == header->symbol_capacity)
     {
@@ -553,7 +553,7 @@ static int is_name_token(const Statement *statement, const CToken *token)
 }
 
 static CHeaderEntry *record(CHeaderFile *header, const Statement *statement, const CToken *token,
-                            int start_line, int end_line, int is_forward, int kind)
+                            int start_line, int end_line, int is_forward, CSymbolKind kind)
 {
     return add_header_symbol(header, statement->chars + token->start, token->length,
                              statement->offsets[token->start], start_line, end_line, is_forward,
