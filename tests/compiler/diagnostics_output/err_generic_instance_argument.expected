@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_generic_instance_argument.zc...
+error: Type validation failed. Expected 'Handle<KindA>*', but got 'Handle<KindB>*'
+  --> tests/compiler/diagnostics_output/err_generic_instance_argument.zc:25:10
+   |
+25 |     take(&h);
+   |          ^ here
+   |
+[exit 1]

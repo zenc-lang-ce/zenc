@@ -43,99 +43,6 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
     }
 }
 
-// Follows `alias A = B;` by name until it reaches a name that is not an alias
-// (the parser stores the target already mangled: `Handle<K>` -> `Handle__K`).
-// Opaque aliases stop the chain: they must stay distinct types.
-static const char *resolve_alias_name(TypeChecker *tc, const char *name)
-{
-    for (int depth = 0; name && depth < 16; depth++)
-    {
-        TypeAlias *ta = find_type_alias_node(tc->pctx, name);
-        if (ta && ta->is_opaque)
-        {
-            return name;
-        }
-        Type *aliased = find_type_alias(tc->pctx, name);
-        const char *next = aliased ? type_to_string(aliased) : NULL;
-        if (!next || strcmp(next, name) == 0)
-        {
-            return name;
-        }
-        name = next;
-    }
-    return name;
-}
-
-// Canonical spelling of a type for alias-insensitive comparison: aliases
-// resolved by name, pointers spelled outside (`alias P = T*;` makes `P*` and
-// `T**` the same). Returns an allocated string, or NULL when there is nothing
-// to resolve.
-static char *canonical_type_name(TypeChecker *tc, Type *t, int depth)
-{
-    if (!t || depth > 16)
-    {
-        return NULL;
-    }
-    t = resolve_alias(t);
-    if (t->kind == TYPE_POINTER)
-    {
-        char *inner = canonical_type_name(tc, t->inner, depth + 1);
-        if (!inner)
-        {
-            return NULL;
-        }
-        size_t len = strlen(inner);
-        char *out = xmalloc(len + 2);
-        memcpy(out, inner, len);
-        out[len] = '*';
-        out[len + 1] = 0;
-        zfree(inner);
-        return out;
-    }
-    if (!t->name)
-    {
-        return NULL;
-    }
-    const char *name = resolve_alias_name(tc, type_def_name(t));
-    // Template instantiation spells a pointer argument as `<Name>Ptr`
-    // (`Vec<DirEntry*>` substitutes T by `DirEntryPtr`): read it back as
-    // `<Name>*` when `<Name>Ptr` is not a type of its own.
-    size_t name_len = strlen(name);
-    if (name_len > 3 && strcmp(name + name_len - 3, "Ptr") == 0 &&
-        !find_struct_def(tc->pctx, name) && !find_type_alias(tc->pctx, name))
-    {
-        char *base_name = xstrdup(name);
-        base_name[name_len - 3] = 0;
-        Type base = {0};
-        base.kind = TYPE_STRUCT;
-        base.name = base_name;
-        char *inner = canonical_type_name(tc, &base, depth + 1);
-        zfree(base_name);
-        if (inner)
-        {
-            size_t len = strlen(inner);
-            char *out = xmalloc(len + 2);
-            memcpy(out, inner, len);
-            out[len] = '*';
-            out[len + 1] = 0;
-            zfree(inner);
-            return out;
-        }
-    }
-    // Drop spaces so "DirEntry *" and "DirEntry*" compare equal.
-    char *out = xmalloc(strlen(name) + 1);
-    char *w = out;
-    for (const char *r = name; *r; r++)
-    {
-        if (*r != ' ')
-        {
-            *w++ = *r;
-        }
-    }
-    *w = 0;
-    return out;
-}
-
 void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
 {
     check_node(tc, node->unary.operand, depth + 1);
@@ -1026,30 +933,9 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         }
     }
 
-    // Types that are aliases of one another (`alias UserId = Handle<UserKind>`,
-    // `alias EntryPtr = Entry*` making `EntryPtr*` and `Entry**` equal): an alias
-    // may also reach here as a struct named after it.
-    {
-        char *target_name = canonical_type_name(tc, target, 0);
-        char *value_name = canonical_type_name(tc, value, 0);
-        int same = target_name && value_name && strcmp(target_name, value_name) == 0;
-        zfree(target_name);
-        zfree(value_name);
-        if (same)
-        {
-            return 1;
-        }
-    }
-
-    // Fast path: exact match
+    // Fast path: exact match (the MISRA pointer checks ran above)
     if (type_eq(target, value))
     {
-        // MISRA Rule 11.8: Check const qualification during pointer assignment
-        if (tc->pctx->config->misra_mode && resolved_target->kind == TYPE_POINTER &&
-            resolved_value->kind == TYPE_POINTER)
-        {
-            misra_check_pointer_conversion(tc->pctx, target, value, t);
-        }
         return 1;
     }
 

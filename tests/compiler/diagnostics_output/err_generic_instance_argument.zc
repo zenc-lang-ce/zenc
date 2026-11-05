@@ -1,0 +1,26 @@
+// ARGS: build
+// Two instances of one generic with different arguments are different types, also behind a
+// pointer and through an alias of one of them
+
+struct Handle<T> {
+    id: int;
+}
+
+struct KindA {
+    x: int;
+}
+
+struct KindB {
+    x: int;
+}
+
+alias HandleA = Handle<KindA>;
+
+fn take(h: HandleA*) {
+    let _i = h.id;
+}
+
+fn main() {
+    let h = Handle<KindB>{id: 1};
+    take(&h);
+}

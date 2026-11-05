@@ -641,12 +641,11 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                             {
                                                 char *direct = mangle_variant_symbol(
                                                     acc, token_strdup(suffix));
-                                                // Do not resolve a generic-dependent path (e.g.
-                                                // Option__V) to an existing concrete instantiation:
-                                                // the concrete arg is a placeholder substituted at
-                                                // instantiation time.
-                                                if (!is_generic_dependent_str(ctx, acc) &&
-                                                    !find_func(ctx, direct))
+                                                // Do not resolve a path whose owner names a generic
+                                                // parameter (e.g. Option<V>) to an existing
+                                                // concrete instantiation: the concrete arg is a
+                                                // placeholder substituted at instantiation time.
+                                                if (!owner && !find_func(ctx, direct))
                                                 {
                                                     char mbuf[128];
                                                     if (suffix.len < (int)sizeof(mbuf))
@@ -688,12 +687,11 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                             {
                                                 char *direct = mangle_method_symbol(
                                                     acc, NULL, token_strdup(suffix));
-                                                // Do not resolve a generic-dependent path (e.g.
-                                                // Option__V) to an existing concrete instantiation:
-                                                // the concrete arg is a placeholder substituted at
-                                                // instantiation time.
-                                                if (!is_generic_dependent_str(ctx, acc) &&
-                                                    !find_func(ctx, direct))
+                                                // Do not resolve a path whose owner names a generic
+                                                // parameter (e.g. Option<V>) to an existing
+                                                // concrete instantiation: the concrete arg is a
+                                                // placeholder substituted at instantiation time.
+                                                if (!owner && !find_func(ctx, direct))
                                                 {
                                                     char mbuf[128];
                                                     if (suffix.len < (int)sizeof(mbuf))

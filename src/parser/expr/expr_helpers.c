@@ -304,44 +304,36 @@ static int skips_value_check(Type *t)
            t->kind == TYPE_ARRAY;
 }
 
-// The struct or enum a type names once non-opaque aliases are followed
-// (`Handle__PropKind` for `alias PropId = Handle<PropKind>;`), or NULL.
-static const char *aggregate_type_name(ParserContext *ctx, Type *t)
+// The instance of a generic struct or enum a type names once non-opaque aliases are followed
+// (`Handle<PropKind>` for `alias PropId = Handle<PropKind>;`), or NULL.
+static Type *instance_type(Type *t)
 {
-    if (!t || (t->kind != TYPE_STRUCT && t->kind != TYPE_ENUM) || !t->name)
+    while (t && t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)
+    {
+        t = t->inner;
+    }
+    if (!t || (t->kind != TYPE_STRUCT && t->kind != TYPE_ENUM) || !t->name || t->count == 0)
     {
         return NULL;
     }
-    const char *name = type_def_name(t);
-    TypeAlias *alias = find_type_alias_node(ctx, name);
-    for (int depth = 0; alias && !alias->is_opaque && depth < 16; depth++)
-    {
-        Type *target = alias->type_info;
-        if (!target || (target->kind != TYPE_STRUCT && target->kind != TYPE_ENUM) || !target->name)
-        {
-            return NULL;
-        }
-        name = type_def_name(target);
-        alias = find_type_alias_node(ctx, name);
-    }
-    return name;
+    return t;
 }
 
 // An instance's arguments as the message spells them: `int32_t,String`.
-static char *instance_args_text(Instantiation *inst)
+static char *instance_args_text(Type *instance)
 {
-    char **spelled = xmalloc(sizeof(char *) * (size_t)(inst->count > 0 ? inst->count : 1));
-    for (int i = 0; i < inst->count; i++)
+    char **spelled = xmalloc(sizeof(char *) * (size_t)instance->count);
+    for (int i = 0; i < instance->count; i++)
     {
-        spelled[i] = type_to_string(inst->args[i]);
+        spelled[i] = type_to_string(instance->args[i]);
     }
-    return join_with_commas(spelled, inst->count);
+    return join_with_commas(spelled, instance->count);
 }
 
 // Two instances of one generic with different arguments (`Handle<A>` and
 // `Handle<B>`) are different types even when their fields are the same, also
 // behind pointers (where C only warns, and `-w` hides it).
-static void check_generic_instance_argument(ParserContext *ctx, Type *expected, ASTNode *arg)
+static void check_generic_instance_argument(Type *expected, ASTNode *arg)
 {
     Type *want_type = expected;
     Type *have_type = arg->type_info;
@@ -353,27 +345,21 @@ static void check_generic_instance_argument(ParserContext *ctx, Type *expected, 
         have_type = have_type->inner;
         depth++;
     }
-    const char *want_struct = aggregate_type_name(ctx, want_type);
-    const char *have_struct = aggregate_type_name(ctx, have_type);
-    if (!want_struct || !have_struct || strcmp(want_struct, have_struct) == 0)
-    {
-        return;
-    }
-    Instantiation *want_inst = find_instantiation(ctx, want_struct);
-    Instantiation *have_inst = find_instantiation(ctx, have_struct);
-    if (!want_inst || !have_inst || strcmp(want_inst->template_name, have_inst->template_name) != 0)
+    Type *want = instance_type(want_type);
+    Type *have = instance_type(have_type);
+    if (!want || !have || strcmp(want->name, have->name) != 0 ||
+        strcmp(type_def_name(want), type_def_name(have)) == 0)
     {
         return;
     }
     static const char STARS[] = "********";
     const char *stars = STARS + (8 - depth);
-    char want[MAX_SHORT_MSG_LEN];
-    char have[MAX_SHORT_MSG_LEN];
-    snprintf(want, sizeof(want), "%s<%s>%s", want_inst->template_name,
-             instance_args_text(want_inst), stars);
-    snprintf(have, sizeof(have), "%s<%s>%s", have_inst->template_name,
-             instance_args_text(have_inst), stars);
-    zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want, have);
+    char want_text[MAX_SHORT_MSG_LEN];
+    char have_text[MAX_SHORT_MSG_LEN];
+    snprintf(want_text, sizeof(want_text), "%s<%s>%s", want->name, instance_args_text(want), stars);
+    snprintf(have_text, sizeof(have_text), "%s<%s>%s", have->name, instance_args_text(have), stars);
+    zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want_text,
+              have_text);
     return;
 }
 
@@ -384,7 +370,7 @@ void check_argument_type(ParserContext *ctx, Type *expected, ASTNode *arg)
     {
         return;
     }
-    check_generic_instance_argument(ctx, expected, arg);
+    check_generic_instance_argument(expected, arg);
     int expected_opaque = expected->kind == TYPE_ALIAS && expected->alias.is_opaque_alias;
     int got_opaque = got->kind == TYPE_ALIAS && got->alias.is_opaque_alias;
     if (!expected_opaque && !got_opaque)

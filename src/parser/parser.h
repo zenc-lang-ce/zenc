@@ -743,11 +743,6 @@ void register_generic(ParserContext *ctx, char *name);
  */
 int is_known_generic(ParserContext *ctx, char *name);
 
-/**
- * @brief Checks if a type name string depends on any known generic parameters.
- * (e.g. "T*" returns 1 if T is a known generic).
- */
-int is_generic_dependent_str(ParserContext *ctx, const char *type_str);
 /** @brief Whether `t` still names a generic parameter (`Vec<T>` inside its template). */
 int type_is_generic_dependent(ParserContext *ctx, Type *t);
 
@@ -971,8 +966,6 @@ char *function_instance_name(FunctionInstance instance);
  * @return Its C name, or NULL if `instance.name` is not a generic function.
  */
 char *instantiate_function(ParserContext *ctx, FunctionInstance instance);
-/** @brief The instance of a generic whose C name is `name`, or NULL. */
-Instantiation *find_instantiation(ParserContext *ctx, const char *name);
 /** @brief The generic struct or enum template named `name`, or NULL. */
 GenericTemplate *find_generic_template(ParserContext *ctx, const char *name);
 /**
