@@ -1,0 +1,87 @@
+// match on a pointer: the cases match the value it points to, and bindings read it through
+// the pointer.
+import "std/option.zc"
+import "std/result.zc"
+
+enum Shape {
+    Circle(int),
+    Square(int, int),
+    Empty
+}
+
+enum Light {
+    Red,
+    Green
+}
+
+fn area(s: Shape*) -> int {
+    match s {
+        Circle(r) => { return r * r * 3; },
+        Square(w, h) => { return w * h; },
+        Empty => { return 0; }
+    }
+    return -1;
+}
+
+fn is_red(l: Light*) -> bool {
+    match l {
+        Red => { return true; },
+        Green => { return false; }
+    }
+    return false;
+}
+
+fn value_or(o: Option<int>*, fallback: int) -> int {
+    match o {
+        Some(v) => { return v; },
+        None => { return fallback; }
+    }
+    return fallback;
+}
+
+fn ok_or(r: Result<int>*, fallback: int) -> int {
+    match r {
+        Ok(v) => { return v; },
+        Err(e) => { return fallback; }
+    }
+    return fallback;
+}
+
+fn bump(o: Option<int>*) {
+    match o {
+        Some(ref v) => { *v = *v + 1; },
+        None => {}
+    }
+}
+
+test "a pointer to an enum" {
+    let c = Shape::Circle(2);
+    let q = Shape::Square(3, 4);
+    let e = Shape::Empty;
+    assert(area(&c) == 12, "Circle");
+    assert(area(&q) == 12, "Square");
+    assert(area(&e) == 0, "Empty");
+
+    let red = Light::Red;
+    let green = Light::Green;
+    assert(is_red(&red), "Red");
+    assert(!is_red(&green), "Green");
+}
+
+test "a pointer to an Option or a Result" {
+    let some = Option<int>::Some(7);
+    let none = Option<int>::None();
+    assert(value_or(&some, -1) == 7, "Some");
+    assert(value_or(&none, -1) == -1, "None");
+
+    let ok = Result<int>::Ok(5);
+    let err = Result<int>::Err("no");
+    assert(ok_or(&ok, -2) == 5, "Ok");
+    assert(ok_or(&err, -2) == -2, "Err");
+}
+
+test "a ref binding through a pointer" {
+    let a = Option<int>::Some(1);
+    bump(&a);
+    assert(a.unwrap() == 2, "the value behind the pointer changes");
+}
