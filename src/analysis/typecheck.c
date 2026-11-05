@@ -59,6 +59,21 @@ static Type *option_result_binding_type(TypeChecker *tc, ASTNode *def, const cha
     return NULL;
 }
 
+// What a `return` in `from`, a function or a lambda, must give: the name of its return type
+// ("void" when it returns nothing) and the type itself (NULL when unknown).
+static void return_target(ASTNode *from, const char **name, Type **type)
+{
+    if (from->kind == NODE_LAMBDA)
+    {
+        Type *fn = get_inner_type(from->type_info);
+        *name = from->lambda.return_type;
+        *type = (fn && fn->kind == TYPE_FUNCTION) ? fn->inner : NULL;
+        return;
+    }
+    *name = from->func.ret_type;
+    *type = from->func.ret_type_info;
+}
+
 // Type of the `index`-th of `count` bindings of a match case, read from the
 // payload of the variant the pattern names. NULL when it cannot be told (not an
 // enum, unknown variant, unresolved generic): the caller keeps UNSAFE_ANY.
@@ -196,10 +211,12 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             check_node(tc, node->ret.value, depth + 1);
             tc->is_stmt_context = old_stmt_ctx;
         }
-        // Check return type compatibility with function
-        if (tc->current_func)
+        // Check the returned value against the function or lambda the `return` belongs to
+        if (tc->returns_from)
         {
-            const char *ret_type = tc->current_func->func.ret_type;
+            const char *ret_type = NULL;
+            Type *ret_type_info = NULL;
+            return_target(tc->returns_from, &ret_type, &ret_type_info);
             int func_is_void = !ret_type || strcmp(ret_type, "void") == 0;
 
             if (func_is_void && node->ret.value)
@@ -214,12 +231,11 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                          rule, ret_type);
                 tc_error(tc, node->token, msg);
             }
-            else if (node->ret.value && tc->current_func->func.ret_type_info)
+            else if (node->ret.value && ret_type_info)
             {
-                apply_implicit_struct_pointer_conversions(tc, &node->ret.value,
-                                                          tc->current_func->func.ret_type_info);
+                apply_implicit_struct_pointer_conversions(tc, &node->ret.value, ret_type_info);
                 Type *returned = node->ret.value->type_info;
-                Type *expected = get_inner_type(tc->current_func->func.ret_type_info);
+                Type *expected = get_inner_type(ret_type_info);
                 // In a method whose `self` is a pointer, `return self;` returns the
                 // value: codegen emits `return *self;` (see codegen_stmt.c).
                 if (returned && expected && returned->kind == TYPE_POINTER &&
@@ -228,8 +244,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 {
                     returned = returned->inner;
                 }
-                check_type_compatibility(tc, tc->current_func->func.ret_type_info, returned,
-                                         node->token, node->ret.value, 0);
+                check_type_compatibility(tc, ret_type_info, returned, node->token, node->ret.value,
+                                         0);
             }
         }
         tc->is_unreachable = 1;
@@ -709,7 +725,11 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         if (node->cast.expr && node->cast.expr->type_info && node->cast.target_type)
         {
             Type *source_type = resolve_alias(node->cast.expr->type_info);
-            Type *target_type = type_from_string_helper(tc->pctx, node->cast.target_type);
+            // The parser's Type, when it left one: cast.target_type is the C spelling codegen
+            // emits (`c_point*` for a struct with @link_name), not a name the program uses.
+            Type *target_type = node->type_info
+                                    ? node->type_info
+                                    : type_from_string_helper(tc->pctx, node->cast.target_type);
 
             if (tc->pctx->config->misra_mode && target_type)
             {

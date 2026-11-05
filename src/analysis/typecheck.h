@@ -23,7 +23,8 @@ struct MoveState; // Forward declaration
 typedef struct TypeChecker
 {
     ParserContext *pctx;   ///< Reference to global parser context (for lookups).
-    ASTNode *current_func; ///< Current function being checked (for return type checks).
+    ASTNode *current_func; ///< Current function being checked.
+    ASTNode *returns_from; ///< The function or lambda a `return` belongs to: the innermost one.
     int error_count;       ///< Number of type errors found.
     int warning_count;     // Number of recommendations/warnings.
 

@@ -1,0 +1,25 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A `return` inside a lambda gives the lambda's value, not the enclosing function's: a
+// function that returns a lambda, and a lambda with a `return` in a void function.
+fn make_adder(i: int) -> fn(int) -> int {
+    return fn[=](input: int) -> int {
+        return input + i;
+    }
+}
+
+fn apply_twice(f: fn(int) -> int, x: int) -> int {
+    return f(f(x));
+}
+
+test "a return inside a lambda" {
+    let add_two = make_adder(2);
+    assert(add_two(3) == 5, "lambda returned from a function");
+
+    let doubled = apply_twice(fn(n: int) -> int {
+        if n < 0 {
+            return 0;
+        }
+        return n * 2;
+    }, 3);
+    assert(doubled == 12, "lambda with several returns, in a void test");
+}

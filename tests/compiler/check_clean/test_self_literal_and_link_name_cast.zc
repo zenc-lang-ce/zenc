@@ -1,0 +1,34 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// `Self { ... }` builds the impl's struct, also in a generic impl; and a cast to a struct
+// with @link_name has the struct's type, not one named after its C name.
+struct Pair { a: int; b: int; }
+
+impl Pair {
+    fn make(a: int, b: int) -> Self {
+        return Self { a: a, b: b };
+    }
+}
+
+struct Holder<T> { value: T; }
+
+impl Holder<T> {
+    fn wrap(value: T) -> Self {
+        return Self { value: value };
+    }
+}
+
+@link_name("c_point")
+struct Point { x: int; }
+
+test "Self literals and casts to a link_name struct" {
+    let p = Pair::make(1, 2);
+    assert(p.a + p.b == 3, "Self in an impl");
+    let h = Holder<int>::wrap(7);
+    assert(h.value == 7, "Self in a generic impl");
+
+    let mem = (Point*)malloc(sizeof(Point));
+    mem.x = 5;
+    let q: Point* = (Point*)mem;
+    assert(q.x == 5, "cast to a link_name struct");
+    free(mem);
+}

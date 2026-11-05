@@ -1473,6 +1473,10 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
     int prev_unreachable = tc->is_unreachable;
     tc->is_unreachable = 0;
 
+    // A `return` in the body is the lambda's, not the enclosing function's.
+    ASTNode *prev_returns_from = tc->returns_from;
+    tc->returns_from = node;
+
     if (node->lambda.body)
     {
         if (node->lambda.body->kind == NODE_BLOCK)
@@ -1488,6 +1492,7 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
     move_state_free(tc->pctx->move_state);
     tc->pctx->move_state = prev_move_state;
 
+    tc->returns_from = prev_returns_from;
     tc->is_unreachable = prev_unreachable;
     tc_exit_scope(tc);
 }

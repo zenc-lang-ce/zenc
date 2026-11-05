@@ -384,6 +384,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     misra_check_reserved_identifier(tc->pctx, node->func.name, node->token);
 
     tc->current_func = node;
+    tc->returns_from = node;
     tc_enter_scope(tc);
 
     int prev_unreachable = tc->is_unreachable;
@@ -497,6 +498,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     tc->is_unreachable = prev_unreachable;
     tc_exit_scope(tc);
     tc->current_func = NULL;
+    tc->returns_from = NULL;
 }
 
 void tc_check_trait(TypeChecker *tc, ASTNode *node, int depth)
