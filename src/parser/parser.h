@@ -386,6 +386,10 @@ struct ParserContext
     EnumVariantReg *enum_variants; ///< Registry of enum variants for global lookup.
     ImplReg *registered_impls;     ///< Cache of type/trait implementations.
 
+    // The std modules the compiler loads on its own (std/mem.zc for Drop…), as NODE_IMPORTs
+    // for the typechecker: they are not in the tree.
+    ASTNode *implicit_std_imports;
+
     // Names find_struct_def did not find, cached during codegen (utils_registry.c).
     struct StructMissCache *struct_misses;
     unsigned int struct_registry_gen; ///< Bumped whenever a struct or enum is registered.

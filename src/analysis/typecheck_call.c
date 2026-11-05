@@ -51,6 +51,14 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                 return;
             }
 
+            // panic() is the compiler's own: codegen calls __zenc_panic, which does not return.
+            if (strcmp(func_name, "panic") == 0)
+            {
+                check_node(tc, node->call.args, depth + 1);
+                node->type_info = type_new(TYPE_VOID);
+                return;
+            }
+
             // Check if it's a built-in macro injected by the compiler
             if (strcmp(func_name, "_z_str") == 0)
             {
@@ -383,6 +391,11 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         if (callee_t->kind == TYPE_FUNCTION && callee_t->inner)
         {
             node->type_info = callee_t->inner;
+        }
+        else if (node->call.callee->kind == NODE_EXPR_MEMBER && callee_t->kind != TYPE_UNKNOWN)
+        {
+            // A method call: checking the member already gave it the method's return type.
+            node->type_info = type_clone(node->call.callee->type_info);
         }
     }
 

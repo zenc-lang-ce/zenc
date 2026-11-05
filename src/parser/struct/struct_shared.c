@@ -46,8 +46,13 @@ void load_std_module(ParserContext *ctx, const char *path)
     // Save and restore filename context
     const char *saved_fn = ctx->current_filename;
     ctx->current_filename = resolved;
-    // Parse the module contents
-    parse_program_nodes(ctx, &i);
+    // Parse the module contents. Codegen emits its declarations from the registries; the
+    // typechecker walks them through an import node of their own.
+    ASTNode *import = ast_create(NODE_IMPORT);
+    import->import_stmt.path = xstrdup(resolved);
+    import->import_stmt.module_root = parse_program_nodes(ctx, &i);
+    import->next = ctx->implicit_std_imports;
+    ctx->implicit_std_imports = import;
     ctx->current_filename = saved_fn;
     zmap_remove(&ctx->imports.currently_parsing, resolved);
     mark_file_imported(ctx, resolved);

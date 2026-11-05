@@ -1,0 +1,19 @@
+// ARGS: check
+// `x?` has the type of the value its Result holds: big()? gives an i64, so storing it in a
+// u8 narrows it.
+import "std/result.zc"
+
+fn big() -> Result<i64> {
+    return Result<i64>::Ok(300);
+}
+
+fn small() -> Result<u8> {
+    let value = big()?;
+    let narrow: u8 = value;
+    return Result<u8>::Ok(narrow);
+}
+
+fn main() {
+    let r = small();
+    printf("%d\n", (int)r.is_ok);
+}

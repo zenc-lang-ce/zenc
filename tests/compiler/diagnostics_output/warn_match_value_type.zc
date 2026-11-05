@@ -1,0 +1,14 @@
+// ARGS: check
+// A match used as a value has the type of its arms: here an i64, so storing it in a u8
+// narrows it.
+enum Reading {
+    Count(i64),
+    Missing,
+}
+
+fn main() {
+    let reading = Reading::Count(300);
+    let count = match reading { Reading::Count(n) => n, _ => 0 };
+    let narrow: u8 = count;
+    printf("%d\n", (int)narrow);
+}
