@@ -75,12 +75,17 @@ char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index)
     return t ? c_type_spelling(ctx, t) : xstrdup("int");
 }
 
-ASTNode *capture_struct_def(ParserContext *ctx, ASTNode *lambda, int index)
+int capture_needs_drop(ParserContext *ctx, ASTNode *lambda, int index)
 {
     Type *t = lambda->lambda.captured_types_info[index];
-    return t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name
-               ? find_struct_def(ctx, type_def_name(t))
-               : NULL;
+    if (is_owning_closure(t))
+    {
+        return 1;
+    }
+    ASTNode *def = t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name
+                       ? find_struct_def(ctx, type_def_name(t))
+                       : NULL;
+    return def && def->type_info && def->type_info->traits.has_drop;
 }
 
 const char *field_c_type(ParserContext *ctx, ASTNode *field)

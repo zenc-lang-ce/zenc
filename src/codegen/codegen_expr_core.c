@@ -421,8 +421,7 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                     EMIT(ctx, ";\n");
                 }
 
-                ASTNode *fdef = capture_struct_def(ctx, node, i);
-                if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
+                if (capture_needs_drop(ctx, node, i))
                 {
                     EMIT(ctx, "_z_ctx_%d->__z_drop_flag_%s = 1;\n", lid,
                          node->lambda.captured_vars[i]);
