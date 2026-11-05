@@ -344,6 +344,17 @@ else
     check "error in an imported file is reported at its own path" 0
 fi
 
+printf 'struct Box { v: int; }\nstruct Res { id: int; }\nimpl Drop for Res { fn drop(self) { } }\nfn main() {}\n' > "$workdir/implicit_std.zc"
+if out=$("$ZC" check "$workdir/implicit_std.zc" 2>&1); then
+    check "error in an implicit std import is reported at the module path" 0
+elif echo "$out" | grep -q "Struct 'Box' clashes" &&
+    echo "$out" | grep -qE 'std/mem\.zc:[0-9]+:[0-9]+' &&
+    ! echo "$out" | grep -q 'implicit_std.zc:'; then
+    check "error in an implicit std import is reported at the module path" 1
+else
+    check "error in an implicit std import is reported at the module path" 0
+fi
+
 mkdir -p "$workdir/lib"
 printf 'struct Counter { hits: int; }\nimpl Counter {\n    fn bump(self) { self.hits = self.hits + 1; }\n}\n' > "$workdir/lib/counter.zc"
 printf 'import "std/io.zc"\nimport "lib/counter.zc"\nfn main() {\n    let c = Counter { hits: 0 };\n    c.bump();\n    println(f"{c.hits}");\n}\n' > "$workdir/lib_main.zc"
