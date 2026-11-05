@@ -483,34 +483,15 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
              strcmp(node->binary.op, "==") != 0 && strcmp(node->binary.op, "!=") != 0 &&
              strcmp(node->binary.op, "<=") != 0 && strcmp(node->binary.op, ">=") != 0);
 
-        int is_drop_assignment = 0;
+        // Assigning to a variable that holds a value with Drop drops the old value first.
         char *clean_type = NULL;
-        if (is_assignment && strcmp(node->binary.op, "=") == 0 && ctx->config->use_cpp &&
+        if (is_assignment && strcmp(node->binary.op, "=") == 0 &&
             node->binary.left->kind == NODE_EXPR_VAR)
         {
-            char *type_name = infer_type(ctx, node->binary.left);
-            if (type_name)
-            {
-                if (strchr(type_name, '*') == NULL)
-                {
-                    clean_type = xstrdup(type_name);
-                    char *base = clean_type;
-                    if (strncmp(base, "struct ", 7) == 0)
-                    {
-                        base += 7;
-                    }
-                    ASTNode *def = find_struct_def(ctx, base);
-                    if (def && def->type_info && def->type_info->traits.has_drop)
-                    {
-                        is_drop_assignment = 1;
-                        memmove(clean_type, base, strlen(base) + 1);
-                    }
-                }
-                zfree(type_name);
-            }
+            clean_type = value_drop_struct(ctx, node->binary.left);
         }
 
-        if (is_drop_assignment)
+        if (clean_type)
         {
             EMIT(ctx, "({ ");
             EMIT(ctx, "ZC_AUTO _z_tmp = (");
@@ -523,22 +504,10 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             codegen_expression(ctx, node->binary.left);
             EMIT(ctx, "); ");
 
-            if (node->binary.left->kind == NODE_EXPR_VAR)
-            {
-                EMIT(ctx, "if (__z_drop_flag_%s) %s__Drop__glue(_z_dest); ",
-                     node->binary.left->var_ref.name, clean_type);
-            }
-            else
-            {
-                EMIT(ctx, "%s__Drop__glue(_z_dest); ", clean_type);
-            }
-
+            EMIT(ctx, "if (__z_drop_flag_%s) %s__Drop__glue(_z_dest); ",
+                 node->binary.left->var_ref.name, clean_type);
             EMIT(ctx, "*_z_dest = _z_tmp; ");
-
-            if (node->binary.left->kind == NODE_EXPR_VAR)
-            {
-                EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
-            }
+            EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
 
             EMIT(ctx, "*_z_dest; })");
         }

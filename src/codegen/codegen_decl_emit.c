@@ -105,7 +105,8 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
                 }
             }
             EMIT(ctx, ";\n");
-            if (ctx->config->use_cpp && node->kind == NODE_VAR_DECL)
+            // A global with Drop has a drop flag: assigning to it drops the old value.
+            if (node->kind == NODE_VAR_DECL)
             {
                 char *tname =
                     declared ? declared
