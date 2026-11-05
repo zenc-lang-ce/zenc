@@ -14,7 +14,7 @@
 #include <fcntl.h>
 
 static ZenCompiler compiler;
-extern char *curr_func_ret;
+extern Type *curr_func_ret;
 
 static int initialized = 0;
 
