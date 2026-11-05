@@ -84,9 +84,9 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
     {
         return NULL;
     }
-    ASTNode *def = find_struct_def(tc->pctx, t->name);
+    ASTNode *def = find_struct_def(tc->pctx, type_def_name(t));
     if (def && def->kind == NODE_STRUCT &&
-        (str_is_option_type(t->name) || str_is_result_type(t->name)))
+        (str_is_option_type(type_def_name(t)) || str_is_result_type(type_def_name(t))))
     {
         return option_result_binding_type(def, variant, count);
     }
@@ -122,7 +122,8 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
 static Type *struct_field_type(ParserContext *ctx, Type *t, const char *name)
 {
     t = resolve_alias(t);
-    ASTNode *def = (t && t->kind == TYPE_STRUCT && t->name) ? find_struct_def(ctx, t->name) : NULL;
+    ASTNode *def =
+        (t && t->kind == TYPE_STRUCT && t->name) ? find_struct_def(ctx, type_def_name(t)) : NULL;
     if (!def || def->kind != NODE_STRUCT)
     {
         return NULL;
@@ -150,7 +151,7 @@ static Type *try_value_type(ParserContext *ctx, Type *t)
     {
         return struct_field_type(ctx, t, "val");
     }
-    ASTNode *def = t->kind == TYPE_ENUM ? find_struct_def(ctx, t->name) : NULL;
+    ASTNode *def = t->kind == TYPE_ENUM ? find_struct_def(ctx, type_def_name(t)) : NULL;
     for (ASTNode *variant = (def && def->kind == NODE_ENUM) ? def->enm.variants : NULL; variant;
          variant = variant->next)
     {
@@ -497,7 +498,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
 
                 Type *subject = match_subject_type(node->match_stmt.expr->type_info);
                 const char *missing =
-                    match_missing_variant(tc->pctx, node, subject ? subject->name : NULL);
+                    match_missing_variant(tc->pctx, node, subject ? type_def_name(subject) : NULL);
                 if (missing && strcmp(missing, "_") == 0 && !tc->pctx->config->misra_mode)
                 {
                     const char *hints[] = {"Add a default '_' case to handle all possibilities",
@@ -593,7 +594,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             // default, not operator overload").
             if (t->kind == TYPE_STRUCT && t->name && !is_ptr)
             {
-                char *mangled_get = mangle_method_symbol(t->name, NULL, "get");
+                char *mangled_get = mangle_method_symbol(type_def_name(t), NULL, "get");
 
                 if (find_func(tc->pctx, mangled_get))
                 {
@@ -628,7 +629,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             {
                 if (t->kind == TYPE_VECTOR && !t->inner && t->name)
                 {
-                    ASTNode *def = find_struct_def(tc->pctx, t->name);
+                    ASTNode *def = find_struct_def(tc->pctx, type_def_name(t));
                     if (def && def->kind == NODE_STRUCT && def->strct.fields)
                     {
                         t->inner = def->strct.fields->type_info;
@@ -688,7 +689,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                         struct_sym->is_dereferenced = 1;
                     }
                 }
-                ASTNode *struct_def = find_struct_def(tc->pctx, target_type->name);
+                ASTNode *struct_def = find_struct_def(tc->pctx, type_def_name(target_type));
                 if (struct_def)
                 {
                     ASTNode *field = struct_def->strct.fields;

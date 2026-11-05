@@ -563,7 +563,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                 {
                     TypeKind k = node->binary.left->type_info->kind;
                     if (k == TYPE_POINTER || k == TYPE_ENUM ||
-                        is_enum_type_name(ctx, node->binary.left->type_info->name))
+                        is_enum_type_name(ctx, type_def_name(node->binary.left->type_info)))
                     {
                         should_cast = 1;
                     }
@@ -626,7 +626,7 @@ static char *owned_temp_drop_type(ParserContext *ctx, ASTNode *arg)
     char *tname = NULL;
     if (operand->type_info && operand->type_info->kind == TYPE_STRUCT && operand->type_info->name)
     {
-        tname = operand->type_info->name;
+        tname = type_def_name(operand->type_info);
     }
     else
     {

@@ -236,6 +236,11 @@ int is_known_generic(ParserContext *ctx, char *name)
     return 0;
 }
 
+int type_is_generic_dependent(ParserContext *ctx, Type *t)
+{
+    return t && is_generic_dependent_str(ctx, type_to_string(t));
+}
+
 int is_generic_dependent_str(ParserContext *ctx, const char *type_str)
 {
     if (!type_str || !ctx)
@@ -288,7 +293,7 @@ void register_impl_template(ParserContext *ctx, const char *sname, const char *p
     {
         if (inst->template_name && strcmp(inst->template_name, sname) == 0)
         {
-            instantiate_methods(ctx, t, inst->name, inst->concrete_arg, inst->unmangled_arg);
+            instantiate_methods(ctx, t, inst->name, inst->args, inst->count);
         }
         inst = inst->next;
     }

@@ -221,6 +221,17 @@ typedef struct QualifiedName
     char *name;  ///< `Variant` or `method`.
 } QualifiedName;
 
+/**
+ * @brief An instance of a generic function, `f<int>`: the function and the types its
+ *        parameters take. Its C name is computed from them.
+ */
+typedef struct FunctionInstance
+{
+    char *name;  ///< The generic function: `f`, or `Type__method` for a generic method.
+    Type **args; ///< One type per generic parameter: `int`.
+    int count;
+} FunctionInstance;
+
 /** The kind of one alternative of a match case. */
 typedef enum
 {
@@ -439,7 +450,12 @@ struct ASTNode
             char *name;
             char *suggestion;
             struct ZenSymbol *symbol;
-            QualifiedName variant; ///< An enum variant: its enum (resolved) and its name.
+            QualifiedName variant;     ///< An enum variant: its enum (resolved) and its name.
+            FunctionInstance instance; ///< An instance of a generic function: `f<int>`.
+            /// `Vec<T>` in `Vec<T>::new` inside a template: the instance whose `member` this
+            /// names. The copy for an instance of the template renames it from this type.
+            Type *owner;
+            char *member;
         } var_ref;
 
         struct
@@ -789,6 +805,17 @@ Type *type_new(TypeKind kind);
 Type *type_new_ptr(Type *inner);
 Type *type_new_array(Type *inner, int size);
 Type *type_new_tuple(Type **elements, int count);
+/** @brief The instance `tpl<args>` of a generic struct or enum. */
+Type *type_new_instance(const char *tpl, Type **args, int count);
+/**
+ * @brief The name the definition of a struct, enum, alias or trait type is registered under,
+ * which its C name and its methods' C names build on: for a generic instance, the mangled name
+ * (`Vec__int32_t`), computed from its template and arguments; for one that still names a generic
+ * parameter (`Vec<T>` inside the template), the template's.
+ */
+char *type_def_name(Type *t);
+/** @brief Whether `t` is the generic parameter `param` (`T`). */
+int type_is_generic_param(Type *t, const char *param);
 /** @brief `t` if it is a tuple, or the tuple it points to; else NULL. */
 Type *tuple_of(Type *t);
 /** @brief The type of the element `field` (`0` or `v0`) of `tuple`, or NULL. */

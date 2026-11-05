@@ -216,7 +216,7 @@ int is_type_copy(ParserContext *ctx, Type *t)
     {
         result = 0;
     }
-    else if (t->name && check_impl(ctx, "Drop", t->name))
+    else if (t->name && check_impl(ctx, "Drop", type_def_name(t)))
     {
         result = 0;
     }
@@ -248,17 +248,17 @@ int is_type_copy(ParserContext *ctx, Type *t)
             result = 1;
             break;
         case TYPE_STRUCT:
-            if (check_impl(ctx, "Copy", t->name))
+            if (check_impl(ctx, "Copy", type_def_name(t)))
             {
                 result = 1;
             }
-            else if (check_impl(ctx, "Drop", t->name))
+            else if (check_impl(ctx, "Drop", type_def_name(t)))
             {
                 result = 0;
             }
             else if (t->name)
             {
-                ASTNode *def = find_struct_def(ctx, t->name);
+                ASTNode *def = find_struct_def(ctx, type_def_name(t));
                 if (def && def->type_info && def->type_info->traits.has_drop)
                 {
                     result = 0;

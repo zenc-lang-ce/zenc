@@ -11,15 +11,60 @@
 #include <stdlib.h>
 #include <string.h>
 
-int is_unmangle_primitive(const char *base);
-char *unmangle_ptr_suffix(const char *s);
-Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char *c, const char *os,
-                          const char *ns);
-ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const char *c,
-                            const char *os, const char *ns);
-
 // Helper function to recursively scan AST for sizeof types AND generic calls to trigger
 // instantiation
+Instantiation *find_instantiation(ParserContext *ctx, const char *name)
+{
+    for (Instantiation *inst = ctx->instantiations; inst; inst = inst->next)
+    {
+        if (strcmp(inst->name, name) == 0)
+        {
+            return inst;
+        }
+    }
+    return NULL;
+}
+
+GenericTemplate *find_generic_template(ParserContext *ctx, const char *name)
+{
+    for (GenericTemplate *gt = ctx->templates; gt; gt = gt->next)
+    {
+        if (strcmp(gt->name, name) == 0)
+        {
+            return gt;
+        }
+    }
+    return NULL;
+}
+
+// Whether an instance's arguments still name a generic parameter (`Vec<T>` inside its
+// template): it is instantiated once the parameter is bound.
+static int args_name_generic(ParserContext *ctx, Type **args, int count)
+{
+    for (int i = 0; i < count; i++)
+    {
+        if (type_is_generic_dependent(ctx, args[i]))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void instantiate_generic(ParserContext *ctx, const char *tpl, Type **args, int count,
+                                Token token);
+
+void instantiate_type(ParserContext *ctx, Type *instance, Token token)
+{
+    if (!instance || (instance->kind != TYPE_STRUCT && instance->kind != TYPE_ENUM) ||
+        instance->count == 0 || !instance->args ||
+        args_name_generic(ctx, instance->args, instance->count))
+    {
+        return;
+    }
+    instantiate_generic(ctx, instance->name, instance->args, instance->count, token);
+}
+
 static void trigger_type_instantiation(ParserContext *ctx, Type *t)
 {
     if (!t)
@@ -35,42 +80,13 @@ static void trigger_type_instantiation(ParserContext *ctx, Type *t)
         zfree(inner_str);
     }
 
-    // Handle mangled types (instantiations)
-    if (t->name && strchr(t->name, '_'))
+    if ((t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->count > 0 && t->args && t->name)
     {
-        char *type_copy = xstrdup(t->name);
-        char *underscore = (char *)strchr(type_copy, '_');
-        if (underscore)
+        if (find_generic_template(ctx, t->name))
         {
-            char *concrete_arg = underscore;
-            while (*concrete_arg == '_')
-            {
-                concrete_arg++;
-            }
-            *underscore = '\0';
-            char *template_name = type_copy;
-
-            GenericTemplate *gt = ctx->templates;
-            int found = 0;
-            while (gt)
-            {
-                if (strcmp(gt->name, template_name) == 0)
-                {
-                    found = 1;
-                    break;
-                }
-                gt = gt->next;
-            }
-
-            if (found)
-            {
-                char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                Token dummy_tok = {0};
-                instantiate_generic(ctx, template_name, concrete_arg, unmangled, dummy_tok);
-                zfree(unmangled);
-            }
+            Token no_token = {0};
+            instantiate_type(ctx, t, no_token);
         }
-        zfree(type_copy);
     }
 
     // Recursive scan
@@ -102,69 +118,9 @@ static void trigger_instantiations(ParserContext *ctx, ASTNode *node)
     {
         trigger_type_instantiation(ctx, node->size_of.target_type_info);
     }
-    else if (node->kind == NODE_EXPR_VAR)
+    else if (node->kind == NODE_EXPR_VAR && node->var_ref.instance.name)
     {
-        const char *name = node->var_ref.name;
-        if (strchr(name, '_'))
-        {
-            GenericFuncTemplate *t = ctx->func_templates;
-            while (t)
-            {
-                size_t tlen = strlen(t->name);
-                if (strncmp(name, t->name, (size_t)(tlen)) == 0 && name[tlen] == '_' &&
-                    name[tlen + 1] == '_')
-                {
-                    char *template_name = t->name;
-                    char *concrete_arg = (char *)name + tlen + 2;
-
-                    char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                    instantiate_function_template(ctx, template_name, concrete_arg, unmangled);
-                    zfree(unmangled);
-                    break; // Found match, stop searching
-                }
-                t = t->next;
-            }
-        }
-    }
-    else if (node->kind == NODE_EXPR_STRUCT_INIT && node->struct_init.struct_name)
-    {
-        const char *name = node->struct_init.struct_name;
-        if (strchr(name, '_'))
-        {
-            char *type_copy = xstrdup(name);
-            char *underscore = (char *)strchr(type_copy, '_');
-            if (underscore)
-            {
-                char *concrete_arg = underscore;
-                while (*concrete_arg == '_')
-                {
-                    concrete_arg++;
-                }
-                *underscore = '\0';
-                char *template_name = type_copy;
-
-                GenericTemplate *gt = ctx->templates;
-                int found = 0;
-                while (gt)
-                {
-                    if (strcmp(gt->name, template_name) == 0)
-                    {
-                        found = 1;
-                        break;
-                    }
-                    gt = gt->next;
-                }
-
-                if (found)
-                {
-                    char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                    Token dummy_tok = {0};
-                    instantiate_generic(ctx, template_name, concrete_arg, unmangled, dummy_tok);
-                    zfree(unmangled);
-                }
-            }
-            zfree(type_copy);
-        }
+        instantiate_function(ctx, node->var_ref.instance);
     }
 
     ASTChildren children = ast_children(node);
@@ -177,173 +133,32 @@ static void trigger_instantiations(ParserContext *ctx, ASTNode *node)
     trigger_instantiations(ctx, node->next);
 }
 
-char *instantiate_function_template(ParserContext *ctx, const char *name, const char *concrete_type,
-                                    const char *unmangled_type)
+char *function_instance_name(FunctionInstance instance)
 {
-    GenericFuncTemplate *tpl = find_func_template(ctx, name);
+    char **args = xmalloc(sizeof(char *) * (size_t)instance.count);
+    for (int i = 0; i < instance.count; i++)
+    {
+        args[i] = type_to_string(instance.args[i]);
+    }
+    return mangle_generic_name(instance.name, args, instance.count);
+}
+
+char *instantiate_function(ParserContext *ctx, FunctionInstance instance)
+{
+    GenericFuncTemplate *tpl = find_func_template(ctx, instance.name);
     if (!tpl)
     {
         return NULL;
     }
 
-    char *clean_type = sanitize_mangled_name(concrete_type);
-
-    int is_still_generic = 0;
-    if (strlen(clean_type) == 1 && isupper(clean_type[0]))
-    {
-        is_still_generic = 1;
-    }
-
-    if (is_known_generic(ctx, clean_type))
-    {
-        is_still_generic = 1;
-    }
-
-    char *one_type = (char *)concrete_type;
-    char *mangled = mangle_generic_name(name, &one_type, 1);
-    zfree(clean_type);
-
-    if (is_still_generic)
+    char *mangled = function_instance_name(instance);
+    if (args_name_generic(ctx, instance.args, instance.count) || find_func(ctx, mangled))
     {
         return mangled;
     }
 
-    if (find_func(ctx, mangled))
-    {
-        return mangled;
-    }
-
-    const char *subst_arg = unmangled_type ? unmangled_type : concrete_type;
-
-    // Scan the original return type for generic struct patterns like "Triple_X_Y_Z"
-    // and instantiate them with the concrete types
-    if (tpl->func_node && tpl->func_node->func.ret_type_info)
-    {
-        const char *ret = type_to_string(tpl->func_node->func.ret_type_info);
-
-        // Build the param suffix (e.g., for "X,Y,Z" -> "_X_Y_Z")
-        size_t suffix_cap = strlen(tpl->generic_param) * 2 + 64;
-        char *param_suffix = xmalloc((size_t)(suffix_cap));
-        param_suffix[0] = 0;
-        const char *p_ptr = tpl->generic_param;
-        while (p_ptr && *p_ptr)
-        {
-            strcat(param_suffix, "__");
-            const char *p_next = (char *)strchr(p_ptr, ',');
-            int sub_len = p_next ? (int)(p_next - p_ptr) : (int)strlen(p_ptr);
-            strncat(param_suffix, p_ptr, (size_t)(sub_len));
-            if (p_next)
-            {
-                p_ptr = p_next + 1;
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        // Check if ret_type ends with param_suffix (e.g., "Triple_X_Y_Z" ends with "_X_Y_Z")
-        size_t ret_len = strlen(ret);
-        size_t suffix_len = strlen(param_suffix);
-        if (ret_len > suffix_len && strcmp(ret + ret_len - suffix_len, param_suffix) == 0)
-        {
-            // Extract base struct name (e.g., "Triple" from "Triple_X_Y_Z")
-            size_t base_len = (size_t)(ret_len - suffix_len);
-            char *struct_base = xmalloc((size_t)(base_len + 1));
-            strncpy(struct_base, ret, (size_t)(base_len));
-            struct_base[base_len] = 0;
-
-            // Check if it's a known generic template
-            GenericTemplate *gt = ctx->templates;
-            while (gt && strcmp(gt->name, struct_base) != 0)
-            {
-                gt = gt->next;
-            }
-            if (gt)
-            {
-                // Parse the concrete types from unmangled_type or concrete_type
-                const char *types_src = unmangled_type ? unmangled_type : concrete_type;
-
-                // Count params in template
-                int template_param_count = 1;
-                for (const char *p = tpl->generic_param; *p; p++)
-                {
-                    if (*p == ',')
-                    {
-                        template_param_count++;
-                    }
-                }
-
-                // Split concrete types
-                char **args = xmalloc(sizeof(char *) * (size_t)(template_param_count));
-                int count = 0;
-                const char *types_ptr = types_src;
-                while (types_ptr && *types_ptr && count < template_param_count)
-                {
-                    const char *types_next = (char *)strchr(types_ptr, ',');
-                    int types_len =
-                        types_next ? (int)(types_next - types_ptr) : (int)strlen(types_ptr);
-
-                    args[count] = xmalloc((size_t)(types_len + 1));
-                    strncpy(args[count], types_ptr, (size_t)(types_len));
-                    args[count][types_len] = 0;
-                    count++;
-
-                    if (types_next)
-                    {
-                        types_ptr = types_next + 1;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-
-                // Now instantiate the struct with these args
-                Token dummy_tok = {0};
-                if (count == 1)
-                {
-                    // Unmangle Ptr suffix if needed (e.g., intPtr -> int*)
-                    char *unmangled = xstrdup(args[0]);
-                    size_t alen = strlen(args[0]);
-                    if (alen > 3 && strcmp(args[0] + alen - 3, "Ptr") == 0)
-                    {
-                        char *base = xstrdup(args[0]);
-                        base[alen - 3] = '\0';
-                        zfree(unmangled);
-                        unmangled = xmalloc(strlen(base) + 16);
-                        if (is_unmangle_primitive(base))
-                        {
-                            sprintf(unmangled, "%s*", base); /* safe */
-                        }
-                        else
-                        {
-                            sprintf(unmangled, "struct %s*", base); /* safe */
-                        }
-                        zfree(base);
-                    }
-                    instantiate_generic(ctx, struct_base, args[0], unmangled, dummy_tok);
-                    zfree(unmangled);
-                }
-                else if (count > 1)
-                {
-                    instantiate_generic_multi(ctx, struct_base, args, count, dummy_tok);
-                }
-
-                // Cleanup
-                for (int i = 0; i < count; i++)
-                {
-                    zfree(args[i]);
-                }
-                zfree(args);
-            }
-            zfree(struct_base);
-        }
-        zfree(param_suffix);
-    }
-
-    ASTNode *new_fn =
-        copy_ast_replacing(ctx, tpl->func_node, tpl->generic_param, subst_arg, NULL, NULL);
+    Bindings b = bindings_new(tpl->generic_param, instance.args, instance.count);
+    ASTNode *new_fn = copy_ast_replacing(ctx, tpl->func_node, &b, NULL, NULL);
     if (!new_fn || new_fn->kind != NODE_FUNCTION)
     {
         return NULL;
@@ -352,6 +167,13 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
     zfree(new_fn->func.name);
     new_fn->func.name = xstrdup(mangled);
     new_fn->func.generic_params = NULL;
+
+    // The instances the copy's signature names (`-> Triple<X, Y, Z>`).
+    trigger_type_instantiation(ctx, new_fn->func.ret_type_info);
+    for (int i = 0; i < new_fn->func.count; i++)
+    {
+        trigger_type_instantiation(ctx, new_fn->func.arg_types[i]);
+    }
 
     add_instantiated_func(ctx, new_fn);
 
@@ -387,8 +209,7 @@ void register_template(ParserContext *ctx, const char *name, ASTNode *node)
     ctx->templates = t;
 }
 
-static ASTNode *copy_fields_replacing(ParserContext *ctx, ASTNode *fields, const char *param,
-                                      const char *concrete)
+static ASTNode *copy_fields_replacing(ParserContext *ctx, ASTNode *fields, const Bindings *b)
 {
     if (!fields)
     {
@@ -398,168 +219,25 @@ static ASTNode *copy_fields_replacing(ParserContext *ctx, ASTNode *fields, const
     n->field.name = xstrdup(fields->field.name);
 
     // Replace formal types (Deep Copy)
-    n->type_info = replace_type_formal(ctx, fields->type_info, param, concrete, NULL, NULL);
+    n->type_info = replace_type_formal(ctx, fields->type_info, b, NULL, NULL);
 
-    // An instance names its generic in its mangled name: "MapEntry__int" instantiates MapEntry.
-    char *field_type = n->type_info ? type_to_string(n->type_info) : NULL;
-    if (field_type && strchr(field_type, '_'))
-    {
-        // Parse potential generic: e.g. "MapEntry_int" -> instantiate("MapEntry",
-        // "int")
-        char *underscore = (char *)strrchr(field_type, '_');
-        if (underscore && underscore > field_type)
-        {
-            // Remove trailing '*' if present
-            char *type_copy = xstrdup(field_type);
-            char *star = (char *)strchr(type_copy, '*');
-            if (star)
-            {
-                *star = '\0';
-            }
+    // The instances the field's type names (`Node<T>*`).
+    trigger_type_instantiation(ctx, n->type_info);
 
-            underscore = strrchr(type_copy, '_');
-            if (underscore)
-            {
-                *underscore = '\0';
-                char *template_name = type_copy;
-                char *concrete_arg = underscore + 1;
-
-                // Check if this is actually a known generic template
-                GenericTemplate *gt = ctx->templates;
-                int found = 0;
-                while (gt)
-                {
-                    if (strcmp(gt->name, template_name) == 0)
-                    {
-                        found = 1;
-                        break;
-                    }
-                    gt = gt->next;
-                }
-
-                if (found)
-                {
-                    char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                    if (concrete)
-                    {
-                        char *clean_concrete = sanitize_mangled_name(concrete);
-                        if (strcmp(concrete_arg, clean_concrete) == 0)
-                        {
-                            zfree(unmangled);
-                            unmangled = xstrdup(concrete);
-                        }
-                        zfree(clean_concrete);
-                    }
-
-                    instantiate_generic(ctx, template_name, concrete_arg, unmangled, fields->token);
-                    zfree(unmangled);
-                }
-            }
-            zfree(type_copy);
-        }
-    }
-
-    // Additional check: if type_info is a pointer to a struct with a mangled name,
-    // instantiate that struct as well (fixes cases like RcInner<T>* where the
-    // string check above might not catch it)
-    if (n->type_info && n->type_info->kind == TYPE_POINTER && n->type_info->inner)
-    {
-        Type *inner = n->type_info->inner;
-        if (inner->kind == TYPE_STRUCT && inner->name && strchr(inner->name, '_'))
-        {
-            // Extract template name by checking against known templates
-            // We can't use strrchr because types like "Inner_int32_t" have multiple underscores
-            char *template_name = NULL;
-            char *concrete_arg = NULL;
-
-            // Try each known template to see if the type name starts with it
-            GenericTemplate *gt = ctx->templates;
-            while (gt)
-            {
-                size_t tlen = strlen(gt->name);
-                // Check if name starts with template name followed by double underscore
-                if (strncmp(inner->name, gt->name, (size_t)(tlen)) == 0 &&
-                    inner->name[tlen] == '_' && inner->name[tlen + 1] == '_')
-                {
-                    template_name = gt->name;
-                    concrete_arg =
-                        inner->name + tlen + 2; // Skip template name and double underscore
-                    break;
-                }
-                gt = gt->next;
-            }
-
-            if (template_name && concrete_arg)
-            {
-                char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                if (concrete)
-                {
-                    char *clean_concrete = sanitize_mangled_name(concrete);
-                    if (strcmp(concrete_arg, clean_concrete) == 0)
-                    {
-                        zfree(unmangled);
-                        unmangled = xstrdup(concrete);
-                    }
-                    zfree(clean_concrete);
-                }
-                instantiate_generic(ctx, template_name, concrete_arg, unmangled, fields->token);
-                zfree(unmangled);
-            }
-        }
-    }
-
-    n->next = copy_fields_replacing(ctx, fields->next, param, concrete);
+    n->next = copy_fields_replacing(ctx, fields->next, b);
     return n;
 }
 
 void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
-                         const char *mangled_struct_name, const char *arg,
-                         const char *unmangled_arg)
+                         const char *mangled_struct_name, Type **args, int count)
 {
-    if (check_impl(ctx, "Methods", mangled_struct_name))
-    {
-        return; // Simple dedupe check
-    }
-
     ASTNode *backup_next = it->impl_node->next;
     it->impl_node->next = NULL; // Break link to isolate node
 
-    // Use unmangled_arg if provided, otherwise arg
-    char *raw = (char *)(unmangled_arg ? unmangled_arg : arg);
-    char *subst_arg = unmangle_ptr_suffix(raw);
+    Bindings b = bindings_new(it->generic_param, args, count);
+    ASTNode *new_impl =
+        copy_ast_replacing(ctx, it->impl_node, &b, it->struct_name, mangled_struct_name);
 
-    ASTNode *new_impl = copy_ast_replacing(ctx, it->impl_node, it->generic_param, subst_arg,
-                                           it->struct_name, mangled_struct_name);
-
-    // Also replace mangled template name (both List__G and List_G)
-    if (strchr(it->struct_name, '<'))
-    {
-        char *sanitized = sanitize_mangled_name(it->struct_name);
-        if (strcmp(sanitized, it->struct_name) != 0)
-        {
-            ASTNode *tmp =
-                copy_ast_replacing(ctx, new_impl, NULL, NULL, sanitized, mangled_struct_name);
-            new_impl = tmp;
-        }
-
-        char *old_sanitized = xstrdup(sanitized);
-        char *double_underscore = (char *)strstr(old_sanitized, "__");
-        if (double_underscore)
-        {
-            memmove(double_underscore, double_underscore + 1, strlen(double_underscore + 1) + 1);
-        }
-
-        if (strcmp(old_sanitized, it->struct_name) != 0 && strcmp(old_sanitized, sanitized) != 0)
-        {
-            ASTNode *tmp =
-                copy_ast_replacing(ctx, new_impl, NULL, NULL, old_sanitized, mangled_struct_name);
-            new_impl = tmp;
-        }
-
-        zfree(old_sanitized);
-        zfree(sanitized);
-    }
-    zfree(subst_arg);
     it->impl_node->next = backup_next; // Restore
 
     ASTNode *meth = NULL;
@@ -615,71 +293,8 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
                       meth->func.is_varargs, meth->func.pure, meth->link_name, meth->token,
                       meth->func.is_export);
 
-        // Handle generic return types in methods (e.g., Option<T> -> Option_int)
-        const char *meth_ret =
-            meth->func.ret_type_info ? type_to_string(meth->func.ret_type_info) : NULL;
-        if (meth_ret && (strchr(meth_ret, '_') || strchr(meth_ret, '<')))
-        {
-            GenericTemplate *gt = ctx->templates;
-
-            while (gt)
-            {
-                size_t tlen = strlen(gt->name);
-                size_t rlen = strlen(meth_ret);
-                if (tlen > rlen)
-                {
-                    gt = gt->next;
-                    continue;
-                }
-                char delim = meth_ret[tlen];
-                if (strncmp(meth_ret, gt->name, (size_t)(tlen)) == 0 &&
-                    (delim == '_' || delim == '<'))
-                {
-                    // Found matching template prefix
-                    const char *type_arg = meth_ret + tlen;
-                    while (*type_arg == '_' || *type_arg == '<')
-                    {
-                        type_arg++;
-                    }
-
-                    // Simple approach: instantiate 'Template' with 'Arg'.
-                    char *clean_arg = xstrdup(type_arg);
-                    if (delim == '<')
-                    {
-                        char *closer = (char *)strrchr(clean_arg, '>');
-                        if (closer)
-                        {
-                            *closer = 0;
-                        }
-                    }
-
-                    // Unmangle Ptr suffix if present (e.g., intPtr -> int*)
-                    char *inner_unmangled_arg = xstrdup(clean_arg);
-                    size_t alen = strlen(clean_arg);
-                    if (alen > 3 && strcmp(clean_arg + alen - 3, "Ptr") == 0)
-                    {
-                        char *base = xstrdup(clean_arg);
-                        base[alen - 3] = '\0';
-                        zfree(inner_unmangled_arg);
-                        inner_unmangled_arg = xmalloc(strlen(base) + 16);
-                        // Check if base is a primitive type
-                        if (is_unmangle_primitive(base))
-                        {
-                            sprintf(inner_unmangled_arg, "%s*", base); /* safe */
-                        }
-                        else
-                        {
-                            sprintf(inner_unmangled_arg, "struct %s*", base); /* safe */
-                        }
-                        zfree(base);
-                    }
-
-                    instantiate_generic(ctx, gt->name, clean_arg, inner_unmangled_arg, meth->token);
-                    zfree(clean_arg);
-                }
-                gt = gt->next;
-            }
-        }
+        // The instances the method's return type names (`-> Option<T>`).
+        trigger_type_instantiation(ctx, meth->func.ret_type_info);
 
         trigger_instantiations(ctx, meth->func.body);
 
@@ -712,59 +327,51 @@ static void register_enum_constructor(ParserContext *ctx, const char *m, const c
     zfree(mangled_var);
 }
 
-void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
-                         const char *unmangled_arg, Token token)
+// The parameters a struct or enum template declares, as `K,V`.
+static char *template_params(ASTNode *def)
 {
-    // Ignore generic placeholders
-    if (strlen(arg) == 1 && isupper(arg[0]))
+    if (def->kind == NODE_ENUM)
+    {
+        return def->enm.generic_param;
+    }
+    return join_with_commas(def->strct.generic_params, def->strct.generic_param_count);
+}
+
+// Instantiates the template `tpl` with `args`: its struct or enum, the constructors of its
+// variants, and the methods of the generic impls registered so far (the later ones are
+// instantiated when they are registered).
+static void instantiate_generic(ParserContext *ctx, const char *tpl, Type **args, int count,
+                                Token token)
+{
+    Type instance = {0};
+    instance.kind = TYPE_STRUCT;
+    instance.name = (char *)tpl;
+    instance.args = args;
+    instance.count = count;
+    char *m = type_def_name(&instance);
+    if (find_instantiation(ctx, m))
     {
         return;
     }
-    if (strcmp(arg, "T") == 0)
-    {
-        return;
-    }
 
-    char *one_arg = (char *)arg;
-    char *m = mangle_generic_name(tpl, &one_arg, 1);
-
-    Instantiation *c = ctx->instantiations;
-    while (c)
-    {
-        if (strcmp(c->name, m) == 0)
-        {
-            zfree(m);
-            return; // Already instantiated, DO NOTHING.
-        }
-        c = c->next;
-    }
-
-    GenericTemplate *t = ctx->templates;
-    while (t)
-    {
-        if (strcmp(t->name, tpl) == 0)
-        {
-            break;
-        }
-        t = t->next;
-    }
+    GenericTemplate *t = find_generic_template(ctx, tpl);
     if (!t)
     {
         zpanic_at(token, "Unknown generic: %s", tpl);
         return; // fault tolerance: zpanic_at returned, bail out
     }
 
+    // Registered before the copy, which may name the instance again (`Node<T>*`).
     Instantiation *ni = xcalloc(1, sizeof(Instantiation));
     ni->name = xstrdup(m);
     ni->template_name = xstrdup(tpl);
-    ni->concrete_arg = xstrdup(arg);
-    ni->unmangled_arg = unmangled_arg ? xstrdup(unmangled_arg)
-                                      : xstrdup(arg); // Fallback to arg if unmangled is generic
-    ni->struct_node = NULL;                           // Placeholder to break cycles
+    ni->args = args;
+    ni->count = count;
     ni->next = ctx->instantiations;
     ctx->instantiations = ni;
 
-    ASTNode *struct_node_copy = NULL;
+    Bindings b = bindings_new(template_params(t->struct_node), args, count);
+    ASTNode *copy = NULL;
 
     if (t->struct_node->kind == NODE_STRUCT)
     {
@@ -788,12 +395,8 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
         {
             i->strct.parent = xstrdup(t->struct_node->strct.parent);
         }
-        const char *gp = (t->struct_node->strct.generic_param_count > 0)
-                             ? t->struct_node->strct.generic_params[0]
-                             : "T";
-        const char *subst_arg = unmangled_arg ? unmangled_arg : arg;
-        i->strct.fields = copy_fields_replacing(ctx, t->struct_node->strct.fields, gp, subst_arg);
-        struct_node_copy = i;
+        i->strct.fields = copy_fields_replacing(ctx, t->struct_node->strct.fields, &b);
+        copy = i;
         register_struct_def(ctx, m, i);
 
         // Register slice types used in the instantiated struct's fields
@@ -831,9 +434,7 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
             nv->variant.name = xstrdup(v->variant.name);
             nv->variant.tag_id = v->variant.tag_id;
             nv->variant.payload_count = v->variant.payload_count;
-            const char *subst_arg = unmangled_arg ? unmangled_arg : arg;
-            nv->variant.payload = replace_type_formal(
-                ctx, v->variant.payload, t->struct_node->enm.generic_param, subst_arg, NULL, NULL);
+            nv->variant.payload = replace_type_formal(ctx, v->variant.payload, &b, NULL, NULL);
 
             register_enum_constructor(ctx, m, nv->variant.name, nv->variant.tag_id,
                                       nv->variant.payload, token, i->enm.is_export);
@@ -850,237 +451,25 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
             v = v->next;
         }
         i->enm.variants = h;
-        struct_node_copy = i;
+        copy = i;
+        register_struct_def(ctx, m, i);
     }
 
-    ni->struct_node = struct_node_copy;
-    struct_registry_changed(ctx);
-
-    if (struct_node_copy)
+    ni->struct_node = copy;
+    if (copy)
     {
         // Cache in hash table for fast lookup.
-        if (struct_node_copy->kind == NODE_STRUCT && struct_node_copy->strct.name)
-        {
-            struct_hash_insert(ctx, struct_node_copy->strct.name, struct_node_copy);
-        }
-        else if (struct_node_copy->kind == NODE_ENUM && struct_node_copy->enm.name)
-        {
-            struct_hash_insert(ctx, struct_node_copy->enm.name, struct_node_copy);
-        }
-
-        struct_node_copy->next = ctx->instantiated_structs;
-        ctx->instantiated_structs = struct_node_copy;
-        struct_registry_changed(ctx);
+        struct_hash_insert(ctx, m, copy);
+        copy->next = ctx->instantiated_structs;
+        ctx->instantiated_structs = copy;
     }
+    struct_registry_changed(ctx);
 
-    GenericImplTemplate *it = ctx->impl_templates;
-    while (it)
+    for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
     {
         if (strcmp(it->struct_name, tpl) == 0)
         {
-            instantiate_methods(ctx, it, m, arg, unmangled_arg);
+            instantiate_methods(ctx, it, m, args, count);
         }
-        it = it->next;
     }
-    zfree(m);
-}
-
-static void free_field_list(ASTNode *fields)
-{
-    while (fields)
-    {
-        ASTNode *next = fields->next;
-        if (fields->field.name)
-        {
-            zfree(fields->field.name);
-        }
-        zfree(fields);
-        fields = next;
-    }
-}
-
-void instantiate_generic_multi(ParserContext *ctx, const char *tpl, char **args, int count,
-                               Token token)
-{
-    char *m = mangle_generic_name(tpl, args, count);
-
-    // Check if already instantiated
-    Instantiation *c = ctx->instantiations;
-    while (c)
-    {
-        if (strcmp(c->name, m) == 0)
-        {
-            zfree(m);
-            return; // Already done
-        }
-        c = c->next;
-    }
-
-    // Find the template
-    GenericTemplate *t = ctx->templates;
-    while (t)
-    {
-        if (strcmp(t->name, tpl) == 0)
-        {
-            break;
-        }
-        t = t->next;
-    }
-    if (!t)
-    {
-        zpanic_at(token, "Unknown generic: %s", tpl);
-        return;
-    }
-
-    // Register instantiation first (to break cycles)
-    Instantiation *ni = xcalloc(1, sizeof(Instantiation));
-    ni->name = xstrdup(m);
-    ni->template_name = xstrdup(tpl);
-    ni->concrete_arg = (count > 0) ? xstrdup(args[0]) : xstrdup("T");
-
-    // For multi-param, build a comma-separated string for unmangled_arg
-    size_t u_len = 0;
-    for (int i = 0; i < count; i++)
-    {
-        u_len += strlen(args[i]) + 1;
-    }
-    char *u_buf = xmalloc((size_t)(u_len + 1));
-    u_buf[0] = 0;
-    for (int i = 0; i < count; i++)
-    {
-        if (i > 0)
-        {
-            strcat(u_buf, ",");
-        }
-        strcat(u_buf, args[i]);
-    }
-    ni->unmangled_arg = u_buf;
-
-    ni->struct_node = NULL;
-    ni->next = ctx->instantiations;
-    ctx->instantiations = ni;
-
-    if (t->struct_node->kind == NODE_STRUCT)
-    {
-        ASTNode *i = ast_create(NODE_STRUCT);
-        i->strct.name = xstrdup(m);
-        i->strct.is_template = 0;
-        i->strct.is_export = t->struct_node->strct.is_export;
-
-        // Copy struct attributes
-        i->strct.is_packed = t->struct_node->strct.is_packed;
-        i->strct.is_union = t->struct_node->strct.is_union;
-        i->strct.align = t->struct_node->strct.align;
-        if (t->struct_node->strct.parent)
-        {
-            i->strct.parent = xstrdup(t->struct_node->strct.parent);
-        }
-
-        // Copy fields with sequential substitutions for each param
-        ASTNode *fields = t->struct_node->strct.fields;
-        int param_count = t->struct_node->strct.generic_param_count;
-
-        if (param_count > 0 && count > 0)
-        {
-            // First substitution
-            i->strct.fields = copy_fields_replacing(
-                ctx, fields, t->struct_node->strct.generic_params[0], args[0]);
-
-            // Subsequent substitutions (for params B, C, etc.)
-            for (int j = 1; j < param_count && j < count; j++)
-            {
-                ASTNode *prev_fields = i->strct.fields;
-                ASTNode *tmp = copy_fields_replacing(
-                    ctx, prev_fields, t->struct_node->strct.generic_params[j], args[j]);
-                free_field_list(prev_fields);
-                i->strct.fields = tmp;
-            }
-        }
-        else
-        {
-            i->strct.fields = copy_fields_replacing(ctx, fields, "T", "int");
-        }
-
-        ni->struct_node = i;
-        register_struct_def(ctx, m, i);
-
-        i->next = ctx->instantiated_structs;
-        ctx->instantiated_structs = i;
-        struct_registry_changed(ctx);
-    }
-    else if (t->struct_node->kind == NODE_ENUM)
-    {
-        ASTNode *i = ast_create(NODE_ENUM);
-        i->enm.name = xstrdup(m);
-        i->enm.is_template = 0;
-        i->enm.is_export = t->struct_node->enm.is_export;
-
-        // Copy type attributes
-        i->type_info = type_new(TYPE_ENUM);
-        i->type_info->name = xstrdup(m);
-        if (t->struct_node->type_info)
-        {
-            i->type_info->traits = t->struct_node->type_info->traits;
-        }
-
-        ASTNode *h = 0, *tl = 0;
-        ASTNode *v = t->struct_node->enm.variants;
-
-        // Construct comma-separated concrete args string
-        size_t c_args_len = 1;
-        for (int j = 0; j < count; j++)
-        {
-            c_args_len += strlen(args[j]) + 1;
-        }
-        char *c_args = xmalloc((size_t)(c_args_len));
-        c_args[0] = 0;
-        for (int j = 0; j < count; j++)
-        {
-            if (j > 0)
-            {
-                strcat(c_args, ",");
-            }
-            strcat(c_args, args[j]);
-        }
-
-        while (v)
-        {
-            ASTNode *nv = ast_create(NODE_ENUM_VARIANT);
-            nv->variant.name = xstrdup(v->variant.name);
-            nv->variant.tag_id = v->variant.tag_id;
-            nv->variant.payload_count = v->variant.payload_count;
-
-            // Use multi-parameter substitution for payload
-            Type *payload = v->variant.payload;
-            nv->variant.payload = NULL;
-            if (payload)
-            {
-                nv->variant.payload = replace_type_formal(
-                    ctx, payload, t->struct_node->enm.generic_param, c_args, NULL, NULL);
-            }
-
-            register_enum_constructor(ctx, m, nv->variant.name, nv->variant.tag_id,
-                                      nv->variant.payload, token, i->enm.is_export);
-
-            if (!h)
-            {
-                h = nv;
-            }
-            else
-            {
-                tl->next = nv;
-            }
-            tl = nv;
-            v = v->next;
-        }
-        zfree(c_args);
-        i->enm.variants = h;
-        ni->struct_node = i;
-        register_struct_def(ctx, m, i);
-
-        i->next = ctx->instantiated_structs;
-        ctx->instantiated_structs = i;
-        struct_registry_changed(ctx);
-    }
-    zfree(m);
 }

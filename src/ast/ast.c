@@ -354,6 +354,54 @@ Type *type_new_array(Type *inner, int size)
     return t;
 }
 
+// Whether a type still names a generic parameter (`T`, `Vec<T>*`).
+static int type_names_generic(Type *t)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    if (t->kind == TYPE_GENERIC || type_names_generic(t->inner))
+    {
+        return 1;
+    }
+    for (int i = 0; t->args && i < t->count; i++)
+    {
+        if (type_names_generic(t->args[i]))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int type_is_generic_param(Type *t, const char *param)
+{
+    // Parsed outside its template's body, a parameter is still a struct of its name.
+    return t && param && (t->kind == TYPE_GENERIC || t->kind == TYPE_STRUCT) && t->name &&
+           strcmp(t->name, param) == 0;
+}
+
+char *type_def_name(Type *t)
+{
+    // An instance has a definition of its own; inside its template (`Vec<T>`), the template's.
+    if (t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->count > 0 && t->args &&
+        !type_names_generic(t))
+    {
+        return type_to_string(t);
+    }
+    return t ? t->name : NULL;
+}
+
+Type *type_new_instance(const char *tpl, Type **args, int count)
+{
+    Type *t = type_new(TYPE_STRUCT);
+    t->name = xstrdup(tpl);
+    t->args = args;
+    t->count = count;
+    return t;
+}
+
 Type *type_new_tuple(Type **elements, int count)
 {
     Type *t = type_new(TYPE_TUPLE);
@@ -638,7 +686,7 @@ int is_incomplete_type(struct ParserContext *ctx, Type *t)
     {
         return 0;
     }
-    ASTNode *def = find_struct_def(ctx, t->name);
+    ASTNode *def = find_struct_def(ctx, type_def_name(t));
     if (!def)
     {
         return 1;
@@ -717,11 +765,12 @@ int type_eq(Type *a, Type *b)
 
     if (a->kind == TYPE_STRUCT || a->kind == TYPE_GENERIC || a->kind == TYPE_ENUM)
     {
+        // The same definition: for instances of a generic, the same template and arguments.
         if (!a->name || !b->name)
         {
             return 0;
         }
-        return 0 == strcmp(a->name, b->name);
+        return 0 == strcmp(type_def_name(a), type_def_name(b));
     }
     if (a->kind == TYPE_ALIAS)
     {
@@ -879,7 +928,8 @@ static char *type_to_string_impl(Type *t)
     case TYPE_U128:
         return xstrdup("unsigned __int128");
     case TYPE_RUNE:
-        return xstrdup("int32_t");
+        // Not `int32_t`, which `int` also is: an instance of `rune` is not one of `int`.
+        return xstrdup("rune");
     case TYPE_UINT:
         return xstrdup("unsigned int");
 
@@ -1073,9 +1123,12 @@ static char *type_to_string_impl(Type *t)
     }
 
     case TYPE_STRUCT:
+    case TYPE_ENUM:
     case TYPE_GENERIC:
     {
-        if (t->count > 0 && t->name && strstr(t->name, "__") == NULL)
+        // An instance of a generic is named after its template and its arguments.
+        if (t->count > 0 && t->args && t->name &&
+            (t->kind != TYPE_GENERIC || strstr(t->name, "__") == NULL))
         {
             char **args = xmalloc((size_t)t->count * sizeof(char *));
             for (int i = 0; i < t->count; i++)
@@ -1089,7 +1142,6 @@ static char *type_to_string_impl(Type *t)
     case TYPE_TUPLE:
         return tuple_struct_name(t);
     case TYPE_ALIAS:
-    case TYPE_ENUM:
         // The name the program uses: a @link_name only shows in C (type_to_c_string).
         return xstrdup(t->name);
 
@@ -1108,11 +1160,18 @@ char *type_to_c_string(Type *t, int misra_mode)
     return type_to_c_string_with(t, misra_mode, NULL, NULL);
 }
 
-// The C name of a struct or enum: the one `lookup` gives, else the Zen C name.
+// The C name a struct or enum declares for itself with @link_name, or NULL.
+static const char *link_name_of_type(Type *t, CNameLookup lookup, void *context)
+{
+    const char *name = type_def_name(t);
+    return (lookup && name) ? lookup(context, name) : NULL;
+}
+
+// The C name of a struct or enum: its @link_name, else the name its definition has.
 static const char *c_name_of(Type *t, CNameLookup lookup, void *context)
 {
-    const char *c_name = (lookup && t->name) ? lookup(context, t->name) : NULL;
-    return c_name ? c_name : t->name;
+    const char *link_name = link_name_of_type(t, lookup, context);
+    return link_name ? link_name : type_def_name(t);
 }
 
 char *type_to_c_string_with(Type *t, int misra_mode, CNameLookup lookup, void *context)
@@ -1152,7 +1211,7 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         const char *c_name = c_name_of(t, lookup, context);
         // A struct with a C name of its own is written by it alone; otherwise "struct Foo" only
         // when written so (else a typedef).
-        if (!c_name || c_name != t->name || !t->is_explicit_struct)
+        if (!c_name || link_name_of_type(t, lookup, context) || !t->is_explicit_struct)
         {
             return xstrdup(c_name);
         }

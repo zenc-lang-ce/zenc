@@ -268,7 +268,7 @@ void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
         if (rhs_t && rhs_t->kind == TYPE_POINTER && rhs_t->inner &&
             rhs_t->inner->kind == TYPE_STRUCT)
         {
-            *out_struct_name = rhs_t->inner->name;
+            *out_struct_name = type_def_name(rhs_t->inner);
             *out_var_ref_name = node->var_ref.name;
         }
         else
@@ -312,7 +312,7 @@ static const char *aggregate_type_name(ParserContext *ctx, Type *t)
     {
         return NULL;
     }
-    const char *name = t->name;
+    const char *name = type_def_name(t);
     TypeAlias *alias = find_type_alias_node(ctx, name);
     for (int depth = 0; alias && !alias->is_opaque && depth < 16; depth++)
     {
@@ -321,24 +321,21 @@ static const char *aggregate_type_name(ParserContext *ctx, Type *t)
         {
             return NULL;
         }
-        name = target->name;
+        name = type_def_name(target);
         alias = find_type_alias_node(ctx, name);
     }
     return name;
 }
 
-static Instantiation *find_instantiation(ParserContext *ctx, const char *name)
+// An instance's arguments as the message spells them: `int32_t,String`.
+static char *instance_args_text(Instantiation *inst)
 {
-    Instantiation *inst = ctx->instantiations;
-    while (inst)
+    char **spelled = xmalloc(sizeof(char *) * (size_t)(inst->count > 0 ? inst->count : 1));
+    for (int i = 0; i < inst->count; i++)
     {
-        if (strcmp(inst->name, name) == 0)
-        {
-            return inst;
-        }
-        inst = inst->next;
+        spelled[i] = type_to_string(inst->args[i]);
     }
-    return NULL;
+    return join_with_commas(spelled, inst->count);
 }
 
 // Two instances of one generic with different arguments (`Handle<A>` and
@@ -372,10 +369,10 @@ static void check_generic_instance_argument(ParserContext *ctx, Type *expected, 
     const char *stars = STARS + (8 - depth);
     char want[MAX_SHORT_MSG_LEN];
     char have[MAX_SHORT_MSG_LEN];
-    snprintf(want, sizeof(want), "%s<%s>%s", want_inst->template_name, want_inst->unmangled_arg,
-             stars);
-    snprintf(have, sizeof(have), "%s<%s>%s", have_inst->template_name, have_inst->unmangled_arg,
-             stars);
+    snprintf(want, sizeof(want), "%s<%s>%s", want_inst->template_name,
+             instance_args_text(want_inst), stars);
+    snprintf(have, sizeof(have), "%s<%s>%s", have_inst->template_name,
+             instance_args_text(have_inst), stars);
     zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want, have);
     return;
 }
@@ -464,9 +461,9 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
             if (sig && sig->arg_types && res.count < sig->total_args && arg)
             {
                 Type *expected = sig->arg_types[res.count];
-                if (expected && expected->name && is_trait(expected->name))
+                if (expected && expected->name && is_trait(type_def_name(expected)))
                 {
-                    arg = transform_to_trait_object(ctx, expected->name, arg);
+                    arg = transform_to_trait_object(ctx, type_def_name(expected), arg);
                 }
                 else if (!res.has_named)
                 {

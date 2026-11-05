@@ -636,6 +636,17 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                     {
                         next_type_obj->inner = next_init->type_info->inner;
                     }
+                    if (next_init->type_info->kind == TYPE_ALIAS)
+                    {
+                        next_type_obj->alias = next_init->type_info->alias;
+                    }
+                    // A generic instance's arguments, a function type's parameters.
+                    if (next_init->type_info->args && next_init->type_info->count > 0)
+                    {
+                        next_type_obj->args = next_init->type_info->args;
+                        next_type_obj->count = next_init->type_info->count;
+                        next_type_obj->is_varargs = next_init->type_info->is_varargs;
+                    }
                     next_type_obj->array_size = next_init->type_info->array_size;
                     next_type = type_to_string(next_type_obj);
                 }

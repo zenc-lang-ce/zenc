@@ -11,8 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-int is_unmangle_primitive(const char *base);
-
 static char *replace_in_string(const char *src, const char *old_w, const char *new_w)
 {
     if (!src || !old_w || !new_w)
@@ -155,8 +153,6 @@ static char *replace_in_string(const char *src, const char *old_w, const char *n
     return result;
 }
 
-Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char *c, const char *os,
-                          const char *ns);
 // Helper to replace generic params in mangled names (e.g. Option_V_None ->
 // Option_int_None)
 static char *replace_mangled_part(const char *src, const char *param, const char *concrete)
@@ -398,9 +394,6 @@ char *replace_type_str(const char *src, const char *param, const char *concrete,
     return final_res;
 }
 
-ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const char *c,
-                            const char *os, const char *ns);
-
 Type *type_from_string_helper(ParserContext *ctx, const char *c)
 {
     if (!c)
@@ -542,325 +535,108 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c)
     return n;
 }
 
-Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char *c, const char *os,
+char *join_with_commas(char **parts, int count)
+{
+    size_t size = 1;
+    for (int i = 0; i < count; i++)
+    {
+        size += strlen(parts[i]) + 1;
+    }
+    char *out = xmalloc(size);
+    out[0] = '\0';
+    for (int i = 0; i < count; i++)
+    {
+        if (i > 0)
+        {
+            strcat(out, ",");
+        }
+        strcat(out, parts[i]);
+    }
+    return out;
+}
+
+Bindings bindings_new(const char *params, Type **args, int count)
+{
+    Bindings b = {0};
+    int param_count = 1;
+    for (const char *s = params; *s; s++)
+    {
+        param_count += (*s == ',');
+    }
+    b.count = param_count < count ? param_count : count;
+    b.params = xmalloc(sizeof(char *) * (size_t)param_count);
+    const char *start = params;
+    for (int i = 0; i < param_count; i++)
+    {
+        const char *end = strchr(start, ',');
+        size_t len = end ? (size_t)(end - start) : strlen(start);
+        b.params[i] = xmalloc(len + 1);
+        memcpy(b.params[i], start, len);
+        b.params[i][len] = '\0';
+        start = end ? end + 1 : start + len;
+    }
+    b.args = args;
+
+    char **spelled = xmalloc(sizeof(char *) * (size_t)(b.count > 0 ? b.count : 1));
+    for (int i = 0; i < b.count; i++)
+    {
+        spelled[i] = type_to_string(args[i]);
+    }
+    b.params_text = join_with_commas(b.params, b.count);
+    b.args_text = join_with_commas(spelled, b.count);
+    return b;
+}
+
+Type *replace_type_formal(ParserContext *ctx, Type *t, const Bindings *b, const char *os,
                           const char *ns)
 {
-    if (!t || (uintptr_t)t < 0x10000)
+    if (!t)
     {
         return NULL;
     }
 
-    // Defensive check: Ensure kind is valid
-    if ((int)t->kind < 0 || (int)t->kind > 100) // 100 is a safe upper bound for TypeKind
+    if ((t->kind == TYPE_STRUCT || t->kind == TYPE_GENERIC) && t->name && t->count == 0 && b)
     {
-        return NULL;
-    }
-
-    // Exact Match Logic (with multi-param splitting)
-    if ((t->kind == TYPE_STRUCT || t->kind == TYPE_GENERIC) && t->name)
-    {
-
-        if (p && c && strchr(p, ','))
+        for (int i = 0; i < b->count; i++)
         {
-            char *p_ptr = (char *)p;
-            char *c_ptr = (char *)c;
-            while (*p_ptr && *c_ptr)
+            if (strcmp(t->name, b->params[i]) == 0)
             {
-                char *p_end = (char *)strchr(p_ptr, ',');
-                int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
-                char *c_end = (char *)strchr(c_ptr, ',');
-                int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
-
-                if ((int)strlen(t->name) == p_len && strncmp(t->name, p_ptr, (size_t)(p_len)) == 0)
-                {
-                    char *c_part = xmalloc((size_t)(c_len + 1));
-                    strncpy(c_part, c_ptr, (size_t)(c_len));
-                    c_part[c_len] = 0;
-
-                    Type *res = type_from_string_helper(ctx, c_part);
-                    zfree(c_part);
-                    return res;
-                }
-                if (p_end)
-                {
-                    p_ptr = p_end + 1;
-                }
-                else
-                {
-                    break;
-                }
-                if (c_end)
-                {
-                    c_ptr = c_end + 1;
-                }
-                else
-                {
-                    break;
-                }
+                return type_clone(b->args[i]);
             }
-        }
-        else if (p && strcmp(t->name, p) == 0)
-        {
-            return type_from_string_helper(ctx, c);
         }
     }
 
-    Type *n = xmalloc(sizeof(Type));
-    *n = *t;
+    Type *n = type_clone(t);
 
-    if (t->name)
+    // The template's own name without arguments (`Self`, a method's receiver) is the
+    // instance; with arguments (`Vec<Vec<T>>`), they are substituted below.
+    if (os && ns && t->name && t->count == 0 && strcmp(t->name, os) == 0)
     {
-        if (os && ns && strcmp(t->name, os) == 0)
-        {
-            n->name = xstrdup(ns);
-            n->kind = TYPE_STRUCT;
-            n->count = 0;
-            n->args = NULL;
-        }
-        else if (p && c)
-        {
-            // Suffix Match Logic (with multi-param splitting)
-            char p_suffix[4096];
-            p_suffix[0] = 0;
-
-            const char *p_ptr = p;
-            while (p_ptr && *p_ptr)
-            {
-                const char *p_next = (char *)strchr(p_ptr, ',');
-                int sub_len = p_next ? (int)(p_next - p_ptr) : (int)strlen(p_ptr);
-                char *sub = xmalloc((size_t)(sub_len + 1));
-                strncpy(sub, p_ptr, (size_t)(sub_len));
-                sub[sub_len] = 0;
-
-                char *clean_sub = sanitize_mangled_name(sub);
-                strncat(p_suffix, "__", sizeof(p_suffix) - strlen(p_suffix) - 1);
-                strncat(p_suffix, clean_sub, sizeof(p_suffix) - strlen(p_suffix) - 1);
-                zfree(clean_sub);
-                zfree(sub);
-
-                if (p_next)
-                {
-                    p_ptr = p_next + 1;
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            size_t nlen = strlen(t->name);
-            size_t slen = strlen(p_suffix);
-
-            int match = 0;
-            size_t found_slen = 0;
-            size_t num_ptr_suffixes = 0;
-            if (nlen >= slen && strcmp(t->name + nlen - slen, p_suffix) == 0)
-            {
-                match = 1;
-                found_slen = slen;
-            }
-            else if (nlen > slen)
-            {
-                // Try matching with Ptr suffix
-                const char *p_match = (char *)strstr(t->name, p_suffix);
-                while (p_match)
-                {
-                    const char *after = p_match + slen;
-                    int is_all_ptr = 1;
-                    if (*after == '\0')
-                    {
-                        is_all_ptr = 0; // Handled by exact match above
-                    }
-                    while (*after)
-                    {
-                        if (strncmp(after, "Ptr", 3) == 0)
-                        {
-                            after += 3;
-                        }
-                        else
-                        {
-                            is_all_ptr = 0;
-                            break;
-                        }
-                    }
-                    if (is_all_ptr)
-                    {
-                        match = 1;
-                        found_slen = nlen - (size_t)(p_match - t->name);
-                        num_ptr_suffixes = (nlen - (size_t)(p_match - t->name) - slen) / 3u;
-                        break;
-                    }
-                    p_match = strstr(p_match + 1, p_suffix);
-                }
-            }
-
-            if (match)
-            {
-                slen = found_slen;
-                char c_suffix[MAX_ERROR_MSG_LEN];
-                c_suffix[0] = 0;
-                const char *c_ptr = c;
-                while (c_ptr && *c_ptr)
-                {
-                    const char *c_next = (char *)strchr(c_ptr, ',');
-                    int sub_len = c_next ? (int)(c_next - c_ptr) : (int)strlen(c_ptr);
-
-                    char *sub = xmalloc((size_t)(sub_len + 1));
-                    strncpy(sub, c_ptr, (size_t)(sub_len));
-                    sub[sub_len] = 0;
-
-                    char *clean = sanitize_mangled_name(sub);
-                    // Standardize: always use __ for mangled part
-                    strncat(c_suffix, "__", sizeof(c_suffix) - strlen(c_suffix) - 1);
-                    strncat(c_suffix, clean, sizeof(c_suffix) - strlen(c_suffix) - 1);
-                    zfree(clean);
-                    zfree(sub);
-
-                    if (c_next)
-                    {
-                        c_ptr = c_next + 1;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-
-                // Calculate required size more accurately
-                size_t c_suffix_len = strlen(c_suffix);
-                size_t total_needed =
-                    (nlen > slen ? nlen - slen : 0) + c_suffix_len + (num_ptr_suffixes * 3) + 1;
-                char *new_name = xmalloc((size_t)(total_needed));
-                if (nlen > slen)
-                {
-                    strncpy(new_name, t->name, nlen - slen);
-                    new_name[nlen - slen] = 0;
-                }
-                else
-                {
-                    new_name[0] = 0;
-                }
-
-                // Handle underscore merging: ensure exactly two underscores
-                char *p_end = new_name + strlen(new_name);
-                while (p_end > new_name && *(p_end - 1) == '_')
-                {
-                    *(--p_end) = '\0';
-                }
-                strcat(new_name, c_suffix);
-
-                // Restore Ptr suffixes
-                for (size_t k = 0; k < num_ptr_suffixes; k++)
-                {
-                    strcat(new_name, "Ptr");
-                }
-                n->name = new_name;
-                n->kind = TYPE_STRUCT;
-                n->count = 0;
-                n->args = NULL;
-            }
-            else
-            {
-                n->name = xstrdup(t->name);
-            }
-        }
-        else
-        {
-            n->name = xstrdup(t->name);
-        }
+        n->name = xstrdup(ns);
+        n->kind = TYPE_STRUCT;
     }
 
-    if (t->kind == TYPE_POINTER || t->kind == TYPE_ARRAY || t->kind == TYPE_FUNCTION ||
-        t->kind == TYPE_VECTOR)
-    {
-        n->inner = replace_type_formal(ctx, t->inner, p, c, os, ns);
-    }
-
+    n->inner = replace_type_formal(ctx, t->inner, b, os, ns);
     if (t->count > 0 && t->args)
     {
         n->args = xmalloc(sizeof(Type *) * (size_t)(t->count));
         for (int i = 0; i < t->count; i++)
         {
-            n->args[i] = replace_type_formal(ctx, t->args[i], p, c, os, ns);
+            n->args[i] = replace_type_formal(ctx, t->args[i], b, os, ns);
         }
     }
-
     return n;
 }
 
-// A piece of text of a generic (a match pattern) for an instance: the parameters `p` become
-// the concrete types `c` (each of "K,V" in turn), and the template's name `os` becomes the
-// instance's `ns`.
-static char *replace_generic_text(const char *text, const char *p, const char *c, const char *os,
-                                  const char *ns)
+// A piece of a match pattern for an instance: the template's name `os` becomes the
+// instance's `ns` (`Maybe::Some` inside `impl Maybe<T>`).
+static char *rename_template(const char *text, const char *os, const char *ns)
 {
-    char *s1 = xstrdup(text);
-    if (p && c && strchr(p, ','))
-    {
-        char *p_ptr = (char *)p;
-        char *c_ptr = (char *)c;
-        while (*p_ptr && *c_ptr)
-        {
-            char *p_end = (char *)strchr(p_ptr, ',');
-            int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
-            char *c_end = (char *)strchr(c_ptr, ',');
-            int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
-
-            char *p_part = xmalloc((size_t)(p_len + 1));
-            strncpy(p_part, p_ptr, (size_t)(p_len));
-            p_part[p_len] = 0;
-
-            char *c_part = xmalloc((size_t)(c_len + 1));
-            strncpy(c_part, c_ptr, (size_t)(c_len));
-            c_part[c_len] = 0;
-
-            char *t1 = replace_mangled_part(s1, p_part, c_part);
-            zfree(s1);
-            s1 = t1;
-
-            zfree(p_part);
-            zfree(c_part);
-
-            if (p_end)
-            {
-                p_ptr = p_end + 1;
-            }
-            else
-            {
-                break;
-            }
-            if (c_end)
-            {
-                c_ptr = c_end + 1;
-            }
-            else
-            {
-                break;
-            }
-        }
-    }
-    else
-    {
-        char *t1 = replace_in_string(s1, p, c);
-        zfree(s1);
-        s1 = t1;
-        char *t2 = replace_mangled_part(s1, p, c);
-        zfree(s1);
-        s1 = t2;
-    }
-
-    if (os && ns)
-    {
-        char *s2 = replace_in_string(s1, os, ns);
-        zfree(s1);
-        s1 = s2;
-    }
-    return s1;
+    return os && ns ? replace_in_string(text, os, ns) : xstrdup(text);
 }
 
-// A copy of the alternatives of a match case, with replace_generic_text applied to their text.
-static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char *p, const char *c,
-                                             const char *os, const char *ns)
+// A copy of the alternatives of a match case, with rename_template applied to their text.
+static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char *os, const char *ns)
 {
     MatchPattern *head = NULL;
     MatchPattern *last = NULL;
@@ -871,23 +647,23 @@ static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char 
         copy->is_inclusive = src->is_inclusive;
         if (src->name.scope)
         {
-            copy->name.scope = replace_generic_text(src->name.scope, p, c, os, ns);
+            copy->name.scope = rename_template(src->name.scope, os, ns);
         }
         if (src->name.name)
         {
-            copy->name.name = replace_generic_text(src->name.name, p, c, os, ns);
+            copy->name.name = rename_template(src->name.name, os, ns);
         }
         if (src->literal)
         {
-            copy->literal = replace_generic_text(src->literal, p, c, os, ns);
+            copy->literal = rename_template(src->literal, os, ns);
         }
         if (src->range_start)
         {
-            copy->range_start = replace_generic_text(src->range_start, p, c, os, ns);
+            copy->range_start = rename_template(src->range_start, os, ns);
         }
         if (src->range_end)
         {
-            copy->range_end = replace_generic_text(src->range_end, p, c, os, ns);
+            copy->range_end = rename_template(src->range_end, os, ns);
         }
         if (last)
         {
@@ -902,13 +678,16 @@ static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char 
     return head;
 }
 
-ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const char *c,
-                            const char *os, const char *ns)
+ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, const char *os,
+                            const char *ns)
 {
     if (!n)
     {
         return NULL;
     }
+    // The bindings as text, for the fields that still hold text.
+    const char *p = b ? b->params_text : NULL;
+    const char *c = b ? b->args_text : NULL;
 
     ASTNode *new_node = ast_create(n->kind);
     ASTNode *old_next =
@@ -916,9 +695,9 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     *new_node = *n;
     new_node->next = old_next; // Restore next before recursion
 
-    new_node->type_info = replace_type_formal(ctx, n->type_info, p, c, os, ns);
+    new_node->type_info = replace_type_formal(ctx, n->type_info, b, os, ns);
 
-    new_node->next = copy_ast_replacing(ctx, n->next, p, c, os, ns);
+    new_node->next = copy_ast_replacing(ctx, n->next, b, os, ns);
 
     switch (n->kind)
     {
@@ -932,7 +711,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
             for (int i = 0; i < n->func.count; i++)
             {
                 new_node->func.arg_types[i] =
-                    replace_type_formal(ctx, n->func.arg_types[i], p, c, os, ns);
+                    replace_type_formal(ctx, n->func.arg_types[i], b, os, ns);
             }
         }
         else
@@ -940,8 +719,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
             new_node->func.arg_types = NULL;
         }
 
-        new_node->func.ret_type_info =
-            replace_type_formal(ctx, n->func.ret_type_info, p, c, os, ns);
+        new_node->func.ret_type_info = replace_type_formal(ctx, n->func.ret_type_info, b, os, ns);
 
         // Deep copy default values AST if present
         if (n->func.default_values && n->func.count > 0)
@@ -950,14 +728,14 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
             for (int i = 0; i < n->func.count; i++)
             {
                 new_node->func.default_values[i] =
-                    copy_ast_replacing(ctx, n->func.default_values[i], p, c, os, ns);
+                    copy_ast_replacing(ctx, n->func.default_values[i], b, os, ns);
             }
         }
 
-        new_node->func.body = copy_ast_replacing(ctx, n->func.body, p, c, os, ns);
+        new_node->func.body = copy_ast_replacing(ctx, n->func.body, b, os, ns);
         break;
     case NODE_BLOCK:
-        new_node->block.statements = copy_ast_replacing(ctx, n->block.statements, p, c, os, ns);
+        new_node->block.statements = copy_ast_replacing(ctx, n->block.statements, b, os, ns);
         break;
     case NODE_RAW_STMT:
     {
@@ -1041,97 +819,59 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     case NODE_VAR_DECL:
     case NODE_FIELD_INIT:
         new_node->var_decl.name = n->var_decl.name ? xstrdup(n->var_decl.name) : NULL;
-        new_node->var_decl.type_info =
-            replace_type_formal(ctx, n->var_decl.type_info, p, c, os, ns);
-        new_node->var_decl.init_expr = copy_ast_replacing(ctx, n->var_decl.init_expr, p, c, os, ns);
+        new_node->var_decl.type_info = replace_type_formal(ctx, n->var_decl.type_info, b, os, ns);
+        new_node->var_decl.init_expr = copy_ast_replacing(ctx, n->var_decl.init_expr, b, os, ns);
         break;
     case NODE_RETURN:
-        new_node->ret.value = copy_ast_replacing(ctx, n->ret.value, p, c, os, ns);
+        new_node->ret.value = copy_ast_replacing(ctx, n->ret.value, b, os, ns);
         break;
     case NODE_EXPR_BINARY:
-        new_node->binary.left = copy_ast_replacing(ctx, n->binary.left, p, c, os, ns);
-        new_node->binary.right = copy_ast_replacing(ctx, n->binary.right, p, c, os, ns);
+        new_node->binary.left = copy_ast_replacing(ctx, n->binary.left, b, os, ns);
+        new_node->binary.right = copy_ast_replacing(ctx, n->binary.right, b, os, ns);
         new_node->binary.op = n->binary.op ? xstrdup(n->binary.op) : NULL;
         break;
     case NODE_EXPR_UNARY:
         new_node->unary.op = n->unary.op ? xstrdup(n->unary.op) : NULL;
-        new_node->unary.operand = copy_ast_replacing(ctx, n->unary.operand, p, c, os, ns);
+        new_node->unary.operand = copy_ast_replacing(ctx, n->unary.operand, b, os, ns);
         break;
     case NODE_EXPR_CALL:
-        new_node->call.callee = copy_ast_replacing(ctx, n->call.callee, p, c, os, ns);
-        new_node->call.args = copy_ast_replacing(ctx, n->call.args, p, c, os, ns);
+        new_node->call.callee = copy_ast_replacing(ctx, n->call.callee, b, os, ns);
+        new_node->call.args = copy_ast_replacing(ctx, n->call.args, b, os, ns);
         new_node->call.arg_names = n->call.arg_names; // Share pointer (shallow copy)
         new_node->call.count = n->call.count;
         break;
     case NODE_EXPR_VAR:
     {
+        if (n->var_ref.instance.name)
+        {
+            FunctionInstance *instance = &new_node->var_ref.instance;
+            instance->args = xmalloc(sizeof(Type *) * (size_t)instance->count);
+            for (int i = 0; i < instance->count; i++)
+            {
+                instance->args[i] =
+                    replace_type_formal(ctx, n->var_ref.instance.args[i], b, os, ns);
+            }
+            new_node->var_ref.name = function_instance_name(*instance);
+            break;
+        }
+        if (n->var_ref.owner)
+        {
+            Type *owner = replace_type_formal(ctx, n->var_ref.owner, b, os, ns);
+            char *owner_name = type_to_string(owner);
+            new_node->var_ref.owner = owner;
+            if (n->var_ref.variant.scope)
+            {
+                new_node->var_ref.variant.scope = owner_name;
+                new_node->var_ref.name = mangle_variant_symbol(owner_name, n->var_ref.member);
+            }
+            else
+            {
+                new_node->var_ref.name = mangle_method_symbol(owner_name, NULL, n->var_ref.member);
+            }
+            break;
+        }
+        // A method of the template (`Vec__push`, inside its impl) is the instance's.
         char *n1 = n->var_ref.name ? xstrdup(n->var_ref.name) : NULL;
-        if (p && c && strchr(p, ','))
-        {
-            char *p_ptr = (char *)p;
-            char *c_ptr = (char *)c;
-            while (*p_ptr && *c_ptr)
-            {
-                char *p_end = (char *)strchr(p_ptr, ',');
-                int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
-                char *c_end = (char *)strchr(c_ptr, ',');
-                int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
-
-                char *p_part = xmalloc((size_t)(p_len + 1));
-                strncpy(p_part, p_ptr, (size_t)(p_len));
-                p_part[p_len] = 0;
-
-                char *c_part = xmalloc((size_t)(c_len + 1));
-                strncpy(c_part, c_ptr, (size_t)(c_len));
-                c_part[c_len] = 0;
-
-                char *t1 = replace_in_string(n1, p_part, c_part);
-                zfree(n1);
-                n1 = t1;
-
-                char *clean_c = sanitize_mangled_name(c_part);
-                char *t2 = replace_mangled_part(n1, p_part, clean_c);
-                zfree(n1);
-                n1 = t2;
-
-                zfree(p_part);
-                zfree(c_part);
-                zfree(clean_c);
-
-                if (p_end)
-                {
-                    p_ptr = p_end + 1;
-                }
-                else
-                {
-                    break;
-                }
-                if (c_end)
-                {
-                    c_ptr = c_end + 1;
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-        else
-        {
-            if (p && c)
-            {
-                char *t1 = replace_in_string(n1, p, c);
-                zfree(n1);
-                n1 = t1;
-
-                char *clean_c = sanitize_mangled_name(c);
-                char *n2 = replace_mangled_part(n1, p, clean_c);
-                zfree(clean_c);
-                zfree(n1);
-                n1 = n2;
-            }
-        }
-
         if (os && ns)
         {
             size_t os_len = strlen(os);
@@ -1162,43 +902,36 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         }
         break;
     case NODE_EXPR_MEMBER:
-        new_node->member.target = copy_ast_replacing(ctx, n->member.target, p, c, os, ns);
+        new_node->member.target = copy_ast_replacing(ctx, n->member.target, b, os, ns);
         new_node->member.field = n->member.field ? xstrdup(n->member.field) : NULL;
         break;
     case NODE_EXPR_INDEX:
-        new_node->index.array = copy_ast_replacing(ctx, n->index.array, p, c, os, ns);
-        new_node->index.index = copy_ast_replacing(ctx, n->index.index, p, c, os, ns);
+        new_node->index.array = copy_ast_replacing(ctx, n->index.array, b, os, ns);
+        new_node->index.index = copy_ast_replacing(ctx, n->index.index, b, os, ns);
         break;
     case NODE_EXPR_CAST:
-        new_node->cast.expr = copy_ast_replacing(ctx, n->cast.expr, p, c, os, ns);
+        new_node->cast.expr = copy_ast_replacing(ctx, n->cast.expr, b, os, ns);
         break;
     case NODE_EXPR_STRUCT_INIT:
     {
-        char *new_name = replace_type_str(n->struct_init.struct_name, p, c, os, ns);
-
-        int is_ptr = 0;
-        size_t len = strlen(new_name);
-        if (len > 0 && new_name[len - 1] == '*')
-        {
-            is_ptr = 1;
-        }
-
-        int is_primitive = is_primitive_type_name(new_name);
-
-        if ((is_ptr || is_primitive) && !n->struct_init.fields)
+        // The literal's type is substituted above: `T{}` with T a pointer or a primitive is a
+        // zero.
+        Type *literal_type = new_node->type_info;
+        if (!n->struct_init.fields && literal_type &&
+            (literal_type->kind == TYPE_POINTER ||
+             is_primitive_type_name(type_to_string(literal_type))))
         {
             new_node->kind = NODE_EXPR_LITERAL;
             new_node->literal.kind = LITERAL_INT;
             new_node->literal.int_val = 0;
-            zfree(new_name);
         }
         else
         {
-            new_node->struct_init.struct_name = new_name;
+            new_node->struct_init.struct_name = type_def_name(literal_type);
             ASTNode *h = NULL, *t = NULL, *curr = n->struct_init.fields;
             while (curr)
             {
-                ASTNode *cp = copy_ast_replacing(ctx, curr, p, c, os, ns);
+                ASTNode *cp = copy_ast_replacing(ctx, curr, b, os, ns);
                 cp->next = NULL;
                 if (!h)
                 {
@@ -1216,30 +949,29 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         break;
     }
     case NODE_IF:
-        new_node->if_stmt.condition = copy_ast_replacing(ctx, n->if_stmt.condition, p, c, os, ns);
-        new_node->if_stmt.then_body = copy_ast_replacing(ctx, n->if_stmt.then_body, p, c, os, ns);
-        new_node->if_stmt.else_body = copy_ast_replacing(ctx, n->if_stmt.else_body, p, c, os, ns);
+        new_node->if_stmt.condition = copy_ast_replacing(ctx, n->if_stmt.condition, b, os, ns);
+        new_node->if_stmt.then_body = copy_ast_replacing(ctx, n->if_stmt.then_body, b, os, ns);
+        new_node->if_stmt.else_body = copy_ast_replacing(ctx, n->if_stmt.else_body, b, os, ns);
         break;
     case NODE_WHILE:
         new_node->while_stmt.condition =
-            copy_ast_replacing(ctx, n->while_stmt.condition, p, c, os, ns);
-        new_node->while_stmt.body = copy_ast_replacing(ctx, n->while_stmt.body, p, c, os, ns);
+            copy_ast_replacing(ctx, n->while_stmt.condition, b, os, ns);
+        new_node->while_stmt.body = copy_ast_replacing(ctx, n->while_stmt.body, b, os, ns);
         break;
     case NODE_FOR:
-        new_node->for_stmt.init = copy_ast_replacing(ctx, n->for_stmt.init, p, c, os, ns);
-        new_node->for_stmt.condition = copy_ast_replacing(ctx, n->for_stmt.condition, p, c, os, ns);
-        new_node->for_stmt.step = copy_ast_replacing(ctx, n->for_stmt.step, p, c, os, ns);
-        new_node->for_stmt.body = copy_ast_replacing(ctx, n->for_stmt.body, p, c, os, ns);
+        new_node->for_stmt.init = copy_ast_replacing(ctx, n->for_stmt.init, b, os, ns);
+        new_node->for_stmt.condition = copy_ast_replacing(ctx, n->for_stmt.condition, b, os, ns);
+        new_node->for_stmt.step = copy_ast_replacing(ctx, n->for_stmt.step, b, os, ns);
+        new_node->for_stmt.body = copy_ast_replacing(ctx, n->for_stmt.body, b, os, ns);
         break;
     case NODE_FOR_RANGE:
-        new_node->for_range.start = copy_ast_replacing(ctx, n->for_range.start, p, c, os, ns);
-        new_node->for_range.end = copy_ast_replacing(ctx, n->for_range.end, p, c, os, ns);
-        new_node->for_range.body = copy_ast_replacing(ctx, n->for_range.body, p, c, os, ns);
+        new_node->for_range.start = copy_ast_replacing(ctx, n->for_range.start, b, os, ns);
+        new_node->for_range.end = copy_ast_replacing(ctx, n->for_range.end, b, os, ns);
+        new_node->for_range.body = copy_ast_replacing(ctx, n->for_range.body, b, os, ns);
         break;
 
     case NODE_MATCH_CASE:
-        new_node->match_case.patterns =
-            copy_patterns_replacing(n->match_case.patterns, p, c, os, ns);
+        new_node->match_case.patterns = copy_patterns_replacing(n->match_case.patterns, os, ns);
         new_node->match_case.binding_count = n->match_case.binding_count;
         if (n->match_case.binding_names)
         {
@@ -1267,32 +999,32 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         new_node->match_case.is_default = n->match_case.is_default;
         new_node->match_case.is_destructuring = n->match_case.is_destructuring;
 
-        new_node->match_case.body = copy_ast_replacing(ctx, n->match_case.body, p, c, os, ns);
+        new_node->match_case.body = copy_ast_replacing(ctx, n->match_case.body, b, os, ns);
         if (n->match_case.guard)
         {
-            new_node->match_case.guard = copy_ast_replacing(ctx, n->match_case.guard, p, c, os, ns);
+            new_node->match_case.guard = copy_ast_replacing(ctx, n->match_case.guard, b, os, ns);
         }
         break;
 
     case NODE_IMPL:
-        new_node->impl.struct_name = replace_type_str(n->impl.struct_name, p, c, os, ns);
-        new_node->impl.methods = copy_ast_replacing(ctx, n->impl.methods, p, c, os, ns);
+        // instantiate_methods names the copy after the instance.
+        new_node->impl.struct_name = xstrdup(n->impl.struct_name);
+        new_node->impl.methods = copy_ast_replacing(ctx, n->impl.methods, b, os, ns);
         break;
     case NODE_IMPL_TRAIT:
         new_node->impl_trait.trait_name =
             n->impl_trait.trait_name ? xstrdup(n->impl_trait.trait_name) : NULL;
-        new_node->impl_trait.target_type =
-            replace_type_str(n->impl_trait.target_type, p, c, os, ns);
-        new_node->impl_trait.methods = copy_ast_replacing(ctx, n->impl_trait.methods, p, c, os, ns);
+        new_node->impl_trait.target_type = xstrdup(n->impl_trait.target_type);
+        new_node->impl_trait.methods = copy_ast_replacing(ctx, n->impl_trait.methods, b, os, ns);
         break;
     case NODE_TYPEOF:
     case NODE_EXPR_SIZEOF:
-        new_node->size_of.expr = copy_ast_replacing(ctx, n->size_of.expr, p, c, os, ns);
+        new_node->size_of.expr = copy_ast_replacing(ctx, n->size_of.expr, b, os, ns);
         new_node->size_of.is_type = n->size_of.is_type;
         if (n->size_of.target_type_info)
         {
             new_node->size_of.target_type_info =
-                replace_type_formal(ctx, n->size_of.target_type_info, p, c, os, ns);
+                replace_type_formal(ctx, n->size_of.target_type_info, b, os, ns);
         }
         break;
     case NODE_LAMBDA:
@@ -1324,14 +1056,14 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
             {
                 new_node->lambda.captured_vars[i] = xstrdup(n->lambda.captured_vars[i]);
                 new_node->lambda.captured_types_info[i] =
-                    replace_type_formal(ctx, n->lambda.captured_types_info[i], p, c, os, ns);
+                    replace_type_formal(ctx, n->lambda.captured_types_info[i], b, os, ns);
                 if (n->lambda.capture_modes)
                 {
                     new_node->lambda.capture_modes[i] = n->lambda.capture_modes[i];
                 }
             }
         }
-        new_node->lambda.body = copy_ast_replacing(ctx, n->lambda.body, p, c, os, ns);
+        new_node->lambda.body = copy_ast_replacing(ctx, n->lambda.body, b, os, ns);
         new_node->lambda.is_bare = n->lambda.is_bare;
         register_lambda(ctx, new_node);
         break;
@@ -1350,7 +1082,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
             {
                 new_node->destruct.names[i] = xstrdup(n->destruct.names[i]);
                 new_node->destruct.type_infos[i] =
-                    replace_type_formal(ctx, n->destruct.type_infos[i], p, c, os, ns);
+                    replace_type_formal(ctx, n->destruct.type_infos[i], b, os, ns);
                 if (n->destruct.field_names && n->destruct.field_names[i])
                 {
                     new_node->destruct.field_names[i] = xstrdup(n->destruct.field_names[i]);
@@ -1361,17 +1093,17 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
                 }
             }
         }
-        new_node->destruct.init_expr = copy_ast_replacing(ctx, n->destruct.init_expr, p, c, os, ns);
-        new_node->destruct.struct_name = replace_type_str(n->destruct.struct_name, p, c, os, ns);
-        new_node->destruct.else_block =
-            copy_ast_replacing(ctx, n->destruct.else_block, p, c, os, ns);
+        new_node->destruct.init_expr = copy_ast_replacing(ctx, n->destruct.init_expr, b, os, ns);
+        new_node->destruct.struct_name =
+            n->destruct.struct_name ? rename_template(n->destruct.struct_name, os, ns) : NULL;
+        new_node->destruct.else_block = copy_ast_replacing(ctx, n->destruct.else_block, b, os, ns);
         break;
     case NODE_MATCH:
-        new_node->match_stmt.expr = copy_ast_replacing(ctx, n->match_stmt.expr, p, c, os, ns);
-        new_node->match_stmt.cases = copy_ast_replacing(ctx, n->match_stmt.cases, p, c, os, ns);
+        new_node->match_stmt.expr = copy_ast_replacing(ctx, n->match_stmt.expr, b, os, ns);
+        new_node->match_stmt.cases = copy_ast_replacing(ctx, n->match_stmt.cases, b, os, ns);
         break;
     case NODE_LOOP:
-        new_node->loop_stmt.body = copy_ast_replacing(ctx, n->loop_stmt.body, p, c, os, ns);
+        new_node->loop_stmt.body = copy_ast_replacing(ctx, n->loop_stmt.body, b, os, ns);
         break;
     case NODE_BREAK:
     case NODE_CONTINUE:
@@ -1379,41 +1111,41 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         break;
     case NODE_EXPR_ARRAY_LITERAL:
         new_node->array_literal.elements =
-            copy_ast_replacing(ctx, n->array_literal.elements, p, c, os, ns);
+            copy_ast_replacing(ctx, n->array_literal.elements, b, os, ns);
         new_node->array_literal.count = n->array_literal.count;
         break;
     case NODE_EXPR_TUPLE_LITERAL:
         new_node->tuple_literal.elements =
-            copy_ast_replacing(ctx, n->tuple_literal.elements, p, c, os, ns);
+            copy_ast_replacing(ctx, n->tuple_literal.elements, b, os, ns);
         new_node->tuple_literal.count = n->tuple_literal.count;
         break;
     case NODE_EXPR_SLICE:
-        new_node->slice.array = copy_ast_replacing(ctx, n->slice.array, p, c, os, ns);
-        new_node->slice.start = copy_ast_replacing(ctx, n->slice.start, p, c, os, ns);
-        new_node->slice.end = copy_ast_replacing(ctx, n->slice.end, p, c, os, ns);
+        new_node->slice.array = copy_ast_replacing(ctx, n->slice.array, b, os, ns);
+        new_node->slice.start = copy_ast_replacing(ctx, n->slice.start, b, os, ns);
+        new_node->slice.end = copy_ast_replacing(ctx, n->slice.end, b, os, ns);
         break;
     case NODE_EXPECT:
     case NODE_ASSERT:
         new_node->assert_stmt.condition =
-            copy_ast_replacing(ctx, n->assert_stmt.condition, p, c, os, ns);
+            copy_ast_replacing(ctx, n->assert_stmt.condition, b, os, ns);
         new_node->assert_stmt.message =
             n->assert_stmt.message ? xstrdup(n->assert_stmt.message) : NULL;
         new_node->assert_stmt.message_fstring =
-            copy_ast_replacing(ctx, n->assert_stmt.message_fstring, p, c, os, ns);
+            copy_ast_replacing(ctx, n->assert_stmt.message_fstring, b, os, ns);
         break;
     case NODE_DEFER:
-        new_node->defer_stmt.stmt = copy_ast_replacing(ctx, n->defer_stmt.stmt, p, c, os, ns);
+        new_node->defer_stmt.stmt = copy_ast_replacing(ctx, n->defer_stmt.stmt, b, os, ns);
         break;
     case NODE_EXPR_FSTRING:
-        new_node->fstring.parts = copy_ast_replacing(ctx, n->fstring.parts, p, c, os, ns);
+        new_node->fstring.parts = copy_ast_replacing(ctx, n->fstring.parts, b, os, ns);
         break;
     case NODE_FSTRING_PART:
-        new_node->fstring_part.expr = copy_ast_replacing(ctx, n->fstring_part.expr, p, c, os, ns);
+        new_node->fstring_part.expr = copy_ast_replacing(ctx, n->fstring_part.expr, b, os, ns);
         break;
     case NODE_TERNARY:
-        new_node->ternary.cond = copy_ast_replacing(ctx, n->ternary.cond, p, c, os, ns);
-        new_node->ternary.true_expr = copy_ast_replacing(ctx, n->ternary.true_expr, p, c, os, ns);
-        new_node->ternary.false_expr = copy_ast_replacing(ctx, n->ternary.false_expr, p, c, os, ns);
+        new_node->ternary.cond = copy_ast_replacing(ctx, n->ternary.cond, b, os, ns);
+        new_node->ternary.true_expr = copy_ast_replacing(ctx, n->ternary.true_expr, b, os, ns);
+        new_node->ternary.false_expr = copy_ast_replacing(ctx, n->ternary.false_expr, b, os, ns);
         break;
     case NODE_ASM:
         new_node->asm_stmt.code = n->asm_stmt.code ? xstrdup(n->asm_stmt.code) : NULL;
@@ -1433,40 +1165,40 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
             n->label_stmt.label_name ? xstrdup(n->label_stmt.label_name) : NULL;
         break;
     case NODE_TRY:
-        new_node->try_stmt.expr = copy_ast_replacing(ctx, n->try_stmt.expr, p, c, os, ns);
+        new_node->try_stmt.expr = copy_ast_replacing(ctx, n->try_stmt.expr, b, os, ns);
         break;
     case NODE_REFLECTION:
         new_node->reflection.kind = n->reflection.kind;
         new_node->reflection.target_type =
-            replace_type_formal(ctx, n->reflection.target_type, p, c, os, ns);
+            replace_type_formal(ctx, n->reflection.target_type, b, os, ns);
         break;
     case NODE_REPL_PRINT:
-        new_node->repl_print.expr = copy_ast_replacing(ctx, n->repl_print.expr, p, c, os, ns);
+        new_node->repl_print.expr = copy_ast_replacing(ctx, n->repl_print.expr, b, os, ns);
         break;
     case NODE_CUDA_LAUNCH:
-        new_node->cuda_launch.call = copy_ast_replacing(ctx, n->cuda_launch.call, p, c, os, ns);
-        new_node->cuda_launch.grid = copy_ast_replacing(ctx, n->cuda_launch.grid, p, c, os, ns);
-        new_node->cuda_launch.block = copy_ast_replacing(ctx, n->cuda_launch.block, p, c, os, ns);
+        new_node->cuda_launch.call = copy_ast_replacing(ctx, n->cuda_launch.call, b, os, ns);
+        new_node->cuda_launch.grid = copy_ast_replacing(ctx, n->cuda_launch.grid, b, os, ns);
+        new_node->cuda_launch.block = copy_ast_replacing(ctx, n->cuda_launch.block, b, os, ns);
         new_node->cuda_launch.shared_mem =
-            copy_ast_replacing(ctx, n->cuda_launch.shared_mem, p, c, os, ns);
-        new_node->cuda_launch.stream = copy_ast_replacing(ctx, n->cuda_launch.stream, p, c, os, ns);
+            copy_ast_replacing(ctx, n->cuda_launch.shared_mem, b, os, ns);
+        new_node->cuda_launch.stream = copy_ast_replacing(ctx, n->cuda_launch.stream, b, os, ns);
         break;
     case NODE_VA_START:
-        new_node->va_start_args.ap = copy_ast_replacing(ctx, n->va_start_args.ap, p, c, os, ns);
+        new_node->va_start_args.ap = copy_ast_replacing(ctx, n->va_start_args.ap, b, os, ns);
         new_node->va_start_args.last_arg =
-            copy_ast_replacing(ctx, n->va_start_args.last_arg, p, c, os, ns);
+            copy_ast_replacing(ctx, n->va_start_args.last_arg, b, os, ns);
         break;
     case NODE_VA_END:
-        new_node->va_end_args.ap = copy_ast_replacing(ctx, n->va_end_args.ap, p, c, os, ns);
+        new_node->va_end_args.ap = copy_ast_replacing(ctx, n->va_end_args.ap, b, os, ns);
         break;
     case NODE_VA_COPY:
-        new_node->va_copy_args.dest = copy_ast_replacing(ctx, n->va_copy_args.dest, p, c, os, ns);
-        new_node->va_copy_args.src = copy_ast_replacing(ctx, n->va_copy_args.src, p, c, os, ns);
+        new_node->va_copy_args.dest = copy_ast_replacing(ctx, n->va_copy_args.dest, b, os, ns);
+        new_node->va_copy_args.src = copy_ast_replacing(ctx, n->va_copy_args.src, b, os, ns);
         break;
     case NODE_VA_ARG:
-        new_node->va_arg_val.ap = copy_ast_replacing(ctx, n->va_arg_val.ap, p, c, os, ns);
+        new_node->va_arg_val.ap = copy_ast_replacing(ctx, n->va_arg_val.ap, b, os, ns);
         new_node->va_arg_val.type_info =
-            replace_type_formal(ctx, n->va_arg_val.type_info, p, c, os, ns);
+            replace_type_formal(ctx, n->va_arg_val.type_info, b, os, ns);
         break;
     default:
         break;
@@ -1474,61 +1206,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     return new_node;
 }
 
-char *unmangle_ptr_suffix(const char *s);
-
-// Helper to unmangle Ptr suffix back to pointer type ("intPtr" -> "int*")
-char *unmangle_ptr_suffix(const char *s)
-{
-    if (!s)
-    {
-        return NULL;
-    }
-
-    size_t len = strlen(s);
-    if (len <= 3 || strcmp(s + len - 3, "Ptr") != 0)
-    {
-        return xstrdup(s); // No Ptr suffix, return as-is
-    }
-
-    // Extract base type (everything before "Ptr")
-    char *base = xmalloc(len - 2);
-    strncpy(base, s, len - 3);
-    base[len - 3] = '\0';
-
-    char *result = xmalloc(strlen(base) + 16);
-
-    // Check if base is a primitive type
-    if (is_primitive_type_name(base))
-    {
-        sprintf(result, "%s*", base); /* safe */
-    }
-    else
-    {
-        // Don't unmangle non-primitives ending in Ptr (like Vec_intPtr)
-        strcpy(result, s);
-    }
-
-    zfree(base);
-    return result;
-}
-
-// Helper function to recursively scan AST for sizeof types AND generic calls to trigger
-int is_unmangle_primitive(const char *base)
-{
-    return (strcmp(base, "int") == 0 || strcmp(base, "uint") == 0 || strcmp(base, "char") == 0 ||
-            strcmp(base, "bool") == 0 || strcmp(base, "void") == 0 || strcmp(base, "byte") == 0 ||
-            strcmp(base, "rune") == 0 || strcmp(base, "float") == 0 ||
-            strcmp(base, "double") == 0 || strcmp(base, "f32") == 0 || strcmp(base, "f64") == 0 ||
-            strcmp(base, "size_t") == 0 || strcmp(base, "usize") == 0 ||
-            strcmp(base, "isize") == 0 || strcmp(base, "ptrdiff_t") == 0 ||
-            strncmp(base, "i8", 2) == 0 || strncmp(base, "u8", 2) == 0 ||
-            strncmp(base, "int8", 4) == 0 || strncmp(base, "int16", 5) == 0 ||
-            strncmp(base, "int32", 5) == 0 || strncmp(base, "int64", 5) == 0 ||
-            strncmp(base, "uint8", 5) == 0 || strncmp(base, "uint16", 6) == 0 ||
-            strncmp(base, "uint32", 6) == 0 || strncmp(base, "uint64", 6) == 0);
-}
-
 ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index)
 {
-    return copy_ast_replacing(ctx, sig->default_values[index], NULL, NULL, NULL, NULL);
+    return copy_ast_replacing(ctx, sig->default_values[index], NULL, NULL, NULL);
 }

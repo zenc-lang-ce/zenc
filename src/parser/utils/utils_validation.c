@@ -141,7 +141,7 @@ void propagate_drop_traits(ParserContext *ctx)
                         }
                         if (ft->kind == TYPE_STRUCT && ft->name)
                         {
-                            ASTNode *fdef = find_struct_def(ctx, ft->name);
+                            ASTNode *fdef = find_struct_def(ctx, type_def_name(ft));
                             if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
                             {
                                 strct->type_info->traits.has_drop = 1;
@@ -184,7 +184,7 @@ void propagate_drop_traits(ParserContext *ctx)
                         }
                         if (ft->kind == TYPE_STRUCT && ft->name)
                         {
-                            ASTNode *fdef = find_struct_def(ctx, ft->name);
+                            ASTNode *fdef = find_struct_def(ctx, type_def_name(ft));
                             if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
                             {
                                 ins->type_info->traits.has_drop = 1;
@@ -222,7 +222,7 @@ void fix_type_refs_has_drop(ParserContext *ctx)
             Type *at = fn->func.arg_types[i];
             if (at && at->kind == TYPE_STRUCT && at->name && !at->traits.has_drop)
             {
-                ASTNode *def = find_struct_def(ctx, at->name);
+                ASTNode *def = find_struct_def(ctx, type_def_name(at));
                 if (def && def->type_info && def->type_info->traits.has_drop)
                 {
                     at->traits.has_drop = 1;
@@ -233,7 +233,7 @@ void fix_type_refs_has_drop(ParserContext *ctx)
         if (fn->func.ret_type_info && fn->func.ret_type_info->kind == TYPE_STRUCT &&
             fn->func.ret_type_info->name && !fn->func.ret_type_info->traits.has_drop)
         {
-            ASTNode *def = find_struct_def(ctx, fn->func.ret_type_info->name);
+            ASTNode *def = find_struct_def(ctx, type_def_name(fn->func.ret_type_info));
             if (def && def->type_info && def->type_info->traits.has_drop)
             {
                 fn->func.ret_type_info->traits.has_drop = 1;
@@ -253,7 +253,7 @@ void fix_type_refs_has_drop(ParserContext *ctx)
             Type *ft = field->type_info;
             if (ft && ft->kind == TYPE_STRUCT && ft->name && !ft->traits.has_drop)
             {
-                ASTNode *def = find_struct_def(ctx, ft->name);
+                ASTNode *def = find_struct_def(ctx, type_def_name(ft));
                 if (def && def->type_info && def->type_info->traits.has_drop)
                 {
                     ft->traits.has_drop = 1;
@@ -273,7 +273,7 @@ void fix_type_refs_has_drop(ParserContext *ctx)
             Type *ft = field->type_info;
             if (ft && ft->kind == TYPE_STRUCT && ft->name && !ft->traits.has_drop)
             {
-                ASTNode *def = find_struct_def(ctx, ft->name);
+                ASTNode *def = find_struct_def(ctx, type_def_name(ft));
                 if (def && def->type_info && def->type_info->traits.has_drop)
                 {
                     ft->traits.has_drop = 1;

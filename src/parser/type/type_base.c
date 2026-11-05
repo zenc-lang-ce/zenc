@@ -314,7 +314,8 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             register_type_usage(ctx, name, t);
         }
 
-        Type *ty = type_new(TYPE_STRUCT);
+        // A generic parameter of the template being parsed (`T`) is not a struct.
+        Type *ty = type_new(is_known_generic(ctx, name) ? TYPE_GENERIC : TYPE_STRUCT);
         ty->name = name;
         ty->is_explicit_struct = explicit_struct;
 
@@ -323,116 +324,34 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             (lexer_peek(l).kind == TOK_OP && strncmp(lexer_peek(l).start, "<", 1) == 0))
         {
             lexer_next(l); // eat <
-            Type *first_arg = parse_type_formal(ctx, l);
-            if (!first_arg)
-            {
-                return NULL;
-            }
-            char *first_arg_str = type_to_string(first_arg);
-            // The instance keeps the Types of its arguments; its name is the mangled one.
-            Type **arg_types = xmalloc(sizeof(Type *));
+            // An instance is its template and the types of its arguments; its C name is
+            // computed from them.
             int arg_count = 0;
-            arg_types[arg_count++] = first_arg;
-
-            // Check for multi-arg: <K, V>
-            Token next_tok = lexer_peek(l);
-            if (next_tok.kind == TOK_COMMA)
+            Type **arg_types = NULL;
+            do
             {
-                // Multi-arg case
-                char **args = xmalloc(sizeof(char *) * 8);
-                int count = 0;
-                args[count++] = xstrdup(first_arg_str);
-
-                while (lexer_peek(l).kind == TOK_COMMA)
+                if (arg_count > 0)
                 {
                     lexer_next(l); // eat ,
-                    Type *arg = parse_type_formal(ctx, l);
-                    if (!arg)
-                    {
-                        return NULL;
-                    }
-                    arg_types = xrealloc(arg_types, sizeof(Type *) * (size_t)(arg_count + 1));
-                    arg_types[arg_count++] = arg;
-                    char *arg_str = type_to_string(arg);
-                    args = realloc(args, sizeof(char *) * (size_t)(count + 1));
-                    args[count++] = xstrdup(arg_str);
-                    zfree(arg_str);
                 }
-
-                if (!consume_generic_close(l))
+                Type *arg = parse_type_formal(ctx, l);
+                if (!arg)
                 {
-                    zpanic_at(t, "Expected > after generic");
                     return NULL;
                 }
+                arg_types = xrealloc(arg_types, sizeof(Type *) * (size_t)(arg_count + 1));
+                arg_types[arg_count++] = arg;
+            } while (lexer_peek(l).kind == TOK_COMMA);
 
-                // Call multi-arg instantiation
-                int is_generic_dep = 0;
-                for (int i = 0; i < count; ++i)
-                {
-                    if (is_generic_dependent_str(ctx, args[i]))
-                    {
-                        is_generic_dep = 1;
-                        break;
-                    }
-                }
-
-                if (!is_generic_dep)
-                {
-                    instantiate_generic_multi(ctx, name, args, count, t);
-                }
-
-                // Build mangled name dynamically
-                size_t mangled_len = strlen(name) + 1;
-                for (int i = 0; i < count; i++)
-                {
-                    char *clean = sanitize_mangled_name(args[i]);
-                    mangled_len += 2 + strlen(clean);
-                    zfree(clean);
-                }
-                char *mangled = xmalloc(mangled_len);
-                strcpy(mangled, name);
-                for (int i = 0; i < count; i++)
-                {
-                    char *clean = sanitize_mangled_name(args[i]);
-                    strcat(mangled, "__");
-                    strcat(mangled, clean);
-                    zfree(clean);
-                    zfree(args[i]);
-                }
-                zfree(args);
-
-                zfree(ty->name);
-                ty->name = mangled;
-            }
-            else
+            if (!consume_generic_close(l))
             {
-                // Single-arg case
-                if (!consume_generic_close(l))
-                {
-                    zpanic_at(t, "Expected > after generic");
-                    return NULL;
-                }
-
-                char *unmangled_arg = type_to_string(first_arg);
-
-                int is_single_dep = is_generic_dependent_str(ctx, first_arg_str);
-
-                if (!is_single_dep)
-                {
-                    instantiate_generic(ctx, name, first_arg_str, unmangled_arg, t);
-                }
-                zfree(unmangled_arg);
-
-                char *mangled = mangle_generic_name(name, &first_arg_str, 1);
-
-                zfree(ty->name);
-                ty->name = mangled;
+                zpanic_at(t, "Expected > after generic");
+                return NULL;
             }
-
-            zfree(first_arg_str);
             ty->kind = TYPE_STRUCT;
             ty->args = arg_types;
             ty->count = arg_count;
+            instantiate_type(ctx, ty, t);
         }
         return ty;
     }
