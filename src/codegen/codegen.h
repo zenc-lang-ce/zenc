@@ -98,6 +98,9 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t);
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr);
 void emit_rvalue_address(ParserContext *ctx, ASTNode *expr);
 void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_override);
+/** @brief Name of the struct with Drop that `value` holds by value (its glue is
+ * `<name>__Drop__glue`), or NULL. */
+char *value_drop_struct(ParserContext *ctx, ASTNode *value);
 int emit_move_invalidation(ParserContext *ctx, ASTNode *node);
 void codegen_expression_with_move(ParserContext *ctx, ASTNode *node);
 void emit_mangled_name(ParserContext *ctx, const char *base, const char *method);
