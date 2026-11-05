@@ -146,9 +146,9 @@ static void emit_label(ParserContext *ctx, ASTNode *node)
         }
         break;
     case NODE_IMPL:
-        if (node->impl.struct_name)
+        if (type_impl_name(node->impl.target))
         {
-            emitter_printf(&ctx->cg.emitter, " '%s'", node->impl.struct_name);
+            emitter_printf(&ctx->cg.emitter, " '%s'", type_impl_name(node->impl.target));
         }
         break;
     case NODE_IMPORT:

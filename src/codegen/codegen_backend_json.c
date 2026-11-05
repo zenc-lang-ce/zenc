@@ -316,10 +316,10 @@ static void json_emit_node(ParserContext *ctx, ASTNode *node, int pretty, int de
         }
         break;
     case NODE_IMPL:
-        if (node->impl.struct_name)
+        if (type_impl_name(node->impl.target))
         {
             emitter_printf(&ctx->cg.emitter, ",\"name\":");
-            json_escape(ctx, node->impl.struct_name);
+            json_escape(ctx, type_impl_name(node->impl.target));
         }
         break;
     case NODE_IMPORT:

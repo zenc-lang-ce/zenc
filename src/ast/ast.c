@@ -394,6 +394,15 @@ char *type_def_name(Type *t)
     return t ? t->name : NULL;
 }
 
+char *type_impl_name(Type *t)
+{
+    if (t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM || t->kind == TYPE_ALIAS))
+    {
+        return type_def_name(t);
+    }
+    return t ? type_mangle_spelling(t) : NULL;
+}
+
 Type *type_new_instance(const char *tpl, Type **args, int count)
 {
     Type *t = type_new(TYPE_STRUCT);

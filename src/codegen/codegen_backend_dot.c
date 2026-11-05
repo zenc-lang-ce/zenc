@@ -214,7 +214,7 @@ static int dot_emit_node(ParserContext *ctx, ASTNode *node)
         name = node->var_decl.name;
         break;
     case NODE_IMPL:
-        name = node->impl.struct_name;
+        name = type_impl_name(node->impl.target);
         break;
     case NODE_IMPORT:
         name = node->import_stmt.path;

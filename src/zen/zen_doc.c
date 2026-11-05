@@ -291,8 +291,9 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
         case NODE_IMPL:
         case NODE_IMPL_TRAIT:
         {
-            const char *raw_name =
-                (node->kind == NODE_IMPL) ? node->impl.struct_name : node->impl_trait.target_type;
+            const char *raw_name = (node->kind == NODE_IMPL)
+                                       ? type_impl_name(node->impl.target)
+                                       : type_impl_name(node->impl_trait.target);
             const char *sname = unmangle_name(raw_name);
             printf("\n## impl for `%s`\n", sname);
             if (node->doc_comment)
