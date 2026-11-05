@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793855698684,
+  "lastUpdate": 1793857075442,
   "repoUrl": "https://github.com/zenc-lang-ce/zenc",
   "entries": {
     "Zen Compiler Benchmarks": [
@@ -8339,6 +8339,145 @@ window.BENCHMARK_DATA = {
           {
             "name": "Compile (test_vec_ops)",
             "value": 106,
+            "unit": "ms"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "1103977+pherrymason@users.noreply.github.com",
+            "name": "Raul",
+            "username": "pherrymason"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5e3a26d8904b55c54e6960c21dc67134b82f9224",
+          "message": "Merge pull request #125 from zenc-lang-ce/refactor/source-type-names\n\nparser, codegen: keep types in the AST only as a Type with source names",
+          "timestamp": "2026-11-05T05:58:24+01:00",
+          "tree_id": "9adcbcb6dd883c758de15d343d9960a5a8a07690",
+          "url": "https://github.com/zenc-lang-ce/zenc/commit/5e3a26d8904b55c54e6960c21dc67134b82f9224"
+        },
+        "date": 1793857075353,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Compiler (Full Suite Transpilation)",
+            "value": 9042,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_bigint_factorial)",
+            "value": 3,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_bigint_factorial)",
+            "value": 216,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_comptime)",
+            "value": 0,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_comptime)",
+            "value": 66,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_fib_recursive)",
+            "value": 58,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_fib_recursive)",
+            "value": 64,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_hashmap)",
+            "value": 148,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_hashmap)",
+            "value": 102,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_hello)",
+            "value": 0,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_hello)",
+            "value": 62,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_json_parse)",
+            "value": 265,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_json_parse)",
+            "value": 546,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_mandelbrot)",
+            "value": 22,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_mandelbrot)",
+            "value": 66,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_sha256)",
+            "value": 120,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_sha256)",
+            "value": 509,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_sort_large)",
+            "value": 63,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_sort_large)",
+            "value": 96,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_string_concat)",
+            "value": 1,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_string_concat)",
+            "value": 358,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_vec_ops)",
+            "value": 19,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_vec_ops)",
+            "value": 146,
             "unit": "ms"
           }
         ]
