@@ -425,8 +425,8 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     check_node(tc, node->func.body, depth + 1);
 
     // Control flow analysis: Check if non-void function always returns
-    const char *ret_type = node->func.ret_type;
-    int is_void = !ret_type || strcmp(ret_type, "void") == 0;
+    Type *ret_type = node->func.ret_type_info;
+    int is_void = !ret_type || ret_type->kind == TYPE_VOID;
 
     // Special case: 'main' is allowed to fall off the end (C99 implicit return 0)
     int is_main = node->func.name && strcmp(node->func.name, "main") == 0;

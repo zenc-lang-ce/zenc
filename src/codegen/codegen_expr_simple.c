@@ -18,15 +18,9 @@ void handle_expr_sizeof(ParserContext *ctx, ASTNode *node)
 {
     if (node->size_of.target_type_info)
     {
-        char *mapped = type_to_c_string(node->size_of.target_type_info, ctx->config->misra_mode);
+        char *mapped = c_type_spelling(ctx, node->size_of.target_type_info);
         EMIT(ctx, "sizeof(%s)", mapped);
         zfree(mapped);
-    }
-    else if (node->size_of.target_type)
-    {
-        const char *t = node->size_of.target_type;
-        const char *mapped = map_to_c_type(t);
-        EMIT(ctx, "sizeof(%s)", mapped);
     }
     else
     {
@@ -40,13 +34,9 @@ void handle_typeof(ParserContext *ctx, ASTNode *node)
 {
     if (node->size_of.target_type_info)
     {
-        char *mapped = type_to_c_string(node->size_of.target_type_info, ctx->config->misra_mode);
+        char *mapped = c_type_spelling(ctx, node->size_of.target_type_info);
         EMIT(ctx, "typeof(%s)", mapped);
         zfree(mapped);
-    }
-    else if (node->size_of.target_type)
-    {
-        EMIT(ctx, "typeof(%s)", node->size_of.target_type);
     }
     else
     {
@@ -115,10 +105,7 @@ void handle_expr_array_literal(ParserContext *ctx, ASTNode *node)
 
 void handle_expr_tuple_literal(ParserContext *ctx, ASTNode *node)
 {
-    char *type = node->resolved_type ? node->resolved_type
-                 : node->type_info   ? type_to_string(node->type_info)
-                                     : "unknown";
-    EMIT(ctx, "(%s){", type);
+    EMIT(ctx, "(%s){", c_type_spelling(ctx, node->type_info));
     ASTNode *tup_elem = node->tuple_literal.elements;
     int first_tup = 1;
     while (tup_elem)

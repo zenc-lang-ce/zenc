@@ -59,11 +59,4 @@ void auto_import_std_mem(ParserContext *ctx)
 {
     load_std_module(ctx, "std/mem.zc");
 }
-void patch_and_fix_self(ParserContext *ctx, ASTNode *f, const char *full_struct_name)
-{
-    (void)ctx;
-    char *na = patch_self_args(f->func.args, full_struct_name);
-    zfree(f->func.args);
-    f->func.args = na;
-}
 // Trait Parsing

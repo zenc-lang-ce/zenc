@@ -117,7 +117,7 @@ void handle_node_impl(ParserContext *ctx, ASTNode *node)
 {
     char *sname = node->impl.struct_name;
     TypeAlias *ta = find_type_alias_node(ctx, sname);
-    const char *resolved = (ta && !ta->is_opaque) ? ta->original_type : NULL;
+    const char *resolved = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
 
     if (resolved)
     {
@@ -270,15 +270,16 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     emit_func_signature(ctx, node, NULL);
     EMIT(ctx, "\n{\n");
     emitter_indent(&ctx->cg.emitter);
-    if (ctx->config->misra_mode && node->func.ret_type && strcmp(node->func.ret_type, "void") != 0)
+    int returns_value = node->func.ret_type_info && node->func.ret_type_info->kind != TYPE_VOID;
+    if (ctx->config->misra_mode && returns_value)
     {
-        char *safe_ret_type = type_to_c_string(node->func.ret_type_info, ctx->config->misra_mode);
+        char *safe_ret_type = c_type_spelling(ctx, node->func.ret_type_info);
         EMIT(ctx, "%s _misra_ret = 0;\n", safe_ret_type);
         zfree(safe_ret_type);
     }
     char *prev_ret = ctx->cg.current_func_ret_type;
     Type *prev_ret_info = ctx->cg.current_func_ret_type_info;
-    ctx->cg.current_func_ret_type = node->func.ret_type;
+    ctx->cg.current_func_ret_type = type_to_string(node->func.ret_type_info);
     ctx->cg.current_func_ret_type_info = node->func.ret_type_info;
 
     // Set self_is_pointer flag for codegen of the body
@@ -375,7 +376,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     {
         EMIT(ctx, "goto _misra_end_of_func;\n");
         EMIT(ctx, "_misra_end_of_func:\n");
-        if (node->func.ret_type && strcmp(node->func.ret_type, "void") != 0)
+        if (returns_value)
         {
             EMIT(ctx, "return _misra_ret;\n");
         }
@@ -396,7 +397,7 @@ void handle_node_impl_trait(ParserContext *ctx, ASTNode *node)
 {
     char *sname = node->impl_trait.target_type;
     TypeAlias *ta = find_type_alias_node(ctx, sname);
-    const char *resolved = (ta && !ta->is_opaque) ? ta->original_type : NULL;
+    const char *resolved = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
 
     if (resolved)
     {
@@ -500,11 +501,12 @@ void handle_node_destruct_var(ParserContext *ctx, ASTNode *node)
             }
             else
             {
-                char *explicit_type = node->destruct.types ? node->destruct.types[i] : NULL;
+                Type *explicit_type =
+                    node->destruct.type_infos ? node->destruct.type_infos[i] : NULL;
                 if (explicit_type)
                 {
-                    EMIT(ctx, "%s %s = _tmp_%d.v%d;\n", explicit_type, node->destruct.names[i], id,
-                         i);
+                    EMIT(ctx, "%s %s = _tmp_%d.v%d;\n", c_type_spelling(ctx, explicit_type),
+                         node->destruct.names[i], id, i);
                 }
                 else if (z_path_match_compiler(ctx->config->cc, "tcc"))
                 {
@@ -531,7 +533,7 @@ static void add_symbol_local(ParserContext *ctx, const char *name, const char *t
         return;
     }
     sym->is_local = (ctx->current_scope != ctx->global_scope);
-    sym->type_name = type_name ? xstrdup(type_name) : NULL;
+    sym->c_type = type_name ? xstrdup(type_name) : NULL;
     sym->type_info = type_info;
 }
 
@@ -546,11 +548,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
         {
             is_void = 1;
         }
-        else if (node->var_decl.type_str && strcmp(node->var_decl.type_str, "void") == 0)
-        {
-            is_void = 1;
-        }
-        else if (!node->type_info && !node->var_decl.type_str)
+        else if (!node->type_info)
         {
             char *ret_type = infer_type(ctx, node->var_decl.init_expr);
             if (!ret_type || strcmp(ret_type, "void") == 0)
@@ -574,15 +572,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, "static ");
     }
     {
-        char *tname = NULL;
-        if (node->type_info)
-        {
-            tname = type_to_c_string(node->type_info, ctx->config->misra_mode);
-        }
-        else if (node->var_decl.type_str && strcmp(node->var_decl.type_str, "__auto_type") != 0)
-        {
-            tname = node->var_decl.type_str;
-        }
+        char *tname = declared_c_type(ctx, node);
 
         if (tname && strcmp(tname, "void*") != 0 && strcmp(tname, "unknown") != 0)
         {
@@ -624,7 +614,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 if (ctx->config->use_cpp && node->type_info &&
                     (node->type_info->kind == TYPE_POINTER || node->type_info->kind == TYPE_ENUM))
                 {
-                    char *ct = type_to_c_string(node->type_info, ctx->config->misra_mode);
+                    char *ct = c_type_spelling(ctx, node->type_info);
                     EMIT(ctx, "(%s)(", ct);
                     codegen_expression(ctx, node->var_decl.init_expr);
                     EMIT(ctx, ")");
@@ -770,9 +760,10 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 void handle_node_const(ParserContext *ctx, ASTNode *node)
 {
     EMIT(ctx, "__attribute__((unused)) const ");
-    if (node->var_decl.type_str)
+    char *declared = declared_c_type(ctx, node);
+    if (declared)
     {
-        EMIT(ctx, "%s %s", node->var_decl.type_str, node->var_decl.name);
+        EMIT(ctx, "%s %s", declared, node->var_decl.name);
     }
     else
     {
@@ -788,11 +779,12 @@ void handle_node_field(ParserContext *ctx, ASTNode *node)
 {
     if (node->field.bit_width > 0)
     {
-        EMIT(ctx, "%s %s : %d;\n", node->field.type, node->field.name, node->field.bit_width);
+        EMIT(ctx, "%s %s : %d;\n", field_c_type(ctx, node), node->field.name,
+             node->field.bit_width);
     }
     else
     {
-        emit_var_decl_type(ctx, node->field.type, node->field.name);
+        emit_var_decl_type(ctx, field_c_type(ctx, node), node->field.name);
         EMIT(ctx, ";\n");
     }
 }

@@ -55,7 +55,8 @@ static const char *resolve_alias_name(TypeChecker *tc, const char *name)
         {
             return name;
         }
-        const char *next = find_type_alias(tc->pctx, name);
+        Type *aliased = find_type_alias(tc->pctx, name);
+        const char *next = aliased ? type_to_string(aliased) : NULL;
         if (!next || strcmp(next, name) == 0)
         {
             return name;
@@ -1025,11 +1026,11 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     // (Integer aliases handled by resolve_alias above)
     if (target->kind == TYPE_ALIAS && target->name)
     {
-        const char *alias = find_type_alias(tc->pctx, target->name);
+        Type *alias = find_type_alias(tc->pctx, target->name);
         if (alias)
         {
             // Check if resolved names match
-            if (value->name && strcmp(alias, value->name) == 0)
+            if (value->name && strcmp(type_to_string(alias), value->name) == 0)
             {
                 return 1;
             }
@@ -1037,10 +1038,10 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     }
     if (value->kind == TYPE_ALIAS && value->name)
     {
-        const char *alias = find_type_alias(tc->pctx, value->name);
+        Type *alias = find_type_alias(tc->pctx, value->name);
         if (alias)
         {
-            if (target->name && strcmp(alias, target->name) == 0)
+            if (target->name && strcmp(type_to_string(alias), target->name) == 0)
             {
                 return 1;
             }
@@ -1140,10 +1141,6 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
         {
             Type *enum_type = type_new(TYPE_ENUM);
             enum_type->name = xstrdup(enum_variant->enum_name);
-            if (enum_variant->link_name)
-            {
-                enum_type->link_name = xstrdup(enum_variant->link_name);
-            }
             node->type_info = enum_type;
             return;
         }

@@ -56,7 +56,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         lexer_next(l);
         int cap = 16;
         char **names = xmalloc((size_t)cap * sizeof(char *));
-        char **types = xmalloc((size_t)cap * sizeof(char *));
         Type **type_infos = xmalloc((size_t)cap * sizeof(Type *));
         int count = 0;
         while (1)
@@ -65,14 +64,12 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
             {
                 cap *= 2;
                 names = xrealloc(names, (size_t)cap * sizeof(char *));
-                types = xrealloc(types, (size_t)cap * sizeof(char *));
                 type_infos = xrealloc(type_infos, (size_t)cap * sizeof(Type *));
             }
             Token t = lexer_next(l);
             check_identifier(t);
             char *nm = token_strdup(t);
             names[count] = nm;
-            types[count] = NULL;
             type_infos[count] = NULL;
 
             // Check for optional type annotation: name: type
@@ -80,13 +77,12 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
             {
                 lexer_next(l); // eat :
                 Type *type_obj = parse_type_formal(ctx, l);
-                types[count] = type_obj ? type_to_string(type_obj) : xstrdup("unknown");
                 type_infos[count] = type_obj;
-                add_symbol(ctx, nm, types[count], type_obj, is_export);
+                add_symbol(ctx, nm, type_obj, is_export);
             }
             else
             {
-                add_symbol(ctx, nm, "unknown", NULL, is_export);
+                add_symbol(ctx, nm, NULL, is_export);
             }
             count++;
 
@@ -119,7 +115,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         ASTNode *n = ast_create(NODE_DESTRUCT_VAR);
         n->token = tk;
         n->destruct.names = names;
-        n->destruct.types = types;
         n->destruct.type_infos = type_infos;
         n->destruct.count = count;
         n->destruct.init_expr = init;
@@ -163,7 +158,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 names[count] = ident; // Share pointer or duplicate? duplicate safer if we free
             }
             // Register symbol for variable
-            add_symbol(ctx, names[count], "unknown", NULL, is_export);
+            add_symbol(ctx, names[count], NULL, is_export);
 
             count++;
 
@@ -261,7 +256,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         n->destruct.guard_variant = name;
         n->destruct.else_block = else_blk;
 
-        add_symbol(ctx, val_name, "unknown", NULL, is_export);
+        add_symbol(ctx, val_name, NULL, is_export);
 
         return n;
     }
@@ -303,16 +298,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 Type *fallback_t = type_new(TYPE_STRUCT);
                 fallback_t->name = xstrdup("Slice__char");
                 init->type_info = fallback_t;
-            }
-
-            if (!type && init->type_info)
-            {
-                type = type_to_string(init->type_info);
-            }
-            if (!type)
-            {
-                register_slice(ctx, "char");
-                type = xstrdup("Slice__char");
             }
             if (lexer_peek(l).kind == TOK_SEMICOLON)
             {
@@ -378,11 +363,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
 
         if (init && type)
         {
-            char *rhs_type = init->resolved_type;
-            if (!rhs_type && init->type_info)
-            {
-                rhs_type = type_to_string(init->type_info);
-            }
+            char *rhs_type = init->type_info ? type_to_string(init->type_info) : NULL;
 
             if (rhs_type && strchr(type, '*') && strchr(rhs_type, '*'))
             {
@@ -400,7 +381,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 {
                     // Create Cast Node
                     ASTNode *cast = ast_create(NODE_EXPR_CAST);
-                    cast->cast.target_type = xstrdup(type);
                     cast->cast.expr = init;
                     cast->type_info = type_obj; // Inherit formal type
 
@@ -480,7 +460,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     }
 
     // Register in symbol table with actual token
-    add_symbol_with_token(ctx, name, type, type_obj, name_tok, is_export);
+    add_symbol_with_token(ctx, name, type_obj, name_tok, is_export);
 
     if (init && type_obj)
     {
@@ -568,7 +548,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     ASTNode *n = ast_create(NODE_VAR_DECL);
     n->token = name_tok; // Save location
     n->var_decl.name = name;
-    n->var_decl.type_str = type;
     n->var_decl.type_info = type_obj;
     n->type_info = type_obj;
 
@@ -707,13 +686,11 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 }
             }
 
-            add_symbol_with_token(ctx, next_name, next_type, next_type_obj, next_name_tok,
-                                  is_export);
+            add_symbol_with_token(ctx, next_name, next_type_obj, next_name_tok, is_export);
 
             ASTNode *next_node = ast_create(NODE_VAR_DECL);
             next_node->token = next_name_tok;
             next_node->var_decl.name = next_name;
-            next_node->var_decl.type_str = next_type;
             next_node->var_decl.type_info = next_type_obj;
             next_node->type_info = next_type_obj;
             next_node->var_decl.init_expr = next_init;

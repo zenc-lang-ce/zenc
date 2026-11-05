@@ -237,7 +237,8 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             if (!lsp_function_signature(node->token, hover, sizeof(hover)))
             {
                 const char *name = node->func.name ? node->func.name : "unknown";
-                const char *ret = node->func.ret_type ? node->func.ret_type : "void";
+                const char *ret =
+                    node->func.ret_type_info ? type_to_string(node->func.ret_type_info) : "void";
                 snprintf(hover, sizeof(hover), "fn %s(...) -> %s", name, ret);
             }
             lsp_index_add_def(idx, node->token, hover, node);
@@ -271,7 +272,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
                 {
                     char fh[MAX_SHORT_MSG_LEN];
                     const char *fname = field->field.name ? field->field.name : "unknown";
-                    const char *ftype = field->field.type ? field->field.type : "unknown";
+                    const char *ftype = type_to_string(field->type_info);
                     snprintf(fh, sizeof(fh), "field %s: %s", fname, ftype);
                     lsp_index_add_def(idx, field->token, fh, field);
                 }
@@ -302,8 +303,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *alias = node->type_alias.alias ? node->type_alias.alias : "unknown";
-            const char *orig =
-                node->type_alias.original_type ? node->type_alias.original_type : "unknown";
+            const char *orig = node->type_info ? type_to_string(node->type_info) : "unknown";
             snprintf(hover, sizeof(hover), "alias %s = %s", alias, orig);
             lsp_index_add_def(idx, node->token, hover, node);
         }

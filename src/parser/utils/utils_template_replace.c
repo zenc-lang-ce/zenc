@@ -916,10 +916,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     *new_node = *n;
     new_node->next = old_next; // Restore next before recursion
 
-    if (n->resolved_type)
-    {
-        new_node->resolved_type = replace_type_str(n->resolved_type, p, c, os, ns);
-    }
     new_node->type_info = replace_type_formal(ctx, n->type_info, p, c, os, ns);
 
     new_node->next = copy_ast_replacing(ctx, n->next, p, c, os, ns);
@@ -928,81 +924,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     {
     case NODE_FUNCTION:
         new_node->func.name = n->func.name ? xstrdup(n->func.name) : NULL;
-        new_node->func.ret_type = replace_type_str(n->func.ret_type, p, c, os, ns);
 
-        char *tmp_args = n->func.args ? xstrdup(n->func.args) : NULL;
-        if (p && c && strchr(p, ','))
-        {
-            char *p_ptr = (char *)p;
-            char *c_ptr = (char *)c;
-            while (*p_ptr && *c_ptr)
-            {
-                char *p_end = (char *)strchr(p_ptr, ',');
-                int p_len = p_end ? (int)(p_end - p_ptr) : (int)strlen(p_ptr);
-                char *c_end = (char *)strchr(c_ptr, ',');
-                int c_len = c_end ? (int)(c_end - c_ptr) : (int)strlen(c_ptr);
-
-                char *p_part = xmalloc((size_t)(p_len + 1));
-                strncpy(p_part, p_ptr, (size_t)(p_len));
-                p_part[p_len] = 0;
-
-                char *c_part = xmalloc((size_t)(c_len + 1));
-                strncpy(c_part, c_ptr, (size_t)(c_len));
-                c_part[c_len] = 0;
-
-                char *t1 = replace_in_string(tmp_args, p_part, c_part);
-                zfree(tmp_args);
-                tmp_args = t1;
-
-                char *clean_c = sanitize_mangled_name(c_part);
-                char *t2 = replace_mangled_part(tmp_args, p_part, clean_c);
-                zfree(tmp_args);
-                tmp_args = t2;
-
-                zfree(p_part);
-                zfree(c_part);
-                zfree(clean_c);
-
-                if (p_end)
-                {
-                    p_ptr = p_end + 1;
-                }
-                else
-                {
-                    break;
-                }
-                if (c_end)
-                {
-                    c_ptr = c_end + 1;
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-        else
-        {
-            char *t1 = replace_in_string(tmp_args, p, c);
-            zfree(tmp_args);
-            tmp_args = t1;
-
-            if (p && c)
-            {
-                char *clean_c = sanitize_mangled_name(c);
-                char *t2 = replace_mangled_part(tmp_args, p, clean_c);
-                zfree(tmp_args);
-                tmp_args = t2;
-                zfree(clean_c);
-            }
-        }
-
-        if (os && ns)
-        {
-            char *tmp2 = replace_in_string(tmp_args, os, ns);
-            zfree(tmp_args);
-            tmp_args = tmp2;
-        }
         new_node->func.count = n->func.count;
         if (n->func.count > 0 && n->func.arg_types)
         {
@@ -1017,7 +939,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         {
             new_node->func.arg_types = NULL;
         }
-        new_node->func.args = tmp_args;
 
         new_node->func.ret_type_info =
             replace_type_formal(ctx, n->func.ret_type_info, p, c, os, ns);
@@ -1026,32 +947,11 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         if (n->func.default_values && n->func.count > 0)
         {
             new_node->func.default_values = xmalloc(sizeof(ASTNode *) * (size_t)(n->func.count));
-            // We also need to regenerate the string defaults array based on the substituted ASTs
-            // This ensures potential generic params in default values (T{}) are updated (i32{})
-            // in the string representation used by codegen.
-            char **new_defaults_strs = xmalloc(sizeof(char *) * (size_t)(n->func.count));
-
             for (int i = 0; i < n->func.count; i++)
             {
-                if (n->func.default_values[i])
-                {
-                    new_node->func.default_values[i] =
-                        copy_ast_replacing(ctx, n->func.default_values[i], p, c, os, ns);
-                    new_defaults_strs[i] = ast_to_string(new_node->func.default_values[i]);
-                }
-                else
-                {
-                    new_node->func.default_values[i] = NULL;
-                    new_defaults_strs[i] = NULL;
-                }
+                new_node->func.default_values[i] =
+                    copy_ast_replacing(ctx, n->func.default_values[i], p, c, os, ns);
             }
-            // Replace the old string-based defaults with our regenerated ones
-            // Note: We leak the old 'tmp_args' calculated above, but that's just a single string
-            // for valid args The 'defaults' array in func struct is what matters for function
-            // definition. Wait, NODE_FUNCTION has char *args (legacy) AND char **defaults (array).
-            // parse_and_convert_args populated both.
-            // We need to update new_node->func.defaults.
-            new_node->func.defaults = new_defaults_strs;
         }
 
         new_node->func.body = copy_ast_replacing(ctx, n->func.body, p, c, os, ns);
@@ -1141,7 +1041,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     case NODE_VAR_DECL:
     case NODE_FIELD_INIT:
         new_node->var_decl.name = n->var_decl.name ? xstrdup(n->var_decl.name) : NULL;
-        new_node->var_decl.type_str = replace_type_str(n->var_decl.type_str, p, c, os, ns);
         new_node->var_decl.type_info =
             replace_type_formal(ctx, n->var_decl.type_info, p, c, os, ns);
         new_node->var_decl.init_expr = copy_ast_replacing(ctx, n->var_decl.init_expr, p, c, os, ns);
@@ -1254,7 +1153,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     break;
     case NODE_FIELD:
         new_node->field.name = n->field.name ? xstrdup(n->field.name) : NULL;
-        new_node->field.type = replace_type_str(n->field.type, p, c, os, ns);
         break;
     case NODE_EXPR_LITERAL:
         if (n->literal.kind == LITERAL_STRING)
@@ -1272,7 +1170,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         new_node->index.index = copy_ast_replacing(ctx, n->index.index, p, c, os, ns);
         break;
     case NODE_EXPR_CAST:
-        new_node->cast.target_type = replace_type_str(n->cast.target_type, p, c, os, ns);
         new_node->cast.expr = copy_ast_replacing(ctx, n->cast.expr, p, c, os, ns);
         break;
     case NODE_EXPR_STRUCT_INIT:
@@ -1390,7 +1287,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         break;
     case NODE_TYPEOF:
     case NODE_EXPR_SIZEOF:
-        new_node->size_of.target_type = replace_type_str(n->size_of.target_type, p, c, os, ns);
         new_node->size_of.expr = copy_ast_replacing(ctx, n->size_of.expr, p, c, os, ns);
         new_node->size_of.is_type = n->size_of.is_type;
         if (n->size_of.target_type_info)
@@ -1406,21 +1302,15 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         if (n->lambda.count > 0)
         {
             new_node->lambda.param_names = xmalloc(sizeof(char *) * (size_t)(n->lambda.count));
-            new_node->lambda.param_types = xmalloc(sizeof(char *) * (size_t)(n->lambda.count));
             for (int i = 0; i < n->lambda.count; i++)
             {
                 new_node->lambda.param_names[i] = xstrdup(n->lambda.param_names[i]);
-                new_node->lambda.param_types[i] =
-                    replace_type_str(n->lambda.param_types[i], p, c, os, ns);
             }
         }
-        new_node->lambda.return_type = replace_type_str(n->lambda.return_type, p, c, os, ns);
         new_node->lambda.capture_count = n->lambda.capture_count;
         if (n->lambda.capture_count > 0)
         {
             new_node->lambda.captured_vars =
-                xmalloc(sizeof(char *) * (size_t)(n->lambda.capture_count));
-            new_node->lambda.captured_types =
                 xmalloc(sizeof(char *) * (size_t)(n->lambda.capture_count));
             new_node->lambda.captured_types_info =
                 xmalloc(sizeof(Type *) * (size_t)(n->lambda.capture_count));
@@ -1433,8 +1323,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
             for (int i = 0; i < n->lambda.capture_count; i++)
             {
                 new_node->lambda.captured_vars[i] = xstrdup(n->lambda.captured_vars[i]);
-                new_node->lambda.captured_types[i] =
-                    replace_type_str(n->lambda.captured_types[i], p, c, os, ns);
                 new_node->lambda.captured_types_info[i] =
                     replace_type_formal(ctx, n->lambda.captured_types_info[i], p, c, os, ns);
                 if (n->lambda.capture_modes)
@@ -1451,7 +1339,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         if (n->destruct.count > 0)
         {
             new_node->destruct.names = xmalloc(sizeof(char *) * (size_t)(n->destruct.count));
-            new_node->destruct.types = xmalloc(sizeof(char *) * (size_t)(n->destruct.count));
             new_node->destruct.type_infos = xmalloc(sizeof(Type *) * (size_t)(n->destruct.count));
             if (n->destruct.field_names)
             {
@@ -1462,7 +1349,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
             for (int i = 0; i < n->destruct.count; i++)
             {
                 new_node->destruct.names[i] = xstrdup(n->destruct.names[i]);
-                new_node->destruct.types[i] = replace_type_str(n->destruct.types[i], p, c, os, ns);
                 new_node->destruct.type_infos[i] =
                     replace_type_formal(ctx, n->destruct.type_infos[i], p, c, os, ns);
                 if (n->destruct.field_names && n->destruct.field_names[i])
@@ -1640,4 +1526,9 @@ int is_unmangle_primitive(const char *base)
             strncmp(base, "int32", 5) == 0 || strncmp(base, "int64", 5) == 0 ||
             strncmp(base, "uint8", 5) == 0 || strncmp(base, "uint16", 6) == 0 ||
             strncmp(base, "uint32", 6) == 0 || strncmp(base, "uint64", 6) == 0);
+}
+
+ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index)
+{
+    return copy_ast_replacing(ctx, sig->default_values[index], NULL, NULL, NULL, NULL);
 }

@@ -43,9 +43,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         if (!sig)
         {
             // A variant without a payload called as `Enum::Variant()`: it has no constructor
-            // function, and check_expr_var already gave the callee the enum's type. A default
-            // argument is reparsed from text ("Enum__Variant()"), so the callee may not carry
-            // its QualifiedName: the type tells it too.
+            // function, and check_expr_var already gave the callee the enum's type.
             Type *callee_type = node->call.callee->type_info;
             if (callee_type && callee_type->kind == TYPE_ENUM)
             {
@@ -164,12 +162,12 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         max_args = sig->total_args;
         is_varargs = sig->is_varargs;
         min_args = sig->total_args;
-        if (sig->defaults)
+        if (sig->default_values)
         {
             min_args = 0;
             for (int i = 0; i < sig->total_args; i++)
             {
-                if (!sig->defaults[i])
+                if (!sig->default_values[i])
                 {
                     min_args++;
                 }

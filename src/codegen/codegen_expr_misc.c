@@ -16,8 +16,7 @@
 
 void handle_expr_cast(ParserContext *ctx, ASTNode *node)
 {
-    const char *t = node->cast.target_type;
-    const char *mapped = map_to_c_type(t);
+    const char *mapped = map_to_c_type(c_type_spelling(ctx, node->type_info));
 
     EMIT(ctx, "((%s)(", mapped);
     Type *src_type = node->cast.expr->type_info;
@@ -62,7 +61,7 @@ void handle_reflection(ParserContext *ctx, ASTNode *node)
     Type *t = node->reflection.target_type;
     if (node->reflection.kind == 0)
     {
-        char *s = type_to_c_string(t, ctx->config->misra_mode);
+        char *s = c_type_spelling(ctx, t);
         EMIT(ctx, "\"%s\"", s);
         zfree(s);
     }
@@ -91,7 +90,7 @@ void handle_reflection(ParserContext *ctx, ASTNode *node)
             if (f->kind == NODE_FIELD)
             {
                 EMIT(ctx, "{ \"%s\", \"%s\", __builtin_offsetof(struct %s, %s) }, ", f->field.name,
-                     f->field.type, sname, f->field.name);
+                     type_to_string(f->type_info), sname, f->field.name);
             }
             f = f->next;
         }

@@ -15,41 +15,19 @@
 #include "zprep_plugin.h"
 #include "analysis/move_check.h"
 
-// The element type taken from a mangled collection name (`Vec__ShapePtr`) keeps
-// the mangled pointer suffix. Turn each trailing "Ptr" back into '*' when what is
-// left names a known type, so the loop variable gets a real pointer type.
-static char *demangle_elem_ptr_suffix(ParserContext *ctx, char *elem)
+// The return type of `method` on the struct `t` is or points to; NULL if it has none.
+static Type *method_return_type(ParserContext *ctx, Type *t, const char *method)
 {
-    size_t len = strlen(elem);
-    size_t stars = 0;
-    while (len > 3 && strncmp(elem + len - 3, "Ptr", 3) == 0)
+    while (t && t->kind == TYPE_POINTER)
     {
-        char *whole = xcalloc(len + 1, 1);
-        memcpy(whole, elem, len);
-        int known = find_struct_def(ctx, whole) || find_type_alias(ctx, whole);
-        zfree(whole);
-        if (known)
-        {
-            break;
-        }
-        len -= 3;
-        stars++;
+        t = t->inner;
     }
-    if (stars == 0)
+    if (!t || !t->name)
     {
-        return elem;
+        return NULL;
     }
-
-    char *result = xcalloc(len + stars + 1, 1);
-    memcpy(result, elem, len);
-    if (!find_struct_def(ctx, result) && !find_type_alias(ctx, result) &&
-        !is_primitive_type_name(result))
-    {
-        zfree(result);
-        return elem;
-    }
-    memset(result + len, '*', stars);
-    return result;
+    FuncSig *sig = find_func(ctx, mangle_method_symbol(t->name, NULL, method));
+    return sig ? sig->ret_type : NULL;
 }
 
 static void check_assignment_condition(ASTNode *cond)
@@ -278,10 +256,10 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     }
 
                     enter_scope(ctx);
-                    add_symbol(ctx, n->for_range.var_name, "int", type_new(TYPE_INT), 0);
+                    add_symbol(ctx, n->for_range.var_name, type_new(TYPE_INT), 0);
                     if (enum_idx_name)
                     {
-                        add_symbol(ctx, enum_idx_name, "int", type_new(TYPE_INT), 0);
+                        add_symbol(ctx, enum_idx_name, type_new(TYPE_INT), 0);
                     }
 
                     ASTNode *user_body = NULL;
@@ -304,8 +282,8 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                         ASTNode *idx_decl = ast_create(NODE_VAR_DECL);
                         idx_decl->token = tk;
                         idx_decl->var_decl.name = xstrdup("__zc_enum_idx");
-                        idx_decl->var_decl.type_str = xstrdup("int");
-                        idx_decl->var_decl.type_info = type_new(TYPE_INT);
+                        idx_decl->type_info = type_new(TYPE_INT);
+                        idx_decl->var_decl.type_info = idx_decl->type_info;
                         ASTNode *zero_lit = ast_create(NODE_EXPR_LITERAL);
                         zero_lit->literal.kind = LITERAL_INT;
                         zero_lit->literal.int_val = 0;
@@ -315,8 +293,8 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                         ASTNode *idx_bind = ast_create(NODE_VAR_DECL);
                         idx_bind->token = tk;
                         idx_bind->var_decl.name = enum_idx_name;
-                        idx_bind->var_decl.type_str = xstrdup("int");
-                        idx_bind->var_decl.type_info = type_new(TYPE_INT);
+                        idx_bind->type_info = type_new(TYPE_INT);
+                        idx_bind->var_decl.type_info = idx_bind->type_info;
                         ASTNode *idx_ref = ast_create(NODE_EXPR_VAR);
                         idx_ref->var_ref.name = xstrdup("__zc_enum_idx");
                         idx_bind->var_decl.init_expr = idx_ref;
@@ -395,9 +373,11 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     slice_decl->var_decl.name = xstrdup("__zc_arr_slice");
 
                     char *elem_type_str = type_to_string(obj_expr->type_info->inner);
-                    char slice_type[MAX_TYPE_NAME_LEN];
-                    snprintf(slice_type, sizeof(slice_type), "Slice<%s>", elem_type_str);
-                    slice_decl->var_decl.type_str = xstrdup(slice_type);
+                    // `Slice<T>` as the type parser names the instance.
+                    Type *slice_type = type_new(TYPE_STRUCT);
+                    slice_type->name = mangle_generic_name("Slice", &elem_type_str, 1);
+                    slice_decl->type_info = slice_type;
+                    slice_decl->var_decl.type_info = slice_type;
 
                     ASTNode *from_array_call = ast_create(NODE_EXPR_CALL);
                     from_array_call->token = tk;
@@ -414,9 +394,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     arr_addr->unary.operand = obj_expr;
 
                     ASTNode *arr_cast = ast_create(NODE_EXPR_CAST);
-                    char cast_type[MAX_TYPE_NAME_LEN];
-                    snprintf(cast_type, sizeof(cast_type), "%s*", elem_type_str);
-                    arr_cast->cast.target_type = xstrdup(cast_type);
+                    arr_cast->type_info = type_new_ptr(obj_expr->type_info->inner);
                     arr_cast->cast.expr = arr_addr;
 
                     ASTNode *size_arg = ast_create(NODE_EXPR_LITERAL);
@@ -436,20 +414,12 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     auto_import_std_slice(ctx);
                     Token dummy_tok = {0};
                     instantiate_generic(ctx, "Slice", elem_type_str, elem_type_str, dummy_tok);
-
-                    char iter_type[MAX_TYPE_NAME_LEN];
-                    snprintf(iter_type, sizeof(iter_type), "SliceIter<%s>",
-                             elem_type_str); /* TODO: check buffer size */
                     instantiate_generic(ctx, "SliceIter", elem_type_str, elem_type_str, dummy_tok);
-
-                    char option_type[MAX_TYPE_NAME_LEN];
-                    snprintf(option_type, sizeof(option_type), "Option<%s>",
-                             elem_type_str); /* TODO: check buffer size */
                     instantiate_generic(ctx, "Option", elem_type_str, elem_type_str, dummy_tok);
 
                     ASTNode *slice_ref = ast_create(NODE_EXPR_VAR);
                     slice_ref->var_ref.name = xstrdup("__zc_arr_slice");
-                    slice_ref->resolved_type = xstrdup(slice_type);
+                    slice_ref->type_info = slice_type;
                     obj_expr = slice_ref;
 
                     zfree(elem_type_str);
@@ -458,7 +428,6 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 ASTNode *it_decl = ast_create(NODE_VAR_DECL);
                 it_decl->token = tk;
                 it_decl->var_decl.name = xstrdup("__it");
-                it_decl->var_decl.type_str = NULL;
 
                 ASTNode *call_iter = ast_create(NODE_EXPR_CALL);
                 ASTNode *memb_iter = ast_create(NODE_EXPR_MEMBER);
@@ -498,135 +467,21 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
         stmts_tail = node;                                                                         \
     }
 
-                char *iter_type_ptr = NULL;
-                char *option_type_ptr = NULL;
-                char *u_type = NULL;
-                char *inner = NULL;
-
-                char *coll_type = infer_type(ctx, start_expr);
-                if (coll_type)
-                {
-                    char *t_start = (char *)strchr(coll_type, '<');
-                    if (t_start)
-                    {
-                        char *t_end = (char *)strrchr(coll_type, '>');
-                        if (t_end)
-                        {
-                            ptrdiff_t len = t_end - t_start - 1;
-                            inner = xmalloc((size_t)(len + 1));
-                            strncpy(inner, t_start + 1, (size_t)(len));
-                            inner[len] = 0;
-                        }
-                    }
-                    else
-                    {
-                        char *m_start = (char *)strstr(coll_type, "__");
-                        if (m_start)
-                        {
-                            m_start += 2;
-                            char *m_end = (char *)strchr(m_start, '*');
-                            if (!m_end)
-                            {
-                                m_end = m_start + strlen(m_start);
-                            }
-                            ptrdiff_t len = m_end - m_start;
-                            inner = xmalloc((size_t)len + 1);
-                            strncpy(inner, m_start, (size_t)len);
-                            inner[len] = 0;
-                        }
-                    }
-
-                    if (inner)
-                    {
-                        u_type = xmalloc(strlen(inner) + 16);
-                        if (strchr(coll_type, '&') || (coll_type[0] == '&') ||
-                            (strchr(coll_type, '*')) || strstr(coll_type, "Ref"))
-                        {
-                            sprintf(u_type, "%s*", inner); /* safe */
-                        }
-                        else
-                        {
-                            strcpy(u_type, inner);
-                        }
-
-                        if (strstr(coll_type, "Map"))
-                        {
-                            char *old_u = u_type;
-                            u_type = xmalloc(strlen(inner) + 32);
-                            sprintf(u_type, "MapEntry<%s>", inner); /* safe */
-                            if (old_u)
-                            {
-                                zfree(old_u);
-                            }
-
-                            option_type_ptr = xmalloc(strlen(inner) + 128);
-                            sprintf(option_type_ptr, "MapIterResult<%s>", inner); /* safe */
-                        }
-                        else if (strstr(coll_type, "Vec") || strstr(coll_type, "Slice"))
-                        {
-                            option_type_ptr = xmalloc(strlen(inner) + 128);
-                            if (strchr(coll_type, '&') || (coll_type[0] == '&') ||
-                                (strchr(coll_type, '*')) || strstr(coll_type, "Ref"))
-                            {
-                                sprintf(option_type_ptr, "VecIterResult<%s>", inner); /* safe */
-                            }
-                            else
-                            {
-                                sprintf(option_type_ptr, "Option<%s>", u_type); /* safe */
-                            }
-                        }
-                        else
-                        {
-                            option_type_ptr = xmalloc(strlen(u_type) + 64);
-                            sprintf(option_type_ptr, "Option<%s>", u_type); /* safe */
-                        }
-
-                        u_type = demangle_elem_ptr_suffix(ctx, u_type);
-                        zfree(inner);
-                    }
-                }
-
-                if (slice_decl && !u_type)
-                {
-                    char *slice_t = slice_decl->var_decl.type_str;
-                    char *start = (char *)strchr(slice_t, '<');
-                    if (start)
-                    {
-                        char *end = (char *)strrchr(slice_t, '>');
-                        if (end)
-                        {
-                            ptrdiff_t len = end - start - 1;
-                            char *elem = xmalloc((size_t)len + 1);
-                            strncpy(elem, start + 1, (size_t)len);
-                            elem[len] = 0;
-
-                            u_type = xmalloc((size_t)(len + 8));
-                            strcpy(u_type, elem);
-
-                            iter_type_ptr = xmalloc(256);
-                            snprintf(iter_type_ptr, 256, "SliceIter<%s>", elem);
-
-                            option_type_ptr = xmalloc(256);
-                            snprintf(option_type_ptr, 256, "Option<%s>", elem);
-
-                            zfree(elem);
-                        }
-                    }
-                }
+                // The types of the loop's variables follow the iteration protocol: `iterator()`
+                // (or `iter_ref()`), then `next()` on it, then `unwrap()` on what that gives.
+                Type *iter_type = method_return_type(ctx, obj_expr->type_info, iter_method);
+                Type *option_type = method_return_type(ctx, iter_type, "next");
+                Type *elem_type = method_return_type(ctx, option_type, "unwrap");
 
                 ASTNode *opt_decl = ast_create(NODE_VAR_DECL);
                 opt_decl->token = tk;
                 opt_decl->var_decl.name = xstrdup("__opt");
-                opt_decl->var_decl.type_str = NULL;
 
                 ASTNode *call_next = ast_create(NODE_EXPR_CALL);
                 ASTNode *memb_next = ast_create(NODE_EXPR_MEMBER);
                 ASTNode *it_ref = ast_create(NODE_EXPR_VAR);
                 it_ref->var_ref.name = xstrdup("__it");
-                if (iter_type_ptr)
-                {
-                    it_ref->resolved_type = xstrdup(iter_type_ptr);
-                }
+                it_ref->type_info = iter_type;
                 memb_next->member.target = it_ref;
                 memb_next->member.field = xstrdup("next");
                 memb_next->token = tk;
@@ -640,10 +495,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 ASTNode *memb_is_none = ast_create(NODE_EXPR_MEMBER);
                 ASTNode *opt_ref1 = ast_create(NODE_EXPR_VAR);
                 opt_ref1->var_ref.name = xstrdup("__opt");
-                if (option_type_ptr)
-                {
-                    opt_ref1->resolved_type = xstrdup(option_type_ptr);
-                }
+                opt_ref1->type_info = option_type;
                 memb_is_none->member.target = opt_ref1;
                 memb_is_none->member.field = xstrdup("is_none");
                 memb_is_none->token = tk;
@@ -667,16 +519,14 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 ASTNode *user_var_decl = ast_create(NODE_VAR_DECL);
                 user_var_decl->token = tk;
                 user_var_decl->var_decl.name = var_name;
-                user_var_decl->var_decl.type_str = u_type;
+                user_var_decl->type_info = elem_type;
+                user_var_decl->var_decl.type_info = elem_type;
 
                 ASTNode *call_unwrap = ast_create(NODE_EXPR_CALL);
                 ASTNode *memb_unwrap = ast_create(NODE_EXPR_MEMBER);
                 ASTNode *opt_ref2 = ast_create(NODE_EXPR_VAR);
                 opt_ref2->var_ref.name = xstrdup("__opt");
-                if (option_type_ptr)
-                {
-                    opt_ref2->resolved_type = xstrdup(option_type_ptr);
-                }
+                opt_ref2->type_info = option_type;
                 memb_unwrap->member.target = opt_ref2;
                 memb_unwrap->member.field = xstrdup("unwrap");
                 memb_unwrap->token = tk;
@@ -692,8 +542,8 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     ASTNode *idx_bind = ast_create(NODE_VAR_DECL);
                     idx_bind->token = tk;
                     idx_bind->var_decl.name = enum_idx_name;
-                    idx_bind->var_decl.type_str = xstrdup("int");
-                    idx_bind->var_decl.type_info = type_new(TYPE_INT);
+                    idx_bind->type_info = type_new(TYPE_INT);
+                    idx_bind->var_decl.type_info = idx_bind->type_info;
                     ASTNode *idx_ref = ast_create(NODE_EXPR_VAR);
                     idx_ref->var_ref.name = xstrdup("__zc_enum_idx");
                     idx_bind->var_decl.init_expr = idx_ref;
@@ -703,23 +553,10 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 APPEND_STMT(user_var_decl);
 
                 enter_scope(ctx);
-                // Give the symbol a parsed type as well, so a variable initialised from
-                // it (`let t = s;`) inherits the element type instead of "unknown".
-                Type *u_type_info = NULL;
-                if (u_type && !strchr(u_type, '<'))
-                {
-                    Lexer type_lex;
-                    lexer_init(&type_lex, u_type, ctx->config, ctx->current_filename);
-                    Type *parsed = parse_type_formal(ctx, &type_lex);
-                    if (parsed != NULL)
-                    {
-                        u_type_info = parsed;
-                    }
-                }
-                add_symbol(ctx, var_name, u_type, u_type_info, 0);
+                add_symbol(ctx, var_name, elem_type, 0);
                 if (enum_idx_name)
                 {
-                    add_symbol(ctx, enum_idx_name, "int", type_new(TYPE_INT), 0);
+                    add_symbol(ctx, enum_idx_name, type_new(TYPE_INT), 0);
                 }
 
                 ASTNode *stmt = parse_statement(ctx, l);
@@ -755,8 +592,8 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     enum_idx_decl_node = ast_create(NODE_VAR_DECL);
                     enum_idx_decl_node->token = tk;
                     enum_idx_decl_node->var_decl.name = xstrdup("__zc_enum_idx");
-                    enum_idx_decl_node->var_decl.type_str = xstrdup("int");
-                    enum_idx_decl_node->var_decl.type_info = type_new(TYPE_INT);
+                    enum_idx_decl_node->type_info = type_new(TYPE_INT);
+                    enum_idx_decl_node->var_decl.type_info = enum_idx_decl_node->type_info;
                     ASTNode *zero_lit = ast_create(NODE_EXPR_LITERAL);
                     zero_lit->literal.kind = LITERAL_INT;
                     zero_lit->literal.int_val = 0;

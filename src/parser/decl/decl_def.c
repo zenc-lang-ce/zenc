@@ -33,14 +33,13 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
     }
 
     char *ns = token_strdup(n);
-    if (!type_obj)
-    {
-        type_obj = type_new(TYPE_UNKNOWN); // Ensure we have an object
-    }
-    type_obj->is_const = 1;
+    // The node keeps the type as written (a NODE_CONST is const already); its symbol, a const
+    // copy, or an unknown type until the value tells it.
+    Type *sym_type = type_obj ? type_clone(type_obj) : type_new(TYPE_UNKNOWN);
+    sym_type->is_const = 1;
 
     // Use is_def flag for manifest constants
-    add_symbol_with_token(ctx, ns, type_str ? type_str : "unknown", type_obj, n, is_export);
+    add_symbol_with_token(ctx, ns, sym_type, n, is_export);
     ZenSymbol *sym_entry = find_symbol_entry(ctx, ns);
     if (sym_entry)
     {
@@ -79,14 +78,9 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
 
                     // Auto-infer type for def if unknown: `int`, or `i64` when the
                     // value does not fit in 32 bits.
-                    if (!s->type_name || strcmp(s->type_name, "unknown") == 0)
+                    if (!s->type_info || s->type_info->kind == TYPE_UNKNOWN)
                     {
                         int is_wide = val < INT32_MIN || val > INT32_MAX;
-                        if (s->type_name)
-                        {
-                            zfree(s->type_name);
-                        }
-                        s->type_name = xstrdup(is_wide ? "i64" : "int");
                         if (s->type_info)
                         {
                             zfree(s->type_info);
@@ -113,8 +107,8 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
     ASTNode *o = ast_create(NODE_CONST);
     o->token = n;
     o->var_decl.name = ns;
-    o->var_decl.type_str = type_str;
     o->var_decl.init_expr = i;
+    o->type_info = type_obj;
     // Store extra metadata if needed, but NODE_CONST usually suffices
 
     if (!ctx->current_scope || !ctx->current_scope->parent)
@@ -142,7 +136,6 @@ ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_ex
     {
         return NULL;
     }
-    char *o = type_to_string(t);
 
     if (lexer_peek(l).kind == TOK_SEMICOLON)
     {
@@ -153,14 +146,13 @@ ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_ex
     node->type_alias.alias = xmalloc(n.len + 1);
     strncpy(node->type_alias.alias, n.start, n.len);
     node->type_alias.alias[n.len] = 0;
-    node->type_alias.original_type = o;
     node->type_info = t;
     node->type_alias.is_opaque = is_opaque;
     node->type_alias.defined_in_file =
         ctx->current_filename ? xstrdup(ctx->current_filename) : NULL;
 
-    register_type_alias(ctx, node->type_alias.alias, o, t, is_opaque,
-                        node->type_alias.defined_in_file, n, is_export);
+    register_type_alias(ctx, node->type_alias.alias, t, is_opaque, node->type_alias.defined_in_file,
+                        n, is_export);
 
     return node;
 }

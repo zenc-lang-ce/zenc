@@ -68,6 +68,30 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result);
 #include "codegen_shared.h"
 
 void emit_var_decl_type(ParserContext *ctx, const char *type_str, const char *var_name);
+/**
+ * @brief The type of a struct field spelled in C: from its Type (a @link_name struct by its C
+ *        name), or from its text when the compiler made the field without one.
+ */
+const char *field_c_type(ParserContext *ctx, ASTNode *field);
+/**
+ * @brief A type spelled in C, every struct or enum by the C name of its definition (its
+ *        @link_name), wherever the Type comes from.
+ */
+char *c_type_spelling(ParserContext *ctx, Type *t);
+/**
+ * @brief The type of a declaration (`let`, `def`) spelled in C, as written or as the parser
+ *        inferred it; NULL when the parser left it untyped and codegen has to infer it.
+ */
+char *declared_c_type(ParserContext *ctx, ASTNode *decl);
+/**
+ * @brief The type of capture `index` of a lambda spelled in C; `int` when the parser found no
+ *        type for it.
+ */
+char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index);
+/**
+ * @brief The struct that capture `index` of a lambda holds by value, or NULL.
+ */
+ASTNode *capture_struct_def(ParserContext *ctx, ASTNode *lambda, int index);
 void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t);
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr);
 void emit_rvalue_address(ParserContext *ctx, ASTNode *expr);

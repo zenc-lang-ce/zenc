@@ -48,10 +48,10 @@ static void node_deps_add(ParserContext *ctx, NodeDeps *deps, const char *type_s
     }
 
     const char *clean = strip_c_tag(type_str);
-    const char *alias = find_type_alias(ctx, clean);
+    Type *alias = find_type_alias(ctx, clean);
     if (alias)
     {
-        clean = alias;
+        clean = type_to_string(alias);
     }
 
     deps->mangled = xrealloc(deps->mangled, (size_t)(deps->count + 1) * sizeof(char *));
@@ -69,9 +69,9 @@ static void node_deps_build(ParserContext *ctx, ASTNode *node, NodeDeps *deps)
         ASTNode *field = node->strct.fields;
         while (field)
         {
-            if (field->kind == NODE_FIELD && field->field.type)
+            if (field->kind == NODE_FIELD)
             {
-                node_deps_add(ctx, deps, field->field.type);
+                node_deps_add(ctx, deps, type_to_string(field->type_info));
             }
             field = field->next;
         }
@@ -84,8 +84,7 @@ static void node_deps_build(ParserContext *ctx, ASTNode *node, NodeDeps *deps)
         {
             if (variant->kind == NODE_ENUM_VARIANT && variant->variant.payload)
             {
-                char *type_str =
-                    type_to_c_string(variant->variant.payload, ctx->config->misra_mode);
+                char *type_str = c_type_spelling(ctx, variant->variant.payload);
                 if (type_str)
                 {
                     node_deps_add(ctx, deps, type_str);
@@ -279,12 +278,6 @@ static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
                 else if (nodes[j]->kind == NODE_ENUM)
                 {
                     dep_name = nodes[j]->enm.name;
-                }
-
-                // deps hold the types as written in C: a type with a link_name is found by it.
-                if (nodes[j]->link_name)
-                {
-                    dep_name = nodes[j]->link_name;
                 }
 
                 if (dep_name && node_deps_match(&deps[i], dep_name))
@@ -970,7 +963,8 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
                 }
 
                 // Resolve opaque alias
-                const char *resolved = find_type_alias(ctx, sname);
+                Type *aliased = find_type_alias(ctx, sname);
+                const char *resolved = aliased ? type_to_string(aliased) : NULL;
 
                 char *mangled = replace_string_type(sname);
                 ASTNode *def = find_struct_def(ctx, mangled);

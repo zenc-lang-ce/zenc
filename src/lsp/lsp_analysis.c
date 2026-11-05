@@ -1131,9 +1131,9 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                     else
                     {
                         ASTNode *decl = lsp_find_local_decl(target_func, base_name);
-                        if (decl && decl->kind == NODE_VAR_DECL && decl->var_decl.type_str)
+                        if (decl && decl->kind == NODE_VAR_DECL && decl->type_info)
                         {
-                            type_name = xstrdup(decl->var_decl.type_str);
+                            type_name = type_to_string(decl->type_info);
                         }
                         else
                         {
@@ -1143,10 +1143,6 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                 if (sym->type_info)
                                 {
                                     type_name = type_to_string(sym->type_info);
-                                }
-                                else if (sym->type_name)
-                                {
-                                    type_name = xstrdup(sym->type_name);
                                 }
                             }
                         }
@@ -1178,8 +1174,7 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                 if (strcmp(field->field.name, parts[p]) == 0)
                                 {
                                     zfree(type_name);
-                                    type_name =
-                                        field->field.type ? xstrdup(field->field.type) : NULL;
+                                    type_name = type_to_string(field->type_info);
                                     found_field = 1;
                                     break;
                                 }
@@ -1235,7 +1230,8 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                     cJSON *item = cJSON_CreateObject();
                                     cJSON_AddStringToObject(item, "label", field->field.name);
                                     cJSON_AddNumberToObject(item, "kind", 5); // Field
-                                    cJSON_AddStringToObject(item, "detail", field->field.type);
+                                    cJSON_AddStringToObject(item, "detail",
+                                                            type_to_string(field->type_info));
                                     cJSON_AddItemToArray(items, item);
                                     field = field->next;
                                 }

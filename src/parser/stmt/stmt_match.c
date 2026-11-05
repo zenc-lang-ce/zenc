@@ -464,10 +464,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                     {
                         if (payload_node_field)
                         {
-                            Lexer tmp;
-                            lexer_init(&tmp, payload_node_field->field.type, ctx->config,
-                                       ctx->current_filename);
-                            binding_type_info = parse_type_formal(ctx, &tmp);
+                            binding_type_info = payload_node_field->type_info;
                             if (!binding_type_info)
                             {
                                 continue;
@@ -529,7 +526,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 if (strcmp(binding, "parsed") == 0)
                 {
                 }
-                add_symbol(ctx, binding, binding_type, binding_type_info, 0);
+                add_symbol(ctx, binding, binding_type_info, 0);
             }
         }
 

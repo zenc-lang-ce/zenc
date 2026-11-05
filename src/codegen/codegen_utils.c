@@ -63,6 +63,34 @@ int is_enum_type_name(ParserContext *ctx, const char *name)
     return (def && def->kind == NODE_ENUM);
 }
 
+char *c_type_spelling(ParserContext *ctx, Type *t)
+{
+    return type_to_c_string_with(t, ctx->config->misra_mode, link_name_of, ctx);
+}
+
+char *declared_c_type(ParserContext *ctx, ASTNode *decl)
+{
+    Type *t = decl->type_info;
+    return (t && t->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, t) : NULL;
+}
+
+char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index)
+{
+    Type *t = lambda->lambda.captured_types_info[index];
+    return t ? c_type_spelling(ctx, t) : xstrdup("int");
+}
+
+ASTNode *capture_struct_def(ParserContext *ctx, ASTNode *lambda, int index)
+{
+    Type *t = lambda->lambda.captured_types_info[index];
+    return t ? find_struct_def(ctx, type_to_string(t)) : NULL;
+}
+
+const char *field_c_type(ParserContext *ctx, ASTNode *field)
+{
+    return c_type_spelling(ctx, field->type_info);
+}
+
 // Helper to emit C declaration (handle arrays, function pointers correctly)
 static void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name)
 {
@@ -265,11 +293,7 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
     char *ret_str;
     if (func->func.ret_type_info)
     {
-        ret_str = type_to_c_string(func->func.ret_type_info, ctx->config->misra_mode);
-    }
-    else if (func->func.ret_type)
-    {
-        ret_str = xstrdup(func->func.ret_type);
+        ret_str = c_type_spelling(ctx, func->func.ret_type_info);
     }
     else
     {
@@ -312,7 +336,7 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
             }
             else if (func->func.arg_types && func->func.arg_types[i])
             {
-                type_str = type_to_c_string(func->func.arg_types[i], ctx->config->misra_mode);
+                type_str = c_type_spelling(ctx, func->func.arg_types[i]);
             }
             else
             {

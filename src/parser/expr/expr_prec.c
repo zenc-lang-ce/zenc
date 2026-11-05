@@ -31,22 +31,16 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
             check_argument_type(ctx, *expected, arg);
         }
     }
-    if (sig->defaults && sig->arg_types)
+    if (sig->default_values && sig->arg_types)
     {
         ASTNode *tail = head;
         while (tail && tail->next)
         {
             tail = tail->next;
         }
-        for (int i = *count; i < sig->total_args && sig->defaults[i]; i++)
+        for (int i = *count; i < sig->total_args && sig->default_values[i]; i++)
         {
-            Lexer def_l;
-            lexer_init(&def_l, sig->defaults[i], ctx->config, ctx->current_filename);
-            ASTNode *def = parse_expression(ctx, &def_l);
-            if (!def)
-            {
-                break;
-            }
+            ASTNode *def = copy_default_value(ctx, sig, i);
             if (tail)
             {
                 tail->next = def;
@@ -222,10 +216,6 @@ static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, const ch
         {
             rt = sym->type_info;
             rhs->type_info = rt;
-            if (sym->type_name)
-            {
-                rhs->resolved_type = xstrdup(sym->type_name);
-            }
         }
     }
 
@@ -443,7 +433,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                     call->call.args = arg;
                     call->type_info = sig->ret_type;
-                    call->resolved_type = type_to_string(sig->ret_type);
                     lhs = call;
 
                     if (allocated_name)
@@ -672,18 +661,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             if (lhs->type_info)
             {
                 node->type_info = get_field_type(ctx, lhs->type_info, node->member.field);
-                if (node->type_info)
-                {
-                    node->resolved_type = type_to_string(node->type_info);
-                }
-                else
-                {
-                    node->resolved_type = xstrdup("unknown");
-                }
-            }
-            else
-            {
-                node->resolved_type = xstrdup("unknown");
             }
 
             lhs = node;
@@ -703,10 +680,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             ASTNode *node = new_member_node(ctx, lhs, field, 2);
 
             node->type_info = get_field_type(ctx, lhs->type_info, node->member.field);
-            if (node->type_info)
-            {
-                node->resolved_type = type_to_string(node->type_info);
-            }
 
             lhs = node;
             continue;
@@ -1067,15 +1040,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             call->call.arg_names = has_named ? arg_names : NULL;
             call->call.count = count;
 
-            call->resolved_type = xstrdup("unknown");
-
             if (resolved_sig)
             {
                 call->type_info = resolved_sig->ret_type;
-                if (call->type_info)
-                {
-                    call->resolved_type = type_to_string(call->type_info);
-                }
             }
             else if (lhs->type_info && lhs->type_info->kind == TYPE_FUNCTION &&
                      lhs->type_info->inner)
@@ -1101,7 +1068,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 if (sym_type)
                 {
                     lhs->type_info = sym_type;
-                    lhs->resolved_type = type_to_string(sym_type);
                 }
             }
 
@@ -1226,9 +1192,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     }
                     */
                 }
-                if (!struct_name && lhs->resolved_type)
+                char *lhs_type_name = lhs->type_info ? type_to_string(lhs->type_info) : NULL;
+                if (!struct_name && lhs_type_name)
                 {
-                    char *s = lhs->resolved_type;
+                    char *s = lhs_type_name;
                     if (strncmp(s, "struct ", 7) == 0)
                     {
                         s += 7;
@@ -1237,17 +1204,17 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     if (def && def->kind == NODE_STRUCT)
                     {
                         struct_name = s;
-                        if (strchr(lhs->resolved_type, '*'))
+                        if (strchr(lhs_type_name, '*'))
                         {
                             is_ptr = 1;
                         }
                     }
                     if (!struct_name)
                     {
-                        def = find_struct_def(ctx, lhs->resolved_type);
+                        def = find_struct_def(ctx, lhs_type_name);
                         if (def && def->kind == NODE_STRUCT)
                         {
-                            struct_name = lhs->resolved_type;
+                            struct_name = lhs_type_name;
                             // Just assume val type
                         }
                     }
@@ -1376,14 +1343,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         }
 
                         call->type_info = sig->ret_type;
-                        if (call->type_info)
-                        {
-                            call->resolved_type = type_to_string(sig->ret_type);
-                        }
-                        else
-                        {
-                            call->resolved_type = xstrdup("unknown");
-                        }
 
                         lhs = call;
                         zfree(mangled_get);
@@ -1523,15 +1482,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
             }
 
-            if (node->type_info)
-            {
-                node->resolved_type = type_to_string(node->type_info);
-            }
-            else
-            {
-                node->resolved_type = xstrdup("unknown");
-            }
-
             // Handle Generic Method Call: object.method<T>
             if (lexer_peek(l).kind == TOK_LANGLE && tokens_could_be_generic_args(l))
             {
@@ -1581,7 +1531,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             return NULL;
                         }
                         concrete[argc] = type_to_string(inner_t);
-                        unmangled[argc] = type_to_c_string(inner_t, ctx->config->misra_mode);
+                        unmangled[argc] = type_to_string(inner_t);
                         argc++;
                         if (lexer_peek(l).kind == TOK_COMMA)
                         {
@@ -1784,10 +1734,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             if (lhs->kind == NODE_EXPR_VAR)
             {
                 raw_lhs_type = find_symbol_type(ctx, lhs->var_ref.name);
-            }
-            if (!raw_lhs_type && lhs->resolved_type)
-            {
-                raw_lhs_type = lhs->resolved_type;
             }
             if (!raw_lhs_type && lhs->type_info)
             {
@@ -2217,7 +2163,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     arg2->next = NULL;
 
                     call->type_info = sig->ret_type;
-                    call->resolved_type = type_to_string(sig->ret_type);
 
                     lhs = call;
                     if (negate)
@@ -2275,11 +2220,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 {
                     // Update ZenSymbol
                     sym->type_info = rhs->type_info;
-                    sym->type_name = type_to_string(rhs->type_info);
 
                     // Update AST Node
                     lhs->type_info = rhs->type_info;
-                    lhs->resolved_type = xstrdup(sym->type_name);
                 }
             }
 
@@ -2294,11 +2237,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 {
                     // Update ZenSymbol
                     sym->type_info = lhs->type_info;
-                    sym->type_name = type_to_string(lhs->type_info);
 
                     // Update AST Node
                     rhs->type_info = lhs->type_info;
-                    rhs->resolved_type = xstrdup(sym->type_name);
                 }
             }
 
@@ -2456,11 +2397,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             {
                                 // Update ZenSymbol
                                 sym->type_info = rhs->type_info;
-                                sym->type_name = type_to_string(rhs->type_info);
 
                                 // Update AST Node
                                 lhs->type_info = rhs->type_info;
-                                lhs->resolved_type = xstrdup(sym->type_name);
 
                                 bin->type_info = rhs->type_info;
                                 goto bin_inference_success;
@@ -2478,11 +2417,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             {
                                 // Update ZenSymbol
                                 sym->type_info = lhs->type_info;
-                                sym->type_name = type_to_string(lhs->type_info);
 
                                 // Update AST Node
                                 rhs->type_info = lhs->type_info;
-                                rhs->resolved_type = xstrdup(sym->type_name);
 
                                 bin->type_info = lhs->type_info;
                                 goto bin_inference_success;

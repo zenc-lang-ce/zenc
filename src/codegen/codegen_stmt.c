@@ -160,10 +160,10 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             if (node->for_stmt.init->kind == NODE_VAR_DECL)
             {
                 ASTNode *v = node->for_stmt.init;
-                if (v->var_decl.type_str && strcmp(v->var_decl.type_str, "__auto_type") != 0)
+                char *declared = declared_c_type(ctx, v);
+                if (declared)
                 {
-                    EMIT(ctx, "%s %s = (%s)(", v->var_decl.type_str, v->var_decl.name,
-                         v->var_decl.type_str);
+                    EMIT(ctx, "%s %s = (%s)(", declared, v->var_decl.name, declared);
                     codegen_expression(ctx, v->var_decl.init_expr);
                     EMIT(ctx, ")");
                 }
@@ -527,12 +527,11 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             }
             else if (arr->array_literal.elements && arr->array_literal.elements->type_info)
             {
-                elem_type = type_to_c_string(arr->array_literal.elements->type_info,
-                                             ctx->config->misra_mode);
+                elem_type = c_type_spelling(ctx, arr->array_literal.elements->type_info);
             }
             else if (arr->type_info && arr->type_info->inner)
             {
-                elem_type = type_to_c_string(arr->type_info->inner, ctx->config->misra_mode);
+                elem_type = c_type_spelling(ctx, arr->type_info->inner);
             }
             else
             {
@@ -640,8 +639,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 emitter_indent(&ctx->cg.emitter);
                 if (ctx->cg.current_func_ret_type_info)
                 {
-                    char *tstr = type_to_c_string(ctx->cg.current_func_ret_type_info,
-                                                  ctx->config->misra_mode);
+                    char *tstr = c_type_spelling(ctx, ctx->cg.current_func_ret_type_info);
                     EMIT(ctx, "%s", tstr);
                     zfree(tstr);
                 }

@@ -427,7 +427,7 @@ void tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int i
         misra_check_shadowing(tc->pctx, name, t);
         misra_check_typographic_ambiguity(tc->pctx, name, t);
     }
-    add_symbol_with_token(tc->pctx, name, NULL, type, t, 0);
+    add_symbol_with_token(tc->pctx, name, type, t, 0);
     ZenSymbol *sym = symbol_lookup(tc->pctx->current_scope, name);
     if (sym)
     {

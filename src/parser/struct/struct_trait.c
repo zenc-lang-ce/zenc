@@ -116,16 +116,14 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
         strncpy(mname, mn.start, mn.len);
         mname[mn.len] = 0;
 
-        char **defaults = NULL;
         int count = 0;
         Type **arg_types = NULL;
         ASTNode **default_values = NULL;
         char **param_names = NULL;
         int is_varargs = 0;
-        char *args = parse_and_convert_args(ctx, l, &defaults, &default_values, &count, &arg_types,
-                                            &param_names, &is_varargs, NULL);
+        parse_and_convert_args(ctx, l, &default_values, &count, &arg_types, &param_names,
+                               &is_varargs, NULL);
 
-        char *ret = xstrdup("void");
         Type *ret_type_obj = type_new(TYPE_VOID);
         if (lexer_peek(l).kind == TOK_ARROW)
         {
@@ -135,8 +133,6 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
             {
                 return NULL;
             }
-            zfree(ret);
-            ret = type_to_string(ret_type_obj);
         }
 
         if (lexer_peek(l).kind == TOK_SEMICOLON)
@@ -147,12 +143,9 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
             m->token = ft;
             m->func.param_names = param_names;
             m->func.name = mname;
-            m->func.args = args;
-            m->func.defaults = defaults;
             m->func.default_values = default_values;
             m->func.count = count;
             m->func.arg_types = arg_types;
-            m->func.ret_type = ret;
             m->func.ret_type_info = ret_type_obj;
             m->func.body = NULL;
             m->link_name = attrs.link_name;

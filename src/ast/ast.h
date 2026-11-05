@@ -99,12 +99,12 @@ typedef struct Type
     TypeKind kind;          ///< The kind of type.
     int lifetime_depth;     ///< Nesting depth of this type's lifetime (0 = static, >0 = local).
     char *name;             ///< Name of the type (for STRUCT, GENERIC, ENUM).
-    char *link_name;        ///< Optional linkage override (from @link_name).
     struct Type *inner;     ///< Inner type (for POINTER, ARRAY).
     struct Type **args;     ///< Generic arguments (for GENERIC instantiations).
     int count;              ///< Count of generic arguments.
     int is_const;           ///< 1 if const-qualified.
     int is_explicit_struct; ///< 1 if defined with "struct" keyword explicitly.
+    int is_union;           ///< With is_explicit_struct: the keyword is "union" (a C union tag).
     int is_raw;             // Raw function pointer (fn*)
     int array_size;         ///< Size for fixed-size arrays. For TYPE_BITINT, this is the bit width.
     struct
@@ -247,10 +247,7 @@ struct ASTNode
     char *doc_comment; // Attached documentation comment.
 
     // Type information.
-    char *resolved_type; // Legacy string representation (for example: "int",
-                         // "User*"). > Yes, 'legacy' is a thing, this is the
-                         // third iteration > of this project (for now).
-    Type *type_info;     // Formal type object (for inference/generics).
+    Type *type_info; // Formal type object (for inference/generics).
     Token token;
     Token definition_token; // For LSP: Location where the symbol used in this
                             // node was defined.
@@ -269,12 +266,9 @@ struct ASTNode
         {
             char *name;
             char *generic_params; // <T, U>
-            char *args;           // Legacy string args.
-            char *ret_type;       // Legacy string return type.
             ASTNode *body;
             Type **arg_types;
-            char **defaults;
-            ASTNode **default_values; // AST representation (for robust substitution)
+            ASTNode **default_values; // Default value of each parameter, NULL where it has none.
             char **param_names;       // Explicit parameter names.
             int count;
             Type *ret_type_info;
@@ -324,7 +318,6 @@ struct ASTNode
         struct
         {
             char *name;
-            char *type_str;
             ASTNode *init_expr;
             Type *type_info;
             int is_static;
@@ -351,8 +344,7 @@ struct ASTNode
 
         struct
         {
-            char *alias;
-            char *original_type;
+            char *alias; // The aliased type is the node's type_info.
             int is_opaque;
             char *defined_in_file;
             int is_export;
@@ -479,8 +471,7 @@ struct ASTNode
 
         struct
         {
-            char *target_type;
-            ASTNode *expr;
+            ASTNode *expr; // The target type is the node's type_info.
         } cast;
 
         struct
@@ -524,8 +515,7 @@ struct ASTNode
 
         struct
         {
-            char *name;
-            char *type;
+            char *name; // The field's type is the node's type_info.
             int bit_width;
         } field;
 
@@ -602,8 +592,7 @@ struct ASTNode
         struct
         {
             char **names;
-            char **types;      // Explicit types (NULL entries if inferred)
-            Type **type_infos; // Formal type objects (NULL entries if inferred)
+            Type **type_infos; // Explicit types (NULL entries if inferred)
             int count;
             ASTNode *init_expr;
             int is_struct_destruct;
@@ -643,17 +632,14 @@ struct ASTNode
 
         struct
         {
-            char **param_names;
-            char **param_types;
-            char *return_type;
+            char **param_names; // Parameter and return types: type_info->args and ->inner.
             ASTNode *body;
             int count;
             int lambda_id;
             int is_expression;
             int is_bare; // 1 if should be emitted without void* ctx (for fn*)
             char **captured_vars;
-            char **captured_types;
-            Type **captured_types_info;
+            Type **captured_types_info; // NULL where the parser found no type.
             int capture_count;
             int *capture_modes;
             int default_capture_mode;
@@ -664,7 +650,6 @@ struct ASTNode
 
         struct
         {
-            char *target_type;
             ASTNode *expr;
             Type *target_type_info;
             int is_type;
@@ -717,7 +702,7 @@ struct ASTNode
             char *text;        ///< Literal text, braces unescaped (NULL for a `{expr}`).
             ASTNode *expr;     ///< The interpolated expression (NULL for text).
             char *fmt;         ///< printf conversion written after ':' (`.2f`), or NULL.
-            char *symbol_type; ///< Type of `expr` found by name when it has no type_info.
+            Type *symbol_type; ///< Type of `expr` found by name when it has no type_info.
         } fstring_part;
 
         struct
@@ -811,6 +796,14 @@ int is_float_type(Type *t);
 int is_composite_expression(ASTNode *node);
 char *type_to_string(Type *t);
 char *type_to_c_string(Type *t, int misra_mode);
+/**
+ * @brief The C name of the struct or enum `name` (its @link_name), or NULL to write `name`.
+ */
+typedef const char *(*CNameLookup)(void *context, const char *name);
+/**
+ * @brief type_to_c_string, asking `lookup` for the C name of each struct and enum.
+ */
+char *type_to_c_string_with(Type *t, int misra_mode, CNameLookup lookup, void *context);
 char *infer_type(struct ParserContext *ctx, struct ASTNode *node);
 char *get_field_type_str(struct ParserContext *ctx, const char *struct_name,
                          const char *field_name);

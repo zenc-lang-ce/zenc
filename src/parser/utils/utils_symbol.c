@@ -9,13 +9,13 @@
 #include <ctype.h>
 #include "analysis/const_fold.h"
 
-void add_symbol(ParserContext *ctx, const char *n, const char *t, Type *type_info, int is_export)
+void add_symbol(ParserContext *ctx, const char *n, Type *type_info, int is_export)
 {
-    add_symbol_with_token(ctx, n, t, type_info, TOKEN_UNKNOWN, is_export);
+    add_symbol_with_token(ctx, n, type_info, TOKEN_UNKNOWN, is_export);
 }
 
-void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Type *type_info,
-                           Token tok, int is_export)
+void add_symbol_with_token(ParserContext *ctx, const char *n, Type *type_info, Token tok,
+                           int is_export)
 {
     if (!ctx->current_scope)
     {
@@ -36,7 +36,6 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Typ
         ZenSymbol *existing = symbol_lookup_local(ctx->current_scope, n);
         if (existing)
         {
-            existing->type_name = t ? xstrdup(t) : NULL;
             existing->type_info = type_info;
             existing->decl_token = tok;
             return;
@@ -45,7 +44,6 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Typ
 
     ZenSymbol *s = symbol_add(ctx->current_scope, n, SYM_VARIABLE);
     s->is_local = (ctx->current_scope != ctx->global_scope);
-    s->type_name = t ? xstrdup(t) : NULL;
     s->type_info = type_info;
     s->decl_token = tok;
     s->is_export = is_export;
@@ -66,10 +64,6 @@ Type *find_symbol_type_info(ParserContext *ctx, const char *n)
     {
         Type *t = type_new(TYPE_ENUM);
         t->name = xstrdup(enum_variant->enum_name);
-        if (enum_variant->link_name)
-        {
-            t->link_name = xstrdup(enum_variant->link_name);
-        }
         return t;
     }
 
@@ -81,7 +75,9 @@ char *find_symbol_type(ParserContext *ctx, const char *n)
     ZenSymbol *sym = symbol_lookup(ctx->current_scope, n);
     if (sym)
     {
-        return sym->type_name ? xstrdup(sym->type_name) : NULL;
+        return (sym->type_info && sym->type_info->kind != TYPE_UNKNOWN)
+                   ? type_to_string(sym->type_info)
+                   : NULL;
     }
 
     EnumVariantReg *ev = find_enum_variant(ctx, n);
@@ -114,9 +110,9 @@ void init_builtins(void)
     init = 1;
 }
 
-void register_func(ParserContext *ctx, Scope *scope, const char *name, int count, char **defaults,
-                   Type **arg_types, Type *ret_type, int is_varargs, int is_pure,
-                   const char *link_name, Token decl_token, int is_export)
+void register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
+                   ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
+                   int is_pure, const char *link_name, Token decl_token, int is_export)
 {
     FuncSig *f = NULL;
     if (ctx->config->mode_lsp || ctx->config->misra_mode)
@@ -142,7 +138,8 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
     f->total_args = count;
     // One slot per argument, NULL where it has no default: callers that register a function
     // without defaults (enum variant constructors) get the empty array readers index into.
-    f->defaults = (defaults || count <= 0) ? defaults : xcalloc((size_t)count, sizeof(char *));
+    f->default_values =
+        (default_values || count <= 0) ? default_values : xcalloc((size_t)count, sizeof(ASTNode *));
     f->arg_types = arg_types;
     f->ret_type = ret_type;
     f->is_varargs = is_varargs;
@@ -376,6 +373,12 @@ EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name)
         zfree(ename);
     }
     return NULL;
+}
+
+const char *link_name_of(void *ctx, const char *name)
+{
+    ASTNode *def = find_struct_def((ParserContext *)ctx, name);
+    return def ? def->link_name : NULL;
 }
 
 // Several enums may share a variant name (`Slot::None`, `Attribute::None`), so

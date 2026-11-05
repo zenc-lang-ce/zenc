@@ -100,18 +100,18 @@ extern ParserContext *token_parser_ctx;
  */
 typedef struct FuncSig
 {
-    char *name;           ///< Function name.
-    Token decl_token;     ///< declaration token.
-    int total_args;       ///< Total argument count.
-    char **defaults;      ///< Default values for arguments (or NULL).
-    Type **arg_types;     ///< Argument types.
-    Type *ret_type;       ///< Return type.
-    int is_varargs;       ///< 1 if variadic.
-    int required;         ///< 1 if return value must be used.
-    int is_pure;          ///< 1 if marked @pure.
-    char *link_name;      ///< Overriding C identifier (from @link_name).
-    int elide_from_idx;   ///< Index of parameter for lifetime elision (-1 if none)
-    struct FuncSig *next; ///< Next function in registry.
+    char *name;               ///< Function name.
+    Token decl_token;         ///< declaration token.
+    int total_args;           ///< Total argument count.
+    ASTNode **default_values; ///< Default value of each argument, NULL where it has none.
+    Type **arg_types;         ///< Argument types.
+    Type *ret_type;           ///< Return type.
+    int is_varargs;           ///< 1 if variadic.
+    int required;             ///< 1 if return value must be used.
+    int is_pure;              ///< 1 if marked @pure.
+    char *link_name;          ///< Overriding C identifier (from @link_name).
+    int elide_from_idx;       ///< Index of parameter for lifetime elision (-1 if none)
+    struct FuncSig *next;     ///< Next function in registry.
 } FuncSig;
 
 /**
@@ -287,9 +287,8 @@ typedef struct ImportedPlugin
  */
 typedef struct TypeAlias
 {
-    char *alias;         ///< New type name.
-    char *original_type; ///< Original type.
-    Type *type_info;     ///< Parsed original type.
+    char *alias;     ///< New type name.
+    Type *type_info; ///< The aliased type.
     struct TypeAlias *next;
     int is_opaque;
     char *defined_in_file;
@@ -337,7 +336,6 @@ typedef struct PendingBody
     Lexer body_start;        ///< Lexer positioned at the body's opening '{'.
     Scope *scope;            ///< Scope holding the parameters.
     int in_method_with_self; ///< `.field` shorthand allowed in this body.
-    int self_is_pointer;     ///< `self` is a pointer in this body.
     struct PendingBody *next;
 } PendingBody;
 
@@ -376,8 +374,6 @@ struct ParserContext
     Instantiation *instantiations; ///< Cache of instantiated generic types.
     ASTNode *instantiated_structs; ///< List of AST nodes for instantiated structs.
     ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
-    ASTNode *link_synced_structs;  ///< Head of instantiated_structs at the last link_name pass.
-    ASTNode *link_synced_funcs;    ///< Head of instantiated_funcs at the last link_name pass.
 
     // Structs/Enums
     StructRef *parsed_structs_list;                ///< List of all parsed struct nodes.
@@ -653,13 +649,13 @@ void exit_scope(ParserContext *ctx);
 /**
  * @brief Adds a symbol to the current scope.
  */
-void add_symbol(ParserContext *ctx, const char *n, const char *t, Type *type_info, int is_export);
+void add_symbol(ParserContext *ctx, const char *n, Type *type_info, int is_export);
 
 /**
  * @brief Adds a symbol with definition token location.
  */
-void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Type *type_info,
-                           Token tok, int is_export);
+void add_symbol_with_token(ParserContext *ctx, const char *n, Type *type_info, Token tok,
+                           int is_export);
 
 /**
  * @brief Finds a symbol's type information.
@@ -694,9 +690,16 @@ const char *normalize_type_name(const char *name);
 /**
  * @brief Registers a function.
  */
-void register_func(ParserContext *ctx, Scope *scope, const char *name, int count, char **defaults,
-                   Type **arg_types, Type *ret_type, int is_varargs, int is_pure,
-                   const char *link_name, Token decl_token, int is_export);
+void register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
+                   ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
+                   int is_pure, const char *link_name, Token decl_token, int is_export);
+
+/**
+ * @brief A copy of the default value of argument `index` of `sig`, for a call that leaves the
+ *        argument out. Each call gets its own: it is linked into the call's arguments, and
+ *        later passes rewrite it in place.
+ */
+ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index);
 
 /**
  * @brief Registers a function template.
@@ -766,11 +769,6 @@ void add_to_impl_list(ParserContext *ctx, ASTNode *node);
 void add_to_global_list(ParserContext *ctx, ASTNode *node);
 
 /**
- * @brief Synchronizes linkage overrides across all type references in the AST.
- */
-void sync_all_link_names(ParserContext *ctx, ASTNode *root);
-
-/**
  * @brief Registers built-in types and functions.
  */
 void register_builtins(ParserContext *ctx);
@@ -784,7 +782,6 @@ ASTNode *parse_comptime_body(ParserContext *ctx, Lexer *l);
 /**
  * @brief Patches self arguments in a function.
  */
-char *patch_self_args(const char *args, const char *struct_name);
 char *escape_c_string(const char *input);
 char *replace_type_str(const char *src, const char *param, const char *concrete,
                        const char *old_struct, const char *new_struct);
@@ -849,14 +846,19 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export);
 ASTNode *parse_test(ParserContext *ctx, Lexer *l);
 ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export);
 ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_export);
-char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults,
-                             ASTNode ***default_values, int *count, Type ***arg_types,
-                             char ***param_names, int *is_varargs, char ***ctype_overrides);
+int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_values, int *count,
+                           Type ***arg_types, char ***param_names, int *is_varargs,
+                           char ***ctype_overrides);
 Type *parse_type_formal(ParserContext *ctx, Lexer *l);
 Type *type_from_string_helper(ParserContext *ctx, const char *c);
 Type *type_from_name(ParserContext *ctx, const char *name);
 FuncSig *find_func(ParserContext *ctx, const char *name);
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name);
+/**
+ * @brief The C name of the struct or enum `name`: the @link_name of its definition, or NULL
+ *        when it has none. A CNameLookup over a ParserContext.
+ */
+const char *link_name_of(void *ctx, const char *name);
 EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,
                                      const char *variant_name);
 /**
@@ -879,7 +881,7 @@ void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base);
 void re_export_propagated(ParserContext *ctx, const char *alias, const char *parent_prefix,
                           const char *base_name);
 ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name);
-const char *find_type_alias(ParserContext *ctx, const char *alias);
+Type *find_type_alias(ParserContext *ctx, const char *alias);
 Type *parse_type_base(ParserContext *ctx, Lexer *l);
 char *parse_type(ParserContext *ctx, Lexer *l);
 ASTNode *find_trait_def(ParserContext *ctx, const char *name);
@@ -891,8 +893,8 @@ void init_builtins(void);
 void register_extern_symbol(ParserContext *ctx, const char *name);
 void register_impl(ParserContext *ctx, const char *trait, const char *type);
 void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node);
-void register_type_alias(ParserContext *ctx, const char *alias, const char *original, Type *type,
-                         int is_opaque, const char *defined_in_file, Token tok, int is_export);
+void register_type_alias(ParserContext *ctx, const char *alias, Type *type, int is_opaque,
+                         const char *defined_in_file, Token tok, int is_export);
 void register_slice(ParserContext *ctx, const char *type);
 void register_lambda(ParserContext *ctx, ASTNode *node);
 void register_template(ParserContext *ctx, const char *name, ASTNode *node);
@@ -956,7 +958,6 @@ void replace_it_with_var(ASTNode *node, char *var_name);
 // struct/ declarations
 void load_std_module(ParserContext *ctx, const char *path);
 void auto_import_std_mem(ParserContext *ctx);
-void patch_and_fix_self(ParserContext *ctx, ASTNode *f, const char *full_struct_name);
 Type *parse_type_obj(ParserContext *ctx, Lexer *l);
 
 // expr/ declarations

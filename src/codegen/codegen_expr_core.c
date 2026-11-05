@@ -194,17 +194,14 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
         }
     }
 
-    if (node->resolved_type && strcmp(node->resolved_type, "unknown") == 0)
+    // The parser leaves a suggestion only on a name it could not resolve.
+    if (node->var_ref.suggestion && !ctx->silent_warnings && !find_func(ctx, node->var_ref.name))
     {
-        if (node->var_ref.suggestion && !ctx->silent_warnings &&
-            !find_func(ctx, node->var_ref.name))
-        {
-            char msg[MAX_SHORT_MSG_LEN];
-            char help[MAX_SHORT_MSG_LEN];
-            snprintf(msg, sizeof(msg), "Undefined variable '%s'", node->var_ref.name);
-            snprintf(help, sizeof(help), "Did you mean '%s'?", node->var_ref.suggestion);
-            zwarn_at(node->token, "%s\n   = help: %s", msg, help);
-        }
+        char msg[MAX_SHORT_MSG_LEN];
+        char help[MAX_SHORT_MSG_LEN];
+        snprintf(msg, sizeof(msg), "Undefined variable '%s'", node->var_ref.name);
+        snprintf(help, sizeof(help), "Did you mean '%s'?", node->var_ref.suggestion);
+        zwarn_at(node->token, "%s\n   = help: %s", msg, help);
     }
 
     // Check for static method call pattern: Type::method or Type__method
@@ -234,7 +231,7 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
         if (ctx)
         {
             TypeAlias *ta = find_type_alias_node(ctx, mangled_type);
-            const char *alias = (ta && !ta->is_opaque) ? ta->original_type : NULL;
+            const char *alias = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
             if (alias)
             {
                 emit_mangled_name(ctx, alias, method_name);
@@ -367,16 +364,7 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
             }
             else
             {
-                char *tstr = NULL;
-                if (node->lambda.captured_types_info && node->lambda.captured_types_info[i])
-                {
-                    tstr = type_to_c_string(node->lambda.captured_types_info[i],
-                                            ctx->config->misra_mode);
-                }
-                else
-                {
-                    tstr = xstrdup(node->lambda.captured_types[i]);
-                }
+                char *tstr = capture_c_type(ctx, node, i);
 
                 const char *cap_name = node->lambda.captured_vars[i];
                 int is_array = !strstr(tstr, "(*") && strchr(tstr, '[');
@@ -401,15 +389,9 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                 var_node->var_ref.name = xstrdup(node->lambda.captured_vars[i]);
                 var_node->token = node->token;
 
-                if (node->lambda.captured_types && node->lambda.captured_types[i])
-                {
-                    var_node->resolved_type = xstrdup(node->lambda.captured_types[i]);
-                }
-                else
-                {
-                    // Should rely on analysis, but fallback just in case.
-                    var_node->resolved_type = xstrdup("int");
-                }
+                // A capture with no type is an `int`, as its context field is.
+                Type *captured = node->lambda.captured_types_info[i];
+                var_node->type_info = captured ? captured : type_new(TYPE_C_INT);
 
                 codegen_expression_with_move(ctx, var_node);
 
@@ -424,21 +406,11 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                     EMIT(ctx, ";\n");
                 }
 
-                if (node->lambda.captured_types && node->lambda.captured_types[i])
+                ASTNode *fdef = capture_struct_def(ctx, node, i);
+                if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
                 {
-                    char *tname = node->lambda.captured_types[i];
-                    const char *clean = tname;
-                    if (strncmp(clean, "struct ", 7) == 0)
-                    {
-                        clean += 7;
-                    }
-
-                    ASTNode *fdef = find_struct_def(ctx, clean);
-                    if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
-                    {
-                        EMIT(ctx, "_z_ctx_%d->__z_drop_flag_%s = 1;\n", lid,
-                             node->lambda.captured_vars[i]);
-                    }
+                    EMIT(ctx, "_z_ctx_%d->__z_drop_flag_%s = 1;\n", lid,
+                         node->lambda.captured_vars[i]);
                 }
             }
         }
@@ -616,7 +588,7 @@ void handle_va_copy(ParserContext *ctx, ASTNode *node)
 
 void handle_va_arg(ParserContext *ctx, ASTNode *node)
 {
-    char *type_str = type_to_c_string(node->va_arg_val.type_info, ctx->config->misra_mode);
+    char *type_str = c_type_spelling(ctx, node->va_arg_val.type_info);
     EMIT(ctx, "va_arg(");
     codegen_expression(ctx, node->va_arg_val.ap);
     EMIT(ctx, ", %s)", type_str);

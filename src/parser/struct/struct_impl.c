@@ -13,12 +13,11 @@
 #include "ast/primitives.h"
 
 // The methods of an impl body, after its `{`, up to and including its `}`. Each method is
-// named Type__method (Type__Trait__method in a trait impl), takes `self` as `self_type`, and
-// is registered: as a template of the impl's generic parameter `template_param`, as a
-// template of its own generic parameters, or as a function.
+// named Type__method (Type__Trait__method in a trait impl) and is registered: as a template
+// of the impl's generic parameter `template_param`, as a template of its own generic
+// parameters, or as a function.
 static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *type_name,
-                                   const char *trait_name, const char *self_type,
-                                   const char *template_param)
+                                   const char *trait_name, const char *template_param)
 {
     ASTNode *h = NULL;
     ASTNode *tl = NULL;
@@ -65,8 +64,6 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         zfree(f->func.name);
         f->func.name = mangled;
 
-        patch_and_fix_self(ctx, f, self_type);
-
         if (attrs.cfg_condition)
         {
             f->cfg_condition = attrs.cfg_condition;
@@ -102,9 +99,9 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         }
         else
         {
-            register_func(ctx, ctx->current_scope, f->func.name, f->func.count, f->func.defaults,
-                          f->func.arg_types, f->func.ret_type_info, f->func.is_varargs,
-                          f->func.pure, f->link_name, f->token, 0);
+            register_func(ctx, ctx->current_scope, f->func.name, f->func.count,
+                          f->func.default_values, f->func.arg_types, f->func.ret_type_info,
+                          f->func.is_varargs, f->func.pure, f->link_name, f->token, 0);
         }
 
         if (!h)
@@ -279,7 +276,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             full_target_name = xstrdup(name2);
         }
 
-        ASTNode *h = parse_impl_methods(ctx, l, name2, name1, full_target_name, NULL);
+        ASTNode *h = parse_impl_methods(ctx, l, name2, name1, NULL);
 
         if (target_gen_param)
         {
@@ -344,12 +341,8 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         TypeAlias *ta = find_type_alias_node(ctx, name1);
         if (ta && !ta->is_opaque)
         {
-            const char *alias_resolved = ta->original_type;
-            if (alias_resolved)
-            {
-                zfree(name1);
-                name1 = xstrdup(alias_resolved);
-            }
+            zfree(name1);
+            name1 = type_to_string(ta->type_info);
         }
 
         ctx->current_impl_struct = name1; // For patch_self_args inside parse_function
@@ -366,7 +359,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             snprintf(full_struct_name, strlen(name1) + strlen(gen_param) + 3, "%s<%s>", name1,
                      gen_param);
 
-            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, full_struct_name, gen_param);
+            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, gen_param);
             zfree(full_struct_name);
             // Register Template
             ASTNode *n = ast_create(NODE_IMPL);
@@ -385,7 +378,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         {
             // REGULAR IMPL
             lexer_next(l);
-            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, name1, NULL);
+            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, NULL);
             ctx->current_impl_struct = NULL;
             ASTNode *n = ast_create(NODE_IMPL);
             n->impl.struct_name = name1;

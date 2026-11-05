@@ -209,8 +209,16 @@ static int cmd_show(ReplState *state, const char *args)
     {
         if (n->kind == NODE_FUNCTION && 0 == strcmp(n->func.name, name))
         {
-            printf("  fn %s(%s) -> %s\n", n->func.name, n->func.args ? n->func.args : "",
-                   n->func.ret_type ? n->func.ret_type : "void");
+            printf("  fn %s(", n->func.name);
+            for (int i = 0; i < n->func.count; i++)
+            {
+                char *t = n->func.arg_types ? type_to_string(n->func.arg_types[i]) : NULL;
+                printf("%s%s: %s", i ? ", " : "",
+                       n->func.param_names && n->func.param_names[i] ? n->func.param_names[i] : "_",
+                       t ? t : "?");
+            }
+            printf(") -> %s\n",
+                   n->func.ret_type_info ? type_to_string(n->func.ret_type_info) : "void");
             found = 1;
             break;
         }
@@ -221,11 +229,12 @@ static int cmd_show(ReplState *state, const char *args)
             {
                 if (field->kind == NODE_FIELD)
                 {
-                    printf("    %s: %s;\n", field->field.name, field->field.type);
+                    printf("    %s: %s;\n", field->field.name, type_to_string(field->type_info));
                 }
                 else if (field->kind == NODE_VAR_DECL)
                 {
-                    printf("    %s: %s;\n", field->var_decl.name, field->var_decl.type_str);
+                    printf("    %s: %s;\n", field->var_decl.name,
+                           field->type_info ? type_to_string(field->type_info) : "?");
                 }
             }
             printf("  }\n");
@@ -638,11 +647,11 @@ static int cmd_vars_funcs_structs(ReplState *state, const char *args)
             {
                 if (s->kind == NODE_VAR_DECL)
                 {
-                    char *t = s->var_decl.type_str ? s->var_decl.type_str : "Inferred";
+                    char *t = s->type_info ? type_to_string(s->type_info) : "Inferred";
                     char fmt[64];
                     char val_expr[128];
 
-                    if (s->var_decl.type_str)
+                    if (s->type_info)
                     {
                         if (strcmp(t, "int") == 0 || strcmp(t, "i32") == 0 ||
                             strcmp(t, "I32") == 0 || strcmp(t, "int32_t") == 0 ||

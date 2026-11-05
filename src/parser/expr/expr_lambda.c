@@ -19,10 +19,6 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
     lambda->lambda.param_names[0] = param_name;
     lambda->lambda.count = 1;
 
-    // Default param type: unknown (to be inferred)
-    lambda->lambda.param_types = xmalloc(sizeof(char *));
-    lambda->lambda.param_types[0] = NULL;
-
     // Create Type Info: unknown -> unknown
     Type *t = type_new(TYPE_FUNCTION);
     t->inner = type_new(TYPE_INT);
@@ -33,7 +29,7 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
 
     // Register parameter in scope for body parsing
     enter_scope(ctx);
-    add_symbol_with_token(ctx, param_name, NULL, t->args[0], param, 0);
+    add_symbol_with_token(ctx, param_name, t->args[0], param, 0);
 
     // Body parsing...
     ASTNode *body_block = NULL;
@@ -75,27 +71,18 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
     ZenSymbol *sym = find_symbol_entry(ctx, param_name);
     if (sym && sym->type_info && sym->type_info->kind != TYPE_UNKNOWN)
     {
-        zfree(lambda->lambda.param_types[0]);
-        lambda->lambda.param_types[0] = type_to_string(sym->type_info);
         t->args[0] = sym->type_info;
     }
     else
     {
-        if (lambda->lambda.param_types[0])
-        {
-            zfree(lambda->lambda.param_types[0]);
-        }
-        lambda->lambda.param_types[0] = xstrdup("unknown");
         t->args[0] = type_new(TYPE_UNKNOWN);
 
         if (sym)
         {
-            sym->type_name = xstrdup("unknown");
             sym->type_info = t->args[0]; // Bind AST node type implicitly!
         }
     }
 
-    lambda->lambda.return_type = type_to_string(t->inner);
     lambda->lambda.lambda_id = ctx->lambda_counter++;
     lambda->lambda.is_expression = 1;
     if (ctx->known_generics_count == 0)
@@ -127,19 +114,9 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
     t->args = xmalloc(sizeof(Type *) * (size_t)(count));
     t->count = count;
 
-    lambda->lambda.param_types = xmalloc(sizeof(char *) * (size_t)(count));
     for (int i = 0; i < count; i++)
     {
-        if (param_types && param_types[i])
-        {
-            lambda->lambda.param_types[i] = type_to_string(param_types[i]);
-            t->args[i] = param_types[i];
-        }
-        else
-        {
-            lambda->lambda.param_types[i] = xstrdup("unknown");
-            t->args[i] = type_new(TYPE_UNKNOWN);
-        }
+        t->args[i] = (param_types && param_types[i]) ? param_types[i] : type_new(TYPE_UNKNOWN);
     }
     lambda->type_info = t;
 
@@ -149,12 +126,11 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
     {
         if (param_types && param_types[i])
         {
-            add_symbol_with_token(ctx, param_names[i], lambda->lambda.param_types[i],
-                                  param_types[i], params[i], 0);
+            add_symbol_with_token(ctx, param_names[i], param_types[i], params[i], 0);
         }
         else
         {
-            add_symbol_with_token(ctx, param_names[i], "unknown", t->args[i], params[i], 0);
+            add_symbol_with_token(ctx, param_names[i], t->args[i], params[i], 0);
         }
     }
 
@@ -173,7 +149,6 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
         body_block->block.statements = ret;
     }
     lambda->lambda.body = body_block;
-    lambda->lambda.return_type = xstrdup("unknown");
     lambda->lambda.lambda_id = ctx->lambda_counter++;
     lambda->lambda.is_expression = 1;
     if (ctx->known_generics_count == 0)
@@ -184,6 +159,14 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
     check_unused_parameters(ctx, ctx->current_scope, NULL);
     exit_scope(ctx);
     return lambda;
+}
+
+// The type of a tuple, as the type parser gives it: the struct the compiler makes for it.
+static Type *tuple_type(const char *name)
+{
+    Type *t = type_new(TYPE_STRUCT);
+    t->name = xstrdup(name);
+    return t;
 }
 
 ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, const char *type_name,
@@ -243,16 +226,16 @@ ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, const char *type_n
     n->tuple_literal.elements = head;
     n->tuple_literal.count = count;
 
+    // While the language server indexes the workspace, the literal is left without a type.
     extern int g_is_indexing;
     if (g_is_indexing)
     {
-        n->resolved_type = xstrdup("Tuple__Indexing");
         return n;
     }
 
     if (type_name)
     {
-        n->resolved_type = xstrdup(type_name);
+        n->type_info = tuple_type(type_name);
     }
     else
     {
@@ -293,7 +276,7 @@ ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, const char *type_n
         char *clean_sig = sanitize_mangled_name(sig);
         snprintf(tuple_name, sizeof(tuple_name), "Tuple__%s", clean_sig);
         zfree(clean_sig);
-        n->resolved_type = xstrdup(tuple_name);
+        n->type_info = tuple_type(tuple_name);
     }
     return n;
 }

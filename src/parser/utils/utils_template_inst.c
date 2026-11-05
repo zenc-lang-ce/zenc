@@ -98,62 +98,9 @@ static void trigger_instantiations(ParserContext *ctx, ASTNode *node)
     }
 
     // Process current node
-    if (node->kind == NODE_EXPR_SIZEOF && node->size_of.target_type)
+    if (node->kind == NODE_EXPR_SIZEOF)
     {
-        const char *type_str = node->size_of.target_type;
-        if (strchr(type_str, '_'))
-        {
-            // Remove trailing '*' or 'Ptr' if present
-            char *type_copy = xstrdup(type_str);
-            char *star = (char *)strchr(type_copy, '*');
-            if (star)
-            {
-                *star = '\0';
-            }
-            else
-            {
-                // Check for "Ptr" suffix and remove it
-                size_t len = strlen(type_copy);
-                if (len > 3 && strcmp(type_copy + len - 3, "Ptr") == 0)
-                {
-                    type_copy[len - 3] = '\0';
-                }
-            }
-
-            char *underscore = (char *)strchr(type_copy, '_');
-            if (underscore)
-            {
-                char *concrete_arg = underscore;
-                while (*concrete_arg == '_')
-                {
-                    concrete_arg++;
-                }
-                *underscore = '\0';
-                char *template_name = type_copy;
-
-                // Check if this is a known generic template
-                GenericTemplate *gt = ctx->templates;
-                int found = 0;
-                while (gt)
-                {
-                    if (strcmp(gt->name, template_name) == 0)
-                    {
-                        found = 1;
-                        break;
-                    }
-                    gt = gt->next;
-                }
-
-                if (found)
-                {
-                    char *unmangled = unmangle_ptr_suffix(concrete_arg);
-                    Token dummy_tok = {0};
-                    instantiate_generic(ctx, template_name, concrete_arg, unmangled, dummy_tok);
-                    zfree(unmangled);
-                }
-            }
-            zfree(type_copy);
-        }
+        trigger_type_instantiation(ctx, node->size_of.target_type_info);
     }
     else if (node->kind == NODE_EXPR_VAR)
     {
@@ -270,9 +217,9 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
 
     // Scan the original return type for generic struct patterns like "Triple_X_Y_Z"
     // and instantiate them with the concrete types
-    if (tpl->func_node && tpl->func_node->func.ret_type)
+    if (tpl->func_node && tpl->func_node->func.ret_type_info)
     {
-        const char *ret = tpl->func_node->func.ret_type;
+        const char *ret = type_to_string(tpl->func_node->func.ret_type_info);
 
         // Build the param suffix (e.g., for "X,Y,Z" -> "_X_Y_Z")
         size_t suffix_cap = strlen(tpl->generic_param) * 2 + 64;
@@ -408,7 +355,7 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
 
     add_instantiated_func(ctx, new_fn);
 
-    register_func(ctx, ctx->global_scope, mangled, new_fn->func.count, new_fn->func.defaults,
+    register_func(ctx, ctx->global_scope, mangled, new_fn->func.count, new_fn->func.default_values,
                   new_fn->func.arg_types, new_fn->func.ret_type_info, new_fn->func.is_varargs,
                   new_fn->func.pure, new_fn->link_name, new_fn->token, new_fn->func.is_export);
 
@@ -450,21 +397,20 @@ static ASTNode *copy_fields_replacing(ParserContext *ctx, ASTNode *fields, const
     ASTNode *n = ast_create(NODE_FIELD);
     n->field.name = xstrdup(fields->field.name);
 
-    // Replace strings
-    n->field.type = replace_type_str(fields->field.type, param, concrete, NULL, NULL);
-
     // Replace formal types (Deep Copy)
     n->type_info = replace_type_formal(ctx, fields->type_info, param, concrete, NULL, NULL);
 
-    if (n->field.type && strchr(n->field.type, '_'))
+    // An instance names its generic in its mangled name: "MapEntry__int" instantiates MapEntry.
+    char *field_type = n->type_info ? type_to_string(n->type_info) : NULL;
+    if (field_type && strchr(field_type, '_'))
     {
         // Parse potential generic: e.g. "MapEntry_int" -> instantiate("MapEntry",
         // "int")
-        char *underscore = (char *)strrchr(n->field.type, '_');
-        if (underscore && underscore > n->field.type)
+        char *underscore = (char *)strrchr(field_type, '_');
+        if (underscore && underscore > field_type)
         {
             // Remove trailing '*' if present
-            char *type_copy = xstrdup(n->field.type);
+            char *type_copy = xstrdup(field_type);
             char *star = (char *)strchr(type_copy, '*');
             if (star)
             {
@@ -665,31 +611,32 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
         }
 
         register_func(ctx, ctx->global_scope, meth->func.name, meth->func.count,
-                      meth->func.defaults, meth->func.arg_types, meth->func.ret_type_info,
+                      meth->func.default_values, meth->func.arg_types, meth->func.ret_type_info,
                       meth->func.is_varargs, meth->func.pure, meth->link_name, meth->token,
                       meth->func.is_export);
 
         // Handle generic return types in methods (e.g., Option<T> -> Option_int)
-        if (meth->func.ret_type &&
-            (strchr(meth->func.ret_type, '_') || strchr(meth->func.ret_type, '<')))
+        const char *meth_ret =
+            meth->func.ret_type_info ? type_to_string(meth->func.ret_type_info) : NULL;
+        if (meth_ret && (strchr(meth_ret, '_') || strchr(meth_ret, '<')))
         {
             GenericTemplate *gt = ctx->templates;
 
             while (gt)
             {
                 size_t tlen = strlen(gt->name);
-                size_t rlen = strlen(meth->func.ret_type);
+                size_t rlen = strlen(meth_ret);
                 if (tlen > rlen)
                 {
                     gt = gt->next;
                     continue;
                 }
-                char delim = meth->func.ret_type[tlen];
-                if (strncmp(meth->func.ret_type, gt->name, (size_t)(tlen)) == 0 &&
+                char delim = meth_ret[tlen];
+                if (strncmp(meth_ret, gt->name, (size_t)(tlen)) == 0 &&
                     (delim == '_' || delim == '<'))
                 {
                     // Found matching template prefix
-                    const char *type_arg = meth->func.ret_type + tlen;
+                    const char *type_arg = meth_ret + tlen;
                     while (*type_arg == '_' || *type_arg == '<')
                     {
                         type_arg++;
@@ -853,9 +800,10 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
         ASTNode *fld = i->strct.fields;
         while (fld)
         {
-            if (fld->field.type && strncmp(fld->field.type, "Slice__", 7) == 0)
+            char *field_type = fld->type_info ? type_to_string(fld->type_info) : NULL;
+            if (field_type && strncmp(field_type, "Slice__", 7) == 0)
             {
-                register_slice(ctx, fld->field.type + 7);
+                register_slice(ctx, field_type + 7);
             }
             fld = fld->next;
         }
@@ -945,10 +893,6 @@ static void free_field_list(ASTNode *fields)
         if (fields->field.name)
         {
             zfree(fields->field.name);
-        }
-        if (fields->field.type)
-        {
-            zfree(fields->field.type);
         }
         zfree(fields);
         fields = next;

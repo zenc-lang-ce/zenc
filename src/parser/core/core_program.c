@@ -353,8 +353,7 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                             Type *type_obj = parse_type_formal(ctx, l);
                             if (type_obj != NULL)
                             {
-                                add_symbol_with_token(ctx, name, type_to_string(type_obj), type_obj,
-                                                      sym, attrs.is_export);
+                                add_symbol_with_token(ctx, name, type_obj, sym, attrs.is_export);
                             }
                         }
 
@@ -649,9 +648,6 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
     skip_comments(l);
     ATTACH_DOC_COMMENT(ctx, r);
     r->root.children = parse_program_nodes(ctx, l);
-
-    // Synchronize linkage overrides across all type references
-    sync_all_link_names(ctx, r);
 
     return r;
 }

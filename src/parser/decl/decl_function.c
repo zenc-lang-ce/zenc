@@ -144,7 +144,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     }
 
     enter_scope(ctx);
-    char **defaults;
     ASTNode **default_values;
     int count;
     Type **arg_types;
@@ -152,19 +151,16 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     char **ctype_overrides;
     int is_varargs = 0;
 
-    char *args = parse_and_convert_args(ctx, l, &defaults, &default_values, &count, &arg_types,
-                                        &param_names, &is_varargs, &ctype_overrides);
-    if (!args)
+    if (!parse_and_convert_args(ctx, l, &default_values, &count, &arg_types, &param_names,
+                                &is_varargs, &ctype_overrides))
     {
         return NULL;
     }
 
-    char *ret = "void";
     Type *ret_type_obj = type_new(TYPE_VOID);
 
     if (strcmp(name, "main") == 0)
     {
-        ret = "int";
         ret_type_obj = type_new(TYPE_C_INT);
     }
 
@@ -176,7 +172,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         {
             return NULL;
         }
-        ret = type_to_string(ret_type_obj);
     }
     else if (lexer_peek(l).kind == TOK_COLON)
     {
@@ -184,7 +179,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         return NULL;
     }
 
-    curr_func_ret = ret;
+    curr_func_ret = type_to_string(ret_type_obj);
 
     // Auto-prefix function name if in module context
     // Don't prefix generic templates or functions inside impl blocks (already
@@ -200,7 +195,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     // Register if concrete (Global functions only)
     if (!gen_param && !ctx->current_impl_struct)
     {
-        register_func(ctx, ctx->current_scope->parent, name, count, defaults, arg_types,
+        register_func(ctx, ctx->current_scope->parent, name, count, default_values, arg_types,
                       ret_type_obj, is_varargs, 0, link_name, name_tok, is_export);
         // Note: required is set after return by caller (parser_core.c)
     }
@@ -221,11 +216,9 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     {
         // Set self context flags for .member shorthand in methods with self
         int prev_in_method = ctx->in_method_with_self;
-        int prev_self_ptr = ctx->self_is_pointer;
-        if (args && strstr(args, "self"))
+        if (count > 0 && param_names[0] && strcmp(param_names[0], "self") == 0)
         {
             ctx->in_method_with_self = 1;
-            ctx->self_is_pointer = (strstr(args, "self*") != NULL);
         }
 
         int skipped = 1;
@@ -236,7 +229,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
             pending->body_start = *l;
             pending->scope = ctx->current_scope;
             pending->in_method_with_self = ctx->in_method_with_self;
-            pending->self_is_pointer = ctx->self_is_pointer;
             skipped = skip_braced_block(l);
         }
         else
@@ -246,7 +238,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
 
         // Restore previous state
         ctx->in_method_with_self = prev_in_method;
-        ctx->self_is_pointer = prev_self_ptr;
 
         if (!skipped)
         {
@@ -277,14 +268,11 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     ASTNode *node = ast_create(NODE_FUNCTION);
     node->token = name_tok; // Save definition location
     node->func.name = name;
-    node->func.args = args;
-    node->func.ret_type = ret;
     node->func.body = body;
 
     node->func.arg_types = arg_types;
     node->func.param_names = param_names;
     node->func.count = count;
-    node->func.defaults = defaults;
     node->func.default_values = default_values;
     node->func.ret_type_info = ret_type_obj;
     node->func.is_varargs = is_varargs;
@@ -317,56 +305,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     return node;
 }
 
-char *patch_self_args(const char *args, const char *struct_name)
-{
-    if (!args)
-    {
-        return NULL;
-    }
-
-    // Sanitize struct name for C usage (Vec<T> -> Vec_T)
-    char *safe_name = xmalloc(strlen(struct_name) + 1);
-    int j = 0;
-    for (int i = 0; struct_name[i]; i++)
-    {
-        if (struct_name[i] == '<')
-        {
-            safe_name[j++] = '_';
-        }
-        else if (struct_name[i] == '>')
-        {
-            // skip
-        }
-        else if (struct_name[i] == ' ')
-        {
-            // skip
-        }
-        else
-        {
-            safe_name[j++] = struct_name[i];
-        }
-    }
-    safe_name[j] = 0;
-
-    char *new_args = xmalloc(strlen(args) + strlen(safe_name) + 20);
-
-    // Check if it starts with "const void* self" or "void* self"
-    if (strncmp(args, "const void* self", 16) == 0)
-    {
-        sprintf(new_args, "const %s* self%s", safe_name, args + 16); /* safe */
-    }
-    else if (strncmp(args, "void* self", 10) == 0)
-    {
-        sprintf(new_args, "%s* self%s", safe_name, args + 10); /* safe */
-    }
-    else
-    {
-        strcpy(new_args, args);
-    }
-    zfree(safe_name);
-    return new_args;
-}
-
 /**
  * @brief Parses the bodies that parse_function deferred, in declaration order.
  */
@@ -378,7 +316,6 @@ void parse_pending_bodies(ParserContext *ctx)
     ASTNode *saved_impl_methods = ctx->current_impl_methods;
     const char *saved_filename = ctx->current_filename;
     int saved_in_method = ctx->in_method_with_self;
-    int saved_self_ptr = ctx->self_is_pointer;
     char *saved_ret = curr_func_ret;
     char *saved_doc = ctx->last_doc_comment;
 
@@ -399,7 +336,6 @@ void parse_pending_bodies(ParserContext *ctx)
         ctx->current_scope = pending->scope;
         ctx->current_impl_methods = NULL; // every method is registered by now
         ctx->in_method_with_self = pending->in_method_with_self;
-        ctx->self_is_pointer = pending->self_is_pointer;
         ctx->had_error = 0;
 
         if (node->kind == NODE_TEST)
@@ -414,7 +350,7 @@ void parse_pending_bodies(ParserContext *ctx)
             ctx->imports.current_module_prefix = node->func.module_prefix;
             ctx->current_impl_struct = node->func.impl_struct;
             ctx->current_filename = node->func.filename;
-            curr_func_ret = node->func.ret_type;
+            curr_func_ret = type_to_string(node->func.ret_type_info);
         }
 
         Lexer body_lexer = pending->body_start;
@@ -443,7 +379,6 @@ void parse_pending_bodies(ParserContext *ctx)
     ctx->current_impl_methods = saved_impl_methods;
     ctx->current_filename = saved_filename;
     ctx->in_method_with_self = saved_in_method;
-    ctx->self_is_pointer = saved_self_ptr;
     curr_func_ret = saved_ret;
     ctx->last_doc_comment = saved_doc;
 }

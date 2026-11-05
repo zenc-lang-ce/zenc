@@ -1,0 +1,14 @@
+// ARGS: check
+// A pointer cast to an integer narrower than an address is reported, whichever way it is written.
+fn main() {
+    let x = 5;
+    let p = &x;
+    let a = (u8)p;
+    let b = (i16)p;
+    let c = u8{p};
+    let wide = (usize)p;
+    (void)a;
+    (void)b;
+    (void)c;
+    (void)wide;
+}

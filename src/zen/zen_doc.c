@@ -188,10 +188,6 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
                 printf(" -> %s", rstr);
                 zfree(rstr);
             }
-            else if (node->func.ret_type)
-            {
-                printf(" -> %s", node->func.ret_type);
-            }
             printf(";\n```\n");
             break;
         }
@@ -211,8 +207,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
             {
                 if (field->kind == NODE_FIELD)
                 {
-                    printf("    %s: %s,\n", field->field.name,
-                           field->field.type ? field->field.type : "?");
+                    printf("    %s: %s,\n", field->field.name, type_to_string(field->type_info));
                 }
                 field = field->next;
             }
@@ -276,7 +271,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
                 print_markdown_doc(node->doc_comment);
             }
             printf("```zc\nconst %s: %s;\n```\n", display_name,
-                   node->var_decl.type_str ? node->var_decl.type_str : "?");
+                   node->type_info ? type_to_string(node->type_info) : "?");
             break;
         }
 
@@ -289,7 +284,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
                 print_markdown_doc(node->doc_comment);
             }
             printf("```zc\nalias %s = %s;\n```\n", display_name,
-                   node->type_alias.original_type ? node->type_alias.original_type : "?");
+                   node->type_info ? type_to_string(node->type_info) : "?");
             break;
         }
 

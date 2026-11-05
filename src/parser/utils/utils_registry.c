@@ -173,16 +173,14 @@ void add_to_struct_list(ParserContext *ctx, ASTNode *node)
     }
 }
 
-void register_type_alias(ParserContext *ctx, const char *alias, const char *original,
-                         Type *type_info, int is_opaque, const char *defined_in_file, Token tok,
-                         int is_export)
+void register_type_alias(ParserContext *ctx, const char *alias, Type *type_info, int is_opaque,
+                         const char *defined_in_file, Token tok, int is_export)
 {
     if (ctx->config->mode_lsp)
     {
         TypeAlias *existing = find_type_alias_node(ctx, alias);
         if (existing)
         {
-            existing->original_type = xstrdup(original);
             existing->type_info = type_info;
             existing->is_opaque = is_opaque;
             existing->defined_in_file = defined_in_file ? xstrdup(defined_in_file) : NULL;
@@ -203,7 +201,6 @@ void register_type_alias(ParserContext *ctx, const char *alias, const char *orig
         ctx->type_aliases = ta;
     }
 
-    ta->original_type = xstrdup(original);
     ta->type_info = type_info;
     ta->is_opaque = is_opaque;
     ta->defined_in_file = defined_in_file ? xstrdup(defined_in_file) : NULL;
@@ -220,21 +217,20 @@ void register_type_alias(ParserContext *ctx, const char *alias, const char *orig
     }
     sym->decl_token = tok;
     sym->is_export = is_export;
-    sym->data.alias.original_type = xstrdup(original);
     sym->type_info = type_info;
     register_in_all_symbols(ctx, sym);
 }
 
-const char *find_type_alias(ParserContext *ctx, const char *alias)
+Type *find_type_alias(ParserContext *ctx, const char *alias)
 {
     ZenSymbol *sym = symbol_lookup_kind(ctx->current_scope, alias, SYM_ALIAS);
     if (sym)
     {
-        return sym->data.alias.original_type;
+        return sym->type_info;
     }
 
     TypeAlias *ta = find_type_alias_node(ctx, alias);
-    return ta ? ta->original_type : NULL;
+    return ta ? ta->type_info : NULL;
 }
 
 TypeAlias *find_type_alias_node(ParserContext *ctx, const char *alias)
@@ -337,15 +333,13 @@ void register_slice(ParserContext *ctx, const char *type)
 
     ASTNode *len_f = ast_create(NODE_FIELD);
     len_f->field.name = xstrdup("len");
-    len_f->field.type = xstrdup("int");
+    len_f->type_info = type_new(TYPE_USIZE);
     ASTNode *cap_f = ast_create(NODE_FIELD);
     cap_f->field.name = xstrdup("cap");
-    cap_f->field.type = xstrdup("int");
+    cap_f->type_info = type_new(TYPE_USIZE);
     ASTNode *data_f = ast_create(NODE_FIELD);
     data_f->field.name = xstrdup("data");
-    char ptr_type[MAX_TYPE_NAME_LEN];
-    snprintf(ptr_type, sizeof(ptr_type), "%s*", type);
-    data_f->field.type = xstrdup(ptr_type);
+    data_f->type_info = type_new_ptr(type_from_string_helper(ctx, type));
 
     data_f->next = len_f;
     len_f->next = cap_f;
@@ -360,7 +354,9 @@ void register_slice(ParserContext *ctx, const char *type)
     snprintf(legacy_name, sizeof(legacy_name), "Slice_%s", type);
     if (slice_name[0] != legacy_name[0] || strcmp(slice_name, legacy_name) != 0)
     {
-        register_type_alias(ctx, legacy_name, slice_name, NULL, 0, NULL, TOKEN_UNKNOWN, 0);
+        Type *slice_type = type_new(TYPE_STRUCT);
+        slice_type->name = xstrdup(slice_name);
+        register_type_alias(ctx, legacy_name, slice_type, 0, NULL, TOKEN_UNKNOWN, 0);
     }
 }
 
@@ -402,7 +398,7 @@ void register_tuple_with_types(ParserContext *ctx, const char *sig, const char *
         char fname[32];
         snprintf(fname, sizeof(fname), "v%d", fi);
         f->field.name = xstrdup(fname);
-        f->field.type = xstrdup(types[fi]);
+        f->type_info = type_from_string_helper(ctx, types[fi]);
         if (!head)
         {
             head = f;
@@ -974,7 +970,7 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
                 sig->name = n->func.name;
                 sig->decl_token = n->token;
                 sig->total_args = n->func.count;
-                sig->defaults = n->func.defaults;
+                sig->default_values = n->func.default_values;
                 sig->arg_types = n->func.arg_types;
                 sig->ret_type = n->func.ret_type_info;
                 sig->is_varargs = n->func.is_varargs;

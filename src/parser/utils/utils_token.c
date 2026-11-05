@@ -130,7 +130,7 @@ char *ast_to_string_recursive(ASTNode *node, int depth)
     case NODE_EXPR_CAST:
     {
         char *e = ast_to_string_recursive(node->cast.expr, depth + 1);
-        snprintf(buf, buf_size, "((%s)%s)", node->cast.target_type ? node->cast.target_type : "?",
+        snprintf(buf, buf_size, "((%s)%s)", node->type_info ? type_to_string(node->type_info) : "?",
                  e);
         zfree(e);
         break;

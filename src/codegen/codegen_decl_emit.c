@@ -54,9 +54,10 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             {
                 EMIT(ctx, "__attribute__((unused)) const ");
             }
-            if (node->var_decl.type_str)
+            char *declared = declared_c_type(ctx, node);
+            if (declared)
             {
-                emit_var_decl_type(ctx, node->var_decl.type_str, node->var_decl.name);
+                emit_var_decl_type(ctx, declared, node->var_decl.name);
             }
             else
             {
@@ -84,10 +85,9 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             {
                 EMIT(ctx, " = ");
                 char *tname =
-                    node->var_decl.type_str
-                        ? xstrdup(node->var_decl.type_str)
-                        : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                    : NULL);
+                    declared ? declared
+                             : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
+                                                         : NULL);
                 if (ctx->config->use_cpp && tname &&
                     (strchr(tname, '*') || is_enum_type_name(ctx, tname)))
                 {
@@ -108,10 +108,9 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             if (ctx->config->use_cpp && node->kind == NODE_VAR_DECL)
             {
                 char *tname =
-                    node->var_decl.type_str
-                        ? xstrdup(node->var_decl.type_str)
-                        : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                    : NULL);
+                    declared ? declared
+                             : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
+                                                         : NULL);
                 if (tname)
                 {
                     char *ct = tname;
@@ -262,7 +261,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
 
             // Resolve opaque alias (e.g. StringView -> Slice__char)
             TypeAlias *ta = find_type_alias_node(ctx, sname);
-            const char *resolved = (ta && !ta->is_opaque) ? ta->original_type : NULL;
+            const char *resolved = (ta && !ta->is_opaque) ? type_to_string(ta->type_info) : NULL;
             const char *effective_name = resolved ? resolved : sname;
 
             char *mangled = replace_string_type(sname);
@@ -852,8 +851,8 @@ void print_type_defs(ParserContext *ctx, ASTNode *nodes)
     while (c)
     {
         EMIT(ctx,
-             "typedef struct Slice__%s Slice__%s;\nstruct Slice__%s { %s *data; int len; int cap; "
-             "};\n",
+             "typedef struct Slice__%s Slice__%s;\nstruct Slice__%s { %s *data; size_t len; size_t "
+             "cap; };\n",
              c->name, c->name, c->name, c->name);
         c = c->next;
     }

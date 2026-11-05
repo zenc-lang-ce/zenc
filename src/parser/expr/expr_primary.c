@@ -38,16 +38,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             Type *inner_type =
                 type_from_name(ctx, ctx->current_impl_struct ? ctx->current_impl_struct : "Self");
             self_node->type_info = type_new_ptr(inner_type);
-            if (ctx->current_impl_struct)
-            {
-                char *rt = xmalloc(strlen(ctx->current_impl_struct) + 2);
-                sprintf(rt, "%s*", ctx->current_impl_struct); /* safe */
-                self_node->resolved_type = rt;
-            }
-            else
-            {
-                self_node->resolved_type = xstrdup("Self*");
-            }
 
             node = ast_create(NODE_EXPR_MEMBER);
             node->member.target = self_node;
@@ -399,11 +389,11 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 is_opaque_alias = ta->is_opaque;
                                 if (!is_opaque_alias)
                                 {
-                                    const char *aliased = find_type_alias(ctx, acc);
+                                    Type *aliased = find_type_alias(ctx, acc);
                                     if (aliased)
                                     {
                                         zfree(acc);
-                                        acc = xstrdup(aliased);
+                                        acc = type_to_string(aliased);
                                         def = find_struct_def(ctx, acc);
                                     }
                                 }
@@ -1041,7 +1031,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
 
                         ASTNode *cast = ast_create(NODE_EXPR_CAST);
-                        cast->cast.target_type = xstrdup(acc);
+                        cast->token = t;
                         cast->cast.expr = node;
 
                         TypeKind tk = get_primitive_type_kind(acc);
@@ -1230,9 +1220,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 tpl_field = tpl_field->next;
                             }
 
-                            if (tpl_field && tpl_field->field.type)
+                            if (tpl_field && tpl_field->type_info)
                             {
-                                const char *ft = tpl_field->field.type;
+                                const char *ft = type_to_string(tpl_field->type_info);
                                 Type *val_type = init_field->var_decl.init_expr->type_info;
 
                                 if (strcmp(ft, gen_param) == 0 && val_type)
@@ -1401,11 +1391,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
             for (int i = args_provided; sig->arg_types && i < sig->total_args; i++)
             {
-                if (sig->defaults[i])
+                if (sig->default_values && sig->default_values[i])
                 {
-                    Lexer def_l;
-                    lexer_init(&def_l, sig->defaults[i], ctx->config, ctx->current_filename);
-                    ASTNode *def = parse_expression(ctx, &def_l);
+                    ASTNode *def = copy_default_value(ctx, sig, i);
                     Type *expected = sig->arg_types[i];
                     if (expected && expected->name && is_trait(expected->name))
                     {
@@ -1531,15 +1519,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 node->definition_token = sig->decl_token;
             }
-            if (sig->ret_type)
-            {
-                node->type_info = sig->ret_type;
-                node->resolved_type = type_to_string(sig->ret_type);
-            }
-            else
-            {
-                node->resolved_type = xstrdup("void");
-            }
+            node->type_info = sig->ret_type ? sig->ret_type : type_new(TYPE_VOID);
         }
         else if (!sig && !find_symbol_entry(ctx, acc) && lexer_peek(l).kind == TOK_LPAREN)
         {
@@ -1566,7 +1546,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
             node->call.count = args_provided;
-            node->resolved_type = xstrdup("unknown");
 
             GenericFuncTemplate *tpl = find_func_template(ctx, acc);
             if (tpl && tpl->func_node && args_provided > 0 && head)
@@ -1646,37 +1625,12 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         if (inst_sig)
                         {
                             node->definition_token = inst_sig->decl_token;
-                            if (inst_sig->ret_type)
-                            {
-                                node->type_info = inst_sig->ret_type;
-                                node->resolved_type = type_to_string(inst_sig->ret_type);
-                            }
-                            else
-                            {
-                                node->resolved_type = xstrdup("void");
-                            }
+                            node->type_info =
+                                inst_sig->ret_type ? inst_sig->ret_type : type_new(TYPE_VOID);
                         }
-                        else
-                        {
-                            node->resolved_type = xstrdup("unknown");
-                        }
-                    }
-                    else
-                    {
-                        node->resolved_type = xstrdup("unknown");
                     }
                     zfree(inferred_type);
                 }
-                else
-                {
-                    // Could not infer type - leave as unknown
-                    node->resolved_type = xstrdup("unknown");
-                }
-            }
-            else
-            {
-                // Unknown return type - let codegen infer it
-                node->resolved_type = xstrdup("unknown");
             }
             // Fall through to Postfix
         }
@@ -1737,12 +1691,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                 if (type_str)
                 {
-                    node->resolved_type = type_str;
                     node->var_ref.suggestion = NULL;
                 }
                 else
                 {
-                    node->resolved_type = xstrdup("unknown");
                     if (sym || should_suppress_undef_warning(ctx, acc))
                     {
                         node->var_ref.suggestion = NULL;
@@ -1922,7 +1874,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     {
                         return NULL;
                     }
-                    char *cast_type = type_to_string(cast_type_obj);
                     {
                         Token inner_t = lexer_next(l);
                         if (inner_t.kind != TOK_RPAREN)
@@ -1933,16 +1884,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     }
                     ASTNode *target = parse_expr_prec(ctx, l, PREC_UNARY);
 
+                    char *cast_type = type_to_string(cast_type_obj);
                     if (is_trait(cast_type))
                     {
-                        zfree(cast_type);
-                        return transform_to_trait_object(ctx, type_to_string(cast_type_obj),
-                                                         target);
+                        return transform_to_trait_object(ctx, cast_type, target);
                     }
 
                     node = ast_create(NODE_EXPR_CAST);
                     node->token = next;
-                    node->cast.target_type = cast_type;
                     node->cast.expr = target;
                     node->type_info = cast_type_obj;
                     return node;
@@ -2186,13 +2135,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             check_format_string(call, t);
 
             // Try to infer type if callee has function type info
-            call->resolved_type = xstrdup("unknown"); // Default (was int)
             if (node->type_info && node->type_info->kind == TYPE_FUNCTION && node->type_info->inner)
             {
                 call->type_info = node->type_info->inner;
-
-                // Update resolved_type based on real return
-                // (Optional: type_to_string(call->type_info))
             }
             node = call;
         }
@@ -2300,7 +2245,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     call->call.args = arg1;
 
                     call->type_info = sig->ret_type;
-                    call->resolved_type = type_to_string(sig->ret_type);
 
                     node = call;
                     overloaded_get = 1;
