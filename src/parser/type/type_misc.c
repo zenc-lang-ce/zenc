@@ -20,7 +20,7 @@ char *parse_type(ParserContext *ctx, Lexer *l)
         return NULL;
     }
 
-    return type_to_string(t);
+    return type_mangle_spelling(t);
 }
 
 // The C an embed writes spells its types in C.

@@ -388,18 +388,18 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 {
                     if (binding_count == 1 && !is_tuple_payload)
                     {
-                        binding_type = type_to_string(payload_type);
+                        binding_type = type_mangle_spelling(payload_type);
                         binding_type_info = payload_type;
                     }
                     else if (binding_count == 1 && is_tuple_payload)
                     {
-                        binding_type = type_to_string(payload_type);
+                        binding_type = type_mangle_spelling(payload_type);
                         binding_type_info = payload_type;
                     }
                     else if (binding_count > 1 && is_tuple_payload && i < payload_type->count)
                     {
                         binding_type_info = payload_type->args[i];
-                        binding_type = type_to_string(binding_type_info);
+                        binding_type = type_mangle_spelling(binding_type_info);
                     }
                 }
 

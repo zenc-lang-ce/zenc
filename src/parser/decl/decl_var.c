@@ -273,7 +273,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         {
             return NULL;
         }
-        type = type_to_string(type_obj);
+        type = type_mangle_spelling(type_obj);
     }
 
     ASTNode *init = NULL;
@@ -295,7 +295,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 init->token = next;
                 init->type_info = instantiate_slice(ctx, type_new(TYPE_CHAR), next);
                 char empty[MAX_TYPE_NAME_LEN + 16];
-                snprintf(empty, sizeof(empty), "((%s){0})", type_to_string(init->type_info));
+                snprintf(empty, sizeof(empty), "((%s){0})", type_mangle_spelling(init->type_info));
                 init->raw_stmt.content = xstrdup(empty);
             }
             if (lexer_peek(l).kind == TOK_SEMICOLON)
@@ -315,7 +315,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         {
             if (type_obj && type_obj->name)
             {
-                ctx->cg.expected_init_type = type_to_string(type_obj);
+                ctx->cg.expected_init_type = type_mangle_spelling(type_obj);
             }
             init = parse_expression(ctx, l);
             zfree(ctx->cg.expected_init_type);
@@ -324,7 +324,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
 
         if (init && type)
         {
-            char *rhs_type = init->type_info ? type_to_string(init->type_info) : NULL;
+            char *rhs_type = init->type_info ? type_mangle_spelling(init->type_info) : NULL;
 
             if (rhs_type && strchr(type, '*') && strchr(rhs_type, '*'))
             {
@@ -379,7 +379,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 type_obj->array_size = init->type_info->array_size;
                 type_obj->is_raw = init->type_info->is_raw;
                 type_obj->is_explicit_struct = init->type_info->is_explicit_struct;
-                type = type_to_string(type_obj);
+                type = type_mangle_spelling(type_obj);
             }
             else if (init->kind == NODE_EXPR_SLICE)
             {
@@ -594,7 +594,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 {
                     return NULL;
                 }
-                next_type = type_to_string(next_type_obj);
+                next_type = type_mangle_spelling(next_type_obj);
             }
 
             ASTNode *next_init = NULL;
@@ -636,7 +636,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                         next_type_obj->is_varargs = next_init->type_info->is_varargs;
                     }
                     next_type_obj->array_size = next_init->type_info->array_size;
-                    next_type = type_to_string(next_type_obj);
+                    next_type = type_mangle_spelling(next_type_obj);
                 }
                 else if (next_init->kind == NODE_EXPR_LITERAL)
                 {

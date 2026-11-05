@@ -7,6 +7,12 @@
 
 #ifndef ZC_ALLOW_INTERNAL
 #error "ast/primitives.h is internal to Zen C. Include the appropriate public header instead."
+/**
+ * @brief The name a program writes for a fixed-width primitive (`i32`, `usize`...), or NULL
+ * for any other kind. type_to_string spells these kinds by it.
+ */
+const char *primitive_zen_name(TypeKind kind);
+
 #endif
 
 #ifndef PRIMITIVES_H
@@ -45,5 +51,11 @@ const char *get_primitive_c_name(const char *name);
  * @brief Returns the TypeKind for a given primitive name (Zen or C).
  */
 TypeKind find_primitive_kind(const char *name);
+
+/**
+ * @brief The name a program writes for a fixed-width primitive (`i32`, `usize`...), or NULL
+ * for any other kind. type_to_string spells these kinds by it.
+ */
+const char *primitive_zen_name(TypeKind kind);
 
 #endif

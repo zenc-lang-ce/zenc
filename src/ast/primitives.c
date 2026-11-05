@@ -43,7 +43,9 @@ static const ZenPrimitive primitives[] = {{"U0", TYPE_VOID, "void"},
                                           {"unsigned", TYPE_U32, "uint32_t"},
                                           {"signed", TYPE_I32, "int32_t"},
                                           {"I128", TYPE_I128, "__int128"},
+                                          {"i128", TYPE_I128, "__int128"},
                                           {"U128", TYPE_U128, "unsigned __int128"},
+                                          {"u128", TYPE_U128, "unsigned __int128"},
                                           {"F32", TYPE_F32, "float"},
                                           {"f32", TYPE_F32, "float"},
                                           {"float", TYPE_F32, "float"},
@@ -120,4 +122,43 @@ TypeKind find_primitive_kind(const char *name)
         return p->kind;
     }
     return TYPE_UNKNOWN;
+}
+
+const char *primitive_zen_name(TypeKind kind)
+{
+    switch (kind)
+    {
+    case TYPE_I8:
+        return "i8";
+    case TYPE_U8:
+        return "u8";
+    case TYPE_I16:
+        return "i16";
+    case TYPE_U16:
+        return "u16";
+    case TYPE_I32:
+        return "i32";
+    case TYPE_U32:
+        return "u32";
+    case TYPE_I64:
+        return "i64";
+    case TYPE_U64:
+        return "u64";
+    case TYPE_I128:
+        return "i128";
+    case TYPE_U128:
+        return "u128";
+    case TYPE_F32:
+        return "f32";
+    case TYPE_F64:
+        return "f64";
+    case TYPE_USIZE:
+        return "usize";
+    case TYPE_ISIZE:
+        return "isize";
+    case TYPE_BYTE:
+        return "byte";
+    default:
+        return NULL;
+    }
 }

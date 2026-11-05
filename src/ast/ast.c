@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "ast.h"
+#include "primitives.h"
 #include "../parser/parser.h"
 #include "../constants.h"
 #include "../arena.h"
@@ -919,6 +920,14 @@ static char *type_spelling_impl(Type *t, int c_names)
     if (!t)
     {
         return xstrdup("void");
+    }
+
+    // People read a fixed-width primitive by the name the program writes (`i32`); a C name
+    // spells it as C does (`Vec__int32_t`).
+    const char *zen_name = c_names ? NULL : primitive_zen_name(t->kind);
+    if (zen_name)
+    {
+        return xstrdup(zen_name);
     }
 
     switch (t->kind)

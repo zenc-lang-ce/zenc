@@ -125,7 +125,7 @@ static char *impl_target_name(ParserContext *ctx, char *name)
     if (ta && !ta->is_opaque)
     {
         zfree(name);
-        return type_to_string(ta->type_info);
+        return type_mangle_spelling(ta->type_info);
     }
     return name;
 }

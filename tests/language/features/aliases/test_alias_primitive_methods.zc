@@ -1,0 +1,21 @@
+// aliases: methods of a plain alias of a primitive, called on a value of the alias and through
+// the alias's path. The methods are named after the primitive's C name.
+
+alias Meters = u32;
+
+impl Meters {
+    fn doubled(self) -> u32 {
+        return *self * 2;
+    }
+
+    fn from_km(km: u32) -> Meters {
+        return km * 1000;
+    }
+}
+
+test "methods of an alias of a primitive" {
+    let m: Meters = 21;
+    assert(m.doubled() == 42, "method on a value");
+    let k = Meters::from_km(3);
+    assert(k == 3000, "static method through the alias");
+}

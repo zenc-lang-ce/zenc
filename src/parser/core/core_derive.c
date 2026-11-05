@@ -122,7 +122,7 @@ static char *variant_value_type(ParserContext *ctx, ASTNode *variant, int index)
     Type *payload = variant->variant.payload;
     if (variant->variant.payload_count == 1)
     {
-        return type_to_string(payload);
+        return type_mangle_spelling(payload);
     }
     ASTNode *tuple = payload && payload->name ? find_struct_def(ctx, payload->name) : NULL;
     ASTNode *field = tuple && tuple->kind == NODE_STRUCT ? tuple->strct.fields : NULL;
@@ -130,7 +130,7 @@ static char *variant_value_type(ParserContext *ctx, ASTNode *variant, int index)
     {
         field = field->next;
     }
-    return field ? type_to_string(field->type_info) : NULL;
+    return field ? type_mangle_spelling(field->type_info) : NULL;
 }
 
 // Body of the derived `eq` of an enum with payloads: the same variant and, for a
@@ -299,7 +299,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                     if (f->kind == NODE_FIELD)
                     {
                         char *fn = f->field.name;
-                        char *ft = type_to_string(f->type_info);
+                        char *ft = type_mangle_spelling(f->type_info);
                         if (!first)
                         {
                             strncat(body, " && ", sizeof(body) - strlen(body) - 1);
@@ -416,7 +416,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                 if (f->kind == NODE_FIELD)
                 {
                     char *fn = f->field.name;
-                    char *ft = type_to_string(f->type_info);
+                    char *ft = type_mangle_spelling(f->type_info);
                     char assign[2048];
 
                     if (!fn || !ft)
@@ -578,7 +578,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                 if (f->kind == NODE_FIELD)
                 {
                     char *fn = f->field.name;
-                    char *ft = type_to_string(f->type_info);
+                    char *ft = type_mangle_spelling(f->type_info);
                     char set_call[2048];
 
                     if (!fn || !ft)

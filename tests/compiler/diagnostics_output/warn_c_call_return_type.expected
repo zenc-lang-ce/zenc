@@ -1,5 +1,5 @@
    Compiling tests/compiler/diagnostics_output/warn_c_call_return_type.zc...
-warning: Implicit narrowing conversion from 'size_t' (64-bit) to 'int32_t' (32-bit)
+warning: Implicit narrowing conversion from 'usize' (64-bit) to 'i32' (32-bit)
   --> tests/compiler/diagnostics_output/warn_c_call_return_type.zc:7:9
    |
 7  |     let small: i32 = length;

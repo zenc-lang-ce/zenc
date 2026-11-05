@@ -95,9 +95,10 @@ void handle_expr_cast(ParserContext *ctx, ASTNode *node)
 void handle_reflection(ParserContext *ctx, ASTNode *node)
 {
     Type *t = node->reflection.target_type;
+    // The program reads types by the names it writes: `i32`, a @link_name struct's own name.
     if (node->reflection.kind == 0)
     {
-        char *s = c_type_spelling(ctx, t);
+        char *s = type_to_string(t);
         EMIT(ctx, "\"%s\"", s);
         zfree(s);
     }
