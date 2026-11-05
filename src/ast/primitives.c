@@ -124,7 +124,7 @@ TypeKind find_primitive_kind(const char *name)
     return TYPE_UNKNOWN;
 }
 
-const char *primitive_zen_name(TypeKind kind)
+ZEN_CONST const char *primitive_zen_name(TypeKind kind)
 {
     switch (kind)
     {
