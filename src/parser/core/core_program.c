@@ -574,7 +574,11 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
         add_node:
             ATTACH_DOC_COMMENT(ctx, s);
             s->cfg_condition = attrs.cfg_condition;
-            s->link_name = attrs.link_name;
+            // A definition may have chosen its C name already (a reserved name, `class__zc`).
+            if (attrs.link_name)
+            {
+                s->link_name = attrs.link_name;
+            }
 
             if (!h)
             {

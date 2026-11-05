@@ -76,7 +76,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
         ASTNode *node = ast_create(NODE_STRUCT);
         node->doc_comment = pending_doc; // struct-level /// doc (captured on entry)
         node->strct.name = name;
-        node->link_name = link_name ? xstrdup(link_name) : NULL;
+        node->link_name = definition_link_name(ctx, link_name, name);
         node->strct.is_template = (gp_count > 0);
         node->strct.generic_params = gps;
         node->strct.generic_param_count = gp_count;
@@ -328,7 +328,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
 
     ASTNode *node = ast_create(NODE_STRUCT);
     node->token = name_token;
-    node->link_name = link_name ? xstrdup(link_name) : NULL;
+    node->link_name = definition_link_name(ctx, link_name, name);
     add_to_struct_list(ctx, node);
     node->doc_comment = pending_doc; // struct-level /// doc (captured on entry)
 

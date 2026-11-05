@@ -152,7 +152,7 @@ void handle_reflection(ParserContext *ctx, ASTNode *node)
             if (f->kind == NODE_FIELD)
             {
                 EMIT(ctx, "{ \"%s\", \"%s\", __builtin_offsetof(struct %s, %s) }, ", f->field.name,
-                     type_to_string(f->type_info), struct_c_name, f->field.name);
+                     type_to_string(f->type_info), struct_c_name, c_name(ctx, f->field.name));
             }
             f = f->next;
         }

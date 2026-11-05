@@ -23,7 +23,7 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
     }
 
     // The name written in the C: the struct's @link_name if it has one.
-    const char *c_name = struct_name;
+    const char *struct_c_name = struct_name;
     int is_zen_struct = 0;
     int is_union = 0;
     StructRef *sr = ctx->parsed_structs_list;
@@ -36,7 +36,7 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
             is_zen_struct = 1;
             if (sr->node->link_name)
             {
-                c_name = sr->node->link_name;
+                struct_c_name = sr->node->link_name;
             }
             if (sr->node->strct.is_union)
             {
@@ -76,7 +76,7 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
     {
         if (in_func && !is_vector)
         {
-            EMIT(ctx, "({ %s _s = %s; ", c_name, ctx->config->use_cpp ? "{}" : "{0}");
+            EMIT(ctx, "({ %s _s = %s; ", struct_c_name, ctx->config->use_cpp ? "{}" : "{0}");
             ASTNode *f = node->struct_init.fields;
             while (f)
             {
@@ -96,7 +96,7 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
                         int idx = 0;
                         while (elem)
                         {
-                            EMIT(ctx, "_s.%s[%d] = ", f->var_decl.name, idx++);
+                            EMIT(ctx, "_s.%s[%d] = ", c_name(ctx, f->var_decl.name), idx++);
                             codegen_expression(ctx, elem);
                             EMIT(ctx, "; ");
                             elem = elem->next;
@@ -106,14 +106,14 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
                     {
                         if (ctx->config->use_cpp)
                         {
-                            EMIT(ctx, "_s.%s = (__typeof__(_s.%s))(", f->var_decl.name,
-                                 f->var_decl.name);
+                            const char *field = c_name(ctx, f->var_decl.name);
+                            EMIT(ctx, "_s.%s = (__typeof__(_s.%s))(", field, field);
                             codegen_expression_with_move(ctx, f->var_decl.init_expr);
                             EMIT(ctx, ")");
                         }
                         else
                         {
-                            EMIT(ctx, "_s.%s = ", f->var_decl.name);
+                            EMIT(ctx, "_s.%s = ", c_name(ctx, f->var_decl.name));
                             codegen_expression_with_move(ctx, f->var_decl.init_expr);
                         }
                         EMIT(ctx, "; ");
@@ -125,7 +125,7 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
         }
         else
         {
-            EMIT(ctx, "%s { ", c_name);
+            EMIT(ctx, "%s { ", struct_c_name);
             ASTNode *f = node->struct_init.fields;
             int field_count = 0;
             ASTNode *tmp = f;
@@ -161,7 +161,7 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
                     }
                     else
                     {
-                        EMIT(ctx, ".%s = ", f->var_decl.name);
+                        EMIT(ctx, ".%s = ", c_name(ctx, f->var_decl.name));
                         codegen_expression_with_move(ctx, f->var_decl.init_expr);
                     }
                     first = 0;
@@ -175,19 +175,19 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
     {
         if (is_vector)
         {
-            EMIT(ctx, "(%s){", c_name);
+            EMIT(ctx, "(%s){", struct_c_name);
         }
         else if (is_union)
         {
-            EMIT(ctx, "(union %s){", c_name);
+            EMIT(ctx, "(union %s){", struct_c_name);
         }
         else if (is_zen_struct)
         {
-            EMIT(ctx, "(struct %s){", c_name);
+            EMIT(ctx, "(struct %s){", struct_c_name);
         }
         else
         {
-            EMIT(ctx, "(%s){", c_name);
+            EMIT(ctx, "(%s){", struct_c_name);
         }
 
         ASTNode *f = node->struct_init.fields;
@@ -230,7 +230,7 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
                     }
                     if (!is_vector)
                     {
-                        EMIT(ctx, ".%s = ", f->var_decl.name);
+                        EMIT(ctx, ".%s = ", c_name(ctx, f->var_decl.name));
                     }
                     codegen_expression_with_move(ctx, f->var_decl.init_expr);
                     first = 0;

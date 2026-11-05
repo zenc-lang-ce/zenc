@@ -183,11 +183,11 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
                 if (ctx->cg.current_lambda->lambda.capture_modes &&
                     ctx->cg.current_lambda->lambda.capture_modes[i] == 1)
                 {
-                    EMIT(ctx, "(*ctx->%s)", node->var_ref.name);
+                    EMIT(ctx, "(*ctx->%s)", c_name(ctx, node->var_ref.name));
                 }
                 else
                 {
-                    EMIT(ctx, "ctx->%s", node->var_ref.name);
+                    EMIT(ctx, "ctx->%s", c_name(ctx, node->var_ref.name));
                 }
                 return;
             }
@@ -314,7 +314,7 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
     }
     else
     {
-        EMIT(ctx, "%s", node->var_ref.name);
+        EMIT(ctx, "%s", c_name(ctx, node->var_ref.name));
     }
 }
 
@@ -358,13 +358,13 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                             if (ctx->cg.current_lambda->lambda.capture_modes &&
                                 ctx->cg.current_lambda->lambda.capture_modes[k] == 1)
                             {
-                                EMIT(ctx, "_z_ctx_%d->%s = ctx->%s;\n", lid,
-                                     node->lambda.captured_vars[i], node->lambda.captured_vars[i]);
+                                const char *cap = c_name(ctx, node->lambda.captured_vars[i]);
+                                EMIT(ctx, "_z_ctx_%d->%s = ctx->%s;\n", lid, cap, cap);
                             }
                             else
                             {
-                                EMIT(ctx, "_z_ctx_%d->%s = &ctx->%s;\n", lid,
-                                     node->lambda.captured_vars[i], node->lambda.captured_vars[i]);
+                                const char *cap = c_name(ctx, node->lambda.captured_vars[i]);
+                                EMIT(ctx, "_z_ctx_%d->%s = &ctx->%s;\n", lid, cap, cap);
                             }
                             found = 1;
                             break;
@@ -373,15 +373,15 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                 }
                 if (!found)
                 {
-                    EMIT(ctx, "_z_ctx_%d->%s = &%s;\n", lid, node->lambda.captured_vars[i],
-                         node->lambda.captured_vars[i]);
+                    const char *cap = c_name(ctx, node->lambda.captured_vars[i]);
+                    EMIT(ctx, "_z_ctx_%d->%s = &%s;\n", lid, cap, cap);
                 }
             }
             else
             {
                 char *tstr = capture_c_type(ctx, node, i);
 
-                const char *cap_name = node->lambda.captured_vars[i];
+                const char *cap_name = c_name(ctx, node->lambda.captured_vars[i]);
                 int is_array = !strstr(tstr, "(*") && strchr(tstr, '[');
                 if (strstr(tstr, "(*"))
                 {

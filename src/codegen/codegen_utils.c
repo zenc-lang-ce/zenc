@@ -63,6 +63,11 @@ int is_enum_type_name(ParserContext *ctx, const char *name)
     return (def && def->kind == NODE_ENUM);
 }
 
+const char *c_name(ParserContext *ctx, const char *name)
+{
+    return c_safe_name(name, ctx->config->use_cpp);
+}
+
 char *c_type_spelling(ParserContext *ctx, Type *t)
 {
     return type_to_c_string_with(t, ctx->config->misra_mode, link_name_of, ctx);
@@ -168,7 +173,7 @@ static void emit_c_decl(ParserContext *ctx, const char *type_str, const char *na
 // Helper to emit variable declarations with array types.
 void emit_var_decl_type(ParserContext *ctx, const char *type_str, const char *var_name)
 {
-    emit_c_decl(ctx, type_str, var_name);
+    emit_c_decl(ctx, type_str, c_name(ctx, var_name));
 }
 
 // Get field type from struct.
@@ -283,8 +288,9 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
 
     char *ret_suffix = NULL;
 
-    const char *final_name =
-        (func->link_name) ? func->link_name : (name_override ? name_override : func->func.name);
+    const char *final_name = (func->link_name)
+                                 ? func->link_name
+                                 : c_name(ctx, name_override ? name_override : func->func.name);
 
     if (strcmp(final_name, "z_plugin_init") != 0)
     {
@@ -349,7 +355,7 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
 
             if (func->func.param_names && func->func.param_names[i])
             {
-                name = func->func.param_names[i];
+                name = c_name(ctx, func->func.param_names[i]);
             }
 
             // check if array type

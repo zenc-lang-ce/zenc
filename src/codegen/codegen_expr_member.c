@@ -96,7 +96,7 @@ void handle_expr_member(ParserContext *ctx, ASTNode *node)
         }
         else
         {
-            EMIT(ctx, "%s%s", actually_ptr ? "->" : ".", field);
+            EMIT(ctx, "%s%s", actually_ptr ? "->" : ".", c_name(ctx, field));
         }
     }
 }

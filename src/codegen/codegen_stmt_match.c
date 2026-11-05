@@ -302,11 +302,11 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
         {
             for (int i = 0; i < c->match_case.binding_count; i++)
             {
-                char *bname = c->match_case.binding_names[i];
-                if (!bname)
+                if (!c->match_case.binding_names[i])
                 {
                     continue;
                 }
+                const char *bname = c_name(ctx, c->match_case.binding_names[i]);
                 int is_r = c->match_case.binding_refs ? c->match_case.binding_refs[i] : 0;
 
                 if (is_option)

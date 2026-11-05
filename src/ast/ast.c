@@ -404,6 +404,151 @@ char *type_impl_name(Type *t)
     return t ? type_mangle_spelling(t) : NULL;
 }
 
+// Keywords of C (C23) and of C++ (C++23, with the alternative tokens), sorted for bsearch;
+// not `true`, `false` and `nullptr`, which programs use as values.
+static const char *const C_KEYWORDS[] = {"_Alignas",       "_Alignof",
+                                         "_Atomic",        "_BitInt",
+                                         "_Bool",          "_Complex",
+                                         "_Decimal128",    "_Decimal32",
+                                         "_Decimal64",     "_Generic",
+                                         "_Imaginary",     "_Noreturn",
+                                         "_Static_assert", "_Thread_local",
+                                         "alignas",        "alignof",
+                                         "auto",           "bool",
+                                         "break",          "case",
+                                         "char",           "const",
+                                         "constexpr",      "continue",
+                                         "default",        "do",
+                                         "double",         "else",
+                                         "enum",           "extern",
+                                         "float",          "for",
+                                         "goto",           "if",
+                                         "inline",         "int",
+                                         "long",           "register",
+                                         "restrict",       "return",
+                                         "short",          "signed",
+                                         "sizeof",         "static",
+                                         "static_assert",  "struct",
+                                         "switch",         "thread_local",
+                                         "typedef",        "typeof",
+                                         "typeof_unqual",  "union",
+                                         "unsigned",       "void",
+                                         "volatile",       "while"};
+
+static const char *const CPP_KEYWORDS[] = {"alignas",
+                                           "alignof",
+                                           "and",
+                                           "and_eq",
+                                           "asm",
+                                           "auto",
+                                           "bitand",
+                                           "bitor",
+                                           "bool",
+                                           "break",
+                                           "case",
+                                           "catch",
+                                           "char",
+                                           "char16_t",
+                                           "char32_t",
+                                           "char8_t",
+                                           "class",
+                                           "co_await",
+                                           "co_return",
+                                           "co_yield",
+                                           "compl",
+                                           "concept",
+                                           "const",
+                                           "const_cast",
+                                           "consteval",
+                                           "constexpr",
+                                           "constinit",
+                                           "continue",
+                                           "decltype",
+                                           "default",
+                                           "delete",
+                                           "do",
+                                           "double",
+                                           "dynamic_cast",
+                                           "else",
+                                           "enum",
+                                           "explicit",
+                                           "export",
+                                           "extern",
+                                           "float",
+                                           "for",
+                                           "friend",
+                                           "goto",
+                                           "if",
+                                           "inline",
+                                           "int",
+                                           "long",
+                                           "mutable",
+                                           "namespace",
+                                           "new",
+                                           "noexcept",
+                                           "not",
+                                           "not_eq",
+                                           "operator",
+                                           "or",
+                                           "or_eq",
+                                           "private",
+                                           "protected",
+                                           "public",
+                                           "register",
+                                           "reinterpret_cast",
+                                           "requires",
+                                           "return",
+                                           "short",
+                                           "signed",
+                                           "sizeof",
+                                           "static",
+                                           "static_assert",
+                                           "static_cast",
+                                           "struct",
+                                           "switch",
+                                           "template",
+                                           "this",
+                                           "thread_local",
+                                           "throw",
+                                           "try",
+                                           "typedef",
+                                           "typeid",
+                                           "typename",
+                                           "union",
+                                           "unsigned",
+                                           "using",
+                                           "virtual",
+                                           "void",
+                                           "volatile",
+                                           "wchar_t",
+                                           "while",
+                                           "xor",
+                                           "xor_eq"};
+
+static int compare_keyword(const void *key, const void *entry)
+{
+    return strcmp((const char *)key, *(const char *const *)entry);
+}
+
+static int is_keyword_in(const char *name, const char *const *list, size_t count)
+{
+    return bsearch(name, list, count, sizeof(list[0]), compare_keyword) != NULL;
+}
+
+const char *c_safe_name(const char *name, int cpp)
+{
+    if (!name || !(is_keyword_in(name, C_KEYWORDS, sizeof(C_KEYWORDS) / sizeof(C_KEYWORDS[0])) ||
+                   (cpp && is_keyword_in(name, CPP_KEYWORDS,
+                                         sizeof(CPP_KEYWORDS) / sizeof(CPP_KEYWORDS[0])))))
+    {
+        return name;
+    }
+    size_t len = strlen(name) + sizeof("__zc");
+    char *safe = xmalloc(len);
+    snprintf(safe, len, "%s__zc", name);
+    return safe;
+}
+
 Type *type_new_instance(const char *tpl, Type **args, int count)
 {
     Type *t = type_new(TYPE_STRUCT);
