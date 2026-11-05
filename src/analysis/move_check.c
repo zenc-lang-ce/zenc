@@ -276,6 +276,12 @@ int is_type_copy(ParserContext *ctx, Type *t)
         case TYPE_ARRAY:
             result = is_type_copy(ctx, t->inner);
             break;
+        case TYPE_TUPLE:
+            for (int i = 0; i < t->count && result; i++)
+            {
+                result = is_type_copy(ctx, t->args[i]);
+            }
+            break;
         case TYPE_ALIAS:
             if (t->alias.is_opaque_alias)
             {

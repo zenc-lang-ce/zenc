@@ -1,0 +1,8 @@
+// features/tuples: sizeof of a tuple of variables, and of an element of one, reads them
+// as an expression; sizeof of a tuple of types still reads a type.
+test "sizeof of tuples of variables" {
+    let a: i32 = 1;
+    let b: i64 = 2;
+    assert(sizeof((a, b).1) == sizeof(i64), "element of a tuple of variables");
+    assert(sizeof((a, b)) == sizeof((i32, i64)), "tuple of variables");
+}

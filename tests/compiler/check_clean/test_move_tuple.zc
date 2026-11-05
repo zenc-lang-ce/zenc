@@ -1,0 +1,24 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A tuple that holds a value with Drop can be moved once, and a tuple of Copy
+// values can still be used after being passed by value.
+import "std/string.zc"
+
+fn length_of(t: (String, int)) -> usize {
+    return t.0.length() + (usize)t.1;
+}
+
+fn sum(t: (int, int)) -> int {
+    return t.0 + t.1;
+}
+
+test "tuple with a Drop element moved once" {
+    let s = String::new("abc");
+    let t = (s, 2);
+    assert(length_of(t) == 5, "moved tuple");
+}
+
+test "tuple of Copy values used twice" {
+    let p = (1, 2);
+    assert(sum(p) == 3, "first use");
+    assert(sum(p) == 3, "second use");
+}
