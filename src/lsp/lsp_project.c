@@ -36,6 +36,8 @@ static ZenCompiler *g_server_compiler = NULL;
 
 // Files parsed by the current workspace indexing, for its summary.
 static int g_indexed_file_count = 0;
+// While the workspace is indexed, files are parsed without validating their types.
+static int g_is_indexing = 0;
 
 static void scan_dir(const char *dir_path, StringList *files);
 static void scan_file(const char *path);

@@ -341,25 +341,19 @@ Type *compat_slice_from_name(ParserContext *ctx, const char *name, Token token)
 void register_tuple(ParserContext *ctx, Type *tuple)
 {
     char *struct_name = type_mangle_spelling(tuple);
-    TupleType *c = ctx->used_tuples;
-    while (c)
+    for (TupleType *c = ctx->used_tuples; c; c = c->next)
     {
-        char *name = type_mangle_spelling(c->type);
-        int same = strcmp(name, struct_name) == 0;
-        zfree(name);
-        if (same)
+        if (strcmp(c->name, struct_name) == 0)
         {
             zfree(struct_name);
             return;
         }
-        c = c->next;
     }
     TupleType *n = xmalloc(sizeof(TupleType));
     n->type = tuple;
+    n->name = struct_name;
     n->next = ctx->used_tuples;
     ctx->used_tuples = n;
-
-    zfree(struct_name);
 }
 
 void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)

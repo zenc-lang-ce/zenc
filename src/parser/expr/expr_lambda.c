@@ -290,13 +290,6 @@ ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, Type *tuple, ASTNo
     n->tuple_literal.elements = head;
     n->tuple_literal.count = count;
 
-    // While the language server indexes the workspace, the literal is left without a type.
-    extern int g_is_indexing;
-    if (g_is_indexing)
-    {
-        return n;
-    }
-
     if (tuple)
     {
         n->type_info = tuple;
