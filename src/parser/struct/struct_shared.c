@@ -42,7 +42,7 @@ void load_std_module(ParserContext *ctx, const char *path)
         return;
     }
     Lexer i;
-    lexer_init(&i, src, ctx->config, ctx->current_filename);
+    lexer_init(&i, src, ctx->config, resolved);
     // Save and restore filename context
     const char *saved_fn = ctx->current_filename;
     ctx->current_filename = resolved;
