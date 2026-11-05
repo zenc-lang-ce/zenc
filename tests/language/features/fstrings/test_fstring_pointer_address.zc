@@ -1,0 +1,19 @@
+// features/fstrings: a pointer that is not a string is written as an address, whatever the name
+// of the type it points to; a char pointer is written as a string.
+
+struct charbuf {
+    n: int;
+}
+
+test "a pointer to a struct is an address" {
+    let b = charbuf { n: 1 };
+    let p: charbuf* = &b;
+    let text = f"{p}";
+    assert(text[0] == '0' && text[1] == 'x', "address");
+}
+
+test "a char pointer is a string" {
+    let s: char* = "text";
+    let text = f"{s}";
+    assert(strcmp(text, "text") == 0, "string");
+}
