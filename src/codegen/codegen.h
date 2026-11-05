@@ -102,6 +102,8 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
 /** @brief Name of the drop glue of the value `value` holds by value, when it is a struct with
  * Drop or a tuple that needs dropping (the glue is `<name>__Drop__glue`); otherwise NULL. */
 char *value_drop_struct(ParserContext *ctx, ASTNode *value);
+/** @brief The struct or enum definition the named type `t` refers to, or NULL. */
+ASTNode *named_type_def(ParserContext *ctx, Type *t);
 /** @brief Name of the drop glue of a value of type `t` that needs dropping: a struct's name, or
  * the C name of a tuple's struct. The glue is `<name>__Drop__glue`. */
 char *drop_glue_name(Type *t);
