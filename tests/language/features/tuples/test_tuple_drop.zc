@@ -1,0 +1,110 @@
+// features/tuples: a tuple drops the values it holds that need dropping, exactly once, wherever
+// it ends: in a local, a parameter, a returned or moved value, a struct field, a nested tuple,
+// a closure's capture, a destructuring or a discarded call result.
+
+struct Res {
+    id: int;
+}
+
+let drops: int = 0;
+
+impl Drop for Res {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+struct Holder {
+    t: (Res, int);
+}
+
+fn take(t: (Res, int)) -> int {
+    return t.1;
+}
+
+fn make(id: int) -> (Res, int) {
+    return (Res { id: id }, id);
+}
+
+fn pass(t: (Res, int)) -> (Res, int) {
+    return t;
+}
+
+test "a local tuple" {
+    drops = 0;
+    {
+        let t = (Res { id: 1 }, 0);
+    }
+    assert(drops == 1, "dropped once");
+}
+
+test "a tuple parameter" {
+    drops = 0;
+    let t = (Res { id: 2 }, 0);
+    take(t);
+    assert(drops == 1, "dropped by take");
+}
+
+test "a returned tuple, and one passed through" {
+    drops = 0;
+    {
+        let a = make(3);
+        let b = pass(make(4));
+        assert(drops == 0, "not dropped while alive");
+    }
+    assert(drops == 2, "each dropped once");
+}
+
+test "a tuple moved to another local" {
+    drops = 0;
+    {
+        let t = (Res { id: 5 }, 0);
+        let u = t;
+    }
+    assert(drops == 1, "dropped once");
+}
+
+test "a tuple in a struct field, and a nested tuple" {
+    drops = 0;
+    {
+        let h = Holder { t: (Res { id: 6 }, 0) };
+        let n = ((Res { id: 7 }, 0), 1);
+    }
+    assert(drops == 2, "each dropped once");
+}
+
+test "a tuple captured by a closure" {
+    drops = 0;
+    {
+        let t = (Res { id: 8 }, 0);
+        let f = fn() -> int { return t.1; };
+        assert(f() == 0, "called");
+    }
+    assert(drops == 1, "dropped once");
+}
+
+test "a destructured tuple" {
+    drops = 0;
+    {
+        let t = (Res { id: 9 }, 0);
+        let (a, b) = t;
+        assert(a.id == 9 && b == 0, "destructured");
+    }
+    assert(drops == 1, "dropped once");
+}
+
+test "a discarded tuple result" {
+    drops = 0;
+    make(10);
+    assert(drops == 1, "dropped right away");
+}
+
+test "a value moved into a tuple literal" {
+    drops = 0;
+    {
+        let r = Res { id: 11 };
+        let t = (r, 0);
+        assert(t.0.id == 11, "moved in");
+    }
+    assert(drops == 1, "dropped once, by the tuple");
+}

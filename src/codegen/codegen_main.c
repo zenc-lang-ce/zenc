@@ -206,6 +206,7 @@ static ASTNode *tuple_struct(Type *tuple)
 {
     ASTNode *def = ast_create(NODE_STRUCT);
     def->strct.name = type_mangle_spelling(tuple);
+    def->type_info = tuple;
     ASTNode *tail = NULL;
     for (int i = 0; i < tuple->count; i++)
     {
@@ -453,13 +454,27 @@ static void emit_raw_statements_internal(ParserContext *ctx, ASTNode *node,
     }
 }
 
+// Whether the struct node `s` gets a drop glue: a struct with Drop, or the struct of a tuple that
+// holds a value that needs dropping.
+static int struct_has_drop_glue(ParserContext *ctx, ASTNode *s)
+{
+    if (s->kind != NODE_STRUCT || !s->type_info || s->strct.is_template)
+    {
+        return 0;
+    }
+    if (s->type_info->kind == TYPE_TUPLE)
+    {
+        return type_needs_drop(ctx, s->type_info);
+    }
+    return s->type_info->traits.has_drop;
+}
+
 static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
 {
     ASTNode *s = structs;
     while (s)
     {
-        if (s->kind == NODE_STRUCT && s->type_info && s->type_info->traits.has_drop &&
-            !s->strct.is_template)
+        if (struct_has_drop_glue(ctx, s))
         {
             if (s->cfg_condition)
             {
@@ -481,19 +496,15 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
             while (field)
             {
                 Type *ft = field->type_info;
-                if (ft && ft->kind == TYPE_STRUCT && ft->name)
+                const char *f = field->field.name;
+                if (is_owning_closure(ft))
                 {
-                    ASTNode *fdef = find_struct_def(ctx, type_def_name(ft));
-                    if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
-                    {
-                        EMIT(ctx, "    %s__Drop__glue(&self->%s);\n", type_def_name(ft),
-                             field->field.name);
-                    }
-                }
-                else if (is_owning_closure(ft))
-                {
-                    const char *f = field->field.name;
                     EMIT(ctx, "    if (self->%s.drop) self->%s.drop(self->%s.ctx);\n", f, f, f);
+                }
+                else if (ft && ((ft->kind == TYPE_STRUCT && ft->name) || ft->kind == TYPE_TUPLE) &&
+                         type_needs_drop(ctx, ft))
+                {
+                    EMIT(ctx, "    %s__Drop__glue(&self->%s);\n", drop_glue_name(ft), f);
                 }
                 field = field->next;
             }
@@ -522,8 +533,7 @@ static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
         ASTNode *s = structs;
         while (s)
         {
-            if (s->kind == NODE_STRUCT && s->type_info && s->type_info->traits.has_drop &&
-                !s->strct.is_template)
+            if (struct_has_drop_glue(ctx, s))
             {
                 if (s->cfg_condition)
                 {
@@ -551,8 +561,7 @@ static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
         ASTNode *s = structs;
         while (s)
         {
-            if (s->kind == NODE_STRUCT && s->type_info && s->type_info->traits.has_drop &&
-                !s->strct.is_template)
+            if (struct_has_drop_glue(ctx, s))
             {
                 char *sname = s->strct.name;
                 EMIT(ctx, ", \\\n    %s: %s__Drop__glue((void*)&(x))", sname, sname);

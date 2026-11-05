@@ -843,6 +843,8 @@ int type_is_generic_param(Type *t, const char *param);
 Type *slice_element(Type *t);
 /** @brief `t` if it is a tuple, or the tuple it points to; else NULL. */
 Type *tuple_of(Type *t);
+/** @brief Whether `t` is a closure that owns its context (freed by its `drop`), not a raw `fn*`. */
+int is_owning_closure(Type *t);
 /** @brief The type of the element `field` (`0` or `v0`) of `tuple`, or NULL. */
 Type *tuple_element_type(Type *tuple, const char *field);
 Type *type_clone(Type *t);

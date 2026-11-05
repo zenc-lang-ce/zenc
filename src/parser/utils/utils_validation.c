@@ -105,99 +105,69 @@ void propagate_vector_inner_types(ParserContext *ctx)
     }
 }
 
+int type_needs_drop(ParserContext *ctx, Type *t)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    if (is_owning_closure(t))
+    {
+        return 1;
+    }
+    if (t->kind == TYPE_TUPLE)
+    {
+        for (int i = 0; i < t->count; i++)
+        {
+            if (type_needs_drop(ctx, t->args[i]))
+            {
+                return 1;
+            }
+        }
+        return 0;
+    }
+    if (t->kind == TYPE_STRUCT && t->name)
+    {
+        ASTNode *def = find_struct_def(ctx, type_def_name(t));
+        return def && def->type_info && def->type_info->traits.has_drop;
+    }
+    return 0;
+}
+
+// Marks `strct` as Drop if one of its fields needs dropping; returns whether it did.
+static int propagate_drop_from_fields(ParserContext *ctx, ASTNode *strct)
+{
+    if (!strct || strct->kind != NODE_STRUCT || !strct->type_info ||
+        strct->type_info->traits.has_drop)
+    {
+        return 0;
+    }
+    for (ASTNode *field = strct->strct.fields; field; field = field->next)
+    {
+        Type *ft = field->type_info;
+        if (ft && (ft->kind == TYPE_VECTOR || type_needs_drop(ctx, ft)))
+        {
+            strct->type_info->traits.has_drop = 1;
+            ft->traits.has_drop = 1;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void propagate_drop_traits(ParserContext *ctx)
 {
     int changed = 1;
     while (changed)
     {
         changed = 0;
-
-        StructRef *ref = ctx->parsed_structs_list;
-        while (ref)
+        for (StructRef *ref = ctx->parsed_structs_list; ref; ref = ref->next)
         {
-            ASTNode *strct = ref->node;
-            if (strct && strct->kind == NODE_STRUCT && strct->type_info &&
-                !strct->type_info->traits.has_drop)
-            {
-                ASTNode *field = strct->strct.fields;
-                while (field)
-                {
-                    Type *ft = field->type_info;
-                    if (ft)
-                    {
-                        if (ft->kind == TYPE_VECTOR)
-                        {
-                            strct->type_info->traits.has_drop = 1;
-                            ft->traits.has_drop = 1;
-                            changed = 1;
-                            break;
-                        }
-                        if (ft->kind == TYPE_FUNCTION && ft->traits.has_drop && !ft->is_raw)
-                        {
-                            strct->type_info->traits.has_drop = 1;
-                            ft->traits.has_drop = 1;
-                            changed = 1;
-                            break;
-                        }
-                        if (ft->kind == TYPE_STRUCT && ft->name)
-                        {
-                            ASTNode *fdef = find_struct_def(ctx, type_def_name(ft));
-                            if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
-                            {
-                                strct->type_info->traits.has_drop = 1;
-                                ft->traits.has_drop = 1;
-                                changed = 1;
-                                break;
-                            }
-                        }
-                    }
-                    field = field->next;
-                }
-            }
-            ref = ref->next;
+            changed |= propagate_drop_from_fields(ctx, ref->node);
         }
-
-        ASTNode *ins = ctx->instantiated_structs;
-        while (ins)
+        for (ASTNode *ins = ctx->instantiated_structs; ins; ins = ins->next)
         {
-            if (ins->kind == NODE_STRUCT && ins->type_info && !ins->type_info->traits.has_drop)
-            {
-                ASTNode *field = ins->strct.fields;
-                while (field)
-                {
-                    Type *ft = field->type_info;
-                    if (ft)
-                    {
-                        if (ft->kind == TYPE_VECTOR)
-                        {
-                            ins->type_info->traits.has_drop = 1;
-                            ft->traits.has_drop = 1;
-                            changed = 1;
-                            break;
-                        }
-                        if (ft->kind == TYPE_FUNCTION && ft->traits.has_drop && !ft->is_raw)
-                        {
-                            ins->type_info->traits.has_drop = 1;
-                            ft->traits.has_drop = 1;
-                            changed = 1;
-                            break;
-                        }
-                        if (ft->kind == TYPE_STRUCT && ft->name)
-                        {
-                            ASTNode *fdef = find_struct_def(ctx, type_def_name(ft));
-                            if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
-                            {
-                                ins->type_info->traits.has_drop = 1;
-                                ft->traits.has_drop = 1;
-                                changed = 1;
-                                break;
-                            }
-                        }
-                    }
-                    field = field->next;
-                }
-            }
-            ins = ins->next;
+            changed |= propagate_drop_from_fields(ctx, ins);
         }
     }
 }

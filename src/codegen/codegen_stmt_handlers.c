@@ -292,6 +292,11 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
                     }
                 }
             }
+            else if (arg_type->kind == TYPE_TUPLE && type_needs_drop(ctx, arg_type))
+            {
+                has_drop = 1;
+                drop_type_name = drop_glue_name(arg_type);
+            }
 
             if (has_drop)
             {
@@ -521,6 +526,21 @@ static void defer_local_drop(ParserContext *ctx, ASTNode *node, const char *glue
     }
 }
 
+// Drops the local `node` of type `t` when the type decides it and the C spelling of the type
+// names no struct: a closure, or a tuple. Returns 0 for any other type.
+static int defer_typed_local_drop(ParserContext *ctx, ASTNode *node, Type *t)
+{
+    if (!t || (t->kind != TYPE_FUNCTION && t->kind != TYPE_TUPLE))
+    {
+        return 0;
+    }
+    if (type_needs_drop(ctx, t))
+    {
+        defer_local_drop(ctx, node, is_owning_closure(t) ? NULL : drop_glue_name(t));
+    }
+    return 1;
+}
+
 void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 {
 
@@ -565,11 +585,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 clean_type += 7;
             }
 
-            if (is_owning_closure(node->type_info))
-            {
-                defer_local_drop(ctx, node, NULL);
-            }
-            else
+            if (!defer_typed_local_drop(ctx, node, node->type_info))
             {
                 ASTNode *def = find_struct_def(ctx, clean_type);
                 if (def && def->type_info && def->type_info->traits.has_drop)
@@ -649,11 +665,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                     clean_type += 7;
                 }
 
-                if (is_owning_closure(node->var_decl.init_expr->type_info))
-                {
-                    defer_local_drop(ctx, node, NULL);
-                }
-                else
+                if (!defer_typed_local_drop(ctx, node, node->var_decl.init_expr->type_info))
                 {
                     ASTNode *def = find_struct_def(ctx, clean_type);
                     if (def && def->type_info && def->type_info->traits.has_drop)

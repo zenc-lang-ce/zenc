@@ -321,7 +321,7 @@ void emit_lambda_defs(ParserContext *ctx)
                     else
                     {
                         EMIT(ctx, "if (ctx->__z_drop_flag_%s) %s__Drop__glue(&ctx->%s);\n", flag,
-                             type_def_name(captured), var);
+                             drop_glue_name(captured), var);
                     }
                 }
             }

@@ -573,6 +573,11 @@ int validate_function_definitions(ParserContext *ctx, ASTNode *root);
  * structs.
  */
 void propagate_drop_traits(ParserContext *ctx);
+/**
+ * @brief Whether a value of type `t` needs dropping: an owning closure, a struct with Drop, or a
+ *        tuple holding a value that needs dropping.
+ */
+int type_needs_drop(ParserContext *ctx, Type *t);
 void fix_type_refs_has_drop(ParserContext *ctx);
 
 /**

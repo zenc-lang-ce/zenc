@@ -114,7 +114,7 @@ void handle_expr_tuple_literal(ParserContext *ctx, ASTNode *node)
         {
             EMIT(ctx, ", ");
         }
-        codegen_expression(ctx, tup_elem);
+        codegen_expression_with_move(ctx, tup_elem);
         tup_elem = tup_elem->next;
         first_tup = 0;
     }
