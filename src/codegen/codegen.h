@@ -148,8 +148,6 @@ enum
     MAX_DEFER = 1024
 };
 
-void emit_pending_closure_frees(ParserContext *ctx);
-
 /**
  * @brief Whether an impl adds methods to a template (`impl Vec<T>`, `impl Show for Box<T>`):
  * its copy for each instance is emitted instead.

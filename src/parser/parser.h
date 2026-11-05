@@ -450,8 +450,6 @@ struct ParserContext
         int loop_defer_capacity;          ///< Allocated slots of loop_defer_boundary.
         int loop_depth;                   ///< Current loop nesting depth.
         int func_defer_boundary;          ///< Defer stack index at function entry.
-        int pending_closure_frees[64];    ///< Lambda IDs whose ctx needs freeing (max 64).
-        int pending_closure_free_count;
     } cg;
 
     // Type Validation

@@ -503,8 +503,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     }
     case NODE_RETURN:
     {
-        // Suppress pending closure frees — returned closures escape the scope
-        ctx->cg.pending_closure_free_count = 0;
         int has_defers = (ctx->cg.defer_count > ctx->cg.func_defer_boundary);
         int handled = 0;
 
@@ -811,29 +809,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             codegen_expression(ctx, node);
             EMIT(ctx, ";\n");
         }
-        if (node->kind == NODE_EXPR_CALL && node->call.callee &&
-            ctx->cg.pending_closure_free_count > 0)
-        {
-            int is_thread_spawn = 0;
-            if (node->call.callee->kind == NODE_EXPR_VAR && node->call.callee->var_ref.name &&
-                strstr(node->call.callee->var_ref.name, "Thread::spawn"))
-            {
-                is_thread_spawn = 1;
-            }
-            else if (node->call.callee->kind == NODE_EXPR_MEMBER &&
-                     node->call.callee->member.target &&
-                     node->call.callee->member.target->kind == NODE_EXPR_VAR &&
-                     strcmp(node->call.callee->member.target->var_ref.name, "Thread") == 0 &&
-                     strcmp(node->call.callee->member.field, "spawn") == 0)
-            {
-                is_thread_spawn = 1;
-            }
-            if (is_thread_spawn)
-            {
-                ctx->cg.pending_closure_free_count = 0;
-            }
-        }
-        emit_pending_closure_frees(ctx);
     }
     }
 }

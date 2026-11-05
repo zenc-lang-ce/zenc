@@ -11,16 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-void emit_pending_closure_frees(ParserContext *ctx)
-{
-    for (int i = 0; i < ctx->cg.pending_closure_free_count; i++)
-    {
-        EMIT(ctx, "free(_z_closure_ctx_stash[%d]); _z_closure_ctx_stash[%d] = NULL;\n",
-             ctx->cg.pending_closure_frees[i], ctx->cg.pending_closure_frees[i]);
-    }
-    ctx->cg.pending_closure_free_count = 0;
-}
-
 // Strip template suffix from a type name (for example, "MyStruct<T>" -> "MyStruct")
 // Returns newly allocated string, caller must free.
 
