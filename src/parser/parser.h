@@ -883,12 +883,17 @@ const char *link_name_of(void *ctx, const char *name);
 EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,
                                      const char *variant_name);
 /**
- * @brief Whether a match covers every value of its subject (`subject_type`, may be NULL):
- *        NULL if it does, else the first variant it misses, or "_" when the subject is not
- *        an enum, an Option or a Result, so only a default case covers it. A case with a
+ * @brief The type a match on a value of type `scrutinee` takes apart: the value's type, with
+ *        aliases and pointers followed.
+ */
+Type *match_subject_type(Type *scrutinee);
+/**
+ * @brief Whether a match covers every value of its subject (of type `scrutinee`, may be
+ *        NULL): NULL if it does, else the first variant it misses, or "_" when the subject is
+ *        not an enum, an Option or a Result, so only a default case covers it. A case with a
  *        guard covers nothing.
  */
-const char *match_missing_variant(ParserContext *ctx, ASTNode *match, const char *subject_type);
+const char *match_missing_variant(ParserContext *ctx, ASTNode *match, Type *scrutinee);
 int expr_is_rvalue(ParserContext *ctx, ASTNode *e);
 TypeAlias *find_type_alias_node(ParserContext *ctx, const char *name);
 char *extract_module_name(const char *path);

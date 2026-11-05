@@ -99,16 +99,6 @@ static inline const char *str_strip_struct_prefix(const char *t)
     return str_is_struct_prefix(t) ? t + 7 : t;
 }
 
-static inline bool str_is_option_type(const char *t)
-{
-    return t && strncmp(t, "Option__", 8) == 0;
-}
-
-static inline bool str_is_result_type(const char *t)
-{
-    return t && strncmp(t, "Result__", 8) == 0;
-}
-
 static inline bool str_is_vec_type(const char *t)
 {
     return t && strncmp(t, "Vec__", 5) == 0;

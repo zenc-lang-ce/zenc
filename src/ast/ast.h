@@ -820,6 +820,11 @@ Type *type_new_instance(const char *tpl, Type **args, int count);
 char *type_def_name(Type *t);
 
 /**
+ * @brief Whether `t` is an instance of the generic `tpl` (`Option<int>` of "Option").
+ */
+int type_is_instance_of(Type *t, const char *tpl);
+
+/**
  * @brief The name the methods of an `impl` on `t` are registered under (`Point__len`): its
  * type_def_name for a struct, an enum or an opaque alias, and the spelling of a C name for
  * any other type (`uint32_t` for `impl Meters` with `alias Meters = u32`).
