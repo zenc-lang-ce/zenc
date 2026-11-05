@@ -933,3 +933,58 @@ void check_format_string(ASTNode *call, Token t)
         }
     }
 }
+
+int slice_follows(Lexer *l)
+{
+    ZenTokenType k = lexer_peek(l).kind;
+    return k == TOK_DOTDOT || k == TOK_DOTDOT_LT;
+}
+
+// A literal slice bound past the end of a fixed-size array (`a[2..9]` of an `int[5]`).
+static void check_slice_bound(ASTNode *array, ASTNode *bound)
+{
+    Type *t = array->type_info;
+    if (bound && bound->kind == NODE_EXPR_LITERAL && bound->literal.kind == LITERAL_INT && t &&
+        t->kind == TYPE_ARRAY && t->array_size > 0)
+    {
+        if (bound->literal.int_val > (unsigned long long)t->array_size)
+        {
+            warn_slice_bounds(bound->token, (int)bound->literal.int_val, t->array_size);
+        }
+    }
+}
+
+ASTNode *parse_slice_rest(ParserContext *ctx, Lexer *l, ASTNode *array, ASTNode *start, Token token)
+{
+    lexer_next(l); // `..` or `..<`
+    ASTNode *end = lexer_peek(l).kind != TOK_RBRACKET ? parse_expression(ctx, l) : NULL;
+    if (lexer_next(l).kind != TOK_RBRACKET)
+    {
+        zpanic_at(lexer_peek(l), "Expected ]");
+        return NULL;
+    }
+    check_slice_bound(array, start);
+    check_slice_bound(array, end);
+
+    ASTNode *node = ast_create(NODE_EXPR_SLICE);
+    node->token = token;
+    node->slice.array = array;
+    node->slice.start = start;
+    node->slice.end = end;
+
+    // `a[i..j]` is a slice of the elements of `a`.
+    if (array->type_info)
+    {
+        Type *inner = slice_element(array->type_info);
+        if (!inner &&
+            (array->type_info->kind == TYPE_ARRAY || array->type_info->kind == TYPE_POINTER))
+        {
+            inner = array->type_info->inner;
+        }
+        if (inner)
+        {
+            node->type_info = instantiate_slice(ctx, inner, token);
+        }
+    }
+    return node;
+}

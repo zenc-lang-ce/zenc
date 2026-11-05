@@ -1,0 +1,9 @@
+// ARGS: build
+// A literal slice bound past the end of a fixed-size array warns, as an index does. The end
+// itself is a valid bound.
+fn main() {
+    let a: int[5] = [1, 2, 3, 4, 5];
+    let ok = a[2..5];
+    let past = a[2..9];
+    printf("%d %d\n", (int)ok.len, (int)past.len);
+}
