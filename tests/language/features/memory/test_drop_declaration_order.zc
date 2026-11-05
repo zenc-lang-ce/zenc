@@ -1,0 +1,52 @@
+// features/memory: a value is dropped whatever the order of the declarations: an `impl Drop`
+// written above its struct, and a generic instance created (by a field) above the generic
+// `impl Drop`.
+
+let drops: int = 0;
+
+impl Drop for Early {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+struct Early {
+    id: int;
+}
+
+struct Wrap<T> {
+    v: T;
+}
+
+struct Holder {
+    a: Wrap<int>;
+}
+
+impl<T> Drop for Wrap<T> {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+test "impl Drop above its struct" {
+    drops = 0;
+    {
+        let e = Early { id: 1 };
+        assert(e.id == 1, "alive");
+    }
+    assert(drops == 1, "dropped once");
+}
+
+test "a generic instance created above the generic impl Drop" {
+    drops = 0;
+    {
+        let h = Holder { a: Wrap<int> { v: 2 } };
+        assert(h.a.v == 2, "alive");
+    }
+    assert(drops == 1, "the field is dropped");
+    {
+        let w = Wrap<int> { v: 3 };
+        assert(w.v == 3, "alive");
+    }
+    assert(drops == 2, "a local of the same instance is dropped");
+}
