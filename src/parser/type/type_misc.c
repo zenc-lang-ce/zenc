@@ -192,14 +192,24 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
                     if (ctx->config->use_cpp)
                     {
                         char *inner_ts = embed_c_type(ctx, slice_elem);
+#if FF_COMPATIBILITY_0_5
+                        snprintf(p, oc - cur_len, "}; (%s){(%s*)__tmp, %ld, %ld}; })", ts, inner_ts,
+                                 (long)len, (long)len);
+#else
                         snprintf(p, oc - cur_len, "}; (%s){(%s*)__tmp, %ld}; })", ts, inner_ts,
                                  (long)len);
+#endif
                         zfree(inner_ts);
                     }
                     else
                     {
+#if FF_COMPATIBILITY_0_5
+                        snprintf(p, oc - cur_len, "}; (%s){.data=__tmp, .len=%ld, .cap=%ld}; })",
+                                 ts, (long)len, (long)len);
+#else
                         snprintf(p, oc - cur_len, "}; (%s){.data=__tmp, .len=%ld}; })", ts,
                                  (long)len);
+#endif
                     }
                     zfree(ts);
                 }
@@ -207,11 +217,19 @@ ASTNode *parse_embed(ParserContext *ctx, Lexer *l)
                 {
                     if (ctx->config->use_cpp)
                     {
+#if FF_COMPATIBILITY_0_5
+                        snprintf(p, oc - cur_len, "}, %ld, %ld}", (long)len, (long)len);
+#else
                         snprintf(p, oc - cur_len, "}, %ld}", (long)len);
+#endif
                     }
                     else
                     {
+#if FF_COMPATIBILITY_0_5
+                        snprintf(p, oc - cur_len, "},.len=%ld,.cap=%ld}", (long)len, (long)len);
+#else
                         snprintf(p, oc - cur_len, "},.len=%ld}", (long)len);
+#endif
                     }
                 }
             }

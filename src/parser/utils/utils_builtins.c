@@ -32,7 +32,12 @@ void register_builtins(ParserContext *ctx)
 
     // A slice, `[T]`, is an instance of this template; std/slice.zc adds its methods.
     Lexer slice_lexer;
-    lexer_init(&slice_lexer, "struct Slice<T> { data: T*; len: usize; }", ctx->config, "<builtin>");
+#if FF_COMPATIBILITY_0_5
+    const char *slice_template = "struct Slice<T> { data: T*; len: usize; cap: usize; }";
+#else
+    const char *slice_template = "struct Slice<T> { data: T*; len: usize; }";
+#endif
+    lexer_init(&slice_lexer, slice_template, ctx->config, "<builtin>");
     parse_program_nodes(ctx, &slice_lexer);
 
     ctx->hook_check_standard_macro_name = check_standard_macro_name;

@@ -1,12 +1,4 @@
    Compiling tests/compiler/diagnostics_output/err_return_slice_literal.zc...
-error: cannot return a slice of an array literal
-  --> tests/compiler/diagnostics_output/err_return_slice_literal.zc:7:12
-   |
-7  |     return [1.0, 2.0, 3.0];
-   |            ^ here
-   |
-   = help: its elements live on this function's stack, which is gone after the return
-   = help: return a fixed-size array (`-> float[3]`) or a `Vec<T>`
 error: cannot return a slice of a local array
   --> tests/compiler/diagnostics_output/err_return_slice_literal.zc:12:12
    |

@@ -105,6 +105,14 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             return alias_type(alias_node);
         }
 
+#if FF_COMPATIBILITY_0_5
+        Type *compat_slice = compat_slice_from_name(ctx, name, t);
+        if (compat_slice)
+        {
+            return compat_slice;
+        }
+#endif
+
         // Self type alias: Replace "Self" with current impl struct type
         if (strcmp(name, "Self") == 0 && ctx->current_impl_struct)
         {

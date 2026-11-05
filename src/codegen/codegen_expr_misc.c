@@ -21,24 +21,47 @@ static void emit_array_as_slice(ParserContext *ctx, ASTNode *node)
     ASTNode *array = node->cast.expr;
     char *slice_name = c_type_spelling(ctx, node->type_info);
     char *elem_name = c_type_spelling(ctx, slice_element(node->type_info));
+    int len = array->kind == NODE_EXPR_ARRAY_LITERAL ? array->array_literal.count
+                                                     : array->type_info->array_size;
+#if FF_COMPATIBILITY_0_5
+    // A slice has a `cap`, its `len`. An array literal returned as a slice is copied to the
+    // heap, and never freed, as in 0.5.1.
+    char cap[48];
+    char cap_positional[32];
+    snprintf(cap, sizeof(cap), ", .cap = %d", len);
+    snprintf(cap_positional, sizeof(cap_positional), ", %d", len);
+    if (array->kind == NODE_EXPR_ARRAY_LITERAL && array->array_literal.returned_as_slice)
+    {
+        EMIT(ctx, "({ %s __tmp[] = ", elem_name);
+        codegen_expression(ctx, array);
+        EMIT(ctx,
+             "; %s *__heap = (%s *)malloc(sizeof(__tmp)); memcpy(__heap, __tmp, sizeof(__tmp)); "
+             "(%s){__heap, %d, %d}; })",
+             elem_name, elem_name, slice_name, len, len);
+        return;
+    }
+#else
+    const char *cap = "";
+    const char *cap_positional = "";
+#endif
     if (array->kind != NODE_EXPR_ARRAY_LITERAL)
     {
         EMIT(ctx, "(%s){.data = ", slice_name);
         codegen_expression(ctx, array);
-        EMIT(ctx, ", .len = %d}", array->type_info->array_size);
+        EMIT(ctx, ", .len = %d%s}", len, cap);
     }
     else if (ctx->config->use_cpp && ctx->cg.current_func_ret_type_info)
     {
         // C++ has no array compound literals: the elements go in a static array.
         EMIT(ctx, "({ static const %s __tmp[] = ", elem_name);
         codegen_expression(ctx, array);
-        EMIT(ctx, "; (%s){(%s *)__tmp, %d}; })", slice_name, elem_name, array->array_literal.count);
+        EMIT(ctx, "; (%s){(%s *)__tmp, %d%s}; })", slice_name, elem_name, len, cap_positional);
     }
     else
     {
         EMIT(ctx, "(%s){.data = (%s[])", slice_name, elem_name);
         codegen_expression(ctx, array);
-        EMIT(ctx, ", .len = %d}", array->array_literal.count);
+        EMIT(ctx, ", .len = %d%s}", len, cap);
     }
 }
 
