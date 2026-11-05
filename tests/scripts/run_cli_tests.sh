@@ -440,6 +440,20 @@ else
     check "a C typedef of an arithmetic type keeps its name in C" 0
 fi
 
+# A C variable a header declares, through a macro that stands for it, has its type.
+printf 'extern long __zc_probe_counter;\n#define zc_probe_counter __zc_probe_counter\n' \
+    > "$workdir/c_include/zc_probe_variable.h"
+printf 'include <zc_probe_variable.h>\nfn main() {\n    let counter = zc_probe_counter;\n}\n' \
+    > "$workdir/uses_variable.zc"
+XDG_CACHE_HOME="$workdir/cache" "$ZC" transpile "$workdir/uses_variable.zc" \
+    -I "$workdir/c_include" -o "$workdir/uses_variable.c" >/dev/null 2>&1
+if grep -q "long counter = zc_probe_counter;" "$workdir/uses_variable.c" 2>/dev/null &&
+    grep -q "^macro zc_probe_counter __zc_probe_counter$" "$cache_file" 2>/dev/null; then
+    check "a C variable gets the type its header declares" 1
+else
+    check "a C variable gets the type its header declares" 0
+fi
+
 out=$("$ZC" cache 2>&1)
 if [ $? -ne 0 ] && echo "$out" | grep -q "usage: zc cache c-headers"; then
     check "zc cache without what to cache prints usage" 1

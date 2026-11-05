@@ -222,17 +222,51 @@ static Type *c_type_from_text_at(ParserContext *ctx, const char *text, int depth
     return base;
 }
 
-// Remembers the C type of `name` in `types`, unless a header read before gave it one.
-static void remember_c_type(zmap_FileSet *types, const char *name, const char *c_type)
+// Where the C declarations of `kind` are remembered: functions with their return types,
+// variables and typedefs with their types, macros with the name they stand for. NULL for
+// any other kind.
+static zmap_FileSet *c_declarations_of(ParserContext *ctx, int kind)
 {
-    if (!types->hash_func)
+    switch (kind)
     {
-        *types = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
+    case C_SYMBOL_FUNCTION:
+        return &ctx->c_function_types;
+    case C_SYMBOL_VARIABLE:
+        return &ctx->c_variable_types;
+    case C_SYMBOL_TYPE:
+        return &ctx->c_typedef_types;
+    case C_SYMBOL_CONSTANT:
+        return &ctx->c_macro_names;
+    default:
+        return NULL;
     }
-    if (!zmap_get(types, name))
+}
+
+// Remembers what a header says of `name`, unless a header read before said it.
+static void remember_c_declaration(ParserContext *ctx, int kind, const char *name,
+                                   const char *c_type)
+{
+    zmap_FileSet *declarations = c_declarations_of(ctx, kind);
+    if (!declarations || !c_type)
     {
-        zmap_put(types, xstrdup(name), c_type ? xstrdup(c_type) : "");
+        return;
     }
+    if (!declarations->hash_func)
+    {
+        *declarations = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
+    }
+    if (!zmap_get(declarations, name))
+    {
+        zmap_put(declarations, xstrdup(name), xstrdup(c_type));
+    }
+}
+
+// What the headers said of `name` among the declarations of `kind`, or NULL.
+static const char *known_c_declaration(ParserContext *ctx, int kind, const char *name)
+{
+    zmap_FileSet *declarations = c_declarations_of(ctx, kind);
+    const char **c_type = declarations->hash_func ? zmap_get(declarations, name) : NULL;
+    return c_type ? *c_type : NULL;
 }
 
 void register_c_header_types(ParserContext *ctx, const CHeaderFile *header)
@@ -240,19 +274,12 @@ void register_c_header_types(ParserContext *ctx, const CHeaderFile *header)
     for (int i = 0; i < header->symbol_count; i++)
     {
         const CHeaderEntry *entry = &header->symbols[i];
-        if (entry->kind == C_SYMBOL_FUNCTION && entry->c_type)
-        {
-            remember_c_type(&ctx->c_function_types, entry->name, entry->c_type);
-        }
-        else if (entry->kind == C_SYMBOL_TYPE && entry->c_type)
-        {
-            remember_c_type(&ctx->c_typedef_types, entry->name, entry->c_type);
-        }
+        remember_c_declaration(ctx, entry->kind, entry->name, entry->c_type);
     }
 }
 
-// Remembers the functions and typedefs of the header at `path` and of every header it
-// includes; with no `ctx`, only reads them into the cache.
+// Remembers what the header at `path` and every header it includes declare; with no `ctx`,
+// only reads them into the cache.
 static void read_header_tree(ParserContext *ctx, const char *path, const CSearchDirList *dirs,
                              StringList *visited, int depth)
 {
@@ -266,14 +293,10 @@ static void read_header_tree(ParserContext *ctx, const char *path, const CSearch
     {
         return;
     }
-    for (int i = 0; ctx && i < header->function_count; i++)
+    for (int i = 0; ctx && i < header->declaration_count; i++)
     {
-        remember_c_type(&ctx->c_function_types, header->functions[i].name,
-                        header->functions[i].c_type);
-    }
-    for (int i = 0; ctx && i < header->type_count; i++)
-    {
-        remember_c_type(&ctx->c_typedef_types, header->types[i].name, header->types[i].c_type);
+        const CachedDeclaration *declaration = &header->declarations[i];
+        remember_c_declaration(ctx, declaration->kind, declaration->name, declaration->c_type);
     }
     for (int i = 0; i < header->include_count; i++)
     {
@@ -361,10 +384,18 @@ int refresh_c_header_cache(const CompilerConfig *config)
     return read_system_headers(NULL, config, NULL, 1);
 }
 
-// The C type text remembered for the function `name`, or NULL.
-static const char **known_c_function(ParserContext *ctx, const char *name)
+// What the headers said of `name` among the declarations of `kind`, reading the system's
+// headers the first time a name is not known.
+static const char *c_declaration(ParserContext *ctx, int kind, const char *name)
 {
-    return ctx->c_function_types.hash_func ? zmap_get(&ctx->c_function_types, name) : NULL;
+    const char *c_type = known_c_declaration(ctx, kind, name);
+    if (!c_type && !ctx->c_system_headers_read)
+    {
+        ctx->c_system_headers_read = 1;
+        read_system_headers(ctx, ctx->config, &ctx->c_system_includes, 0);
+        c_type = known_c_declaration(ctx, kind, name);
+    }
+    return c_type;
 }
 
 Type *c_function_return_type(ParserContext *ctx, const char *name)
@@ -374,12 +405,25 @@ Type *c_function_return_type(ParserContext *ctx, const char *name)
     {
         return NULL;
     }
-    const char **c_type = known_c_function(ctx, name);
-    if (!c_type && !ctx->c_system_headers_read)
+    return c_type_from_text(ctx, c_declaration(ctx, C_SYMBOL_FUNCTION, name));
+}
+
+Type *c_variable_type(ParserContext *ctx, const char *name)
+{
+    if (ctx->config->misra_mode || ctx->config->is_freestanding)
     {
-        ctx->c_system_headers_read = 1;
-        read_system_headers(ctx, ctx->config, &ctx->c_system_includes, 0);
-        c_type = known_c_function(ctx, name);
+        return NULL;
     }
-    return (c_type && (*c_type)[0]) ? c_type_from_text(ctx, *c_type) : NULL;
+    // A macro may stand for the variable (`#define stdin __stdinp` in macOS's <stdio.h>).
+    for (int depth = 0; name && depth < MAX_TYPEDEF_DEPTH; depth++)
+    {
+        const char *c_type = c_declaration(ctx, C_SYMBOL_VARIABLE, name);
+        if (c_type)
+        {
+            return c_type_from_text(ctx, c_type);
+        }
+        const char *alias = known_c_declaration(ctx, C_SYMBOL_CONSTANT, name);
+        name = (alias && strcmp(alias, name) != 0) ? alias : NULL;
+    }
+    return NULL;
 }

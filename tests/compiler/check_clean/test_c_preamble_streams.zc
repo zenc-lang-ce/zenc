@@ -1,0 +1,7 @@
+// The streams of <stdio.h>, which the hosted preamble includes, are known without importing
+// anything, with the type their header declares.
+fn main() {
+    let out = stdout;
+    fputs("", out);
+    fflush(stderr);
+}

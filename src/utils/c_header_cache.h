@@ -9,8 +9,9 @@
 /**
  * @file c_header_cache.h
  * @brief What the compiler reads from the system's C headers, kept on disk between
- * compilations: the functions and typedefs each header declares, with the C text of their
- * types, the headers it includes, and the C compiler's include directories. One file per key (the
+ * compilations: the functions, variables and typedefs each header declares, with the C text of
+ * their types, the macros that only stand for another name, the headers it includes, and the C
+ * compiler's include directories. One file per key (the
  * zc binary, the C compiler, the include paths) in z_get_cache_dir(). A header is read again when
  * its modification time or size change. Compiler only: memory comes from the arena.
  */
@@ -20,8 +21,9 @@
 
 typedef struct
 {
+    CSymbolKind kind; ///< C_SYMBOL_FUNCTION, C_SYMBOL_VARIABLE, C_SYMBOL_TYPE or C_SYMBOL_CONSTANT.
     char *name;
-    char *c_type;
+    char *c_type; ///< Its type as C text; for a macro, the name it stands for.
 } CachedDeclaration;
 
 typedef struct CachedHeader
@@ -29,12 +31,9 @@ typedef struct CachedHeader
     char *path;
     long long modified;
     long long size;
-    CachedDeclaration *functions; ///< The functions it declares with a known type.
-    int function_count;
-    int function_capacity;
-    CachedDeclaration *types; ///< The typedefs it declares with a known type.
-    int type_count;
-    int type_capacity;
+    CachedDeclaration *declarations; ///< What it declares with a known type or name.
+    int declaration_count;
+    int declaration_capacity;
     char **includes; ///< The headers it includes that were found, as paths.
     int include_count;
     int include_capacity;

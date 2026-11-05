@@ -635,6 +635,25 @@ int is_preamble_c_function(ParserContext *ctx, const char *name)
     return 0;
 }
 
+// The variables the headers of the hosted preamble declare, which a program uses undeclared.
+static const char *const PREAMBLE_C_VARIABLES[] = {"stdin", "stdout", "stderr", NULL};
+
+static int is_preamble_c_variable(ParserContext *ctx, const char *name)
+{
+    if (ctx->config->misra_mode || ctx->config->is_freestanding)
+    {
+        return 0;
+    }
+    for (int i = 0; PREAMBLE_C_VARIABLES[i]; i++)
+    {
+        if (strcmp(PREAMBLE_C_VARIABLES[i], name) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int should_suppress_undef_warning(ParserContext *ctx, const char *name)
 {
     if (strcmp(name, "struct") == 0 || strcmp(name, "tv") == 0)
@@ -648,7 +667,8 @@ int should_suppress_undef_warning(ParserContext *ctx, const char *name)
         return 1;
     }
 
-    if (is_extern_symbol(ctx, name) || is_preamble_c_function(ctx, name))
+    if (is_extern_symbol(ctx, name) || is_preamble_c_function(ctx, name) ||
+        is_preamble_c_variable(ctx, name))
     {
         return 1;
     }

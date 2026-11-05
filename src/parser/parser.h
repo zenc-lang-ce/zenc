@@ -431,6 +431,8 @@ struct ParserContext
     int has_external_includes;
     zmap_FileSet c_function_types; ///< C function name -> its return type as C text ("": none).
     zmap_FileSet c_typedef_types;  ///< C typedef name -> the type it names as C text.
+    zmap_FileSet c_variable_types; ///< C variable name -> its type as C text.
+    zmap_FileSet c_macro_names;    ///< C macro that is only another name -> that name.
     StringList c_system_includes;  ///< The headers of `include <x.h>`, as written.
     int c_system_headers_read;     ///< Those and the preamble's are in the maps above.
     int is_comptime;               // Flag for comptime execution context
@@ -776,7 +778,9 @@ void add_to_impl_list(ParserContext *ctx, ASTNode *node);
 void add_to_global_list(ParserContext *ctx, ASTNode *node);
 
 /**
- * @brief Registers built-in types and functions.
+ * @brief Registers the built-in names: `true`, `false` and C's `va_list`. The C functions and
+ * variables a program calls undeclared take their types from the C headers
+ * (c_function_return_type, c_variable_type).
  */
 void register_builtins(ParserContext *ctx);
 void register_comptime_builtins(ParserContext *ctx);
@@ -916,6 +920,9 @@ void register_c_header_types(ParserContext *ctx, const struct CHeaderFile *heade
 /// The return type of a C function the program calls undeclared, from the headers it includes
 /// and those of the hosted preamble; NULL when it is not known.
 Type *c_function_return_type(ParserContext *ctx, const char *name);
+/// The type of the C variable `name` its header declares (`stdin`, through a macro such as
+/// `#define stdin __stdinp`), or NULL.
+Type *c_variable_type(ParserContext *ctx, const char *name);
 /// Reads the headers of the hosted preamble again into the cache on disk (`zc cache
 /// c-headers`): how many headers it holds, or -1 when it could not be written.
 int refresh_c_header_cache(const CompilerConfig *config);
