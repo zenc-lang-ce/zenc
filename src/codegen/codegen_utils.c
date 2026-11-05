@@ -397,9 +397,12 @@ char *value_drop_struct(ParserContext *ctx, ASTNode *value)
     return NULL;
 }
 
-// Whether using `node` by value moves a value that is dropped, so the place it was read from must
-// be invalidated: a closure that owns its context, or a struct or enum with Drop.
-static int moves_drop_value(ParserContext *ctx, ASTNode *node)
+int is_owning_closure(Type *t)
+{
+    return t && t->kind == TYPE_FUNCTION && t->traits.has_drop && !t->is_raw;
+}
+
+int moves_drop_value(ParserContext *ctx, ASTNode *node)
 {
     char *type_name = infer_type(ctx, node);
     ASTNode *def = NULL;
@@ -420,7 +423,7 @@ static int moves_drop_value(ParserContext *ctx, ASTNode *node)
     }
     if (t->kind == TYPE_FUNCTION)
     {
-        return t->traits.has_drop && !t->is_raw;
+        return is_owning_closure(t);
     }
     if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
     {

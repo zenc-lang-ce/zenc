@@ -478,6 +478,37 @@ static void add_symbol_local(ParserContext *ctx, const char *name, Type *type_in
     sym->type_info = type_info;
 }
 
+// Declares the drop flag of the local `node` and drops it at the end of its scope: a closure
+// frees its context, any other value calls `<glue>__Drop__glue`.
+static void defer_local_drop(ParserContext *ctx, ASTNode *node, const char *glue)
+{
+    const char *name = node->var_decl.name;
+    const char *var = c_name(ctx, name);
+    EMIT(ctx, "int __z_drop_flag_%s = 1; ", name);
+
+    size_t stmt_sz = 256 + strlen(name) + strlen(var) * 3 + (glue ? strlen(glue) : 0);
+    char *stmt_str = xmalloc(stmt_sz);
+    if (glue)
+    {
+        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);", name, glue, var);
+    }
+    else
+    {
+        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s && %s.drop) %s.drop(%s.ctx);", name, var,
+                 var, var);
+    }
+
+    ASTNode *defer_node = xmalloc(sizeof(ASTNode));
+    defer_node->kind = NODE_RAW_STMT;
+    defer_node->token = node->token;
+    defer_node->raw_stmt.content = stmt_str;
+    defer_node->line = node->line;
+    if (ctx->cg.defer_count < MAX_DEFER)
+    {
+        ctx->cg.defer_stack[ctx->cg.defer_count++] = defer_node;
+    }
+}
+
 void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 {
 
@@ -522,26 +553,16 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 clean_type += 7;
             }
 
-            ASTNode *def = find_struct_def(ctx, clean_type);
-            int has_drop = (def && def->type_info && def->type_info->traits.has_drop);
-
-            if (has_drop)
+            if (is_owning_closure(node->type_info))
             {
-                EMIT(ctx, "int __z_drop_flag_%s = 1; ", node->var_decl.name);
-
-                ASTNode *defer_node = xmalloc(sizeof(ASTNode));
-                defer_node->kind = NODE_RAW_STMT;
-                defer_node->token = node->token;
-                size_t stmt_sz = 256 + strlen(node->var_decl.name) * 2 + strlen(clean_type);
-                char *stmt_str = xmalloc(stmt_sz);
-                snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);",
-                         node->var_decl.name, clean_type, c_name(ctx, node->var_decl.name));
-                defer_node->raw_stmt.content = stmt_str;
-                defer_node->line = node->line;
-
-                if (ctx->cg.defer_count < MAX_DEFER)
+                defer_local_drop(ctx, node, NULL);
+            }
+            else
+            {
+                ASTNode *def = find_struct_def(ctx, clean_type);
+                if (def && def->type_info && def->type_info->traits.has_drop)
                 {
-                    ctx->cg.defer_stack[ctx->cg.defer_count++] = defer_node;
+                    defer_local_drop(ctx, node, clean_type);
                 }
             }
 
@@ -616,40 +637,16 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                     clean_type += 7;
                 }
 
-                ASTNode *def = find_struct_def(ctx, clean_type);
-                int has_drop = (def && def->type_info && def->type_info->traits.has_drop);
-
-                if (has_drop)
+                if (is_owning_closure(node->var_decl.init_expr->type_info))
                 {
-                    EMIT(ctx, "int __z_drop_flag_%s = 1; ", node->var_decl.name);
-
-                    ASTNode *defer_node = xmalloc(sizeof(ASTNode));
-                    defer_node->kind = NODE_RAW_STMT;
-                    defer_node->token = node->token;
-                    char *stmt_str = NULL;
-                    if (node->var_decl.init_expr && node->var_decl.init_expr->type_info &&
-                        node->var_decl.init_expr->type_info->kind == TYPE_FUNCTION)
+                    defer_local_drop(ctx, node, NULL);
+                }
+                else
+                {
+                    ASTNode *def = find_struct_def(ctx, clean_type);
+                    if (def && def->type_info && def->type_info->traits.has_drop)
                     {
-                        size_t stmt_sz = 256 + strlen(node->var_decl.name) * 4;
-                        stmt_str = xmalloc(stmt_sz);
-                        const char *var = c_name(ctx, node->var_decl.name);
-                        snprintf(stmt_str, stmt_sz,
-                                 "if (__z_drop_flag_%s && %s.drop) %s.drop(%s.ctx);",
-                                 node->var_decl.name, var, var, var);
-                    }
-                    else
-                    {
-                        size_t stmt_sz = 256 + strlen(node->var_decl.name) * 2 + strlen(clean_type);
-                        stmt_str = xmalloc(stmt_sz);
-                        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);",
-                                 node->var_decl.name, clean_type, c_name(ctx, node->var_decl.name));
-                    }
-                    defer_node->raw_stmt.content = stmt_str;
-                    defer_node->line = node->line;
-
-                    if (ctx->cg.defer_count < MAX_DEFER)
-                    {
-                        ctx->cg.defer_stack[ctx->cg.defer_count++] = defer_node;
+                        defer_local_drop(ctx, node, clean_type);
                     }
                 }
 

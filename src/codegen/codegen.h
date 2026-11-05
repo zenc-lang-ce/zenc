@@ -101,6 +101,11 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
 /** @brief Name of the struct with Drop that `value` holds by value (its glue is
  * `<name>__Drop__glue`), or NULL. */
 char *value_drop_struct(ParserContext *ctx, ASTNode *value);
+/** @brief Whether `t` is a closure that owns its context (freed by its `drop`), not a raw `fn*`. */
+int is_owning_closure(Type *t);
+/** @brief Whether using `node` by value moves a value that is dropped, so the place it was read
+ * from must be invalidated: a closure that owns its context, or a struct or enum with Drop. */
+int moves_drop_value(ParserContext *ctx, ASTNode *node);
 int emit_move_invalidation(ParserContext *ctx, ASTNode *node);
 void codegen_expression_with_move(ParserContext *ctx, ASTNode *node);
 void emit_mangled_name(ParserContext *ctx, const char *base, const char *method);

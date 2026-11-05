@@ -483,67 +483,53 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         int has_defers = (ctx->cg.defer_count > ctx->cg.func_defer_boundary);
         int handled = 0;
 
-        if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR)
+        if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR &&
+            moves_drop_value(ctx, node->ret.value))
         {
-            char *tname = infer_type(ctx, node->ret.value);
-            if (tname)
+            if (ctx->config->misra_mode)
             {
-                char *clean = tname;
-                if (strncmp(clean, "struct ", 7) == 0)
-                {
-                    clean += 7;
-                }
-
-                ASTNode *def = find_struct_def(ctx, clean);
-                if (def && def->type_info && def->type_info->traits.has_drop)
-                {
-                    if (ctx->config->misra_mode)
-                    {
-                        EMIT(ctx, "_misra_ret = ({ ");
-                    }
-                    else
-                    {
-                        EMIT(ctx, "return ({ ");
-                    }
-
-                    if (z_path_match_compiler(ctx->config->cc, "tcc"))
-                    {
-                        EMIT(ctx, "__typeof__(");
-                        codegen_expression(ctx, node->ret.value);
-                        EMIT(ctx, ")");
-                    }
-                    else
-                    {
-                        EMIT(ctx, "ZC_AUTO");
-                    }
-                    EMIT(ctx, " _z_ret_mv = ");
-                    if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-                    {
-                        EMIT(ctx, "*");
-                    }
-                    codegen_expression(ctx, node->ret.value);
-                    EMIT(ctx, "; memset(&");
-                    if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-                    {
-                        EMIT(ctx, "*");
-                    }
-                    codegen_expression(ctx, node->ret.value);
-                    EMIT(ctx, ", 0, sizeof(_z_ret_mv)); ");
-                    if (strcmp(node->ret.value->var_ref.name, "self") != 0)
-                    {
-                        EMIT(ctx, "__z_drop_flag_%s = 0; ", node->ret.value->var_ref.name);
-                    }
-                    emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
-                    EMIT(ctx, "_z_ret_mv; });\n");
-
-                    if (ctx->config->misra_mode)
-                    {
-                        EMIT(ctx, "goto _misra_end_of_func;\n");
-                    }
-                    handled = 1;
-                }
-                zfree(tname);
+                EMIT(ctx, "_misra_ret = ({ ");
             }
+            else
+            {
+                EMIT(ctx, "return ({ ");
+            }
+
+            if (z_path_match_compiler(ctx->config->cc, "tcc"))
+            {
+                EMIT(ctx, "__typeof__(");
+                codegen_expression(ctx, node->ret.value);
+                EMIT(ctx, ")");
+            }
+            else
+            {
+                EMIT(ctx, "ZC_AUTO");
+            }
+            EMIT(ctx, " _z_ret_mv = ");
+            if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
+            {
+                EMIT(ctx, "*");
+            }
+            codegen_expression(ctx, node->ret.value);
+            EMIT(ctx, "; memset(&");
+            if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
+            {
+                EMIT(ctx, "*");
+            }
+            codegen_expression(ctx, node->ret.value);
+            EMIT(ctx, ", 0, sizeof(_z_ret_mv)); ");
+            if (strcmp(node->ret.value->var_ref.name, "self") != 0)
+            {
+                EMIT(ctx, "__z_drop_flag_%s = 0; ", node->ret.value->var_ref.name);
+            }
+            emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
+            EMIT(ctx, "_z_ret_mv; });\n");
+
+            if (ctx->config->misra_mode)
+            {
+                EMIT(ctx, "goto _misra_end_of_func;\n");
+            }
+            handled = 1;
         }
 
         if (!handled)
