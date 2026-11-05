@@ -17,7 +17,6 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
     lexer_next(l); // eat def
     Token n = lexer_next(l);
 
-    char *type_str = NULL;
     Type *type_obj = NULL;
 
     if (lexer_peek(l).kind == TOK_COLON)
@@ -29,7 +28,6 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
         {
             return NULL;
         }
-        type_str = type_to_string(type_obj);
     }
 
     char *ns = token_strdup(n);
@@ -53,13 +51,9 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
     {
         lexer_next(l);
 
-        Token tk = lexer_peek(l);
-        if (tk.kind == TOK_LPAREN && type_str && strncmp(type_str, "Tuple__", 7) == 0)
+        if (type_obj && type_obj->kind == TYPE_TUPLE && tuple_literal_follows(l))
         {
-            char *code = parse_tuple_literal(ctx, l, type_str);
-            i = ast_create(NODE_RAW_STMT);
-            i->token = tk;
-            i->raw_stmt.content = code;
+            i = parse_tuple_expression(ctx, l, type_obj, NULL);
         }
         else
         {

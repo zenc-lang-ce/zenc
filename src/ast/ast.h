@@ -78,6 +78,7 @@ typedef enum
     TYPE_C_UCHAR,     ///< `c_uchar` (unsigned char).
 
     TYPE_STRUCT,     ///< Struct type.
+    TYPE_TUPLE,      ///< Tuple `(int, bool)`: its elements are `args`.
     TYPE_ENUM,       ///< Enum type.
     TYPE_POINTER,    ///< Pointer type (*).
     TYPE_ARRAY,      ///< Fixed size array [N].
@@ -100,8 +101,8 @@ typedef struct Type
     int lifetime_depth;     ///< Nesting depth of this type's lifetime (0 = static, >0 = local).
     char *name;             ///< Name of the type (for STRUCT, GENERIC, ENUM).
     struct Type *inner;     ///< Inner type (for POINTER, ARRAY).
-    struct Type **args;     ///< Generic arguments (for GENERIC instantiations).
-    int count;              ///< Count of generic arguments.
+    struct Type **args;     ///< Generic arguments, a function's parameters, a tuple's elements.
+    int count;              ///< Count of args.
     int is_const;           ///< 1 if const-qualified.
     int is_explicit_struct; ///< 1 if defined with "struct" keyword explicitly.
     int is_union;           ///< With is_explicit_struct: the keyword is "union" (a C union tag).
@@ -787,6 +788,11 @@ ASTChildren ast_children(ASTNode *node);
 Type *type_new(TypeKind kind);
 Type *type_new_ptr(Type *inner);
 Type *type_new_array(Type *inner, int size);
+Type *type_new_tuple(Type **elements, int count);
+/** @brief `t` if it is a tuple, or the tuple it points to; else NULL. */
+Type *tuple_of(Type *t);
+/** @brief The type of the element `field` (`0` or `v0`) of `tuple`, or NULL. */
+Type *tuple_element_type(Type *tuple, const char *field);
 Type *type_clone(Type *t);
 int type_eq(Type *a, Type *b);
 int is_integer_type(Type *t);

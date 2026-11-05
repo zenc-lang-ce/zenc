@@ -299,23 +299,14 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 {
                     Type *pt = v->variant.payload;
                     char *tstr = c_type_spelling(ctx, pt);
-                    ASTNode *tuple_def = NULL;
-                    if (pt->kind == TYPE_STRUCT && strncmp(pt->name, "Tuple__", 7) == 0)
-                    {
-                        tuple_def = find_struct_def(ctx, pt->name);
-                    }
-
-                    if (tuple_def)
+                    if (pt->kind == TYPE_TUPLE)
                     {
                         EMIT(ctx, "%s %s(", final_name, vsym);
-                        ASTNode *f = tuple_def->strct.fields;
-                        int i = 0;
-                        while (f)
+                        int i = pt->count;
+                        for (int j = 0; j < i; j++)
                         {
-                            const char *at = field_c_type(ctx, f);
-                            EMIT(ctx, "%s _%d%s", at, i, (f->next) ? ", " : "");
-                            f = f->next;
-                            i++;
+                            EMIT(ctx, "%s _%d%s", c_type_spelling(ctx, pt->args[j]), j,
+                                 j < i - 1 ? ", " : "");
                         }
                         EMIT(ctx, ") {\n");
                         emitter_indent(&ctx->cg.emitter);

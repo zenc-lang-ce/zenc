@@ -354,6 +354,43 @@ Type *type_new_array(Type *inner, int size)
     return t;
 }
 
+Type *type_new_tuple(Type **elements, int count)
+{
+    Type *t = type_new(TYPE_TUPLE);
+    t->args = elements;
+    t->count = count;
+    return t;
+}
+
+Type *tuple_of(Type *t)
+{
+    if (t && t->kind == TYPE_POINTER)
+    {
+        t = t->inner;
+    }
+    return t && t->kind == TYPE_TUPLE ? t : NULL;
+}
+
+Type *tuple_element_type(Type *tuple, const char *field)
+{
+    // The program writes `t.0`; C names the field `v0`, and code may write that too.
+    const char *digits = field[0] == 'v' ? field + 1 : field;
+    if (!*digits)
+    {
+        return NULL;
+    }
+    int index = 0;
+    for (const char *p = digits; *p; p++)
+    {
+        if (*p < '0' || *p > '9' || index > tuple->count)
+        {
+            return NULL;
+        }
+        index = index * 10 + (*p - '0');
+    }
+    return index < tuple->count ? tuple->args[index] : NULL;
+}
+
 Type *type_clone(Type *t)
 {
     if (!t)
@@ -729,11 +766,53 @@ int type_eq(Type *a, Type *b)
     {
         return a->array_size == b->array_size && type_eq(a->inner, b->inner);
     }
+    if (a->kind == TYPE_TUPLE)
+    {
+        // Two tuples are one C struct only if their elements are spelt alike: (int, bool) is not
+        // (u8, bool), though type_eq lets an int stand for a u8.
+        char *name_a = type_to_string(a);
+        char *name_b = type_to_string(b);
+        int same = strcmp(name_a, name_b) == 0;
+        zfree(name_a);
+        zfree(name_b);
+        return same;
+    }
 
     return 1;
 }
 
 static char *type_to_string_impl(Type *t);
+
+// The name of the C struct a tuple is: `Tuple__` and its elements' names, as `(int, bool*)`
+// gives `Tuple__int__boolPtr`.
+static char *tuple_struct_name(Type *t)
+{
+    size_t length = 0;
+    char **elements = xmalloc(sizeof(char *) * (size_t)(t->count > 0 ? t->count : 1));
+    for (int i = 0; i < t->count; i++)
+    {
+        elements[i] = type_to_string(t->args[i]);
+        length += strlen(elements[i]) + 2;
+    }
+    char *signature = xmalloc(length + 1);
+    signature[0] = 0;
+    for (int i = 0; i < t->count; i++)
+    {
+        if (i > 0)
+        {
+            strcat(signature, "__");
+        }
+        strcat(signature, elements[i]);
+        zfree(elements[i]);
+    }
+    zfree(elements);
+    char *clean = sanitize_mangled_name(signature);
+    zfree(signature);
+    char *name = xmalloc(strlen(clean) + sizeof("Tuple__"));
+    sprintf(name, "Tuple__%s", clean); /* safe */
+    zfree(clean);
+    return name;
+}
 
 char *type_to_string(Type *t)
 {
@@ -1007,6 +1086,8 @@ static char *type_to_string_impl(Type *t)
         }
         return xstrdup(t->name);
     }
+    case TYPE_TUPLE:
+        return tuple_struct_name(t);
     case TYPE_ALIAS:
     case TYPE_ENUM:
         // The name the program uses: a @link_name only shows in C (type_to_c_string).
@@ -1080,6 +1161,8 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         sprintf(res, "%s %s", keyword, c_name); /* safe */
         return res;
     }
+    case TYPE_TUPLE:
+        return tuple_struct_name(t);
     case TYPE_BOOL:
         return xstrdup("bool");
     case TYPE_STRING:

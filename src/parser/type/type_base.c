@@ -45,6 +45,11 @@ Type *type_from_name(ParserContext *ctx, const char *name)
     {
         return alias_type(alias_node);
     }
+    Type *tuple = ctx ? find_tuple_type(ctx, name) : NULL;
+    if (tuple)
+    {
+        return tuple;
+    }
     Type *t = type_new(TYPE_STRUCT);
     t->name = xstrdup(name);
     return t;
@@ -103,6 +108,12 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         {
             zfree(name);
             return alias_type(alias_node);
+        }
+        Type *tuple = find_tuple_type(ctx, name);
+        if (tuple)
+        {
+            zfree(name);
+            return tuple;
         }
 
         // Self type alias: Replace "Self" with current impl struct type
@@ -486,10 +497,9 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
     if (t.kind == TOK_LPAREN)
     {
         lexer_next(l);
-        // The element types, as many as the tuple has
-        zvec_Str type_names = {0};
-        size_t sig_len = 1;
-
+        int count = 0;
+        int capacity = 4;
+        Type **elements = xmalloc(sizeof(Type *) * (size_t)capacity);
         while (1)
         {
             Type *sub = parse_type_formal(ctx, l);
@@ -497,9 +507,12 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             {
                 break;
             }
-            char *s = type_to_string(sub);
-            zvec_push_Str(&type_names, s);
-            sig_len += strlen(s) + 2;
+            if (count == capacity)
+            {
+                capacity *= 2;
+                elements = xrealloc(elements, sizeof(Type *) * (size_t)capacity);
+            }
+            elements[count++] = sub;
 
             if (lexer_peek(l).kind == TOK_COMMA)
             {
@@ -512,39 +525,13 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         }
         if (lexer_next(l).kind != TOK_RPAREN)
         {
-            // The language server recovers from the error: the list is in the C heap
-            zvec_free_Str(&type_names);
             zpanic_at(lexer_peek(l), "Expected ) in tuple");
             return NULL;
         }
 
-        // The signature: the element types joined with "__"
-        char *sig = xmalloc(sig_len);
-        sig[0] = 0;
-        for (size_t i = 0; i < type_names.length; i++)
-        {
-            if (i > 0)
-            {
-                strcat(sig, "__");
-            }
-            strcat(sig, type_names.data[i]);
-        }
-
-        register_tuple_with_types(ctx, sig, (const char **)type_names.data, (int)type_names.length);
-        for (size_t i = 0; i < type_names.length; i++)
-        {
-            zfree(type_names.data[i]);
-        }
-        zvec_free_Str(&type_names);
-
-        char *clean_sig = sanitize_mangled_name(sig);
-        char *tuple_name = xmalloc(strlen(clean_sig) + 8);
-        snprintf(tuple_name, strlen(clean_sig) + 8, "Tuple__%s", clean_sig);
-        zfree(clean_sig);
-
-        Type *ty = type_new(TYPE_STRUCT);
-        ty->name = tuple_name;
-        return ty;
+        Type *tuple = type_new_tuple(elements, count);
+        register_tuple(ctx, tuple);
+        return tuple;
     }
 
     // If we have an identifier that wasn't found,

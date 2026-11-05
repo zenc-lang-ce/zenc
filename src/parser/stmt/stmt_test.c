@@ -15,7 +15,7 @@
 #include "zprep_plugin.h"
 #include "analysis/move_check.h"
 
-char *curr_func_ret = NULL;
+Type *curr_func_ret = NULL;
 
 static void auto_import_std_test(ParserContext *ctx)
 {
@@ -221,56 +221,14 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
 
     int handled = 0;
 
-    if (curr_func_ret && strncmp(curr_func_ret, "Tuple__", 7) == 0 &&
-        lexer_peek(l).kind == TOK_LPAREN)
+    if (curr_func_ret && curr_func_ret->kind == TYPE_TUPLE && tuple_literal_follows(l))
     {
-
-        int is_tuple_lit = 0;
-        int depth = 0;
-
-        Lexer temp_l = *l;
-
-        while (1)
+        n->ret.value = parse_tuple_expression(ctx, l, curr_func_ret, NULL);
+        if (n->ret.value)
         {
-            Token t = lexer_next(&temp_l);
-            if (t.kind == TOK_EOF)
-            {
-                break;
-            }
-            if (t.kind == TOK_SEMICOLON)
-            {
-                break;
-            }
-
-            if (t.kind == TOK_LPAREN)
-            {
-                depth++;
-            }
-            if (t.kind == TOK_RPAREN)
-            {
-                depth--;
-                if (depth == 0)
-                {
-                    break;
-                }
-            }
-
-            if (depth == 1 && t.kind == TOK_COMMA)
-            {
-                is_tuple_lit = 1;
-                break;
-            }
+            n->ret.value->token = return_token;
         }
-
-        if (is_tuple_lit)
-        {
-            n->ret.value = parse_tuple_expression(ctx, l, curr_func_ret, NULL);
-            if (n->ret.value)
-            {
-                n->ret.value->token = return_token;
-            }
-            handled = 1;
-        }
+        handled = 1;
     }
 
     if (!handled)

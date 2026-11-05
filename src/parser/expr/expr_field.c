@@ -44,6 +44,12 @@ Type *get_field_type(ParserContext *ctx, Type *struct_type, const char *field_na
         }
     }
 
+    Type *tuple = tuple_of(struct_type);
+    if (tuple)
+    {
+        return tuple_element_type(tuple, field_name);
+    }
+
     // Use resolve_struct_name_from_type to handle Generics and Pointers correctly
     int is_ptr = 0;
     char *alloc_name = NULL;

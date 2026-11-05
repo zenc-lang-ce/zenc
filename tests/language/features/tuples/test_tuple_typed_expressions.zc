@@ -1,0 +1,18 @@
+// tuples: the elements of a literal given a tuple type (`let`, `def`, `return`) are
+// expressions like any other, compiled to C, not copied as written.
+def ORIGIN: (int, int) = (0, 0);
+
+fn shifted(p: (int, int)) -> (int, int) {
+    return (p.0 + 1, p.1 * 2);
+}
+
+test "a typed tuple literal compiles its elements" {
+    let p = (5, 6);
+    let t: (int, int) = (p.0, p.1 + 1);
+    assert(t.0 == 5 && t.1 == 7, "elements read from another tuple");
+    let s: (string, bool) = (f"x{t.0}", t.1 > 6);
+    assert(strcmp(s.0, "x5") == 0 && s.1, "an f-string and a comparison");
+    let u = shifted(t);
+    assert(u.0 == 6 && u.1 == 14, "a returned literal");
+    assert(ORIGIN.0 == 0 && ORIGIN.1 == 0, "a def");
+}

@@ -89,7 +89,7 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l);
  */
 ASTNode *parse_program(ParserContext *ctx, Lexer *l);
 
-extern char *curr_func_ret;
+extern Type *curr_func_ret; ///< Return type of the function whose body is being parsed.
 extern ParserContext *token_parser_ctx;
 
 #include "ast/symbols.h"
@@ -209,13 +209,11 @@ typedef struct SliceType
 } SliceType;
 
 /**
- * @brief Track used tuple signatures for generation.
+ * @brief The tuples the program uses, each once, for the C structs codegen emits.
  */
 typedef struct TupleType
 {
-    char *sig;    ///< Signature string for dedup (e.g. "int__string").
-    char **types; ///< Individual field type names for codegen.
-    int count;    ///< Number of fields.
+    Type *type; ///< A TYPE_TUPLE.
     struct TupleType *next;
 } TupleType;
 
@@ -784,8 +782,16 @@ void add_to_global_list(ParserContext *ctx, ASTNode *node);
  */
 void register_builtins(ParserContext *ctx);
 void register_comptime_builtins(ParserContext *ctx);
-void register_tuple_with_types(ParserContext *ctx, const char *sig, const char **types, int count);
-ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, const char *type_name, ASTNode *expr);
+void register_tuple(ParserContext *ctx, Type *tuple);
+/**
+ * @brief The tuple whose C struct is named `name` (`Tuple__int32_t__bool`), or NULL.
+ *
+ * Generic instances are still built from text, where a tuple argument is that name.
+ */
+Type *find_tuple_type(ParserContext *ctx, const char *name);
+ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, Type *tuple, ASTNode *expr);
+/** @brief Whether a tuple literal comes next: `(` and a comma before its `)`. */
+int tuple_literal_follows(Lexer *l);
 
 /** @brief Parses just the comptime block body, returning the statement list. */
 ASTNode *parse_comptime_body(ParserContext *ctx, Lexer *l);
@@ -946,7 +952,6 @@ char *normalize_raw_content(const char *content);
 char *parse_condition_raw(ParserContext *ctx, Lexer *l);
 const char *resolve_plugin(ParserContext *ctx, const char *name_or_alias);
 char *parse_array_literal(ParserContext *ctx, Lexer *l, const char *slice_type);
-char *parse_tuple_literal(ParserContext *ctx, Lexer *l, const char *tn);
 ASTNode *parse_embed(ParserContext *ctx, Lexer *l);
 ASTNode *parse_macro_call(ParserContext *ctx, Lexer *l, char *macro_name);
 char *instantiate_function_template(ParserContext *ctx, const char *name, const char *arg1,

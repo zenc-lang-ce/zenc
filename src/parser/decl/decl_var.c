@@ -315,12 +315,9 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 lexer_next(l);
             }
         }
-        else if (next.kind == TOK_LPAREN && type && strncmp(type, "Tuple__", 7) == 0)
+        else if (type_obj && type_obj->kind == TYPE_TUPLE && tuple_literal_follows(l))
         {
-            char *code = parse_tuple_literal(ctx, l, type);
-            init = ast_create(NODE_RAW_STMT);
-            init->token = next;
-            init->raw_stmt.content = code;
+            init = parse_tuple_expression(ctx, l, type_obj, NULL);
             if (lexer_peek(l).kind == TOK_SEMICOLON)
             {
                 lexer_next(l);

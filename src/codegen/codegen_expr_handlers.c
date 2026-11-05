@@ -778,11 +778,10 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                         Type *param_t =
                             (arg_idx < sig->total_args) ? sig->arg_types[arg_idx] : NULL;
 
-                        if (param_t && param_t->kind == TYPE_STRUCT &&
-                            strncmp(param_t->name, "Tuple__", 7) == 0 && sig->total_args == 1 &&
+                        if (param_t && param_t->kind == TYPE_TUPLE && sig->total_args == 1 &&
                             node->call.count > 1)
                         {
-                            EMIT(ctx, "(%s){", param_t->name);
+                            EMIT(ctx, "(%s){", c_type_spelling(ctx, param_t));
                             int first = 1;
                             while (arg)
                             {
@@ -1235,11 +1234,10 @@ skip_callee_gen:
                     zfree(inner);
                     handled = 1;
                 }
-                else if (param_t && param_t->kind == TYPE_STRUCT &&
-                         strncmp(param_t->name, "Tuple__", 7) == 0 && sig->total_args == 1 &&
+                else if (param_t && param_t->kind == TYPE_TUPLE && sig->total_args == 1 &&
                          node->call.count > 1)
                 {
-                    EMIT(ctx, "(%s){", param_t->name);
+                    EMIT(ctx, "(%s){", c_type_spelling(ctx, param_t));
                     ASTNode *curr = arg;
                     int first_field = 1;
                     while (curr)
