@@ -37,6 +37,7 @@ src/parser/utils/utils_template_replace.c
 src/parser/utils/utils_template_inst.c
 src/parser/utils/utils_rewrite.c
 src/parser/utils/utils_validation.c
+src/parser/utils/utils_c_types.c
 src/parser/utils/utils_audit.c
 src/parser/utils/utils_plugins.c
 src/parser/expr/expr_helpers.c
@@ -79,6 +80,8 @@ src/platform/dylib.c
 src/platform/misra.c
 src/utils/config.c
 src/utils/string_list.c
+src/utils/c_headers.c
+src/utils/c_header_cache.c
 src/diagnostics/diagnostics.c
 src/lexer/token.c
 src/analysis/typecheck.c

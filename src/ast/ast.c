@@ -1057,6 +1057,10 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
     {
         return xstrdup("void");
     }
+    if (t->c_typedef_name)
+    {
+        return xstrdup(t->c_typedef_name);
+    }
 
     switch (t->kind)
     {

@@ -7,6 +7,7 @@
 #define LSP_C_HEADERS_H
 
 #include "../constants.h"
+#include "../utils/c_headers.h"
 
 struct cJSON;
 
@@ -17,16 +18,6 @@ struct cJSON;
  * Owned by the header cache and valid until the header changes on disk, so it must not be
  * kept across requests.
  */
-typedef struct CHeaderSymbol
-{
-    const char *path; ///< Path of the header.
-    int line;         ///< 0-based line of the name.
-    int column;       ///< 0-based column of the name.
-    int length;       ///< Length of the name.
-    int start_line;   ///< First line of the whole declaration.
-    int end_line;     ///< Last line of the whole declaration.
-} CHeaderSymbol;
-
 /**
  * @brief The `import "x.h" [as alias]` (or `include`) a C header comes from.
  */

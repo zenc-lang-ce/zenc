@@ -62,6 +62,18 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
 
             // Check local scope first, then global symbols
             ZenSymbol *sym = tc_lookup(tc, func_name);
+
+            // A C function, undeclared or one of the built-ins: the return type its header
+            // declares, when it is known.
+            if ((!sym || !sym->is_local) && should_suppress_undef_warning(tc->pctx, func_name))
+            {
+                Type *c_return = c_function_return_type(tc->pctx, func_name);
+                if (c_return)
+                {
+                    node->type_info = c_return;
+                }
+            }
+
             if (!sym)
             {
                 ZenSymbol *global_sym = find_symbol_in_all(tc->pctx, func_name);

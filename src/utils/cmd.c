@@ -94,6 +94,8 @@ void print_usage(void)
                     "Type check only / generate C code");
     print_help_item(COLOR_GREEN "repl, lsp, doc" COLOR_RESET,
                     "REPL / Language Server / Documentation");
+    print_help_item(COLOR_GREEN "cache c-headers" COLOR_RESET,
+                    "Read the system's C headers again into the cache");
 
     printf("\ncommon options:\n");
     print_help_item(COLOR_CYAN "-o <f>, --cc <c>" COLOR_RESET,
@@ -163,6 +165,13 @@ void print_command_help(const char *command)
     {
         printf("usage: zc debug <file> [<args>]\n\n");
         printf("Compile and run with full debug information and GDB/LLDB support.\n");
+    }
+    else if (strcmp(command, "cache") == 0)
+    {
+        printf("usage: zc cache c-headers [--cc <c>] [-I <dir>]\n\n");
+        printf("Read the C headers of the standard preamble again and cache what they declare.\n");
+        printf("zc reads them on the first compilation and again when one changes on disk; run\n");
+        printf("this after switching the system's C toolchain or SDK.\n");
     }
     else if (strcmp(command, "lsp") == 0)
     {

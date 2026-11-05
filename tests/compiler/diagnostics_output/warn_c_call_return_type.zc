@@ -1,0 +1,9 @@
+// ARGS: check
+// A C function the program calls undeclared has the return type its header declares:
+// strlen() gives a size_t, so storing it in an i32 narrows it.
+fn main() {
+    let text = "hello";
+    let length = strlen(text);
+    let small: i32 = length;
+    printf("%d\n", small);
+}

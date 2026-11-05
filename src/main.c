@@ -15,6 +15,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "utils/cmd.h"
+#include "utils/c_header_cache.h"
 #include "diagnostics/diagnostics.h"
 #include <signal.h>
 #if !defined(_WIN32)
@@ -124,6 +125,7 @@ int main(int argc, char **argv)
     // Parse command
     char *command = argv[1];
     int arg_start = 2;
+    int refresh_c_headers = 0;
 
     if (strcmp(command, "lsp") == 0)
     {
@@ -158,6 +160,16 @@ int main(int argc, char **argv)
     else if (strcmp(command, "check") == 0)
     {
         cfg->mode_check = 1;
+    }
+    else if (strcmp(command, "cache") == 0)
+    {
+        if (argc < 3 || strcmp(argv[2], "c-headers") != 0)
+        {
+            print_command_help("cache");
+            return 1;
+        }
+        refresh_c_headers = 1;
+        arg_start = 3;
     }
     else if (strcmp(command, "help") == 0)
     {
@@ -650,6 +662,19 @@ int main(int argc, char **argv)
             print_search_paths(cfg);
             return 0;
         }
+    }
+
+    if (refresh_c_headers)
+    {
+        int headers = refresh_c_header_cache(cfg);
+        if (headers < 0 || !c_header_cache_file())
+        {
+            fprintf(stderr, COLOR_BOLD COLOR_RED "error" COLOR_RESET
+                                                 ": could not write the C header cache\n");
+            return 1;
+        }
+        printf("Cached %d C headers in %s\n", headers, c_header_cache_file());
+        return 0;
     }
 
     if (!cfg->input_file)

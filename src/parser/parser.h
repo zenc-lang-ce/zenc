@@ -12,6 +12,7 @@
 #include "../diagnostics/diagnostics.h"
 #include "../utils/emitter.h"
 #include "../utils/mangle.h"
+#include "../utils/string_list.h"
 
 // Operator precedence for expression parsing
 
@@ -424,9 +425,13 @@ struct ParserContext
 
     // External C interop: suppress undefined warnings for external symbols
     int has_external_includes;
-    int is_comptime;         // Flag for comptime execution context
-    char **extern_symbols;   ///< Explicitly declared extern symbols.
-    int extern_symbol_count; ///< Count of external symbols.
+    zmap_FileSet c_function_types; ///< C function name -> its return type as C text ("": none).
+    zmap_FileSet c_typedef_types;  ///< C typedef name -> the type it names as C text.
+    StringList c_system_includes;  ///< The headers of `include <x.h>`, as written.
+    int c_system_headers_read;     ///< Those and the preamble's are in the maps above.
+    int is_comptime;               // Flag for comptime execution context
+    char **extern_symbols;         ///< Explicitly declared extern symbols.
+    int extern_symbol_count;       ///< Count of external symbols.
 
     // Codegen context (mutable state during code generation):
     struct
@@ -887,7 +892,29 @@ ASTNode *find_trait_def(ParserContext *ctx, const char *name);
 int is_extern_symbol(ParserContext *ctx, const char *name);
 int is_file_imported(ParserContext *ctx, const char *path);
 void mark_file_imported(ParserContext *ctx, const char *path);
+/**
+ * @brief Whether the headers of the C preamble declare `name` (strstr, fputs, va_end...): it
+ *        can be called without a Zen C declaration, and a declaration needs no prototype.
+ */
+int is_preamble_c_function(ParserContext *ctx, const char *name);
+/**
+ * @brief Whether a call to or use of the undeclared `name` may still reach C: a preamble
+ *        function, a runtime helper, an extern symbol, a zenc.json function, a macro (all
+ *        caps), or anything when the program includes or imports C headers.
+ */
 int should_suppress_undef_warning(ParserContext *ctx, const char *name);
+struct CHeaderFile;
+/// The Type of a C type written as C text (`const char *`, `size_t`, `struct tm *`), or NULL.
+Type *c_type_from_text(ParserContext *ctx, const char *text);
+/// Remembers the return types of the functions a C header declares, and the types its
+/// typedefs name.
+void register_c_header_types(ParserContext *ctx, const struct CHeaderFile *header);
+/// The return type of a C function the program calls undeclared, from the headers it includes
+/// and those of the hosted preamble; NULL when it is not known.
+Type *c_function_return_type(ParserContext *ctx, const char *name);
+/// Reads the headers of the hosted preamble again into the cache on disk (`zc cache
+/// c-headers`): how many headers it holds, or -1 when it could not be written.
+int refresh_c_header_cache(const CompilerConfig *config);
 void init_builtins(void);
 void register_extern_symbol(ParserContext *ctx, const char *name);
 void register_impl(ParserContext *ctx, const char *trait, const char *type);
