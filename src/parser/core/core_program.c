@@ -629,7 +629,10 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
     // included, so the deferred bodies can see all of them.
     if (ctx->parse_depth == 0)
     {
+        ctx->declarations_read = 1;
+        resolve_pending_instances(ctx);
         parse_pending_bodies(ctx);
+        ctx->declarations_read = 0;
     }
     return nodes;
 }
@@ -647,6 +650,11 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
     {
         ctx->current_scope = ctx->global_scope;
     }
+
+    // A parse the language server abandoned on an error may have left instances waiting.
+    ctx->pending_instances = NULL;
+    ctx->pending_instances_tail = NULL;
+    ctx->declarations_read = 0;
 
     ASTNode *r = ast_create(NODE_ROOT);
     skip_comments(l);
