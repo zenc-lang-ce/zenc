@@ -366,6 +366,17 @@ else
     check "emit-c #line of an imported method names the imported file" 0
 fi
 
+# main's last mapped statement and helper are both on line 3, in different files.
+printf '// helper module\n\nfn helper() -> int { return 7; }\n' > "$workdir/same_line_helper.zc"
+printf 'import "same_line_helper.zc"\nfn main() {\n    printf("%%d\\n", helper());\n}\n' > "$workdir/same_line_main.zc"
+"$ZC" build --emit-c "$workdir/same_line_main.zc" -o "$workdir/same_line_out" >/dev/null 2>&1
+line=$(awk '/#line/{l=$0} /^ZC_FUNC int32_t helper\(void\)$/{print l; exit}' "$workdir/same_line_out.c" 2>/dev/null)
+if echo "$line" | grep -q 'same_line_helper.zc"'; then
+    check "emit-c #line changes with the file when the line number is the same" 1
+else
+    check "emit-c #line changes with the file when the line number is the same" 0
+fi
+
 # --- Installed layout ------------------------------------------------------
 
 # `make install` puts the binary in PREFIX/bin and the stdlib in
