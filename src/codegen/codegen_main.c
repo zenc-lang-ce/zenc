@@ -10,104 +10,63 @@
 #include <stdlib.h>
 #include <string.h>
 
-// The by-value field types (or variant payload types) of a struct or enum,
-// resolved once. topo_sort_structs compares every pair of nodes, so resolving
-// aliases and mangling names inside that loop made it quadratic in the work per
-// field.
+// The C names of the types a struct or enum holds by value (its fields, or its
+// variants' payloads), collected once: topo_sort_structs compares every pair of
+// nodes.
 typedef struct
 {
     int count;
-    char **mangled;     // Resolved and mangled type, compared with the dependency name.
-    const char **clean; // Resolved type before mangling (enums check the next character).
-    int is_enum;
+    char **names;
 } NodeDeps;
 
-static const char *strip_c_tag(const char *type_str)
+// Adds what `t` holds by value: itself, or an array's elements. An opaque alias holds what it
+// names; a pointer holds nothing.
+static void node_deps_add(NodeDeps *deps, Type *t)
 {
-    if (strncmp(type_str, "struct ", 7) == 0)
+    t = resolve_alias(t);
+    while (t && t->kind == TYPE_ARRAY && t->array_size > 0)
     {
-        return type_str + 7;
+        t = resolve_alias(t->inner);
     }
-    if (strncmp(type_str, "enum ", 5) == 0)
-    {
-        return type_str + 5;
-    }
-    if (strncmp(type_str, "union ", 6) == 0)
-    {
-        return type_str + 6;
-    }
-    return type_str;
-}
-
-// `type_str` is the spelling of a field's type with its aliases resolved: an opaque alias holds
-// what it names by value.
-static void node_deps_add(NodeDeps *deps, const char *type_str)
-{
-    // Pointers do not create an ordering dependency.
-    if (strchr(type_str, '*'))
+    if (!t || t->kind == TYPE_POINTER || t->kind == TYPE_FUNCTION)
     {
         return;
     }
-
-    const char *clean = strip_c_tag(type_str);
-
-    deps->mangled = xrealloc(deps->mangled, (size_t)(deps->count + 1) * sizeof(char *));
-    deps->clean = xrealloc(deps->clean, (size_t)(deps->count + 1) * sizeof(char *));
-    deps->mangled[deps->count] = replace_string_type(clean);
-    deps->clean[deps->count] = clean;
-    deps->count++;
+    deps->names = xrealloc(deps->names, (size_t)(deps->count + 1) * sizeof(char *));
+    deps->names[deps->count++] = type_mangle_spelling(t);
 }
 
-static void node_deps_build(ParserContext *ctx, ASTNode *node, NodeDeps *deps)
+static void node_deps_build(ASTNode *node, NodeDeps *deps)
 {
     memset(deps, 0, sizeof(*deps));
     if (node->kind == NODE_STRUCT)
     {
-        ASTNode *field = node->strct.fields;
-        while (field)
+        for (ASTNode *field = node->strct.fields; field; field = field->next)
         {
             if (field->kind == NODE_FIELD)
             {
-                node_deps_add(deps, type_mangle_spelling(resolve_alias(field->type_info)));
+                node_deps_add(deps, field->type_info);
             }
-            field = field->next;
         }
     }
     else if (node->kind == NODE_ENUM)
     {
-        deps->is_enum = 1;
-        ASTNode *variant = node->enm.variants;
-        while (variant)
+        for (ASTNode *variant = node->enm.variants; variant; variant = variant->next)
         {
             if (variant->kind == NODE_ENUM_VARIANT && variant->variant.payload)
             {
-                char *type_str = c_type_spelling(ctx, resolve_alias(variant->variant.payload));
-                if (type_str)
-                {
-                    node_deps_add(deps, type_str);
-                }
+                node_deps_add(deps, variant->variant.payload);
             }
-            variant = variant->next;
         }
     }
 }
 
-// Whether a node depends by value on the struct or enum named target_name.
+// Whether a node holds by value the struct or enum named target_name.
 static int node_deps_match(const NodeDeps *deps, const char *target_name)
 {
-    size_t len = strlen(target_name);
     for (int k = 0; k < deps->count; k++)
     {
-        if (strncmp(deps->mangled[k], target_name, len) != 0)
-        {
-            continue;
-        }
-        if (!deps->is_enum)
-        {
-            return 1;
-        }
-        char next = deps->clean[k][len];
-        if (next == 0 || next == '[' || isspace(next))
+        if (strcmp(deps->names[k], target_name) == 0)
         {
             return 1;
         }
@@ -229,7 +188,7 @@ static ASTNode *tuple_struct(Type *tuple)
 }
 
 // Topologically sort a list of struct/enum nodes.
-static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
+static ASTNode *topo_sort_structs(ASTNode *head)
 {
     if (!head)
     {
@@ -252,7 +211,7 @@ static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
     NodeDeps *deps = xcalloc((size_t)count, sizeof(NodeDeps));
     for (int k = 0; k < count; k++)
     {
-        node_deps_build(ctx, nodes[k], &deps[k]);
+        node_deps_build(nodes[k], &deps[k]);
     }
 
     // Build order array (indices in emission order).
@@ -851,7 +810,7 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         }
 
         // Topologically sort.
-        ASTNode *sorted = topo_sort_structs(ctx, merged);
+        ASTNode *sorted = topo_sort_structs(merged);
 
         print_type_defs(ctx, sorted);
         emit_global_aliases(ctx);

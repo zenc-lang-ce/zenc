@@ -1,0 +1,21 @@
+// language/features/structs: test_struct_emit_order_name_prefix
+// A field whose type's name starts with another struct's name (`LabelText`,
+// `Label`) does not make its struct depend on that struct. When it did, `Card`
+// and `Label` depended on each other, and `Label` was emitted before `Card`.
+
+struct Card {
+    text: LabelText;
+}
+
+struct Label {
+    card: Card;
+}
+
+struct LabelText {
+    len: int;
+}
+
+test "struct_emit_order_name_prefix" {
+    let label = Label { card: Card { text: LabelText { len: 3 } } };
+    assert(label.card.text.len == 3, "a struct held by value should be emitted before its holder");
+}
