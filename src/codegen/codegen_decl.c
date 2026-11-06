@@ -13,6 +13,7 @@
 #include "../platform/misra.h"
 
 static int last_source_mapping_line = -1;
+static const char *last_source_mapping_file = NULL;
 static NodeType last_source_mapping_type = NODE_ROOT;
 static int allow_duplicate_source_mapping = 0;
 
@@ -45,7 +46,9 @@ void emit_source_mapping(ParserContext *ctx, ASTNode *node)
 
     if (allow_duplicate_source_mapping <= 0)
     {
-        if (node->token.line == last_source_mapping_line)
+        if (node->token.line == last_source_mapping_line &&
+            (!node->token.file || !last_source_mapping_file ||
+             strcmp(node->token.file, last_source_mapping_file) == 0))
         {
             return;
         }
@@ -60,6 +63,7 @@ void emit_source_mapping(ParserContext *ctx, ASTNode *node)
     }
 
     last_source_mapping_line = node->token.line;
+    last_source_mapping_file = node->token.file;
     last_source_mapping_type = node->kind;
 
     if (!ctx->config->misra_mode)
