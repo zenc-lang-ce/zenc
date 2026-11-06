@@ -493,8 +493,10 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
 
         if (clean_type)
         {
-            EMIT(ctx, "({ ");
-            EMIT(ctx, "ZC_AUTO _z_tmp = (");
+            // The variable's type, not ZC_AUTO: tcc has no __auto_type.
+            EMIT(ctx, "({ __typeof__((");
+            codegen_expression(ctx, node->binary.left);
+            EMIT(ctx, ")) _z_tmp = (");
             codegen_expression_with_move(ctx, node->binary.right);
             EMIT(ctx, "); ");
 

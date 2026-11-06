@@ -1,0 +1,12 @@
+// ARGS: build
+// A variable or parameter used as the message of assert or expect is used: no warning for it.
+
+fn check(value: int, msg: string) {
+    expect(value > 0, msg);
+}
+
+fn main() {
+    let msg = "value must be positive";
+    assert(1 > 0, msg);
+    check(1, "positive");
+}
