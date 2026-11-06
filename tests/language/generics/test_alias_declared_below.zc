@@ -1,0 +1,20 @@
+// generics: an alias used as a generic argument in a signature before the alias is declared
+import "std/vec.zc";
+
+struct Kind {}
+
+struct Id<K> {
+    v: int;
+}
+
+fn first_v(list: Vec<PId>*) -> int {
+    return list.get(0).v;
+}
+
+alias PId = Id<Kind>;
+
+test "alias declared below its use in a signature" {
+    let v = Vec<PId>::new();
+    v.push(PId { v: 3 });
+    assert(first_v(&v) == 3, "alias below");
+}

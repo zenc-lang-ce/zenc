@@ -361,7 +361,10 @@ struct ParserContext
     GenericImplTemplate *impl_templates;     ///< Implementation block templates.
 
     // Instantiations
-    Instantiation *instantiations; ///< Cache of instantiated generic types.
+    Instantiation *instantiations;                  ///< Cache of instantiated generic types.
+    struct PendingInstance *pending_instances;      ///< Instances waiting for the declarations.
+    struct PendingInstance *pending_instances_tail; ///< Last of `pending_instances`.
+    int declarations_read; ///< Set once every declaration is read: instances are made at once.
     ASTNode *instantiated_structs; ///< List of AST nodes for instantiated structs.
     ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
 
@@ -540,6 +543,15 @@ enum
         (node)->doc_comment = (ctx)->last_doc_comment;                                             \
         (ctx)->last_doc_comment = NULL;                                                            \
     }
+
+/** @brief A generic instance read in a declaration before its template or an argument was declared.
+ */
+typedef struct PendingInstance
+{
+    Type *type;  ///< The instance (`Vec<PId>`), resolved in place.
+    Token token; ///< Where it was read, for errors.
+    struct PendingInstance *next;
+} PendingInstance;
 
 typedef struct TypeUsage
 {
@@ -999,6 +1011,12 @@ GenericTemplate *find_generic_template(ParserContext *ctx, const char *name);
  * generic parameter.
  */
 void instantiate_type(ParserContext *ctx, Type *instance, Token token);
+/**
+ * @brief Instantiates the generic instances that declarations named before their template or an
+ *        argument was declared, once every declaration is read; an alias argument is replaced by
+ *        the type it names.
+ */
+void resolve_pending_instances(ParserContext *ctx);
 
 // stmt/ declarations
 ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_token);

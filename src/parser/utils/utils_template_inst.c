@@ -53,6 +53,44 @@ static int args_name_generic(ParserContext *ctx, Type **args, int count)
 static void instantiate_generic(ParserContext *ctx, const char *tpl, Type **args, int count,
                                 Token token);
 
+// Whether `t` names a type that is not declared yet: one that a declaration further down, or
+// a generic instance still waiting, may provide.
+static int names_undeclared_type(ParserContext *ctx, Type *t)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    switch (t->kind)
+    {
+    case TYPE_STRUCT:
+    case TYPE_ENUM:
+        if (!t->name || t->is_explicit_struct)
+        {
+            return 0;
+        }
+        if (t->count > 0)
+        {
+            return !find_struct_def(ctx, type_def_name(t));
+        }
+        return !find_struct_def(ctx, t->name) && !find_type_alias_node(ctx, t->name) &&
+               !is_primitive_type_name(t->name) && !is_known_generic(ctx, t->name) &&
+               !is_extern_symbol(ctx, t->name) && !find_generic_template(ctx, t->name);
+    case TYPE_TUPLE:
+    case TYPE_FUNCTION:
+        for (int i = 0; i < t->count; i++)
+        {
+            if (names_undeclared_type(ctx, t->args[i]))
+            {
+                return 1;
+            }
+        }
+        return names_undeclared_type(ctx, t->inner);
+    default:
+        return names_undeclared_type(ctx, t->inner);
+    }
+}
+
 void instantiate_type(ParserContext *ctx, Type *instance, Token token)
 {
     if (!instance || (instance->kind != TYPE_STRUCT && instance->kind != TYPE_ENUM) ||
@@ -61,7 +99,66 @@ void instantiate_type(ParserContext *ctx, Type *instance, Token token)
     {
         return;
     }
+    // While declarations are read, the template or an argument may be declared further down.
+    if (!ctx->declarations_read &&
+        (!find_generic_template(ctx, instance->name) ||
+         names_undeclared_type(
+             ctx, &(Type){.kind = TYPE_TUPLE, .args = instance->args, .count = instance->count})))
+    {
+        PendingInstance *p = xcalloc(1, sizeof(PendingInstance));
+        p->type = instance;
+        p->token = token;
+        if (ctx->pending_instances_tail)
+        {
+            ctx->pending_instances_tail->next = p;
+        }
+        else
+        {
+            ctx->pending_instances = p;
+        }
+        ctx->pending_instances_tail = p;
+        return;
+    }
     instantiate_generic(ctx, instance->name, instance->args, instance->count, token);
+}
+
+// Replaces, in place, every type `t` names that turned out to be an alias by the type it names.
+static void replace_alias_names(ParserContext *ctx, Type *t)
+{
+    if (!t)
+    {
+        return;
+    }
+    if ((t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->count == 0 && t->name)
+    {
+        TypeAlias *alias = find_type_alias_node(ctx, t->name);
+        if (alias)
+        {
+            *t = *alias_type(alias);
+        }
+        return;
+    }
+    for (int i = 0; t->args && i < t->count; i++)
+    {
+        replace_alias_names(ctx, t->args[i]);
+    }
+    replace_alias_names(ctx, t->inner);
+}
+
+void resolve_pending_instances(ParserContext *ctx)
+{
+    PendingInstance *p = ctx->pending_instances;
+    ctx->pending_instances = NULL;
+    ctx->pending_instances_tail = NULL;
+    for (; p; p = p->next)
+    {
+        Type *instance = p->type;
+        for (int i = 0; i < instance->count; i++)
+        {
+            replace_alias_names(ctx, instance->args[i]);
+        }
+        instantiate_type(ctx, instance, p->token);
+    }
 }
 
 static void trigger_type_instantiation(ParserContext *ctx, Type *t)
