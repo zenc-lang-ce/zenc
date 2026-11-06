@@ -1,0 +1,25 @@
+// language/generics: test_generic_int_is_i32
+// `int` is `i32`: an instance made from an `int` value is the same type as a
+// declared `Wrap<int>` (it used to be `Wrap__int` next to `Wrap__int32_t`, and
+// the assignment failed with "Expected 'Wrap<i32>', but got 'Wrap<int>'").
+
+struct Wrap<T> {
+    inner: T;
+}
+
+impl Wrap<T> {
+    fn make(inner: T) -> Wrap<T> {
+        return Wrap<T> { inner: inner };
+    }
+}
+
+fn read_wrap(w: Wrap<int>) -> int {
+    return w.inner;
+}
+
+test "an_inferred_int_instance_is_the_declared_one" {
+    let b = Wrap::make(2);
+    let c: Wrap<int> = b;
+    assert(read_wrap(b) == 2, "passed as Wrap<int>");
+    assert(c.inner == 2, "assigned to Wrap<int>");
+}
