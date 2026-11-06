@@ -460,11 +460,10 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
             EMIT(ctx, "// Auto-Generated RAII Glue for %s\n", sname);
             EMIT(ctx, "void %s__Drop__glue(%s *self) {\n", sname, struct_c_type(s));
 
-            char glue_mangled[MAX_MANGLED_NAME_LEN];
-            snprintf(glue_mangled, sizeof(glue_mangled), "%s__Drop__drop", sname);
-            if (find_func(ctx, glue_mangled))
+            char *drop_method = mangle_method_symbol(sname, "Drop", "drop");
+            if (find_func(ctx, drop_method))
             {
-                EMIT(ctx, "    %s__Drop__drop(self);\n", sname);
+                EMIT(ctx, "    %s(self);\n", drop_method);
             }
 
             if (s->kind == NODE_ENUM && enum_has_payload(s))

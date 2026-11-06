@@ -131,11 +131,10 @@ static void emit_fstring_expr(ParserContext *ctx, ASTNode *part, const char *wri
         }
         if (struct_name)
         {
-            char mangled[MAX_TYPE_NAME_LEN];
-            snprintf(mangled, sizeof(mangled), "%s__to_string", struct_name);
+            char *mangled = mangle_method_symbol(struct_name, NULL, "to_string");
             if (find_func(ctx, mangled))
             {
-                to_string = xstrdup(mangled);
+                to_string = mangled;
             }
         }
     }

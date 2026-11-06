@@ -186,7 +186,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
         {
             if (f->func.name && !f->func.body)
             {
-                if (strncmp(f->func.name, "_z_", 3) == 0 || strncmp(f->func.name, "_time_", 6) == 0)
+                if (strncmp(f->func.name, "_z_", 3) == 0)
                 {
                     f = f->next;
                     continue;

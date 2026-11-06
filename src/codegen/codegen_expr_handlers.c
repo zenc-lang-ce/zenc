@@ -354,23 +354,15 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             {
                 EMIT(ctx, "(!");
             }
-            char meth[MAX_TYPE_NAME_LEN];
-            snprintf(meth, sizeof(meth), "%s__Eq__eq", base);
-            ZenSymbol *sym = find_symbol_in_all(ctx, meth);
+            // `eq` of the Eq trait, or an inherent `eq`.
+            char *trait_eq = mangle_method_symbol(base, "Eq", "eq");
+            ZenSymbol *sym = find_symbol_in_all(ctx, trait_eq);
+            if (!sym || !sym->data.sig)
+            {
+                sym = find_symbol_in_all(ctx, mangle_method_symbol(base, NULL, "eq"));
+            }
             FuncSig *sig = sym ? sym->data.sig : NULL;
-            if (!sig)
-            {
-                snprintf(meth, sizeof(meth), "%s__eq", base);
-                sym = find_symbol_in_all(ctx, meth);
-                sig = sym ? sym->data.sig : NULL;
-            }
-
-            const char *call_name = sig ? sig->name : NULL;
-            if (!call_name)
-            {
-                snprintf(meth, sizeof(meth), "%s__Eq__eq", base);
-                call_name = meth;
-            }
+            const char *call_name = sig ? sig->name : trait_eq;
 
             EMIT(ctx, "%s(", (sig && sig->link_name) ? sig->link_name : call_name);
 
