@@ -12,18 +12,35 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
-// Appends a body to the end of ctx's pending list (parsed in declaration order).
+// Appends a body to the end of ctx's pending list (parsed in declaration order); a template's
+// body to the list of template bodies, which are parsed first.
 void push_pending_body(ParserContext *ctx, PendingBody *pending)
 {
-    if (ctx->pending_bodies_tail)
+    PendingBody **head =
+        pending->is_template ? &ctx->pending_template_bodies : &ctx->pending_bodies;
+    PendingBody **tail =
+        pending->is_template ? &ctx->pending_template_bodies_tail : &ctx->pending_bodies_tail;
+    if (*tail)
     {
-        ctx->pending_bodies_tail->next = pending;
+        (*tail)->next = pending;
     }
     else
     {
-        ctx->pending_bodies = pending;
+        *head = pending;
     }
-    ctx->pending_bodies_tail = pending;
+    *tail = pending;
+}
+
+// The first body waiting in `head`, taken out of the list.
+static PendingBody *take_pending_body(PendingBody **head, PendingBody **tail)
+{
+    PendingBody *pending = *head;
+    *head = pending->next;
+    if (!*head)
+    {
+        *tail = NULL;
+    }
+    return pending;
 }
 
 // Warns about the parameters in `scope` that the function body never used. `func_name` is
@@ -200,13 +217,12 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         // Note: required is set after return by caller (parser_core.c)
     }
 
-    // Concrete bodies are parsed once all declarations are known. Generic
-    // templates are not: instantiation copies their body. That includes the
-    // methods of an impl on a generic type written without `<T>`.
-    int defer_body = !gen_param && ctx->known_generics_count == 0 && !in_generic_impl(ctx);
+    // Bodies are parsed once all declarations are known. A generic template's body (which
+    // includes the methods of an impl on a generic type written without `<T>`) is parsed
+    // before the concrete ones, with its generic parameters known again.
+    int is_template = gen_param || ctx->known_generics_count > 0 || in_generic_impl(ctx);
     PendingBody *pending = NULL;
 
-    ASTNode *body = NULL;
     Token next_tok = lexer_peek(l);
     if (next_tok.kind == TOK_SEMICOLON)
     {
@@ -221,25 +237,24 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
             ctx->in_method_with_self = 1;
         }
 
-        int skipped = 1;
-        if (defer_body)
+        pending = xcalloc(1, sizeof(PendingBody));
+        pending->name = name;
+        pending->body_start = *l;
+        pending->scope = ctx->current_scope;
+        pending->in_method_with_self = ctx->in_method_with_self;
+        pending->is_template = is_template;
+        if (is_template)
         {
-            pending = xcalloc(1, sizeof(PendingBody));
-            pending->name = name;
-            pending->body_start = *l;
-            pending->scope = ctx->current_scope;
-            pending->in_method_with_self = ctx->in_method_with_self;
-            skipped = skip_braced_block(l);
-        }
-        else
-        {
-            body = parse_block(ctx, l);
+            pending->generic_count = ctx->known_generics_count;
+            pending->generics = xmalloc(sizeof(char *) * (size_t)(ctx->known_generics_count + 1));
+            memcpy(pending->generics, ctx->known_generics,
+                   sizeof(char *) * (size_t)ctx->known_generics_count);
         }
 
         // Restore previous state
         ctx->in_method_with_self = prev_in_method;
 
-        if (!skipped)
+        if (!skip_braced_block(l))
         {
             return NULL;
         }
@@ -248,14 +263,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     {
         zpanic_at(next_tok, "Expected '{' or ';' after function signature");
         return NULL;
-    }
-
-    // Check for unused parameters
-    // The current scope contains arguments (since parse_block creates a new child
-    // scope for body) Only check if we parsed a body (not a prototype) function
-    if (body && ctx->current_scope)
-    {
-        check_unused_parameters(ctx, ctx->current_scope, name);
     }
 
     exit_scope(ctx);
@@ -268,7 +275,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     ASTNode *node = ast_create(NODE_FUNCTION);
     node->token = name_tok; // Save definition location
     node->func.name = name;
-    node->func.body = body;
 
     node->func.arg_types = arg_types;
     node->func.param_names = param_names;
@@ -305,8 +311,28 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     return node;
 }
 
+// The methods of the generic impl that declares `method`. They are templates, not registered
+// functions, so a method's body finds its sibling methods in this list.
+static ASTNode *template_impl_methods(ParserContext *ctx, ASTNode *method)
+{
+    for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
+    {
+        ASTNode *impl = it->impl_node;
+        ASTNode *methods = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
+        for (ASTNode *m = methods; m; m = m->next)
+        {
+            if (m == method)
+            {
+                return methods;
+            }
+        }
+    }
+    return NULL;
+}
+
 /**
- * @brief Parses the bodies that parse_function deferred, in declaration order.
+ * @brief Parses the bodies that parse_function deferred, in declaration order: the generic
+ * templates' first, so the instances copied while declarations were read get a copy of them.
  */
 void parse_pending_bodies(ParserContext *ctx)
 {
@@ -318,23 +344,53 @@ void parse_pending_bodies(ParserContext *ctx)
     int saved_in_method = ctx->in_method_with_self;
     Type *saved_ret = curr_func_ret;
     char *saved_doc = ctx->last_doc_comment;
+    int saved_generic_count = ctx->known_generics_count;
+    char *saved_generics[MAX_KNOWN_GENERICS];
+    if (saved_generic_count > 0)
+    {
+        memcpy(saved_generics, ctx->known_generics, sizeof(char *) * (size_t)saved_generic_count);
+    }
 
     // We increment parse depth so a parse_program_nodes inside a body does not start another round.
     ctx->parse_depth++;
 
-    while (ctx->pending_bodies)
+    while (1)
     {
-        // Take it out before processing it: parsing may queue more bodies
-        PendingBody *pending = ctx->pending_bodies;
-        ctx->pending_bodies = pending->next;
-        if (!ctx->pending_bodies)
+        // Template bodies first, then the instances copied before them get theirs, then the
+        // concrete bodies. Each is taken out before it is processed: parsing may add more.
+        PendingBody *pending = NULL;
+        if (ctx->pending_template_bodies)
         {
-            ctx->pending_bodies_tail = NULL;
+            pending = take_pending_body(&ctx->pending_template_bodies,
+                                        &ctx->pending_template_bodies_tail);
         }
+        else if (ctx->body_copies)
+        {
+            copy_instance_bodies(ctx);
+            continue;
+        }
+        else if (ctx->pending_bodies)
+        {
+            pending = take_pending_body(&ctx->pending_bodies, &ctx->pending_bodies_tail);
+        }
+        else
+        {
+            break;
+        }
+
+        if (pending->generic_count > 0)
+        {
+            memcpy(ctx->known_generics, pending->generics,
+                   sizeof(char *) * (size_t)pending->generic_count);
+        }
+        ctx->known_generics_count = pending->generic_count;
 
         ASTNode *node = pending->node;
         ctx->current_scope = pending->scope;
-        ctx->current_impl_methods = NULL; // every method is registered by now
+        // A concrete method finds the others registered by now; a template method in its impl.
+        ctx->current_impl_methods = pending->is_template && node->kind == NODE_FUNCTION
+                                        ? template_impl_methods(ctx, node)
+                                        : NULL;
         ctx->in_method_with_self = pending->in_method_with_self;
         ctx->had_error = 0;
 
@@ -372,6 +428,11 @@ void parse_pending_bodies(ParserContext *ctx)
     }
 
     // Restore context state
+    if (saved_generic_count > 0)
+    {
+        memcpy(ctx->known_generics, saved_generics, sizeof(char *) * (size_t)saved_generic_count);
+    }
+    ctx->known_generics_count = saved_generic_count;
     ctx->parse_depth--;
     ctx->current_scope = saved_scope;
     ctx->imports.current_module_prefix = saved_prefix;

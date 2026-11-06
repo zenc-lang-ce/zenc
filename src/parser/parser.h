@@ -326,6 +326,9 @@ typedef struct PendingBody
     Lexer body_start;        ///< Lexer positioned at the body's opening '{'.
     Scope *scope;            ///< Scope holding the parameters.
     int in_method_with_self; ///< `.field` shorthand allowed in this body.
+    int is_template;         ///< The body of a generic template: parsed before the concrete ones.
+    char **generics;         ///< The generic parameters in scope at the declaration (`T`, `U`).
+    int generic_count;
     struct PendingBody *next;
 } PendingBody;
 
@@ -402,9 +405,12 @@ struct ParserContext
     int self_is_pointer;           ///< 1 if self is a pointer receiver (self*).
 
     // Deferred function bodies
-    PendingBody *pending_bodies;      ///< First body waiting to be parsed (FIFO).
-    PendingBody *pending_bodies_tail; ///< Last one, to append in O(1).
-    int parse_depth;                  ///< Nesting of parse_program_nodes; bodies are parsed at 0.
+    PendingBody *pending_bodies;               ///< First body waiting to be parsed (FIFO).
+    PendingBody *pending_bodies_tail;          ///< Last one, to append in O(1).
+    PendingBody *pending_template_bodies;      ///< Bodies of generic templates, parsed first.
+    PendingBody *pending_template_bodies_tail; ///< Last of `pending_template_bodies`.
+    struct BodyCopy *body_copies; ///< Instances made before their template's body was read.
+    int parse_depth;              ///< Nesting of parse_program_nodes; bodies are parsed at 0.
 
     // Internal tracking
     DeprecatedFunc *deprecated_funcs; ///< Registry of deprecated functions.
@@ -721,6 +727,20 @@ typedef struct Bindings
     int count;
 } Bindings;
 
+/**
+ * @brief A function of an instance copied before its template's body was read: the body is
+ * copied once it is.
+ */
+typedef struct BodyCopy
+{
+    ASTNode *instance;          ///< The copy, still without a body.
+    ASTNode *template_function; ///< The function it was copied from.
+    Bindings bindings;          ///< What the template's parameters stand for in the instance.
+    const char *template_name;  ///< The template's type name (`Vec`), for copy_ast_replacing.
+    const char *instance_name;  ///< The instance's type name (`Vec__int32_t`).
+    struct BodyCopy *next;
+} BodyCopy;
+
 /** @brief `parts` joined by commas: `K,V`. */
 char *join_with_commas(char **parts, int count);
 /** @brief The bindings of `params` (`K,V`) to `args`. */
@@ -1008,6 +1028,11 @@ void instantiate_type(ParserContext *ctx, Type *instance, Token token);
  *        the type it names.
  */
 void resolve_pending_instances(ParserContext *ctx);
+/**
+ * @brief Gives the instances copied before their template's body was read a copy of that body,
+ *        and instantiates the generics the copies name.
+ */
+void copy_instance_bodies(ParserContext *ctx);
 
 // stmt/ declarations
 ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_token);

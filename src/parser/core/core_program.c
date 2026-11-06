@@ -651,10 +651,13 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
         ctx->current_scope = ctx->global_scope;
     }
 
-    // A parse the language server abandoned on an error may have left instances waiting.
+    // A parse the language server abandoned on an error may have left instances or bodies waiting.
     ctx->pending_instances = NULL;
     ctx->pending_instances_tail = NULL;
     ctx->declarations_read = 0;
+    ctx->pending_template_bodies = NULL;
+    ctx->pending_template_bodies_tail = NULL;
+    ctx->body_copies = NULL;
 
     ASTNode *r = ast_create(NODE_ROOT);
     skip_comments(l);
