@@ -850,39 +850,14 @@ void register_impl(ParserContext *ctx, const char *trait, const char *strct)
 
 int check_impl(ParserContext *ctx, const char *trait, const char *strct)
 {
-    ImplReg *r = ctx->registered_impls;
-    while (r)
+    for (ImplReg *r = ctx->registered_impls; r; r = r->next)
     {
         if (r->trait[0] == trait[0] && strcmp(r->trait, trait) == 0 && r->strct[0] == strct[0] &&
             strcmp(r->strct, strct) == 0)
         {
             return 1;
         }
-        r = r->next;
     }
-
-    r = ctx->registered_impls;
-    while (r)
-    {
-        char *base_reg = xstrdup(r->strct);
-        char *ptr2 = (char *)strchr(base_reg, '<');
-        if (ptr2)
-        {
-            *ptr2 = 0;
-            size_t blen = strlen(base_reg);
-            if (strncmp(strct, base_reg, (size_t)(blen)) == 0 && strct[blen] == '_')
-            {
-                if (r->trait[0] == trait[0] && strcmp(r->trait, trait) == 0)
-                {
-                    zfree(base_reg);
-                    return 1;
-                }
-            }
-        }
-        zfree(base_reg);
-        r = r->next;
-    }
-
     return 0;
 }
 

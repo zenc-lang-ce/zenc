@@ -378,6 +378,26 @@ int type_is_generic_param(Type *t, const char *param)
            strcmp(t->name, param) == 0;
 }
 
+int type_names_param(Type *t, const char *param)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    if (type_is_generic_param(t, param) || type_names_param(t->inner, param))
+    {
+        return 1;
+    }
+    for (int i = 0; t->args && i < t->count; i++)
+    {
+        if (type_names_param(t->args[i], param))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 char *type_def_name(Type *t)
 {
     // An instance has a definition of its own; inside its template (`Vec<T>`), the template's.

@@ -22,15 +22,11 @@ static int type_has_clone_method(ParserContext *ctx, const char *type_name)
     {
         return 1;
     }
+    Instantiation *inst = find_instantiation(ctx, type_name);
+    const char *template_name = inst ? inst->template_name : type_name;
     for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
     {
-        size_t base_len = strlen(it->struct_name);
-        if (strncmp(type_name, it->struct_name, base_len) != 0)
-        {
-            continue;
-        }
-        const char *rest = type_name + base_len;
-        if (*rest != 0 && strncmp(rest, "__", 2) != 0)
+        if (strcmp(it->struct_name, template_name) != 0)
         {
             continue;
         }

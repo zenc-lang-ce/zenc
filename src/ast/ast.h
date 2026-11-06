@@ -841,6 +841,8 @@ int type_is_instance_of(Type *t, const char *tpl);
 char *type_impl_name(Type *t);
 /** @brief Whether `t` is the generic parameter `param` (`T`). */
 int type_is_generic_param(Type *t, const char *param);
+/** @brief Whether `t` names the generic parameter `param` anywhere: `T`, `T*`, `Vec<T>`. */
+int type_names_param(Type *t, const char *param);
 /** @brief The element type of a slice, `[T]` or `Slice<T>`; NULL if `t` is not one. */
 Type *slice_element(Type *t);
 /** @brief `t` if it is a tuple, or the tuple it points to; else NULL. */
