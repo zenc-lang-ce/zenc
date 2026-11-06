@@ -1,0 +1,13 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A parameter hides an enum variant with the same name: `lines` is the int
+// parameter, so `lines == 1` compares two ints.
+enum Shape { points, lines }
+
+fn is_one(lines: int) -> bool {
+    return lines == 1;
+}
+
+test "a parameter named like a variant has the parameter's type" {
+    assert(is_one(1), "is_one(1) should be true");
+    assert(!is_one(5), "is_one(5) should be false");
+}

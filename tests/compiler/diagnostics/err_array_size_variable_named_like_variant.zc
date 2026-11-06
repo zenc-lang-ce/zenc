@@ -1,0 +1,14 @@
+// EXPECT: FAIL
+// compiler/diagnostics: an array size must be a constant. A parameter is not
+// one, even when an enum variant has its name: the size is not the variant's
+// value.
+
+enum Shape { points, lines }
+
+fn make(lines: int) {
+    let cells: [int; lines];
+}
+
+fn main() {
+    make(5);
+}
