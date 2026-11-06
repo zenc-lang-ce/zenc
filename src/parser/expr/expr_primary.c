@@ -571,103 +571,37 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
                         else
                         {
-                            // Handle generics or other cases
-                            int handled_as_generic = 0;
-                            for (int i = 0; i < ctx->known_generics_count; i++)
+                            // A template (`Option::Some`), or one of its instances not
+                            // declared as a struct, such as `Option<T>::Some` in a template.
+                            GenericTemplate *gt = find_generic_template(
+                                ctx, path_type && path_type->kind == TYPE_STRUCT ? path_type->name
+                                                                                 : acc);
+                            ASTNode *tpl_def = gt ? gt->struct_node : NULL;
+                            int is_variant = 0;
+                            if (tpl_def && tpl_def->kind == NODE_ENUM)
                             {
-                                char *gname = ctx->known_generics[i];
-                                size_t glen = strlen(gname);
-                                if (strncmp(acc, gname, (size_t)(glen)) == 0 && acc[glen] == '_' &&
-                                    acc[glen + 1] == '_')
+                                for (ASTNode *v = tpl_def->enm.variants; v; v = v->next)
                                 {
-                                    ASTNode *tpl_def = find_struct_def(ctx, gname);
-                                    if (tpl_def)
+                                    if (strcmp(v->variant.name, method_name) == 0)
                                     {
-                                        int is_v = 0;
-                                        if (tpl_def->kind == NODE_ENUM)
-                                        {
-                                            ASTNode *v = tpl_def->enm.variants;
-                                            while (v)
-                                            {
-                                                if (strcmp(v->variant.name, method_name) == 0)
-                                                {
-                                                    is_v = 1;
-                                                    break;
-                                                }
-                                                v = v->next;
-                                            }
-                                        }
-                                        if (is_v)
-                                        {
-                                            tmp = mangle_method_symbol(acc, NULL, method_name);
-                                            handled_as_generic = 1;
-                                        }
+                                        is_variant = 1;
+                                        break;
                                     }
                                 }
                             }
-
-                            // Also check registered templates list
-                            if (!handled_as_generic)
+                            if (is_variant)
                             {
-                                GenericTemplate *gt = ctx->templates;
-                                while (gt)
-                                {
-                                    char *gname = gt->name;
-                                    size_t glen = strlen(gname);
-                                    if ((strncmp(acc, gname, (size_t)(glen)) == 0 &&
-                                         acc[glen] == '_' && acc[glen + 1] == '_') ||
-                                        strcmp(acc, gname) == 0)
-                                    {
-                                        ASTNode *tpl_def = gt->struct_node;
-                                        if (tpl_def)
-                                        {
-                                            int is_variant = 0;
-                                            if (tpl_def->kind == NODE_ENUM)
-                                            {
-                                                ASTNode *v = tpl_def->enm.variants;
-                                                char sbuf[128];
-                                                if (suffix.len < (int)sizeof(sbuf))
-                                                {
-                                                    strncpy(sbuf, suffix.start, suffix.len);
-                                                    sbuf[suffix.len] = 0;
-                                                }
-                                                else
-                                                {
-                                                    sbuf[0] = 0;
-                                                }
-                                                while (v)
-                                                {
-                                                    if (strcmp(v->variant.name, sbuf) == 0)
-                                                    {
-                                                        is_variant = 1;
-                                                        break;
-                                                    }
-                                                    v = v->next;
-                                                }
-                                            }
-                                            if (is_variant)
-                                            {
-                                                variant.scope = xstrdup(acc);
-                                                variant.name = token_strdup(suffix);
-                                                tmp = mangle_variant_symbol(acc, variant.name);
-                                            }
-                                            else
-                                            {
-                                                tmp = mangle_method_symbol(acc, NULL,
-                                                                           token_strdup(suffix));
-                                            }
-                                            handled_as_generic = 1;
-                                            break;
-                                        }
-                                    }
-                                    gt = gt->next;
-                                }
+                                variant.scope = xstrdup(acc);
+                                variant.name = xstrdup(method_name);
+                                tmp = mangle_variant_symbol(acc, method_name);
                             }
-
-                            if (!handled_as_generic)
+                            else if (tpl_def)
                             {
-                                char *combined =
-                                    mangle_method_symbol(acc, NULL, token_strdup(suffix));
+                                tmp = mangle_method_symbol(acc, NULL, method_name);
+                            }
+                            else
+                            {
+                                char *combined = mangle_method_symbol(acc, NULL, method_name);
                                 zfree(acc);
                                 acc = combined;
                                 tmp = acc;
@@ -801,49 +735,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     is_struct_init = 1;
                 }
-                else
+                else if (generic_type)
                 {
-                    // Fallback: Check if it's a generic instantiation (e.g. Optional_T)
-                    // We check if 'acc' starts with any known struct name followed by '_'
-                    StructRef *sr = ctx->parsed_structs_list;
-                    while (sr)
-                    {
-                        if (sr->node && sr->node->kind == NODE_STRUCT)
-                        {
-                            size_t len = strlen(sr->node->strct.name);
-                            if (strncmp(acc, sr->node->strct.name, (size_t)(len)) == 0 &&
-                                acc[len] == '_' && acc[len + 1] == '_')
-                            {
-                                is_struct_init = 1;
-                                break;
-                            }
-                        }
-                        sr = sr->next;
-                    }
-
-                    if (!is_struct_init && ctx->cg.global_user_structs)
-                    {
-                        ASTNode *gn = ctx->cg.global_user_structs;
-                        while (gn)
-                        {
-                            if (gn->kind == NODE_STRUCT)
-                            {
-                                size_t len = strlen(gn->strct.name);
-                                if (strncmp(acc, gn->strct.name, (size_t)(len)) == 0 &&
-                                    acc[len] == '_')
-                                {
-                                    is_struct_init = 1;
-                                    break;
-                                }
-                            }
-                            gn = gn->next;
-                        }
-                    }
-
-                    if (!is_struct_init)
-                    {
-                        is_struct_init = 0;
-                    }
+                    // An instance not declared as a struct: `Optional<T>{}` in a template.
+                    is_struct_init = 1;
                 }
             }
             else if (fi.kind == TOK_IDENT)

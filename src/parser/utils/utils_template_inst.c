@@ -12,7 +12,7 @@
 #include <string.h>
 
 // The instance of a generic whose C name is `name`, or NULL.
-static Instantiation *find_instantiation(ParserContext *ctx, const char *name)
+Instantiation *find_instantiation(ParserContext *ctx, const char *name)
 {
     for (Instantiation *inst = ctx->instantiations; inst; inst = inst->next)
     {

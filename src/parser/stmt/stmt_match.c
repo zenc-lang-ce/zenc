@@ -421,7 +421,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                     if (enum_def->enm.generic_param)
                     {
                         char *param = enum_def->enm.generic_param;
-                        if (strstr(binding_type, param))
+                        if (type_names_param(binding_type_info, param))
                         {
                             is_generic_unresolved = 1;
                         }

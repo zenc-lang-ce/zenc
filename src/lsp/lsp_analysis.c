@@ -885,6 +885,7 @@ static int has_completion(cJSON *items, const char *label)
 static int add_impl_completions(cJSON *items, const char *type_name, int with_self)
 {
     size_t base_len = strcspn(type_name, "<");
+    Instantiation *inst = find_instantiation(g_project->ctx, type_name);
     int added = 0;
     StructRef *ref = g_project->ctx->parsed_impls_list;
     GenericImplTemplate *tmpl = g_project->ctx->impl_templates;
@@ -910,8 +911,7 @@ static int add_impl_completions(cJSON *items, const char *type_name, int with_se
                                  : NULL;
         size_t target_len = target ? strlen(target) : 0;
         int same = target && target_len == base_len && strncmp(target, type_name, base_len) == 0;
-        int instance = target && from_template && strncmp(type_name, target, target_len) == 0 &&
-                       strncmp(type_name + target_len, "__", 2) == 0;
+        int instance = target && from_template && inst && strcmp(inst->template_name, target) == 0;
         if (!same && !instance)
         {
             continue;
