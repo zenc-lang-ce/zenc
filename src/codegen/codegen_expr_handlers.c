@@ -1075,31 +1075,13 @@ skip_method_mangling:
         EMIT(ctx, "__zenc_panic");
         goto skip_callee_gen;
     }
-    else if (node->call.callee->kind == NODE_EXPR_VAR)
+#if FF_COMPATIBILITY_0_5
+    else if (node->call.callee->kind == NODE_EXPR_VAR &&
+             emit_legacy_variant_name(ctx, node->call.callee->var_ref.name))
     {
-        char *name = node->call.callee->var_ref.name;
-        char *underscore = (char *)strchr(name, '_');
-        if (underscore && underscore != name && *(underscore + 1) != '_' &&
-            strstr(name, "__") == NULL)
-        {
-            char base[MAX_TYPE_NAME_LEN];
-            size_t len = (size_t)(underscore - name);
-            if (len < sizeof(base))
-            {
-                strncpy(base, name, (size_t)(len));
-                base[len] = 0;
-                ASTNode *def = find_struct_def(ctx, base);
-                int is_common_enum =
-                    (strncmp(base, "Result", 6) == 0 || strncmp(base, "Option", 6) == 0 ||
-                     strncmp(base, "JsonType", 8) == 0);
-                if (is_common_enum || (def && def->kind == NODE_ENUM))
-                {
-                    emit_mangled_name(ctx, base, underscore + 1);
-                    goto skip_callee_gen;
-                }
-            }
-        }
+        goto skip_callee_gen;
     }
+#endif
 
     g_emitting_callee = 1;
     codegen_expression(ctx, node->call.callee);

@@ -67,6 +67,14 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result);
 // Utility functions (codegen_utils.c + codegen_shared.c).
 #include "codegen_shared.h"
 
+#if FF_COMPATIBILITY_0_5
+/**
+ * @brief Writes the C name of a 0.5.1 `Enum_Variant` or `Enum_Variant_Tag` spelling.
+ * @return 1 if `name` is one (and was written), 0 if it is a name of its own.
+ */
+int emit_legacy_variant_name(ParserContext *ctx, const char *name);
+#endif
+
 void emit_var_decl_type(ParserContext *ctx, const char *type_str, const char *var_name);
 /**
  * @brief The type of a struct field spelled in C: from its Type (a @link_name struct by its C
