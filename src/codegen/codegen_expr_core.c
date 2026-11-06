@@ -157,7 +157,7 @@ static void codegen_literal_expr(ParserContext *ctx, ASTNode *node)
 int emit_legacy_variant_name(ParserContext *ctx, const char *name)
 {
     const char *underscore = strchr(name, '_');
-    if (!underscore || underscore == name || underscore[1] == '_')
+    if (!underscore || underscore == name || strstr(name, "__"))
     {
         return 0;
     }
@@ -183,28 +183,6 @@ int emit_legacy_variant_name(ParserContext *ctx, const char *name)
     return 0;
 }
 #endif
-
-// The variant follows the last "__".
-// Example: Maybe__int32_t__Nothing
-static int is_instance_enum_variant(ParserContext *ctx, const char *name)
-{
-    const char *last = NULL;
-    for (const char *p = strstr(name, "__"); p; p = strstr(p + 2, "__"))
-    {
-        last = p;
-    }
-    if (!last || last == name)
-    {
-        return 0;
-    }
-    size_t len = (size_t)(last - name);
-    char *enum_name = xmalloc(len + 1);
-    strncpy(enum_name, name, len);
-    enum_name[len] = 0;
-    int found = find_enum_variant_of(ctx, enum_name, last + 2) != NULL;
-    zfree(enum_name);
-    return found;
-}
 
 // Emit variable reference expression
 static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
@@ -239,99 +217,38 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
         zwarn_at(node->token, "%s\n   = help: %s", msg, help);
     }
 
-    // A variant of an enum with @link_name: C names it after the enum's C name.
+    const char *name = node->var_ref.name;
     const QualifiedName *variant = &node->var_ref.variant;
     const char *enum_c_name = variant->name ? link_name_of(ctx, variant->scope) : NULL;
     if (enum_c_name)
     {
+        // A variant of an enum with @link_name: C names it after the enum's C name.
         EMIT(ctx, "%s", mangle_variant_symbol(enum_c_name, variant->name));
-        // A variant without a payload is a call to its constructor, unless the parent
-        // NODE_EXPR_CALL adds the ().
-        if (!g_emitting_callee && find_enum_variant_of(ctx, variant->scope, variant->name))
-        {
-            EMIT(ctx, "()");
-        }
+    }
+    else if (strcmp(name, "self") == 0 && node->type_info && node->type_info->kind == TYPE_STRUCT)
+    {
+        EMIT(ctx, "(*self)");
         return;
     }
-
-    // Check for static method call pattern: Type::method or Type__method
-    char *sep = (char *)strstr(node->var_ref.name, "::");
-    int sep_len = 2;
-    if (!sep)
-    {
-        sep = strstr(node->var_ref.name, "__");
-        sep_len = 2;
-    }
-
-    if (sep)
-    {
-        // Extract type name and method name
-        ptrdiff_t type_len = sep - node->var_ref.name;
-        char *type_name = xmalloc((size_t)(type_len + 1));
-        strncpy(type_name, node->var_ref.name, (size_t)(type_len));
-        type_name[type_len] = 0;
-
-        char *method_name = sep + sep_len;
-
-        // Handle generic types: Slice<int> -> Slice_int
-        char *mangled_type;
-        mangled_type = xstrdup(type_name);
-
-        // Output as Type__method
-        if (ctx)
-        {
-            TypeAlias *ta = find_type_alias_node(ctx, mangled_type);
-            const char *alias = (ta && !ta->is_opaque) ? type_mangle_spelling(ta->type_info) : NULL;
-            if (alias)
-            {
-                emit_mangled_name(ctx, alias, method_name);
-                zfree(type_name);
-                zfree(mangled_type);
-                return;
-            }
-        }
-        emit_mangled_name(ctx, mangled_type, method_name);
-
-        // If it's a no-payload enum variant and we're NOT inside a call expression callee,
-        // auto-call the constructor. When g_emitting_callee is set, the parent
-        // NODE_EXPR_CALL will add the ().
-        if (!g_emitting_callee)
-        {
-            if (find_enum_variant_of(ctx, mangled_type, method_name) ||
-                is_instance_enum_variant(ctx, node->var_ref.name))
-            {
-                EMIT(ctx, "()");
-            }
-        }
-
-        zfree(type_name);
-        zfree(mangled_type);
-        return;
-    }
-
-    if (strcmp(node->var_ref.name, "self") == 0)
-    {
-        if (node->type_info && node->type_info->kind == TYPE_STRUCT)
-        {
-            EMIT(ctx, "(*self)");
-            return;
-        }
-    }
-
 #if FF_COMPATIBILITY_0_5
-    if (emit_legacy_variant_name(ctx, node->var_ref.name))
+    else if (emit_legacy_variant_name(ctx, name))
     {
         return;
     }
 #endif
-    ZenSymbol *sym = find_symbol_in_all(ctx, node->var_ref.name);
-    if (sym && sym->link_name)
-    {
-        EMIT(ctx, "%s", sym->link_name);
-    }
     else
     {
-        EMIT(ctx, "%s", c_name(ctx, node->var_ref.name));
+        // The name the parser resolved: a local, a function, `Type__method`, `Enum__Variant`.
+        ZenSymbol *sym = find_symbol_in_all(ctx, name);
+        EMIT(ctx, "%s", sym && sym->link_name ? sym->link_name : c_name(ctx, name));
+    }
+
+    // A variant without a payload is a call to its constructor, unless the parent
+    // NODE_EXPR_CALL adds the ().
+    if (!g_emitting_callee && variant->name &&
+        find_enum_variant_of(ctx, variant->scope, variant->name))
+    {
+        EMIT(ctx, "()");
     }
 }
 
