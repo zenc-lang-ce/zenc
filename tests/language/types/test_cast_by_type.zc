@@ -1,0 +1,28 @@
+// types: `(name)` is a cast when the name is a type and a parenthesized value when it is a
+// variable, whatever token follows the `)`.
+
+struct P {
+    a: int;
+    b: int;
+}
+
+test "a cast of an expression starting with a unary operator" {
+    let x: i32 = 5;
+    let neg = (i64)-x;
+    assert(neg == -5, "(i64)-x");
+    let inv = (u32)~x;
+    assert(inv == 4294967290, "(u32)~x");
+}
+
+test "a cast of an intrinsic" {
+    let p = (void*)@fields(P);
+    assert(p != NULL, "(void*)@fields(P)");
+}
+
+test "a variable in parentheses followed by a binary operator" {
+    let x: i32 = 5;
+    let y: i32 = 2;
+    assert((x)*y == 10, "(x)*y");
+    assert(((x)&y) == 0, "(x)&y");
+    assert((x)-y == 3, "(x)-y");
+}
