@@ -878,6 +878,24 @@ static int has_completion(cJSON *items, const char *label)
     return 0;
 }
 
+// Whether `name` is offered as written in Zen C: what the program declares, by the name written
+// where it is declared (`t`), not the C name the compiler built for a method or a module member
+// (`Point__len2`, `util__describe`); nor an internal name starting with `__`, reserved in C.
+// What the compiler made without a declaration (`va_list`, the instance `Vec__int32_t`) is
+// offered unless its name has `__`.
+static int offered_by_name(Token t, const char *name)
+{
+    if (strncmp(name, "__", 2) == 0)
+    {
+        return 0;
+    }
+    if (!t.start)
+    {
+        return strstr(name, "__") == NULL;
+    }
+    return t.len == strlen(name) && strncmp(t.start, name, t.len) == 0;
+}
+
 // Adds the functions of the impl blocks of `type_name` under the name they are called by: the
 // methods that take `self` when `with_self`, the other ones otherwise. A generic, written
 // (`Vec<int>`) or instantiated (`Vec__int32_t`), takes those of its template (`impl Vec<T>`).
@@ -1464,12 +1482,11 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
             g = g->next;
         }
 
-        // Names with `__` are C names (`Vec__int32_t`, `Point__len2`, `util__describe`), not
-        // the ones written in Zen C: methods and instances complete after `.` and `::`.
+        // Methods, instances and module members complete after `.` and `::`.
         StructDef *s = g_project->ctx->struct_defs;
         for (; s; s = s->next)
         {
-            if (strstr(s->name, "__"))
+            if (!offered_by_name(s->node ? s->node->token : TOKEN_UNKNOWN, s->name))
             {
                 continue;
             }
@@ -1483,7 +1500,7 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
         FuncSig *f = g_project->ctx->func_registry;
         for (; f; f = f->next)
         {
-            if (strstr(f->name, "__"))
+            if (!offered_by_name(f->decl_token, f->name))
             {
                 continue;
             }
