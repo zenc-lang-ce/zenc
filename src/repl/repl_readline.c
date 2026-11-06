@@ -154,7 +154,7 @@ char *repl_readline(ReplState *state, const char *prompt, int indent_level)
             break;
         }
 
-        if (c == '\x1b')
+        if (c == '\x1b' && !in_search_mode)
         {
             char seq[6];
             if (!repl_read_char(&seq[0]))
@@ -288,7 +288,7 @@ char *repl_readline(ReplState *state, const char *prompt, int indent_level)
                 }
             }
         }
-        else if (c == 127 || c == 8)
+        else if ((c == 127 || c == 8) && !in_search_mode)
         {
             if (pos > 0)
             {
