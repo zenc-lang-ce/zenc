@@ -101,6 +101,38 @@ class ReadlineTests(unittest.TestCase):
         self.send(b" ", b"zenc >>> " + LINE + b" \r")
         self.send(b"\x7f", b"zenc >>> " + LINE + b"\r")
 
+    def test_search_escape_sequence_ends_search_and_runs_the_key(self):
+        older, newest = b"let older = 0;", b"let newest = 2;"
+        # Each key: its bytes, the line it leaves, and that line after typing Z at the cursor.
+        keys = [
+            (b"\x1b[A", older, older + b"Z"),
+            (b"\x1b[B", newest, newest + b"Z"),
+            (b"\x1b[C", LINE, LINE + b"Z"),
+            (b"\x1b[D", LINE, b"let total = 1Z;"),
+            (b"\x1b[H", LINE, b"Z" + LINE),
+            (b"\x1b[F", LINE, LINE + b"Z"),
+            (b"\x1bOH", LINE, b"Z" + LINE),
+            (b"\x1bOF", LINE, LINE + b"Z"),
+            (b"\x1b[1~", LINE, b"Z" + LINE),
+            (b"\x1b[4~", LINE, LINE + b"Z"),
+            (b"\x1b[3~", LINE, LINE + b"Z"),
+            (b"\x1b[1;5D", LINE, b"let total = Z1;"),
+            (b"\x1b[1;5C", LINE, LINE + b"Z"),
+        ]
+        for key, line, typed in keys:
+            with self.subTest(key=key):
+                self.start_repl((older, LINE, newest))
+                self.search()
+                self.send(key, b"zenc >>> " + line + b"\r")
+                self.send(b"Z", b"zenc >>> " + typed + b"\r")
+
+    def test_search_bytes_after_escape_timeout_are_text(self):
+        self.start_repl()
+        self.search()
+        # The redraw proves the timeout expired, so these bytes are not part of a sequence.
+        self.send(b"\x1b", b"zenc >>> " + LINE + b"\r")
+        self.send(b"[A", b"zenc >>> " + LINE + b"[A\r")
+
     def test_repeated_ctrl_r_selects_older_match(self):
         latest = b"let total = 2;"
         self.start_repl((LINE, latest))
