@@ -573,9 +573,9 @@ void misra_check_function_return_usage(ParserContext *ctx, ASTNode *node)
         Type *rt = resolve_alias(node->type_info);
         if (rt->kind != TYPE_VOID)
         {
+            // A `Result` or an `Option` carries error information.
             if (rt->kind == TYPE_STRUCT && rt->name &&
-                (strstr(rt->name, "Result") || strstr(rt->name, "Option") ||
-                 strstr(rt->name, "Error")))
+                (strcmp(rt->name, "Result") == 0 || strcmp(rt->name, "Option") == 0))
             {
                 zerror_at(node->token, "MISRA Dir 4.7: error information is not tested");
             }
