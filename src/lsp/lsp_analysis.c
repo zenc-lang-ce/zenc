@@ -1486,7 +1486,7 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
         StructDef *s = g_project->ctx->struct_defs;
         for (; s; s = s->next)
         {
-            if (!offered_by_name(s->node ? s->node->token : (Token){0}, s->name))
+            if (!offered_by_name(s->node ? s->node->token : TOKEN_UNKNOWN, s->name))
             {
                 continue;
             }
