@@ -100,7 +100,8 @@ static char *parse_check_message_string(ParserContext *ctx, Token st, int *is_li
     return msg;
 }
 
-ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
+// `assert(cond, msg)` and `expect(cond, msg)` read alike; they differ in the node they build.
+static ASTNode *parse_check(ParserContext *ctx, Lexer *l, NodeType kind)
 {
     Token tk = lexer_next(l);
     if (lexer_peek(l).kind == TOK_LPAREN)
@@ -127,6 +128,12 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
             msg = xmalloc(st.len + 1);
             strncpy(msg, st.start, st.len);
             msg[st.len] = 0;
+            // The message names a variable: it is used.
+            ZenSymbol *sym = find_symbol_entry(ctx, msg);
+            if (sym)
+            {
+                sym->is_used = 1;
+            }
         }
         else
         {
@@ -144,7 +151,7 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
         lexer_next(l);
     }
 
-    ASTNode *n = ast_create(NODE_ASSERT);
+    ASTNode *n = ast_create(kind);
     n->token = tk;
     n->assert_stmt.condition = cond;
     n->assert_stmt.message = msg;
@@ -153,57 +160,14 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
     return n;
 }
 
+ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
+{
+    return parse_check(ctx, l, NODE_ASSERT);
+}
+
 ASTNode *parse_expect(ParserContext *ctx, Lexer *l)
 {
-    Token tk = lexer_next(l);
-    if (lexer_peek(l).kind == TOK_LPAREN)
-    {
-        lexer_next(l);
-    }
-
-    ASTNode *cond = parse_expression(ctx, l);
-
-    char *msg = NULL;
-    int is_literal = 0;
-    ASTNode *msg_fstring = NULL;
-    if (lexer_peek(l).kind == TOK_COMMA)
-    {
-        lexer_next(l);
-        Token st = lexer_next(l);
-        if (st.kind == TOK_STRING || st.kind == TOK_FSTRING)
-        {
-            msg = parse_check_message_string(ctx, st, &is_literal, &msg_fstring);
-        }
-        else if (st.kind == TOK_IDENT)
-        {
-            is_literal = 0;
-            msg = xmalloc(st.len + 1);
-            strncpy(msg, st.start, st.len);
-            msg[st.len] = 0;
-        }
-        else
-        {
-            zpanic_at(st, "Expected message string");
-            return NULL;
-        }
-    }
-
-    if (lexer_peek(l).kind == TOK_RPAREN)
-    {
-        lexer_next(l);
-    }
-    if (lexer_peek(l).kind == TOK_SEMICOLON)
-    {
-        lexer_next(l);
-    }
-
-    ASTNode *n = ast_create(NODE_EXPECT);
-    n->token = tk;
-    n->assert_stmt.condition = cond;
-    n->assert_stmt.message = msg;
-    n->assert_stmt.message_is_literal = is_literal;
-    n->assert_stmt.message_fstring = msg_fstring;
-    return n;
+    return parse_check(ctx, l, NODE_EXPECT);
 }
 
 // A function that returns a slice cannot return one of an array literal or of a local array:
