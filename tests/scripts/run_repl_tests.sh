@@ -258,6 +258,12 @@ quit')
     fi
 fi
 
+if ZC="$ZC" python3 "$(dirname "$0")/run_repl_readline_tests.py"; then
+    check "interactive line editing (POSIX PTY)" 1
+else
+    check "interactive line editing (POSIX PTY)" 0
+fi
+
 echo "----------------------------------------"
 echo "Results (REPL):"
 echo "-> Passed:  $PASSED"
