@@ -162,11 +162,15 @@ void emit_type_aliases(ParserContext *ctx, ASTNode *node, VisitedModules **visit
 
 void emit_global_aliases(ParserContext *ctx)
 {
-    TypeAlias *ta = ctx->type_aliases;
-    while (ta)
+    // An alias written in Zen C is emitted with its declaration (emit_type_aliases, which keeps
+    // its @cfg); here only those that have none: the names of C structs and unions read from
+    // headers, which are registered without a file.
+    for (TypeAlias *ta = ctx->type_aliases; ta; ta = ta->next)
     {
-        emit_alias_typedef(ctx, ta->type_info, ta->alias);
-        ta = ta->next;
+        if (!ta->defined_in_file)
+        {
+            emit_alias_typedef(ctx, ta->type_info, ta->alias);
+        }
     }
 }
 
