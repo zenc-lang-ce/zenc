@@ -225,7 +225,7 @@ static Type *c_type_from_text_at(ParserContext *ctx, const char *text, int depth
 // Where the C declarations of `kind` are remembered: functions with their return types,
 // variables and typedefs with their types, macros with the name they stand for. NULL for
 // any other kind.
-static zmap_FileSet *c_declarations_of(ParserContext *ctx, int kind)
+static zmap_FileSet *c_declarations_of(ParserContext *ctx, CSymbolKind kind)
 {
     switch (kind)
     {
@@ -243,7 +243,7 @@ static zmap_FileSet *c_declarations_of(ParserContext *ctx, int kind)
 }
 
 // Remembers what a header says of `name`, unless a header read before said it.
-static void remember_c_declaration(ParserContext *ctx, int kind, const char *name,
+static void remember_c_declaration(ParserContext *ctx, CSymbolKind kind, const char *name,
                                    const char *c_type)
 {
     zmap_FileSet *declarations = c_declarations_of(ctx, kind);
@@ -262,7 +262,7 @@ static void remember_c_declaration(ParserContext *ctx, int kind, const char *nam
 }
 
 // What the headers said of `name` among the declarations of `kind`, or NULL.
-static const char *known_c_declaration(ParserContext *ctx, int kind, const char *name)
+static const char *known_c_declaration(ParserContext *ctx, CSymbolKind kind, const char *name)
 {
     zmap_FileSet *declarations = c_declarations_of(ctx, kind);
     const char **c_type =
@@ -387,7 +387,7 @@ int refresh_c_header_cache(const CompilerConfig *config)
 
 // What the headers said of `name` among the declarations of `kind`, reading the system's
 // headers the first time a name is not known.
-static const char *c_declaration(ParserContext *ctx, int kind, const char *name)
+static const char *c_declaration(ParserContext *ctx, CSymbolKind kind, const char *name)
 {
     const char *c_type = known_c_declaration(ctx, kind, name);
     if (!c_type && !ctx->c_system_headers_read)

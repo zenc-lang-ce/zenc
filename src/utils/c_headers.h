@@ -69,12 +69,12 @@ typedef struct
 {
     CHeaderSymbol symbol;
     char *name;
-    int is_forward; ///< `struct X;` without a body.
-    int kind;       ///< LSP CompletionItemKind (see CSymbolKind).
-    CTagKind tag;   ///< For a struct, union or enum tag: its keyword.
-    char *c_type;   ///< For a function, its return type; for a variable, its type; for a
-                    ///< typedef of neither a function nor an array, the type it names (C text);
-                    ///< for a macro that is only another name, that name (`__stdinp`).
+    int is_forward;   ///< `struct X;` without a body.
+    CSymbolKind kind; ///< LSP CompletionItemKind.
+    CTagKind tag;     ///< For a struct, union or enum tag: its keyword.
+    char *c_type;     ///< For a function, its return type; for a variable, its type; for a
+                      ///< typedef of neither a function nor an array, the type it names (C text);
+                      ///< for a macro that is only another name, that name (`__stdinp`).
 } CHeaderEntry;
 
 typedef struct
