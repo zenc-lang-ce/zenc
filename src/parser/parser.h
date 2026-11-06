@@ -643,6 +643,14 @@ char *consume_until_semicolon(Lexer *l);
  */
 int skip_braced_block(Lexer *l);
 
+// Errors for syntax Zen C does not have, each with what to write instead
+// (utils_syntax_hints.c).
+void report_unexpected_toplevel(Token t);
+void report_toplevel_const(Lexer *l, Token t);
+/** @return 1 if `extern` is followed by `enum`, `const`, `def`, `type` or `alias` (reported). */
+int report_extern_with_kind(Lexer *l);
+void report_not_a_field(Lexer *l, Token t);
+
 /**
  * @brief Consumes and rewrites tokens.
  */

@@ -12,33 +12,6 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
-// Anything that does not start a field is an error. Skipping it silently read
-// the members of an anonymous `union { }` as fields of the struct and took its
-// `}` as the end of the struct.
-static void report_not_a_field(Lexer *l, Token t)
-{
-    int is_union = t.kind == TOK_UNION || is_token(t, "union");
-    if ((is_union || is_token(t, "struct")) && lexer_peek2(l).kind == TOK_LBRACE)
-    {
-        const char *hints[] = {is_union ? "Declare a named union and use it as a field"
-                                        : "Declare a named struct and use it as a field",
-                               NULL};
-        zpanic_with_hints(t,
-                          is_union ? "Anonymous unions are not supported inside a struct"
-                                   : "Anonymous structs are not supported inside a struct",
-                          hints);
-        lexer_next(l);
-        skip_braced_block(l); // fault-tolerant (LSP): go on after the block
-        return;
-    }
-
-    const char *hints[] = {"A field is written `name: Type;`", NULL};
-    char msg[MAX_SHORT_MSG_LEN];
-    snprintf(msg, sizeof(msg), "Unexpected '%.*s' in a struct body", (int)t.len, t.start);
-    zpanic_with_hints(t, msg, hints);
-    lexer_next(l); // fault-tolerant (LSP)
-}
-
 ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque, int is_extern,
                       const char *link_name, int is_export)
 {
