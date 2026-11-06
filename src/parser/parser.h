@@ -454,11 +454,11 @@ struct ParserContext
         int defer_count;                  ///< Counter for defer statements in current scope.
         ASTNode *current_lambda;          ///< Current lambda being generated.
         Type *current_func_ret_type_info; ///< Return type of the function being generated.
-        char *expected_init_type;         ///< Expected type for initializer (from let declaration).
-        int *loop_defer_boundary;         ///< Defer stack index at start of each enclosing loop.
-        int loop_defer_capacity;          ///< Allocated slots of loop_defer_boundary.
-        int loop_depth;                   ///< Current loop nesting depth.
-        int func_defer_boundary;          ///< Defer stack index at function entry.
+        Type *expected_init_type; ///< Declared type of the `let` whose initializer is parsed.
+        int *loop_defer_boundary; ///< Defer stack index at start of each enclosing loop.
+        int loop_defer_capacity;  ///< Allocated slots of loop_defer_boundary.
+        int loop_depth;           ///< Current loop nesting depth.
+        int func_defer_boundary;  ///< Defer stack index at function entry.
     } cg;
 
     // Type Validation
@@ -702,8 +702,14 @@ ZenSymbol *find_symbol_entry(ParserContext *ctx, const char *n);
  */
 ZenSymbol *find_symbol_in_all(ParserContext *ctx, const char *n);
 char *find_similar_symbol(ParserContext *ctx, const char *name);
-char *find_method_owner_type_scoped(ParserContext *ctx, const char *struct_name,
-                                    const char *method_name);
+/**
+ * @brief Picks the instance for `Template::method` from the type of the `let` being
+ * initialized: `let w: Wrap<int> = Wrap::make(3);` calls `Wrap__int32_t__make`.
+ * @return That function's name, or NULL if the `let` is not declared as an instance of the
+ * template or the instance has no such method.
+ */
+char *expected_instance_method(ParserContext *ctx, const char *template_name,
+                               const char *method_name);
 
 /**
  * @brief Normalizes a type name (e.g., "int" -> "int32_t").

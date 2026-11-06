@@ -313,12 +313,8 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         }
         else
         {
-            if (type_obj && type_obj->name)
-            {
-                ctx->cg.expected_init_type = type_mangle_spelling(type_obj);
-            }
+            ctx->cg.expected_init_type = type_obj;
             init = parse_expression(ctx, l);
-            zfree(ctx->cg.expected_init_type);
             ctx->cg.expected_init_type = NULL;
         }
 

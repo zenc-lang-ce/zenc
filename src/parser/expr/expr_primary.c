@@ -427,18 +427,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             }
                             else
                             {
-                                // The module's own function, if it has one by that name.
-                                char *tmp2 = mangle_module_symbol(mod->base_name, sbuf);
-                                char *type_name =
-                                    find_func(ctx, tmp2)
-                                        ? NULL
-                                        : find_method_owner_type_scoped(ctx, mod->base_name, sbuf);
-                                if (type_name)
-                                {
-                                    tmp2 = mangle_method_symbol(type_name, NULL, sbuf);
-                                }
                                 zfree(acc);
-                                acc = tmp2;
+                                acc = mangle_module_symbol(mod->base_name, sbuf);
                             }
                         }
                     }
@@ -510,28 +500,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             if (is_variant)
                             {
                                 char *v_mangled = mangle_variant_symbol(acc, method_name);
-
-                                if (!find_func(ctx, v_mangled))
-                                {
-                                    char *concrete_type =
-                                        find_method_owner_type_scoped(ctx, acc, method_name);
-                                    if (concrete_type)
-                                    {
-                                        char *concrete =
-                                            mangle_method_symbol(concrete_type, NULL, method_name);
-                                        if (find_func(ctx, concrete))
-                                        {
-                                            zfree(acc);
-                                            acc = concrete;
-                                            tmp = acc;
-                                            zfree(v_mangled);
-                                            zfree(concrete_type);
-                                            break;
-                                        }
-                                        zfree(concrete);
-                                        zfree(concrete_type);
-                                    }
-                                }
                                 if (v_mangled)
                                 {
                                     variant.scope = xstrdup(acc);
@@ -553,23 +521,15 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 }
                                 else
                                 {
-                                    char *concrete_type =
-                                        find_method_owner_type_scoped(ctx, acc, method_name);
-                                    if (concrete_type)
+                                    char *concrete =
+                                        expected_instance_method(ctx, acc, method_name);
+                                    if (concrete)
                                     {
-                                        char *concrete =
-                                            mangle_method_symbol(concrete_type, NULL, method_name);
-                                        if (find_func(ctx, concrete))
-                                        {
-                                            zfree(acc);
-                                            acc = concrete;
-                                            tmp = acc;
-                                            zfree(method_name);
-                                            zfree(concrete_type);
-                                            break;
-                                        }
-                                        zfree(concrete);
-                                        zfree(concrete_type);
+                                        zfree(acc);
+                                        acc = concrete;
+                                        tmp = acc;
+                                        zfree(method_name);
+                                        break;
                                     }
 
                                     // Fallback: check for trait implementations
@@ -687,93 +647,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                             }
                                             if (is_variant)
                                             {
-                                                char *direct = mangle_variant_symbol(
-                                                    acc, token_strdup(suffix));
-                                                // Do not resolve a path whose owner names a generic
-                                                // parameter (e.g. Option<V>) to an existing
-                                                // concrete instantiation: the concrete arg is a
-                                                // placeholder substituted at instantiation time.
-                                                if (!owner && !find_func(ctx, direct))
-                                                {
-                                                    char mbuf[128];
-                                                    if (suffix.len < (int)sizeof(mbuf))
-                                                    {
-                                                        strncpy(mbuf, suffix.start, suffix.len);
-                                                        mbuf[suffix.len] = 0;
-                                                    }
-                                                    else
-                                                    {
-                                                        mbuf[0] = 0;
-                                                    }
-                                                    char *concrete_type =
-                                                        find_method_owner_type_scoped(ctx, acc,
-                                                                                      mbuf);
-                                                    if (concrete_type)
-                                                    {
-                                                        char *concrete = mangle_method_symbol(
-                                                            concrete_type, NULL, mbuf);
-                                                        if (find_func(ctx, concrete))
-                                                        {
-                                                            tmp = concrete;
-                                                            zfree(direct);
-                                                            zfree(concrete_type);
-                                                            handled_as_generic = 1;
-                                                            break;
-                                                        }
-                                                        zfree(concrete);
-                                                        zfree(concrete_type);
-                                                    }
-                                                }
-                                                if (!handled_as_generic)
-                                                {
-                                                    variant.scope = xstrdup(acc);
-                                                    variant.name = token_strdup(suffix);
-                                                    tmp = direct;
-                                                }
+                                                variant.scope = xstrdup(acc);
+                                                variant.name = token_strdup(suffix);
+                                                tmp = mangle_variant_symbol(acc, variant.name);
                                             }
                                             else
                                             {
-                                                char *direct = mangle_method_symbol(
-                                                    acc, NULL, token_strdup(suffix));
-                                                // Do not resolve a path whose owner names a generic
-                                                // parameter (e.g. Option<V>) to an existing
-                                                // concrete instantiation: the concrete arg is a
-                                                // placeholder substituted at instantiation time.
-                                                if (!owner && !find_func(ctx, direct))
-                                                {
-                                                    char mbuf[128];
-                                                    if (suffix.len < (int)sizeof(mbuf))
-                                                    {
-                                                        strncpy(mbuf, suffix.start, suffix.len);
-                                                        mbuf[suffix.len] = 0;
-                                                    }
-                                                    else
-                                                    {
-                                                        mbuf[0] = 0;
-                                                    }
-                                                    char *concrete_type =
-                                                        find_method_owner_type_scoped(ctx, acc,
-                                                                                      mbuf);
-                                                    if (concrete_type)
-                                                    {
-                                                        char *concrete = mangle_method_symbol(
-                                                            concrete_type, NULL, mbuf);
-                                                        if (find_func(ctx, concrete))
-                                                        {
-                                                            tmp = concrete;
-                                                            zfree(direct);
-                                                            zfree(concrete_type);
-                                                            handled_as_generic = 1;
-                                                            break;
-                                                        }
-                                                        zfree(concrete);
-                                                        zfree(concrete_type);
-                                                    }
-                                                }
-                                                if (!handled_as_generic)
-                                                {
-                                                    tmp = direct;
-                                                }
+                                                tmp = mangle_method_symbol(acc, NULL,
+                                                                           token_strdup(suffix));
                                             }
                                             handled_as_generic = 1;
                                             break;
