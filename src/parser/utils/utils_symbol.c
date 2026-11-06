@@ -552,25 +552,9 @@ int expr_is_rvalue(ParserContext *ctx, ASTNode *e)
         // it is reached through a pointer (`ptr->field` has an address).
         return !e->member.is_pointer_access && expr_is_rvalue(ctx, e->member.target);
     case NODE_EXPR_VAR:
-    {
         // `Shape::Circle` written without (): the variant constructor's result.
-        const char *sep = e->var_ref.name ? strstr(e->var_ref.name, "::") : NULL;
-        if (!sep && e->var_ref.name)
-        {
-            sep = strstr(e->var_ref.name, "__");
-        }
-        if (!sep)
-        {
-            return 0;
-        }
-        size_t enum_len = (size_t)(sep - e->var_ref.name);
-        char *enum_name = xmalloc(enum_len + 1);
-        memcpy(enum_name, e->var_ref.name, enum_len);
-        enum_name[enum_len] = 0;
-        int is_variant = find_enum_variant_of(ctx, enum_name, sep + 2) != NULL;
-        zfree(enum_name);
-        return is_variant;
-    }
+        return e->var_ref.variant.name &&
+               find_enum_variant_of(ctx, e->var_ref.variant.scope, e->var_ref.variant.name);
     default:
         return 0;
     }
