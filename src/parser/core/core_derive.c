@@ -352,7 +352,8 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                         else if (!is_ptr && fdef && fdef->kind == NODE_STRUCT)
                         {
                             // Struct field: use __eq function
-                            snprintf(cmp, sizeof(cmp), "%s__eq(&self.%s, &other.%s)", ft, fn,
+                            snprintf(cmp, sizeof(cmp), "%s(&self.%s, &other.%s)",
+                                     mangle_method_symbol(ft, NULL, "eq"), fn,
                                      fn); /* TODO: check buffer size */
                         }
                         else
