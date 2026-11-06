@@ -239,13 +239,9 @@ static void json_emit_callee(ParserContext *ctx, ASTNode *callee)
     const char *name = NULL;
     if (callee->kind == NODE_EXPR_VAR && callee->var_ref.name)
     {
-        name = callee->var_ref.name;
-        // Skip mangled prefixes like Vec__int32_t__push -> push
-        const char *last_underscore = (char *)strrchr(name, '_');
-        if (last_underscore && last_underscore > name && *(last_underscore - 1) == '_')
-        {
-            name = last_underscore + 1;
-        }
+        // A method or a variant by its own name (`push`, not `Vec__int32_t__push`).
+        const char *own = callee_own_name(ctx, callee);
+        name = own ? own : callee->var_ref.name;
     }
     else if (callee->kind == NODE_EXPR_MEMBER && callee->member.field)
     {

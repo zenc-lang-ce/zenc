@@ -110,9 +110,9 @@ void init_builtins(void)
     init = 1;
 }
 
-void register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
-                   ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
-                   int is_pure, const char *link_name, Token decl_token, int is_export)
+FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
+                       ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
+                       int is_pure, const char *link_name, Token decl_token, int is_export)
 {
     FuncSig *f = NULL;
     if (ctx->config->mode_lsp || ctx->config->misra_mode)
@@ -122,7 +122,7 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
 
     if (!f)
     {
-        f = xmalloc(sizeof(FuncSig));
+        f = xcalloc(1, sizeof(FuncSig));
         f->name = xstrdup(name);
         f->next = ctx->func_registry;
         ctx->func_registry = f;
@@ -177,6 +177,34 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
     ft->is_raw = 1;
     ft->traits.has_drop = 0;
     sym->type_info = ft;
+    return f;
+}
+
+void register_method(ParserContext *ctx, Scope *scope, ASTNode *method, int is_export)
+{
+    FuncSig *sig = register_func(ctx, scope, method->func.name, method->func.count,
+                                 method->func.default_values, method->func.arg_types,
+                                 method->func.ret_type_info, method->func.is_varargs,
+                                 method->func.pure, method->link_name, method->token, is_export);
+    sig->own_name = method->func.method_name;
+}
+
+const char *callee_own_name(ParserContext *ctx, ASTNode *callee)
+{
+    if (callee->kind != NODE_EXPR_VAR)
+    {
+        return NULL;
+    }
+    if (callee->var_ref.variant.name)
+    {
+        return callee->var_ref.variant.name;
+    }
+    FuncSig *sig = callee->var_ref.name ? find_func(ctx, callee->var_ref.name) : NULL;
+    if (sig && sig->own_name)
+    {
+        return sig->own_name;
+    }
+    return callee->var_ref.instance.name;
 }
 
 void register_func_template(ParserContext *ctx, const char *name, const char *param, ASTNode *node)

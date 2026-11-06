@@ -182,14 +182,9 @@ static void emit_label(ParserContext *ctx, ASTNode *node)
         if (node->call.callee && node->call.callee->kind == NODE_EXPR_VAR &&
             node->call.callee->var_ref.name)
         {
-            const char *fn = node->call.callee->var_ref.name;
-            // Skip mangled Vec__int32_t__new prefix, show just the method name
-            const char *method = (char *)strstr(fn, "__") ? strrchr(fn, '_') + 1 : fn;
-            if (method && method[0] == '_')
-            {
-                method = fn; // fallback
-            }
-            emitter_printf(&ctx->cg.emitter, " '%s'", method);
+            // A method or a variant by its own name (`push`, not `Vec__int32_t__push`).
+            const char *own = callee_own_name(ctx, node->call.callee);
+            emitter_printf(&ctx->cg.emitter, " '%s'", own ? own : node->call.callee->var_ref.name);
         }
         break;
     case NODE_RAW_STMT:
