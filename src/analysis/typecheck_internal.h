@@ -48,8 +48,6 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
                              ASTNode *value_node, int is_call_arg);
 void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_ptr,
                                                Type *expected_type);
-void extract_base_name(const char *full_name, char *base_buf, size_t max_len);
-int is_struct_base_match(Type *base, Type *instantiated);
 
 // Call checker (defined in typecheck_call.c)
 void check_expr_call(TypeChecker *tc, ASTNode *node, int depth);

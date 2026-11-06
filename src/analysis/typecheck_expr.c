@@ -713,43 +713,11 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
     }
 }
 
-void extract_base_name(const char *full_name, char *base_buf, size_t max_len)
+// Whether two struct types have the same name: `Vec<T>` and `Vec<int>` are both `Vec`.
+static int is_struct_base_match(Type *base, Type *instantiated)
 {
-    if (!full_name)
-    {
-        base_buf[0] = '\0';
-        return;
-    }
-    size_t i = 0;
-    while (full_name[i] && full_name[i] != '<' && full_name[i] != '_' && i < max_len - 1)
-    {
-        base_buf[i] = full_name[i];
-        i++;
-    }
-    base_buf[i] = '\0';
-}
-
-int is_struct_base_match(Type *base, Type *instantiated)
-{
-    if (!base || !base->name || !instantiated || !instantiated->name)
-    {
-        return 0;
-    }
-    if (strcmp(base->name, instantiated->name) == 0)
-    {
-        return 1;
-    }
-
-    char base_str[MAX_TYPE_NAME_LEN];
-    char inst_str[MAX_TYPE_NAME_LEN];
-    extract_base_name(base->name, base_str, sizeof(base_str));
-    extract_base_name(instantiated->name, inst_str, sizeof(inst_str));
-
-    if (base_str[0] != '\0' && strcmp(base_str, inst_str) == 0)
-    {
-        return 1;
-    }
-    return 0;
+    return base && base->name && instantiated && instantiated->name &&
+           strcmp(base->name, instantiated->name) == 0;
 }
 
 void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_ptr,
