@@ -1322,7 +1322,9 @@ static void test_member_completion(void)
                         "    Point::\n"
                         "    h.\n"
                         "    Po\n"
-                        "}\n");
+                        "    my__h\n"
+                        "}\n"
+                        "fn my__helper() -> int { return 1; }\n");
     // Fields and methods after `value.`, also with part of the name typed.
     expect_completion(840, path, 12, 6, "x", 5);
     expect_completion(841, path, 12, 6, "len2", 2);
@@ -1335,6 +1337,9 @@ static void test_member_completion(void)
     expect_completion(846, path, 15, 6, "get", 2);
     // Not the C name of a method.
     expect_no_completion(847, path, 16, 6, "Point__len2");
+    // A struct and a function by the names they are declared with, `__` included.
+    expect_completion(848, path, 16, 6, "Point", 22);
+    expect_completion(849, path, 17, 9, "my__helper", 3);
     printf("PASS: test_member_completion\n");
 }
 
