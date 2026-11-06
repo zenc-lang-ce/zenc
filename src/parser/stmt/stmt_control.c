@@ -165,7 +165,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
 
     if (lexer_peek(l).kind == TOK_IDENT)
     {
-        int saved_pos = l->pos;
+        Lexer saved_lexer = *l;
         Token var = lexer_next(l);
 
         char *enum_idx_name = NULL;
@@ -629,7 +629,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 return outer_block;
             }
         }
-        l->pos = saved_pos;
+        *l = saved_lexer;
     }
 
     enter_scope(ctx);

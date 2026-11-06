@@ -177,3 +177,13 @@ test "negative step loops" {
     // 10, 8, 6, 4, 2 -> sum = 30
     assert(sum == 30, "10..0 step -2 expected sum 30")
 }
+
+test "C-style for reuses an existing variable" {
+    let t = 99;
+    let sum = 0;
+    for t = 0; t < 4; t += 1 {
+        sum += t;
+    }
+    assert(sum == 6, "C-style for with an existing variable must visit 0 through 3");
+    assert(t == 4, "C-style for must update the existing variable");
+}

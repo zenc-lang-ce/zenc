@@ -1,0 +1,8 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+
+fn main() {
+    let y = 1;
+    for let
+        t = 0; t < 2; t += 1 { let q: int = "text"; }
+}
