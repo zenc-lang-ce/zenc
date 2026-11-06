@@ -284,15 +284,16 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
                 else
                 {
                     ASTNode *def = find_struct_def(ctx, type_def_name(arg_type));
-                    if (def && def->kind == NODE_STRUCT && def->type_info &&
-                        def->type_info->traits.has_drop)
+                    if (def && (def->kind == NODE_STRUCT || def->kind == NODE_ENUM) &&
+                        def->type_info && def->type_info->traits.has_drop)
                     {
                         has_drop = 1;
                         drop_type_name = type_def_name(arg_type);
                     }
                 }
             }
-            else if (arg_type->kind == TYPE_TUPLE && type_needs_drop(ctx, arg_type))
+            else if ((arg_type->kind == TYPE_TUPLE || arg_type->kind == TYPE_ENUM) &&
+                     type_needs_drop(ctx, arg_type))
             {
                 has_drop = 1;
                 drop_type_name = drop_glue_name(arg_type);

@@ -1,0 +1,117 @@
+// features/enums: an enum drops the payload of its active variant, exactly once, and an enum
+// that implements Drop has its drop called: in a local, a moved value, a parameter, a returned
+// value, a struct field and a `match`.
+
+struct Res {
+    id: int;
+}
+
+let drops: int = 0;
+let plain_drops: int = 0;
+
+impl Drop for Res {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+enum Slot {
+    Empty,
+    Full(Res),
+}
+
+enum Two {
+    Neither,
+    Both(Res, Res),
+}
+
+enum Plain {
+    A,
+    B,
+}
+
+impl Drop for Plain {
+    fn drop(self) {
+        plain_drops = plain_drops + 1;
+    }
+}
+
+struct Holder {
+    s: Slot;
+}
+
+fn take(s: Slot) -> int {
+    match s {
+        Full(r) => {
+            return r.id;
+        },
+        Empty => {
+            return 0;
+        },
+    }
+    return -1;
+}
+
+fn make(id: int) -> Slot {
+    return Slot::Full(Res { id: id });
+}
+
+test "a local enum drops its payload" {
+    drops = 0;
+    {
+        let s = Slot::Full(Res { id: 1 });
+        let e = Slot::Empty;
+    }
+    assert(drops == 1, "only the active payload, once");
+}
+
+test "a moved enum is dropped once" {
+    drops = 0;
+    {
+        let s = Slot::Full(Res { id: 2 });
+        let t = s;
+    }
+    assert(drops == 1, "dropped once");
+}
+
+test "an enum parameter and a returned enum" {
+    drops = 0;
+    let s = Slot::Full(Res { id: 3 });
+    let id = take(s);
+    assert(id == 3 && drops == 1, "dropped by take");
+    {
+        let m = make(4);
+        assert(drops == 1, "not dropped by make");
+    }
+    assert(drops == 2, "dropped by the caller");
+}
+
+test "a match binds the payload without dropping it" {
+    drops = 0;
+    {
+        let s = Slot::Full(Res { id: 5 });
+        match s {
+            Full(r) => assert(r.id == 5, "bound"),
+            Empty => assert(false, "not empty"),
+        }
+        assert(drops == 0, "not dropped by the match");
+    }
+    assert(drops == 1, "dropped with the enum");
+}
+
+test "a payload of several values, and an enum in a struct field" {
+    drops = 0;
+    {
+        let w = Two::Both(Res { id: 6 }, Res { id: 7 });
+        let h = Holder { s: Slot::Full(Res { id: 8 }) };
+    }
+    assert(drops == 3, "each value dropped once");
+}
+
+test "an enum that implements Drop" {
+    plain_drops = 0;
+    {
+        let p = Plain::A;
+    }
+    assert(plain_drops == 1, "its drop is called");
+}

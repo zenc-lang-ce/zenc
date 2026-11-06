@@ -130,7 +130,7 @@ int type_needs_drop(ParserContext *ctx, Type *t)
         }
         return 0;
     }
-    if (t->kind == TYPE_STRUCT && t->name)
+    if ((t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name)
     {
         ASTNode *def = find_struct_def(ctx, type_def_name(t));
         return def && def->type_info && def->type_info->traits.has_drop;
@@ -138,11 +138,27 @@ int type_needs_drop(ParserContext *ctx, Type *t)
     return 0;
 }
 
-// Marks `strct` as Drop if one of its fields needs dropping; returns whether it did.
+// Marks a struct as Drop if one of its fields needs dropping, and an enum if the payload of one of
+// its variants does; returns whether it did.
 static int propagate_drop_from_fields(ParserContext *ctx, ASTNode *strct)
 {
-    if (!strct || strct->kind != NODE_STRUCT || !strct->type_info ||
-        strct->type_info->traits.has_drop)
+    if (!strct || !strct->type_info || strct->type_info->traits.has_drop)
+    {
+        return 0;
+    }
+    if (strct->kind == NODE_ENUM)
+    {
+        for (ASTNode *v = strct->enm.variants; v; v = v->next)
+        {
+            if (v->kind == NODE_ENUM_VARIANT && type_needs_drop(ctx, v->variant.payload))
+            {
+                strct->type_info->traits.has_drop = 1;
+                return 1;
+            }
+        }
+        return 0;
+    }
+    if (strct->kind != NODE_STRUCT)
     {
         return 0;
     }
@@ -266,6 +282,10 @@ void propagate_drop_traits(ParserContext *ctx)
     {
         seed_drop_from_impl(ctx, ref->node);
     }
+    for (StructRef *ref = ctx->parsed_enums_list; ref; ref = ref->next)
+    {
+        seed_drop_from_impl(ctx, ref->node);
+    }
     for (ASTNode *ins = ctx->instantiated_structs; ins; ins = ins->next)
     {
         seed_drop_from_impl(ctx, ins);
@@ -276,6 +296,10 @@ void propagate_drop_traits(ParserContext *ctx)
     {
         changed = 0;
         for (StructRef *ref = ctx->parsed_structs_list; ref; ref = ref->next)
+        {
+            changed |= propagate_drop_from_fields(ctx, ref->node);
+        }
+        for (StructRef *ref = ctx->parsed_enums_list; ref; ref = ref->next)
         {
             changed |= propagate_drop_from_fields(ctx, ref->node);
         }

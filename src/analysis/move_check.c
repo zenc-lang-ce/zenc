@@ -242,10 +242,13 @@ int is_type_copy(ParserContext *ctx, Type *t)
         case TYPE_FUNCTION:
             result = 1;
             break;
-        case TYPE_ENUM:
         case TYPE_BITINT:
         case TYPE_UBITINT:
             result = 1;
+            break;
+        case TYPE_ENUM:
+            // An enum with Drop, or with a payload that needs dropping, is moved.
+            result = !type_needs_drop(ctx, t);
             break;
         case TYPE_STRUCT:
             if (check_impl(ctx, "Copy", type_def_name(t)))

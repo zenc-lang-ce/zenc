@@ -454,16 +454,26 @@ static void emit_raw_statements_internal(ParserContext *ctx, ASTNode *node,
     }
 }
 
-// The name of the struct node `s` in C: its `@link_name`, if it has one.
+// The Zen C name of the struct or enum node `s`.
+static const char *type_node_name(ASTNode *s)
+{
+    return s->kind == NODE_ENUM ? s->enm.name : s->strct.name;
+}
+
+// The name of the struct or enum node `s` in C: its `@link_name`, if it has one.
 static const char *struct_c_type(ASTNode *s)
 {
-    return s->link_name ? s->link_name : s->strct.name;
+    return s->link_name ? s->link_name : type_node_name(s);
 }
 
 // Whether the struct node `s` gets a drop glue: a struct with Drop, or the struct of a tuple that
 // holds a value that needs dropping.
 static int struct_has_drop_glue(ParserContext *ctx, ASTNode *s)
 {
+    if (s->kind == NODE_ENUM)
+    {
+        return s->type_info && !s->enm.is_template && s->type_info->traits.has_drop;
+    }
     if (s->kind != NODE_STRUCT || !s->type_info || s->strct.is_template)
     {
         return 0;
@@ -487,7 +497,7 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
                 EMIT(ctx, "#if %s\n", s->cfg_condition);
             }
 
-            char *sname = s->strct.name;
+            const char *sname = type_node_name(s);
             EMIT(ctx, "// Auto-Generated RAII Glue for %s\n", sname);
             EMIT(ctx, "void %s__Drop__glue(%s *self) {\n", sname, struct_c_type(s));
 
@@ -498,7 +508,26 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
                 EMIT(ctx, "    %s__Drop__drop(self);\n", sname);
             }
 
-            ASTNode *field = s->strct.fields;
+            if (s->kind == NODE_ENUM && enum_has_payload(s))
+            {
+                // The payload of the active variant.
+                EMIT(ctx, "    switch (self->tag) {\n");
+                for (ASTNode *v = s->enm.variants; v; v = v->next)
+                {
+                    if (v->kind != NODE_ENUM_VARIANT || !type_needs_drop(ctx, v->variant.payload))
+                    {
+                        continue;
+                    }
+                    char lvalue[MAX_SHORT_MSG_LEN];
+                    snprintf(lvalue, sizeof(lvalue), "self->data.%s", v->variant.name);
+                    EMIT(ctx, "    case %s_Tag: %s break;\n",
+                         mangle_variant_symbol(struct_c_type(s), v->variant.name),
+                         drop_value_stmt(v->variant.payload, lvalue, 0));
+                }
+                EMIT(ctx, "    default: break;\n    }\n");
+            }
+
+            ASTNode *field = s->kind == NODE_STRUCT ? s->strct.fields : NULL;
             while (field)
             {
                 Type *ft = field->type_info;
@@ -507,7 +536,9 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
                 {
                     EMIT(ctx, "    if (self->%s.drop) self->%s.drop(self->%s.ctx);\n", f, f, f);
                 }
-                else if (ft && ((ft->kind == TYPE_STRUCT && ft->name) || ft->kind == TYPE_TUPLE) &&
+                else if (ft &&
+                         (((ft->kind == TYPE_STRUCT || ft->kind == TYPE_ENUM) && ft->name) ||
+                          ft->kind == TYPE_TUPLE) &&
                          type_needs_drop(ctx, ft))
                 {
                     EMIT(ctx, "    %s__Drop__glue(&self->%s);\n", drop_glue_name(ft), f);
@@ -551,7 +582,7 @@ static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
                 {
                     EMIT(ctx, "#if %s\n", s->cfg_condition);
                 }
-                char *sname = s->strct.name;
+                const char *sname = type_node_name(s);
                 const char *ctype = struct_c_type(s);
                 EMIT(ctx, "inline void _z_drop(%s& x) { %s__Drop__glue(&x); }\n", ctype, sname);
                 EMIT(ctx, "inline void _z_drop(%s* x) { if(x) %s__Drop__glue(x); }\n", ctype,
@@ -576,7 +607,7 @@ static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
         {
             if (struct_has_drop_glue(ctx, s))
             {
-                char *sname = s->strct.name;
+                const char *sname = type_node_name(s);
                 EMIT(ctx, ", \\\n    %s: %s__Drop__glue((void*)&(x))", struct_c_type(s), sname);
             }
             s = s->next;
