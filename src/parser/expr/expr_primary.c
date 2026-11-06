@@ -427,10 +427,16 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             }
                             else
                             {
+                                // The module's own function, if it has one by that name.
+                                char *tmp2 = mangle_module_symbol(mod->base_name, sbuf);
                                 char *type_name =
-                                    find_method_owner_type_scoped(ctx, mod->base_name, sbuf);
-                                char *tmp2 = type_name ? mangle_method_symbol(type_name, NULL, sbuf)
-                                                       : mangle_module_symbol(mod->base_name, sbuf);
+                                    find_func(ctx, tmp2)
+                                        ? NULL
+                                        : find_method_owner_type_scoped(ctx, mod->base_name, sbuf);
+                                if (type_name)
+                                {
+                                    tmp2 = mangle_method_symbol(type_name, NULL, sbuf);
+                                }
                                 zfree(acc);
                                 acc = tmp2;
                             }

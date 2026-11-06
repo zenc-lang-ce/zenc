@@ -1,0 +1,14 @@
+// Helper for test_module_call_type_prefix.zc: a function and a method with the same name.
+fn create() -> int {
+    return 42;
+}
+
+struct Builder {
+    n: int;
+}
+
+impl Builder {
+    fn create() -> Builder {
+        return Builder { n: 7 };
+    }
+}
