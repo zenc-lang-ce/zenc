@@ -317,6 +317,8 @@ struct ASTNode
             // Declaration context (to parse a deferred body)
             char *module_prefix;  // C prefix of the declaring module (NULL if none)
             char *impl_struct;    // Type of the enclosing impl block (NULL for free function)
+            char *method_name;    // Name written in the impl or trait (`get` of `Point__get`);
+                                  // NULL for a free function
             const char *filename; // Source file that declares the function
         } func;
 

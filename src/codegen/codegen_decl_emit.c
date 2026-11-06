@@ -244,8 +244,6 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 f = f->next;
                 continue;
             }
-            char *sname = type_impl_name(f->impl.target);
-
             if (f->cfg_condition)
             {
                 EMIT(ctx, "#if %s\n", f->cfg_condition);
@@ -262,16 +260,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 {
                     EMIT(ctx, "#if %s\n", m->cfg_condition);
                 }
-                char *fname = m->func.name;
-
-                // The prototype is `sname__method`: the method's name, or that name prefixed.
-                size_t slen = strlen(sname);
-                char *proto =
-                    strncmp(fname, sname, slen) == 0 && fname[slen] == '_' && fname[slen + 1] == '_'
-                        ? xstrdup(fname)
-                        : mangle_method_symbol(sname, NULL, fname);
-
-                emit_func_signature(ctx, m, proto);
+                emit_func_signature(ctx, m, m->func.name);
                 EMIT(ctx, ";\n");
                 if (m->cfg_condition)
                 {
@@ -442,24 +431,9 @@ void emit_impl_vtables(ParserContext *ctx)
             ASTNode *m = node->impl_trait.methods;
             while (m)
             {
-                // Calculate expected prefix: Struct__Trait__
-                size_t pre_sz = strlen(strct) + strlen(trait) + 6;
-                char *prefix = xmalloc(pre_sz);
-                snprintf(prefix, pre_sz, "%s__%s__", strct, trait);
-
-                const char *orig_name = m->func.name;
-                if (strncmp(orig_name, prefix, strlen(prefix)) == 0)
-                {
-                    orig_name += strlen(prefix);
-                }
-                else
-                {
-                    orig_name = parse_original_method_name(m->func.name);
-                }
-
-                EMIT(ctx, ".%s = (__typeof__(((%s_VTable*)0)->%s))%s", orig_name, trait, orig_name,
+                const char *method = m->func.method_name;
+                EMIT(ctx, ".%s = (__typeof__(((%s_VTable*)0)->%s))%s", method, trait, method,
                      m->func.name);
-                zfree(prefix);
                 if (m->next)
                 {
                     EMIT(ctx, ", ");

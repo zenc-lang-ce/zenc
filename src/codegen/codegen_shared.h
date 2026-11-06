@@ -13,7 +13,6 @@
  */
 
 // String manipulation
-const char *parse_original_method_name(const char *mangled);
 char *replace_string_type(const char *args);
 
 // Type name mapping

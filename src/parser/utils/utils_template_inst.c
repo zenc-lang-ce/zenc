@@ -350,6 +350,7 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
 
     ASTNode *meth = NULL;
     ASTNode *template_meth = NULL;
+    const char *trait_name = NULL;
     Type *target = type_new_instance(it->struct_name, args, count);
 
     if (new_impl->kind == NODE_IMPL)
@@ -361,6 +362,7 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
     else if (new_impl->kind == NODE_IMPL_TRAIT)
     {
         new_impl->impl_trait.target = target;
+        trait_name = new_impl->impl_trait.trait_name;
         meth = new_impl->impl_trait.methods;
         template_meth = it->impl_node->impl_trait.methods;
     }
@@ -369,38 +371,9 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
     {
         remember_body_copy(ctx, meth, template_meth, b, it->struct_name, mangled_struct_name);
 
-        // Standardize: ensure __ between type and method
-        // If it's already correctly mangled (e.g. Vec__int32_t__with_capacity), skip
-        size_t mlen = strlen(mangled_struct_name);
-        int correctly_mangled =
-            (strncmp(meth->func.name, mangled_struct_name, (size_t)(mlen)) == 0 &&
-             meth->func.name[mlen] == '_' && meth->func.name[mlen + 1] == '_');
-
-        if (!correctly_mangled)
-        {
-            // Find the method part in the original name (e.g. "with_capacity" in
-            // "Vec_with_capacity")
-            char *original_method = meth->func.name;
-            if (strncmp(original_method, it->struct_name, strlen(it->struct_name)) == 0)
-            {
-                original_method += strlen(it->struct_name);
-                // Strip the separator (legacy single "_" or the "__" separator),
-                // but keep the method's own leading underscores so that e.g.
-                // "_private_method" stays distinct from "private_method".
-                if (original_method[0] == '_' && original_method[1] == '_')
-                {
-                    original_method += 2;
-                }
-                else if (original_method[0] == '_')
-                {
-                    original_method += 1;
-                }
-            }
-
-            char *new_name = mangle_method_symbol(mangled_struct_name, NULL, original_method);
-            zfree(meth->func.name);
-            meth->func.name = new_name;
-        }
+        // The instance's name for the method: `Vec__int32_t__push`, `Wrap__int32_t__Show__show`.
+        meth->func.name =
+            mangle_method_symbol(mangled_struct_name, trait_name, meth->func.method_name);
 
         register_func(ctx, ctx->global_scope, meth->func.name, meth->func.count,
                       meth->func.default_values, meth->func.arg_types, meth->func.ret_type_info,

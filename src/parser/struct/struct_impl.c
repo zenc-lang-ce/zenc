@@ -60,9 +60,8 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
             continue;
         }
         ATTACH_DOC_COMMENT(ctx, f);
-        char *mangled = mangle_method_symbol(type_name, trait_name, f->func.name);
-        zfree(f->func.name);
-        f->func.name = mangled;
+        f->func.method_name = f->func.name;
+        f->func.name = mangle_method_symbol(type_name, trait_name, f->func.method_name);
 
         if (attrs.cfg_condition)
         {
