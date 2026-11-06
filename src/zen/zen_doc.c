@@ -307,7 +307,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
             {
                 if (method->kind == NODE_FUNCTION)
                 {
-                    const char *mname = unmangle_name(method->func.name);
+                    const char *mname = method->func.method_name;
                     printf("\n### method `%s`\n", mname);
                     if (method->doc_comment)
                     {

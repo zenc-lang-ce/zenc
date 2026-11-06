@@ -375,10 +375,7 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
         meth->func.name =
             mangle_method_symbol(mangled_struct_name, trait_name, meth->func.method_name);
 
-        register_func(ctx, ctx->global_scope, meth->func.name, meth->func.count,
-                      meth->func.default_values, meth->func.arg_types, meth->func.ret_type_info,
-                      meth->func.is_varargs, meth->func.pure, meth->link_name, meth->token,
-                      meth->func.is_export);
+        register_method(ctx, ctx->global_scope, meth, meth->func.is_export);
 
         // The instances the method's return type names (`-> Option<T>`).
         trigger_type_instantiation(ctx, meth->func.ret_type_info);
@@ -405,12 +402,14 @@ static void register_enum_constructor(ParserContext *ctx, const char *m, const c
         Type **at = xmalloc(sizeof(Type *));
         at[0] = payload;
         register_func(ctx, ctx->global_scope, mangled_var, 1, NULL, at, ret_t, 0, 0, NULL, token,
-                      is_export);
+                      is_export)
+            ->own_name = xstrdup(var_name);
     }
     else
     {
         register_func(ctx, ctx->global_scope, mangled_var, 0, NULL, NULL, ret_t, 0, 0, NULL, token,
-                      is_export);
+                      is_export)
+            ->own_name = xstrdup(var_name);
     }
     zfree(mangled_var);
 }

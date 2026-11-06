@@ -909,8 +909,9 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
             if (n->kind == NODE_FUNCTION && n->func.name[0] == name[0] &&
                 strcmp(n->func.name, name) == 0)
             {
-                FuncSig *sig = xmalloc(sizeof(FuncSig));
+                FuncSig *sig = xcalloc(1, sizeof(FuncSig));
                 sig->name = n->func.name;
+                sig->own_name = n->func.method_name;
                 sig->decl_token = n->token;
                 sig->total_args = n->func.count;
                 sig->default_values = n->func.default_values;

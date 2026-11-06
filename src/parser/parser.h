@@ -111,6 +111,8 @@ typedef struct FuncSig
     int required;             ///< 1 if return value must be used.
     int is_pure;              ///< 1 if marked @pure.
     char *link_name;          ///< Overriding C identifier (from @link_name).
+    const char *own_name;     ///< The name the program writes, when the C name adds to it:
+                              ///< `push` of `Vec__int32_t__push`, `Rect` of `Shape__Rect`.
     int elide_from_idx;       ///< Index of parameter for lifetime elision (-1 if none)
     struct FuncSig *next;     ///< Next function in registry.
 } FuncSig;
@@ -723,9 +725,21 @@ const char *normalize_type_name(const char *name);
 /**
  * @brief Registers a function.
  */
-void register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
-                   ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
-                   int is_pure, const char *link_name, Token decl_token, int is_export);
+FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
+                       ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
+                       int is_pure, const char *link_name, Token decl_token, int is_export);
+
+/**
+ * @brief Registers a method of an impl under its C name, with its own name.
+ */
+void register_method(ParserContext *ctx, Scope *scope, ASTNode *method, int is_export);
+
+/**
+ * @brief The name a call's callee was written with: a variant's (`Ok` of `Result__Ok`), a
+ * method's (`push` of `Vec__int32_t__push`) or a generic function's (`id` of `id__int32_t`).
+ * @return NULL when the C name is that name.
+ */
+const char *callee_own_name(ParserContext *ctx, ASTNode *callee);
 
 /**
  * @brief A copy of the default value of argument `index` of `sig`, for a call that leaves the

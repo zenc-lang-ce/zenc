@@ -1863,17 +1863,12 @@ void lsp_workspace_symbol(const char *query, const cJSON *id)
             for (ASTNode *method = methods; method && count < MAX_WORKSPACE_SYMBOLS;
                  method = method->next)
             {
-                if (method->kind != NODE_FUNCTION || !method->func.name)
+                if (method->kind != NODE_FUNCTION || !method->func.method_name)
                 {
                     continue;
                 }
-                // The parser prefixes methods with their type (`Rect__area`).
-                const char *short_name = method->func.name;
-                const char *separator;
-                while ((separator = strstr(short_name, "__")) != NULL)
-                {
-                    short_name = separator + 2;
-                }
+                // `func.name` is the C name (`Rect__area`).
+                const char *short_name = method->func.method_name;
                 if (matches_query(short_name, query))
                 {
                     add_workspace_symbol(items, short_name, 6, pf->uri, method->token, container);
