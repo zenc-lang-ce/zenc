@@ -1,0 +1,20 @@
+// language/generics: test_generic_static_call_other_instance
+// `Wrap::make(x)` in a `let` with no type is not resolved to another instance of
+// `Wrap` that happens to exist: it used to call `Wrap<int>`'s `make` with 3.5.
+
+struct Wrap<T> {
+    inner: T;
+}
+
+impl Wrap<T> {
+    fn make(inner: T) -> Wrap<T> {
+        return Wrap<T> { inner: inner };
+    }
+}
+
+test "static_call_without_a_declared_type" {
+    let a: Wrap<int> = Wrap::make(1);
+    let d = Wrap::make(3.5);
+    assert(a.inner == 1, "the declared instance");
+    assert(d.inner == 3.5, "the instance of the argument, not Wrap<int>");
+}
