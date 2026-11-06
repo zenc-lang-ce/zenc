@@ -331,6 +331,7 @@ void register_enum_variant(ParserContext *ctx, const char *vname, const char *en
     EnumVariantReg *r = xcalloc(1, sizeof(EnumVariantReg));
     r->enum_name = ename ? xstrdup(ename) : NULL;
     r->variant_name = vname ? xstrdup(vname) : NULL;
+    r->mangled_name = ename && vname ? mangle_variant_symbol(ename, vname) : NULL;
     r->tag_id = tag;
     r->next = ctx->enum_variants;
     ctx->enum_variants = r;
@@ -341,44 +342,18 @@ static int variant_reg_is_of(EnumVariantReg *r, const char *enum_name)
     return r->enum_name && strcmp(r->enum_name, enum_name) == 0;
 }
 
+// A qualified name (`Color__Red`, `Option__int32_t__Some`) is the C name of one variant; a
+// bare name (`Red`) is the first variant with that name.
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name)
 {
-    char *ename = NULL;
-    const char *vname = name;
-    const char *sep = (char *)strstr(name, "::");
-    if (!sep)
+    int qualified = strstr(name, "__") != NULL;
+    for (EnumVariantReg *r = ctx->enum_variants; r; r = r->next)
     {
-        sep = strstr(name, "__");
-    }
-
-    if (sep)
-    {
-        int elen = (int)(sep - name);
-        ename = xmalloc((size_t)(elen + 1));
-        strncpy(ename, name, (size_t)(elen));
-        ename[elen] = 0;
-        vname = sep + 2;
-    }
-
-    EnumVariantReg *r = ctx->enum_variants;
-    while (r)
-    {
-        if (strcmp(r->variant_name, vname) == 0)
+        const char *candidate = qualified ? r->mangled_name : r->variant_name;
+        if (candidate && strcmp(candidate, name) == 0)
         {
-            if (!ename || variant_reg_is_of(r, ename))
-            {
-                if (ename)
-                {
-                    zfree(ename);
-                }
-                return r;
-            }
+            return r;
         }
-        r = r->next;
-    }
-    if (ename)
-    {
-        zfree(ename);
     }
     return NULL;
 }
