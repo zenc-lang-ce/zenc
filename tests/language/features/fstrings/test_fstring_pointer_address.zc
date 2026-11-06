@@ -9,7 +9,10 @@ test "a pointer to a struct is an address" {
     let b = charbuf { n: 1 };
     let p: charbuf* = &b;
     let text = f"{p}";
-    assert(text[0] == '0' && text[1] == 'x', "address");
+    // C writes %p its own way (MinGW without the 0x prefix): compare with it.
+    let expected: char[32];
+    snprintf(expected, 32, "%p", (void*)p);
+    assert(strcmp(text, expected) == 0, "address");
 }
 
 test "a char pointer is a string" {
