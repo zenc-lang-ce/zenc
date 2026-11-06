@@ -43,6 +43,16 @@ static int type_has_clone_method(ParserContext *ctx, const char *type_name)
     return 0;
 }
 
+// Whether a field of type `t` is a `Vec<String>`, which the JSON derives read and write as an
+// array of strings.
+static int is_vec_of_string(Type *t)
+{
+    t = resolve_alias(t);
+    return type_is_instance_of(t, "Vec") && t->count == 1 && t->args[0] &&
+           t->args[0]->kind == TYPE_STRUCT && t->args[0]->name &&
+           strcmp(t->args[0]->name, "String") == 0;
+}
+
 // The traits `generate_derive_impls` knows how to derive.
 static const char *const DERIVABLE_TRAITS[] = {"Clone",    "Copy",   "Debug", "Eq",
                                                "FromJson", "ToJson", NULL};
@@ -464,7 +474,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                                 "String::new((*j).get_string(\"%s\").unwrap_or(\"\"));\n",
                                 fn, fn);
                     }
-                    else if (ft && strstr(ft, "Vec") && strstr(ft, "String"))
+                    else if (is_vec_of_string(f->type_info))
                     {
                         // Track this field for forget() call later
                         if (vec_field_count < 32)
@@ -624,7 +634,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                                                                                           size */
                             fn, fn);
                     }
-                    else if (ft && strstr(ft, "Vec") && strstr(ft, "String"))
+                    else if (is_vec_of_string(f->type_info))
                     {
                         snprintf(
                             set_call, sizeof(set_call), /* TODO: check buffer size */

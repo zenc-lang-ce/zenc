@@ -1343,8 +1343,7 @@ static char *type_spelling_impl(Type *t, int c_names)
     case TYPE_GENERIC:
     {
         // An instance of a generic is named after its template and its arguments.
-        if (t->count > 0 && t->args && t->name &&
-            (t->kind != TYPE_GENERIC || strstr(t->name, "__") == NULL))
+        if (t->count > 0 && t->args && t->name)
         {
             char **args = xmalloc((size_t)t->count * sizeof(char *));
             for (int i = 0; i < t->count; i++)
