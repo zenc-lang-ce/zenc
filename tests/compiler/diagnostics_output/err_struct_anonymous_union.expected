@@ -1,0 +1,9 @@
+   Compiling tests/compiler/diagnostics_output/err_struct_anonymous_union.zc...
+error: Anonymous unions are not supported inside a struct
+  --> tests/compiler/diagnostics_output/err_struct_anonymous_union.zc:7:5
+   |
+7  |     union {
+   |     ^ here
+   |
+   = help: Declare a named union and use it as a field
+[exit 1]
