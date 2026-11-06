@@ -377,6 +377,45 @@ else
     check "emit-c #line changes with the file when the line number is the same" 0
 fi
 
+# Calls and methods by the name the program writes, not cut from the C name
+# (`Pool__with_capacity`, `Pool__get__raw`, `Shape__Rect`).
+cat > "$workdir/own_names.zc" <<'ZC'
+enum Shape {
+    Rect(int),
+}
+
+struct Pool {
+    n: int;
+}
+
+impl Pool {
+    fn with_capacity(n: int) -> Pool {
+        return Pool { n: n };
+    }
+    fn get__raw(self) -> int {
+        return self.n;
+    }
+}
+
+fn main() {
+    let p = Pool::with_capacity(4);
+    let n = p.get__raw();
+    let s = Shape.Rect(n);
+}
+ZC
+"$ZC" transpile --backend ast-dump "$workdir/own_names.zc" -o "$workdir/own_names.ast" >/dev/null 2>&1
+if grep -q "CALL 'with_capacity'" "$workdir/own_names.ast" && grep -q "CALL 'get__raw'" "$workdir/own_names.ast" &&
+    grep -q "CALL 'Rect'" "$workdir/own_names.ast"; then
+    check "ast-dump names a call as the program writes it" 1
+else
+    check "ast-dump names a call as the program writes it" 0
+fi
+if "$ZC" doc "$workdir/own_names.zc" 2>/dev/null | grep -q 'method `get__raw`'; then
+    check "doc names a method with __ in it whole" 1
+else
+    check "doc names a method with __ in it whole" 0
+fi
+
 # --- Installed layout ------------------------------------------------------
 
 # `make install` puts the binary in PREFIX/bin and the stdlib in
