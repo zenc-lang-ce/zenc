@@ -66,9 +66,10 @@ void handle_expr_member(ParserContext *ctx, ASTNode *node)
     else
     {
         // When X is the name of an enum, `X.y` is the variant y of that enum (`Color.Red`).
-        // But when X has a type, X is a variable or parameter that happens to share its name
-        // with an enum, and `X.y` reads its field y: the variable hides the enum.
-        if (node->member.target->kind == NODE_EXPR_VAR && !node->member.target->type_info)
+        // But when X is a variable or parameter in scope (the typechecker records the symbol it
+        // found in var_ref.symbol), X only shares its name with an enum, and `X.y` reads its
+        // field y: the variable hides the enum.
+        if (node->member.target->kind == NODE_EXPR_VAR && !node->member.target->var_ref.symbol)
         {
             ASTNode *def = find_struct_def(ctx, node->member.target->var_ref.name);
             if (def && def->kind == NODE_ENUM)
