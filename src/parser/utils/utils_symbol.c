@@ -751,7 +751,10 @@ char *find_method_owner_type_scoped(ParserContext *ctx, const char *struct_name,
         {
             p++;
         }
-        if (strncasecmp(p, struct_name, prefix_len) != 0)
+        // The type's name, then the separator: `Vec__int32_t__new` is an instance of `Vec`,
+        // `VecBuilder__new` is another type.
+        if (strncmp(p, struct_name, prefix_len) != 0 || p[prefix_len] != '_' ||
+            p[prefix_len + 1] != '_')
         {
             continue;
         }
