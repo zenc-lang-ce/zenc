@@ -21,6 +21,7 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
 {
     ASTNode *h = NULL;
     ASTNode *tl = NULL;
+    ctx->current_impl_template_param = template_param;
     while (1)
     {
         ctx->current_impl_methods = h;
@@ -74,23 +75,6 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         if (template_param)
         {
             register_func_template(ctx, f->func.name, template_param, f);
-
-            // `self` is a Type<T>*.
-            if (f->func.count > 0 && f->func.param_names &&
-                strcmp(f->func.param_names[0], "self") == 0)
-            {
-                Type *t_struct = type_new(TYPE_STRUCT);
-                t_struct->name = xstrdup(type_name);
-                t_struct->count = 1;
-                t_struct->args = xmalloc(sizeof(Type *));
-                t_struct->args[0] = type_new(TYPE_GENERIC);
-                t_struct->args[0]->name = xstrdup(template_param);
-
-                Type *t_ptr = type_new(TYPE_POINTER);
-                t_ptr->inner = t_struct;
-
-                f->func.arg_types[0] = t_ptr;
-            }
         }
         else if (f->func.generic_params)
         {
@@ -111,6 +95,7 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         }
         tl = f;
     }
+    ctx->current_impl_template_param = NULL;
     return h;
 }
 

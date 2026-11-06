@@ -491,25 +491,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
             }
             break;
         }
-        // A method of the template (`Vec__push`, inside its impl) is the instance's.
-        char *n1 = n->var_ref.name ? xstrdup(n->var_ref.name) : NULL;
-        if (os && ns)
-        {
-            size_t os_len = strlen(os);
-            size_t ns_len = strlen(ns);
-            // Only replace if it starts with os__ and DOES NOT already start with ns__
-            if (strncmp(n1, os, (size_t)(os_len)) == 0 && n1[os_len] == '_' &&
-                n1[os_len + 1] == '_' && strncmp(n1, ns, (size_t)(ns_len)) != 0)
-            {
-                char *suffix = n1 + os_len;
-                char buf[MAX_ERROR_MSG_LEN];
-                snprintf(buf, sizeof(buf), "%s%s", ns, suffix);
-                char *n3 = merge_underscores(buf);
-                zfree(n1);
-                n1 = n3;
-            }
-        }
-        new_node->var_ref.name = n1;
+        new_node->var_ref.name = n->var_ref.name ? xstrdup(n->var_ref.name) : NULL;
     }
     break;
     case NODE_FIELD:

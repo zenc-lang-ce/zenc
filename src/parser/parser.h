@@ -401,10 +401,11 @@ struct ParserContext
     const char *current_filename; ///< Current file being parsed (for token/file attribution).
 
     // Config/State
-    char *current_impl_struct;     ///< Name of struct currently being implemented (in impl block).
-    ASTNode *current_impl_methods; ///< Head of method list for current impl block.
-    int in_method_with_self;       ///< 1 if parsing body of method with self parameter.
-    int self_is_pointer;           ///< 1 if self is a pointer receiver (self*).
+    char *current_impl_struct; ///< Name of struct currently being implemented (in impl block).
+    const char *current_impl_template_param; ///< `T` of `impl Vec<T>` while it is read, or NULL.
+    ASTNode *current_impl_methods;           ///< Head of method list for current impl block.
+    int in_method_with_self;                 ///< 1 if parsing body of method with self parameter.
+    int self_is_pointer;                     ///< 1 if self is a pointer receiver (self*).
 
     // Deferred function bodies
     PendingBody *pending_bodies;               ///< First body waiting to be parsed (FIFO).

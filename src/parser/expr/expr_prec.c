@@ -159,10 +159,11 @@ static ASTNode *new_member_node(ParserContext *ctx, ASTNode *target, Token field
 
 // The method `method` of `struct_name`: `Struct__method`, or the one of a trait impl
 // (`Struct__Trait__method`). Its name goes to *mangled_out (the plain one when there is
-// no such method).
+// no such method), and the trait, if it is a trait's, to *trait_out.
 static FuncSig *find_method_sig(ParserContext *ctx, const char *struct_name, const char *method,
-                                char **mangled_out)
+                                char **mangled_out, const char **trait_out)
 {
+    *trait_out = NULL;
     char *mangled = mangle_method_symbol(struct_name, NULL, method);
     FuncSig *sig = find_func(ctx, mangled);
 
@@ -181,6 +182,7 @@ static FuncSig *find_method_sig(ParserContext *ctx, const char *struct_name, con
                 {
                     zfree(mangled);
                     mangled = trait_mangled;
+                    *trait_out = ref->node->impl_trait.trait_name;
                 }
                 else
                 {
@@ -192,6 +194,21 @@ static FuncSig *find_method_sig(ParserContext *ctx, const char *struct_name, con
     }
     *mangled_out = mangled;
     return sig;
+}
+
+// Inside a generic impl, a method of a type that depends on its parameters (`self.grow()` in
+// `impl Vec<T>`) is named again for each instance: the call keeps its owner and the method.
+static void keep_method_owner(ParserContext *ctx, ASTNode *callee, Type *target_type,
+                              const char *trait, const char *method)
+{
+    Type *owner =
+        target_type && target_type->kind == TYPE_POINTER ? target_type->inner : target_type;
+    if (owner && type_is_generic_dependent(ctx, owner))
+    {
+        callee->var_ref.owner = owner;
+        callee->var_ref.member =
+            trait ? mangle_method_symbol(trait, NULL, method) : xstrdup(method);
+    }
 }
 
 // Builds the second argument of an operator overload call from its right operand.
@@ -399,7 +416,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             if (struct_name)
             {
                 char *mangled = NULL;
-                FuncSig *sig = find_method_sig(ctx, struct_name, method, &mangled);
+                const char *trait = NULL;
+                FuncSig *sig = find_method_sig(ctx, struct_name, method, &mangled, &trait);
                 if (sig)
                 {
                     // Rewrite: ~x -> Struct_bitnot(x)
@@ -791,6 +809,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             ASTNode *self_arg = NULL;
             FuncSig *resolved_sig = NULL;
             char *resolved_name = NULL;
+            Type *resolved_target_type = NULL;
+            const char *resolved_trait = NULL;
 
             if (lhs->kind == NODE_EXPR_MEMBER)
             {
@@ -803,7 +823,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 if (struct_name)
                 {
                     char *mangled = NULL;
-                    FuncSig *sig = find_method_sig(ctx, struct_name, lhs->member.field, &mangled);
+                    const char *trait = NULL;
+                    FuncSig *sig =
+                        find_method_sig(ctx, struct_name, lhs->member.field, &mangled, &trait);
 
                     if (sig)
                     {
@@ -858,6 +880,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                         resolved_name = xstrdup(mangled);
                         resolved_sig = sig;
+                        resolved_target_type = lt;
+                        resolved_trait = trait;
 
                         // Create 'self' argument only for instance methods
                         if (!is_static_method)
@@ -917,6 +941,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             {
                 ASTNode *callee = ast_create(NODE_EXPR_VAR);
                 callee->var_ref.name = resolved_name;
+                keep_method_owner(ctx, callee, resolved_target_type, resolved_trait,
+                                  lhs->member.field);
                 call->call.callee = callee;
             }
             else
@@ -1418,7 +1444,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 if (struct_name)
                 {
                     char *mangled = NULL;
-                    FuncSig *sig = find_method_sig(ctx, struct_name, node->member.field, &mangled);
+                    const char *trait = NULL;
+                    FuncSig *sig =
+                        find_method_sig(ctx, struct_name, node->member.field, &mangled, &trait);
 
                     if (sig)
                     {
@@ -1994,14 +2022,15 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             if (struct_name)
             {
                 char *mangled = NULL;
-                FuncSig *sig = find_method_sig(ctx, struct_name, method, &mangled);
+                const char *trait = NULL;
+                FuncSig *sig = find_method_sig(ctx, struct_name, method, &mangled, &trait);
 
                 // Without a `neq` method, `a != b` is `!a.eq(b)`.
                 int negate = 0;
                 if (!sig && strcmp(bin->binary.op, "!=") == 0)
                 {
                     zfree(mangled);
-                    sig = find_method_sig(ctx, struct_name, "eq", &mangled);
+                    sig = find_method_sig(ctx, struct_name, "eq", &mangled, &trait);
                     negate = sig != NULL;
                 }
 
@@ -2011,6 +2040,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     call->token = t;
                     ASTNode *callee = ast_create(NODE_EXPR_VAR);
                     callee->var_ref.name = xstrdup(mangled);
+                    keep_method_owner(ctx, callee, lt, trait, negate ? "eq" : method);
                     call->call.callee = callee;
 
                     ASTNode *arg1 = lhs;
