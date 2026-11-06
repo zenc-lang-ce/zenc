@@ -1159,7 +1159,8 @@ static char *type_spelling_impl(Type *t, int c_names)
         return xstrdup("c_uchar");
 
     case TYPE_INT:
-        return xstrdup("int");
+        // `int` is `i32`: its C names are i32's (`Vec__int32_t`), so both make one instance.
+        return xstrdup(c_names ? "int32_t" : "int");
     case TYPE_FLOAT:
         return xstrdup("float");
     case TYPE_BITINT:
