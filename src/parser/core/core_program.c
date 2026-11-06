@@ -24,6 +24,59 @@ static void report_unexpected_toplevel(Token t)
     zpanic_with_hints(t, msg, hints);
 }
 
+// `extern enum Name;`, `extern const NAME;`...: no such declarations exist.
+// Before v0.5.0 the missing ';' was skipped, so the keyword was taken as the
+// C name and the real name was ignored. Reports it and skips to the ';'.
+static int report_extern_with_kind(Lexer *l)
+{
+    // `const` and `def` name a value, which may also want a type.
+    static const struct
+    {
+        const char *word;
+        int is_value;
+    } kinds[] = {{"enum", 0}, {"const", 1}, {"def", 1}, {"type", 0}, {"alias", 0}};
+    Token kind = lexer_peek(l);
+    int found = -1;
+    for (int i = 0; i < (int)(sizeof(kinds) / sizeof(kinds[0])) && found < 0; i++)
+    {
+        if (kind.len == strlen(kinds[i].word) && strncmp(kind.start, kinds[i].word, kind.len) == 0)
+        {
+            found = i;
+        }
+    }
+    if (found < 0)
+    {
+        return 0;
+    }
+
+    lexer_next(l);
+    Token name = lexer_peek(l);
+    int name_len = name.kind == TOK_IDENT ? (int)name.len : 4;
+    const char *name_text = name.kind == TOK_IDENT ? name.start : "NAME";
+    char msg[MAX_SHORT_MSG_LEN];
+    char use_hint[MAX_SHORT_MSG_LEN];
+    char type_hint[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "'extern %.*s' is not a declaration", (int)kind.len, kind.start);
+    snprintf(use_hint, sizeof(use_hint),
+             "To use a name the C header declares, write `extern %.*s;` or remove the line",
+             name_len, name_text);
+    snprintf(type_hint, sizeof(type_hint),
+             "To give a C global a type, write `extern let %.*s: Type;`", name_len, name_text);
+    const char *hints[] = {use_hint, kinds[found].is_value ? type_hint : NULL, NULL};
+    zpanic_with_hints(kind, msg, hints);
+
+    // Fault-tolerant (LSP): skip the rest of the line's declaration.
+    while (lexer_peek(l).kind != TOK_SEMICOLON && lexer_peek(l).kind != TOK_EOF)
+    {
+        lexer_next(l);
+    }
+    if (lexer_peek(l).kind == TOK_SEMICOLON)
+    {
+        lexer_next(l);
+    }
+    return 1;
+}
+
 // An interpolated string runs at run time, so it cannot initialize a global:
 // the C would put a statement expression (`({ ... })`) at file scope. Only that
 // is rejected: `embed "file" as string` is a raw statement too, but a constant.
@@ -325,6 +378,10 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                     {
                         register_extern_symbol(ctx, s->strct.name);
                     }
+                }
+                else if (report_extern_with_kind(l))
+                {
+                    continue;
                 }
                 else
                 {

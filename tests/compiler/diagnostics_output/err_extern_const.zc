@@ -1,0 +1,7 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// There is no `extern const`: `extern NAME;`, or `extern let NAME: T;` for a type.
+
+extern const LIMIT;
+
+fn main() {}

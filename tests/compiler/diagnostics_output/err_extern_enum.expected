@@ -1,0 +1,9 @@
+   Compiling tests/compiler/diagnostics_output/err_extern_enum.zc...
+error: 'extern enum' is not a declaration
+  --> tests/compiler/diagnostics_output/err_extern_enum.zc:5:8
+   |
+5  | extern enum opt;
+   |        ^ here
+   |
+   = help: To use a name the C header declares, write `extern opt;` or remove the line
+[exit 1]

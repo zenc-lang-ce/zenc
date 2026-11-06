@@ -1,0 +1,10 @@
+   Compiling tests/compiler/diagnostics_output/err_extern_const.zc...
+error: 'extern const' is not a declaration
+  --> tests/compiler/diagnostics_output/err_extern_const.zc:5:8
+   |
+5  | extern const LIMIT;
+   |        ^ here
+   |
+   = help: To use a name the C header declares, write `extern LIMIT;` or remove the line
+   = help: To give a C global a type, write `extern let LIMIT: Type;`
+[exit 1]

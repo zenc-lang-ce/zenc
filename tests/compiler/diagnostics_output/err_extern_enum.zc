@@ -1,0 +1,7 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// There is no `extern enum`: the name alone is enough (or no line at all).
+
+extern enum opt;
+
+fn main() {}
