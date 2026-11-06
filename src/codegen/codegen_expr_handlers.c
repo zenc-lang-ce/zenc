@@ -755,103 +755,19 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             }
         }
 
-        char *type = infer_type(ctx, target);
-        if (type)
+        // The method's owner is the target's type, or the type it points to.
+        Type *target_type = target->type_info;
+        if (target_type && target_type->kind != TYPE_UNKNOWN)
         {
-            char *clean = xstrdup(type);
-            char *ptr = (char *)strchr(clean, '*');
-            if (ptr)
-            {
-                *ptr = '\0';
-            }
+            int is_pointer = target_type->kind == TYPE_POINTER;
+            char *base = type_impl_name(is_pointer ? target_type->inner : target_type);
 
-            char *base = clean;
-            if (strncmp(base, "struct ", 7) == 0)
-            {
-                base += 7;
-            }
-
-            if (ctx)
-            {
-                TypeAlias *ta = find_type_alias_node(ctx, base);
-                const char *alias =
-                    (ta && !ta->is_opaque) ? type_mangle_spelling(ta->type_info) : NULL;
-                if (alias)
-                {
-                    base = (char *)alias;
-                }
-            }
-
-            const char *normalized = normalize_type_name(base);
-            char *mangled_base = (char *)normalized;
-
-            char *lt = (char *)strchr(base, '<');
-            if (lt)
-            {
-                char *gt = (char *)strrchr(base, '>');
-                if (gt)
-                {
-                    ptrdiff_t prefix_len = lt - base;
-                    char prefix[MAX_TYPE_NAME_LEN];
-                    if (prefix_len >= 255)
-                    {
-                        prefix_len = 255;
-                    }
-                    strncpy(prefix, base, (size_t)(prefix_len));
-                    prefix[prefix_len] = 0;
-
-                    char *args_ptr = xstrdup(lt + 1);
-                    char *args_end = (char *)strrchr(args_ptr, '>');
-                    if (args_end)
-                    {
-                        *args_end = 0;
-                    }
-
-                    mangled_base = mangle_generic_name_from_arg_list(prefix, args_ptr);
-                    zfree(args_ptr);
-                }
-            }
-
-            if (!strchr(type, '*') &&
+            if (!is_pointer &&
                 (target->kind == NODE_EXPR_CALL || target->kind == NODE_EXPR_LITERAL ||
                  target->kind == NODE_EXPR_BINARY || target->kind == NODE_EXPR_UNARY ||
                  target->kind == NODE_EXPR_CAST || target->kind == NODE_EXPR_STRUCT_INIT))
             {
-                char *type_mangled = (char *)normalize_type_name(type);
-                if (type_mangled != type)
-                {
-                    mangled_base = type_mangled;
-                }
-
-                char *t_lt = (char *)strchr(type, '<');
-
-                if (t_lt)
-                {
-                    char *t_gt = (char *)strrchr(type, '>');
-                    if (t_gt)
-                    {
-                        ptrdiff_t p_len = t_lt - type;
-                        char prefix[MAX_TYPE_NAME_LEN];
-                        if (p_len >= 255)
-                        {
-                            p_len = 255;
-                        }
-                        strncpy(prefix, type, (size_t)(p_len));
-                        prefix[p_len] = 0;
-
-                        char *args_ptr = xstrdup(t_lt + 1);
-                        char *args_end = (char *)strrchr(args_ptr, '>');
-                        if (args_end)
-                        {
-                            *args_end = 0;
-                        }
-
-                        type_mangled = mangle_generic_name_from_arg_list(prefix, args_ptr);
-                        zfree(args_ptr);
-                    }
-                }
-
-                emit_mangled_name(ctx, mangled_base, method);
+                emit_mangled_name(ctx, base, method);
                 EMIT(ctx, "(");
                 // C names the instance just mangled; C++ needs no type (_z_rval)
                 if (ctx->config->use_cpp)
@@ -860,7 +776,7 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                 }
                 else
                 {
-                    EMIT(ctx, "((%s[]){", type_mangled);
+                    EMIT(ctx, "((%s[]){", c_type_spelling(ctx, target_type));
                     codegen_expression(ctx, target);
                     EMIT(ctx, "})");
                 }
@@ -875,7 +791,7 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             }
             else
             {
-                char *call_base = mangled_base;
+                char *call_base = base;
 
                 int need_cast = 0;
                 char *mixin_func_name_ptr = mangle_method_symbol(call_base, NULL, method);
@@ -888,21 +804,6 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
 
                 if (!find_func(ctx, mixin_func_name))
                 {
-                    TypeAlias *ta = ctx->type_aliases;
-                    while (ta)
-                    {
-                        if (strcmp(type_mangle_spelling(ta->type_info), call_base) == 0)
-                        {
-                            char *alias_func_name = mangle_method_symbol(ta->alias, NULL, method);
-                            if (find_func(ctx, alias_func_name))
-                            {
-                                zfree(alias_func_name);
-                                break;
-                            }
-                            zfree(alias_func_name);
-                        }
-                        ta = ta->next;
-                    }
                     StructRef *ref = ctx->parsed_impls_list;
                     while (ref)
                     {
@@ -976,9 +877,9 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, "(");
                 if (need_cast)
                 {
-                    EMIT(ctx, "(%s*)%s", call_base, strchr(type, '*') ? "" : "&");
+                    EMIT(ctx, "(%s*)%s", call_base, is_pointer ? "" : "&");
                 }
-                else if (!strchr(type, '*'))
+                else if (!is_pointer)
                 {
                     EMIT(ctx, "&");
                 }
@@ -997,13 +898,7 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                     zfree(resolved_method_suffix);
                 }
             }
-            zfree(clean);
-            zfree(type);
             return;
-        }
-        if (type)
-        {
-            zfree(type);
         }
     }
 

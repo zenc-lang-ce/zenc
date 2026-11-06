@@ -1523,12 +1523,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         mn = instantiate_function(ctx, instance);
                         if (mn)
                         {
-                            char *p = (char *)strstr(mn, "__");
-                            if (p)
-                            {
-                                zfree(node->member.field);
-                                node->member.field = xstrdup(p + 2);
-                            }
+                            // The method's part of the instance's name: `alloc_n__int32_t`.
+                            FunctionInstance method_instance = {node->member.field, args, argc};
+                            node->member.field = function_instance_name(method_instance);
 
                             Type *ft = type_new(TYPE_FUNCTION);
                             ft->name = xstrdup(mn);
