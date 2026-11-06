@@ -146,6 +146,7 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
             m->token = ft;
             m->func.param_names = param_names;
             m->func.name = mname;
+            m->func.method_name = mname;
             m->func.default_values = default_values;
             m->func.count = count;
             m->func.arg_types = arg_types;

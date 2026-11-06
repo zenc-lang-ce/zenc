@@ -432,11 +432,9 @@ static void check_function_definition(ASTNode *f, const char *owner, DefinedFunc
         return;
     }
 
-    size_t owner_len = owner ? strlen(owner) : 0;
-    if (owner && strncmp(f->func.name, owner, owner_len) == 0 &&
-        strncmp(f->func.name + owner_len, "__", 2) == 0)
+    if (owner && f->func.method_name)
     {
-        zerror_at(f->token, "Redefinition of method '%s::%s'", owner, f->func.name + owner_len + 2);
+        zerror_at(f->token, "Redefinition of method '%s::%s'", owner, f->func.method_name);
     }
     else
     {

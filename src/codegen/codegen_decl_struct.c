@@ -492,8 +492,7 @@ static void emit_trait_defs_internal(ParserContext *ctx, ASTNode *node, VisitedM
             while (m)
             {
                 char *ret_safe = trait_c_type(ctx, m->func.ret_type_info, erased_self);
-                const char *orig = parse_original_method_name(m->func.name);
-                EMIT(ctx, "%s (*%s)(", ret_safe, orig);
+                EMIT(ctx, "%s (*%s)(", ret_safe, m->func.method_name);
                 zfree(ret_safe);
 
                 // The receiver is always `void* self` (const for a const self), whether or not
@@ -576,7 +575,7 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
             while (m)
             {
                 char *ret_sub = trait_c_type(ctx, m->func.ret_type_info, trait_type);
-                const char *orig = parse_original_method_name(m->func.name);
+                const char *orig = m->func.method_name;
                 int is_const_self = (m->func.count > 0 && m->func.arg_types &&
                                      m->func.arg_types[0] && m->func.arg_types[0]->is_const);
                 EMIT(ctx, "%s %s(%s%s* self", ret_sub,
