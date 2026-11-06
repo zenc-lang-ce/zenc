@@ -221,6 +221,39 @@ static void trigger_instantiations(ParserContext *ctx, ASTNode *node)
     trigger_instantiations(ctx, node->next);
 }
 
+// A function copied for an instance before the body of `template_function` was read: it gets
+// its copy of the body in copy_instance_bodies.
+static void remember_body_copy(ParserContext *ctx, ASTNode *instance, ASTNode *template_function,
+                               Bindings bindings, const char *template_name,
+                               const char *instance_name)
+{
+    if (template_function->func.body || instance->kind != NODE_FUNCTION)
+    {
+        return;
+    }
+    BodyCopy *c = xcalloc(1, sizeof(BodyCopy));
+    c->instance = instance;
+    c->template_function = template_function;
+    c->bindings = bindings;
+    c->template_name = template_name;
+    c->instance_name = instance_name;
+    c->next = ctx->body_copies;
+    ctx->body_copies = c;
+}
+
+void copy_instance_bodies(ParserContext *ctx)
+{
+    while (ctx->body_copies)
+    {
+        // Taken out first: the generics the body names may copy more functions.
+        BodyCopy *c = ctx->body_copies;
+        ctx->body_copies = c->next;
+        c->instance->func.body = copy_ast_replacing(
+            ctx, c->template_function->func.body, &c->bindings, c->template_name, c->instance_name);
+        trigger_instantiations(ctx, c->instance->func.body);
+    }
+}
+
 char *function_instance_name(FunctionInstance instance)
 {
     char **args = xmalloc(sizeof(char *) * (size_t)instance.count);
@@ -263,6 +296,7 @@ char *instantiate_function(ParserContext *ctx, FunctionInstance instance)
         trigger_type_instantiation(ctx, new_fn->func.arg_types[i]);
     }
 
+    remember_body_copy(ctx, new_fn, tpl->func_node, b, NULL, NULL);
     add_instantiated_func(ctx, new_fn);
 
     register_func(ctx, ctx->global_scope, mangled, new_fn->func.count, new_fn->func.default_values,
@@ -315,21 +349,26 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
     it->impl_node->next = backup_next; // Restore
 
     ASTNode *meth = NULL;
+    ASTNode *template_meth = NULL;
     Type *target = type_new_instance(it->struct_name, args, count);
 
     if (new_impl->kind == NODE_IMPL)
     {
         new_impl->impl.target = target;
         meth = new_impl->impl.methods;
+        template_meth = it->impl_node->impl.methods;
     }
     else if (new_impl->kind == NODE_IMPL_TRAIT)
     {
         new_impl->impl_trait.target = target;
         meth = new_impl->impl_trait.methods;
+        template_meth = it->impl_node->impl_trait.methods;
     }
 
-    while (meth)
+    while (meth && template_meth)
     {
+        remember_body_copy(ctx, meth, template_meth, b, it->struct_name, mangled_struct_name);
+
         // Standardize: ensure __ between type and method
         // If it's already correctly mangled (e.g. Vec__int32_t__with_capacity), skip
         size_t mlen = strlen(mangled_struct_name);
@@ -374,6 +413,7 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
         trigger_instantiations(ctx, meth->func.body);
 
         meth = meth->next;
+        template_meth = template_meth->next;
     }
     add_instantiated_func(ctx, new_impl);
 }

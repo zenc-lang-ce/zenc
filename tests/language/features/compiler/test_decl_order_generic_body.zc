@@ -1,0 +1,69 @@
+// language/features/compiler: the body of a generic function or method sees what is declared after it
+
+// Calls a function, a method and a trait conversion that are all declared below.
+fn measure<T>(_x: T) -> int {
+    let p = Point { x: 1, y: 2 };
+    let n: Named = &p;
+    return base() + p.scaled(3) + n.name_len();
+}
+
+struct Counter<T> {
+    val: T;
+}
+
+impl Counter<T> {
+    // `doubled` is declared further down in this impl.
+    fn twice(self) -> Counter<T> {
+        let c = self.doubled();
+        return c.doubled();
+    }
+
+    fn doubled(self) -> Counter<T> {
+        return Counter<T> { val: self.val + self.val };
+    }
+
+    fn total(self) -> int {
+        let p = Point { x: 4, y: 0 };
+        return base() + p.scaled(1);
+    }
+}
+
+// Declared after the generic bodies that use them.
+fn base(n: int = 5) -> int {
+    return n;
+}
+
+trait Named {
+    fn name_len(self) -> int;
+}
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+impl Point {
+    fn scaled(self, k: int, extra: int = 10) -> int {
+        return self.x * k + extra;
+    }
+}
+
+impl Named for Point {
+    fn name_len(self) -> int {
+        return 5;
+    }
+}
+
+test "generic function body: default arguments and trait conversion declared later" {
+    assert(measure<int>(0) == 5 + 13 + 5, "5 + (1 * 3 + 10) + 5");
+}
+
+test "generic method body: a method declared later in the impl, called on a local" {
+    let c = Counter<int> { val: 3 };
+    assert(c.twice().val == 12, "3 doubled twice is 12");
+}
+
+test "generic method body: default arguments of a later function and method" {
+    let c = Counter<int> { val: 0 };
+    assert(c.total() == 5 + 14, "5 + (4 * 1 + 10)");
+}
