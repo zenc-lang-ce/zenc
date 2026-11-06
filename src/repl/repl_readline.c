@@ -6,6 +6,9 @@
 
 #include "repl_state.h"
 
+// How long the rest of a key sequence may take to follow its Esc.
+#define ESC_SEQUENCE_TIMEOUT_MS 50
+
 extern const char *REPL_KEYWORDS[];
 
 static const char *COMMANDS[] = {":help",    ":reset", ":imports", ":vars",  ":funcs",   ":structs",
@@ -152,6 +155,12 @@ char *repl_readline(ReplState *state, const char *prompt, int indent_level)
         if (!repl_read_char(&c))
         {
             break;
+        }
+
+        if (c == '\x1b' && in_search_mode && repl_input_pending(ESC_SEQUENCE_TIMEOUT_MS))
+        {
+            // More bytes follow, so this starts a key sequence: the general handler reads it.
+            in_search_mode = 0;
         }
 
         if (c == '\x1b' && !in_search_mode)

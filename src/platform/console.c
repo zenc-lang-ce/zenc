@@ -59,6 +59,39 @@ int repl_read_char(char *c)
     return 0;
 }
 
+int repl_input_pending(int timeout_ms)
+{
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    ULONGLONG deadline = GetTickCount64() + (ULONGLONG)timeout_ms;
+
+    while (1)
+    {
+        INPUT_RECORD record;
+        DWORD count;
+        if (!PeekConsoleInputA(hIn, &record, 1, &count))
+        {
+            return 0;
+        }
+        if (count == 0)
+        {
+            ULONGLONG now = GetTickCount64();
+            if (now >= deadline)
+            {
+                return 0;
+            }
+            WaitForSingleObject(hIn, (DWORD)(deadline - now));
+            continue;
+        }
+        if (record.EventType == KEY_EVENT && record.Event.KeyEvent.bKeyDown &&
+            record.Event.KeyEvent.uChar.AsciiChar != 0)
+        {
+            return 1;
+        }
+        // Key releases and focus or mouse events signal the handle but give ReadFile no byte.
+        ReadConsoleInputA(hIn, &record, 1, &count);
+    }
+}
+
 int repl_get_window_size(int *rows, int *cols)
 {
     CONSOLE_SCREEN_BUFFER_INFO csbi;
@@ -73,6 +106,7 @@ int repl_get_window_size(int *rows, int *cols)
 
 #else // POSIX
 
+#include <poll.h>
 #include <termios.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -118,6 +152,12 @@ int repl_read_char(char *c)
 {
     ssize_t nread = read(STDIN_FILENO, c, 1);
     return nread == 1;
+}
+
+int repl_input_pending(int timeout_ms)
+{
+    struct pollfd in = {.fd = STDIN_FILENO, .events = POLLIN};
+    return poll(&in, 1, timeout_ms) > 0;
 }
 
 int repl_get_window_size(int *rows, int *cols)
