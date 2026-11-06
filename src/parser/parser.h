@@ -578,6 +578,12 @@ void propagate_drop_traits(ParserContext *ctx);
  *        tuple or fixed-size array holding a value that needs dropping.
  */
 int type_needs_drop(ParserContext *ctx, Type *t);
+/**
+ * @brief Whether a value of type `t` will be dropped, decided from the declarations alone: what
+ *        type_needs_drop says once propagate_drop_traits has run, but also before it, while bodies
+ *        are parsed (a struct with an `impl Drop` or a field that will be dropped).
+ */
+int type_will_drop(ParserContext *ctx, Type *t);
 void fix_type_refs_has_drop(ParserContext *ctx);
 
 /**

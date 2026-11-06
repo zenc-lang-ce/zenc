@@ -907,17 +907,8 @@ static ASTNode *parse_block_impl(ParserContext *ctx, Lexer *l, int is_value)
                 strcmp(sym->name, "it") != 0 && strcmp(sym->name, "self") != 0)
             {
                 // RAII: Don't warn if type implements Drop (it is used implicitly)
-                int has_drop = (sym->type_info && (sym->type_info->traits.has_drop ||
-                                                   type_needs_drop(ctx, sym->type_info)));
-                if (!has_drop && sym->type_info && sym->type_info->name)
-                {
-                    ASTNode *def = find_struct_def(ctx, type_def_name(sym->type_info));
-                    if (def && def->type_info && def->type_info->traits.has_drop)
-                    {
-                        has_drop = 1;
-                    }
-                }
-
+                int has_drop = sym->type_info && (sym->type_info->traits.has_drop ||
+                                                  type_will_drop(ctx, sym->type_info));
                 if (!has_drop)
                 {
                     warn_unused_variable(sym->decl_token, sym->name);
