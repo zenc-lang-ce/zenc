@@ -1,0 +1,22 @@
+// features/enums: test_enum_prefixed_names
+// A variable or a function whose name starts with an enum's name and `_` is
+// its own name: `Color_max` was emitted as `Color__max`, as if it were the
+// 0.5.1 spelling of a variant, and the C did not compile.
+
+enum Color {
+    Red,
+    Green,
+}
+
+fn Color_name(c: Color) -> int {
+    return match c {
+        Color::Red => 1,
+        Color::Green => 2,
+    };
+}
+
+test "names_that_start_like_an_enum" {
+    let Color_max = 3;
+    assert(Color_max == 3, "a local named Color_max");
+    assert(Color_name(Color::Green) == 2, "a function named Color_name");
+}

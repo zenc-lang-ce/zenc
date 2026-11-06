@@ -1,4 +1,5 @@
 // language/misc: misc: test_mix
+// Uses the 0.5.1 `Enum_Variant` spelling (`Result_Ok`, `Result_Ok_Tag`): FF_COMPATIBILITY_0_5.
 import "std/io.zc"
 enum Result {
     Ok(int),

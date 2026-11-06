@@ -149,6 +149,41 @@ static void codegen_literal_expr(ParserContext *ctx, ASTNode *node)
     }
 }
 
+#if FF_COMPATIBILITY_0_5
+// 0.5.1 read `Enum_Variant` as `Enum::Variant`, and `Enum_Variant_Tag` as its tag. Writes
+// that C name and returns 1 when `name` is one of them: the part before the first `_` is an
+// enum and the rest is one of its variants, or a variant and `_Tag`. Any other name with a
+// `_` (`let Color_max`) is its own.
+int emit_legacy_variant_name(ParserContext *ctx, const char *name)
+{
+    const char *underscore = strchr(name, '_');
+    if (!underscore || underscore == name || underscore[1] == '_')
+    {
+        return 0;
+    }
+    char *enum_name = xstrdup(name);
+    enum_name[underscore - name] = 0;
+    ASTNode *def = find_struct_def(ctx, enum_name);
+    if (!def || def->kind != NODE_ENUM)
+    {
+        return 0;
+    }
+    const char *rest = underscore + 1;
+    size_t rest_len = strlen(rest);
+    for (ASTNode *v = def->enm.variants; v; v = v->next)
+    {
+        size_t vlen = strlen(v->variant.name);
+        if (strncmp(rest, v->variant.name, vlen) == 0 &&
+            (rest[vlen] == 0 || (rest_len == vlen + 4 && strcmp(rest + vlen, "_Tag") == 0)))
+        {
+            emit_mangled_name(ctx, enum_name, rest);
+            return 1;
+        }
+    }
+    return 0;
+}
+#endif
+
 // The variant follows the last "__".
 // Example: Maybe__int32_t__Nothing
 static int is_instance_enum_variant(ParserContext *ctx, const char *name)
@@ -283,30 +318,12 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
         }
     }
 
-    // Check for legacy Enum_Variant patterns (single underscore)
-    // Avoid double-mangling if it already has double underscores (generics)
-    char *underscore = (char *)strchr(node->var_ref.name, '_');
-    if (underscore && underscore != node->var_ref.name && *(underscore + 1) != '_' &&
-        strstr(node->var_ref.name, "__") == NULL)
+#if FF_COMPATIBILITY_0_5
+    if (emit_legacy_variant_name(ctx, node->var_ref.name))
     {
-        char base[MAX_TYPE_NAME_LEN];
-        size_t len = (size_t)(underscore - node->var_ref.name);
-        if (len < sizeof(base))
-        {
-            strncpy(base, node->var_ref.name, (size_t)(len));
-            base[len] = 0;
-
-            ASTNode *def = find_struct_def(ctx, base);
-            int is_common_enum =
-                (strncmp(base, "Result", 6) == 0 || strncmp(base, "Option", 6) == 0 ||
-                 strncmp(base, "JsonType", 8) == 0);
-            if (is_common_enum || (def && def->kind == NODE_ENUM))
-            {
-                emit_mangled_name(ctx, base, underscore + 1);
-                return;
-            }
-        }
+        return;
     }
+#endif
     ZenSymbol *sym = find_symbol_in_all(ctx, node->var_ref.name);
     if (sym && sym->link_name)
     {
