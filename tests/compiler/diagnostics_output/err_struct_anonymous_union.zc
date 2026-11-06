@@ -1,0 +1,14 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// An anonymous union is reported where it starts, not by the struct's `}`.
+
+struct Val {
+    tag: int;
+    union {
+        text: char*;
+        number: i64;
+    };
+    after: int;
+}
+
+fn main() {}

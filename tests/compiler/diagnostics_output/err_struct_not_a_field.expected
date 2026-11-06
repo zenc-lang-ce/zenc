@@ -1,0 +1,9 @@
+   Compiling tests/compiler/diagnostics_output/err_struct_not_a_field.zc...
+error: Unexpected '42' in a struct body
+  --> tests/compiler/diagnostics_output/err_struct_not_a_field.zc:7:5
+   |
+7  |     42;
+   |     ^ here
+   |
+   = help: A field is written `name: Type;`
+[exit 1]
