@@ -1,0 +1,38 @@
+// language/features/enums: test_variable_hides_enum_name
+// A variable or parameter hides an enum variant with the same name: inside
+// the function the name is the variable. `Shape::lines` still names the
+// variant.
+enum Shape { points, lines }
+
+struct Box { len: usize; }
+
+fn length_of(lines: Box*) -> usize {
+    return lines.len;
+}
+
+fn shape_for(lines: Box*) -> Shape {
+    if (lines.len > 2) {
+        return Shape::lines;
+    }
+    return Shape::points;
+}
+
+fn double_of(lines: int) -> int {
+    return lines * 2;
+}
+
+test "a pointer parameter named like a variant" {
+    let b = Box { len: 3 };
+    expect_eq(length_of(&b), (usize)3, "lines.len should read the Box behind the pointer");
+}
+
+test "the qualified variant next to a parameter with its name" {
+    let big = Box { len: 3 };
+    let small = Box { len: 1 };
+    assert(shape_for(&big) == Shape::lines, "shape_for(len 3) should be Shape::lines");
+    assert(shape_for(&small) == Shape::points, "shape_for(len 1) should be Shape::points");
+}
+
+test "an integer parameter named like a variant" {
+    expect_eq(double_of(5), 10, "double_of(5) should use the parameter, not the variant");
+}

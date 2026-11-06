@@ -998,12 +998,21 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
 
 void check_expr_var(TypeChecker *tc, ASTNode *node)
 {
-    // Check if it's an enum variant FIRST, prioritizing value over function constructor if no
-    // payload
+    // A name written with its enum (`Color::Red`) is always a variant. A bare name (`Red`) is
+    // a variant only when no variable or parameter in scope has that name: a parameter called
+    // `Red` hides the variant `Color::Red`. The parser resolves names in the same order
+    // (find_symbol_type_info). A variant without payload is a value of the enum, not a call
+    // to a constructor.
     QualifiedName *variant = &node->var_ref.variant;
-    EnumVariantReg *enum_variant =
-        variant->name ? find_enum_variant_of(tc->pctx, variant->scope, variant->name)
-                      : find_enum_variant(tc->pctx, node->var_ref.name);
+    EnumVariantReg *enum_variant = NULL;
+    if (variant->name)
+    {
+        enum_variant = find_enum_variant_of(tc->pctx, variant->scope, variant->name);
+    }
+    else if (!find_symbol_entry(tc->pctx, node->var_ref.name))
+    {
+        enum_variant = find_enum_variant(tc->pctx, node->var_ref.name);
+    }
     if (enum_variant)
     {
         FuncSig *sig = find_func(tc->pctx, node->var_ref.name);
