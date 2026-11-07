@@ -1,0 +1,18 @@
+// language/control-flow: the comma between match arms is optional, so a string after an arm
+// can be the pattern of the next arm. A name followed by a string on the next line is not
+// the `println "..."` that RFC 0001 rejects.
+import "std/io.zc"
+
+fn one() -> int { return 1; }
+
+test "a string pattern after an arm without a comma" {
+    let picked = 0;
+    let println = 5;
+    match "c" {
+        "a" => one()
+        "b" => println
+        "c" => { picked = println; }
+        _ => { picked = -1; }
+    }
+    assert(picked == 5, "the arm of the string pattern c should run");
+}

@@ -1,0 +1,13 @@
+// ARGS: build
+// RFC 0001: `println "..."` no longer prints, in a match arm without braces too. The error
+// is at the string, in the arm, and the arms after it are still read.
+
+fn main() {
+    let n = 1;
+    match n {
+        1 => println "one",
+        2 => print "two",
+        3 => println f"three {n}",
+        _ => println "other"
+    }
+}

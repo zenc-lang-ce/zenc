@@ -15,6 +15,38 @@
 #include "zprep_plugin.h"
 #include "analysis/move_check.h"
 
+static int is_print_name(Token name)
+{
+    return name.kind == TOK_IDENT && ((name.len == 5 && strncmp(name.start, "print", 5) == 0) ||
+                                      (name.len == 7 && strncmp(name.start, "println", 7) == 0));
+}
+
+// `println "..."` on one line. Arms need no comma between them, so a string on a later line
+// is the pattern of the next arm.
+static int is_print_shorthand(Lexer *l, Token name)
+{
+    if (!is_print_name(name))
+    {
+        return 0;
+    }
+    Lexer lookahead = *l;
+    lexer_next(&lookahead);
+    Token next = lexer_peek(&lookahead);
+    return next.line == name.line &&
+           (next.kind == TOK_STRING || next.kind == TOK_FSTRING || next.kind == TOK_RAW_STRING);
+}
+
+// RFC 0001: reported like the same shorthand in a statement, and consumed so that the next
+// arm is still read.
+static void reject_print_shorthand(Lexer *l, Token name)
+{
+    lexer_next(l); // consume the name
+    const char *hints[] = {name.len == 5 ? "print it with print(\"...\"), from std/io.zc"
+                                         : "print it with println(\"...\"), from std/io.zc",
+                           NULL};
+    zerror_with_hints(lexer_next(l), "a string on its own no longer prints", hints);
+}
+
 ASTNode *parse_match(ParserContext *ctx, Lexer *l)
 {
     init_builtins();
@@ -482,6 +514,10 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
         {
             body = ast_create(NODE_BLOCK);
             body->token = pk;
+        }
+        else if (is_print_shorthand(l, pk))
+        {
+            reject_print_shorthand(l, pk);
         }
         else
         {
