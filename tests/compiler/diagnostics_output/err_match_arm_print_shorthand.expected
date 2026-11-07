@@ -1,0 +1,30 @@
+   Compiling tests/compiler/diagnostics_output/err_match_arm_print_shorthand.zc...
+error: a string on its own no longer prints
+  --> tests/compiler/diagnostics_output/err_match_arm_print_shorthand.zc:8:22
+   |
+8  |         1 => println "one",
+   |                      ^ here
+   |
+   = help: print it with println("..."), from std/io.zc
+error: a string on its own no longer prints
+  --> tests/compiler/diagnostics_output/err_match_arm_print_shorthand.zc:9:20
+   |
+9  |         2 => print "two",
+   |                    ^ here
+   |
+   = help: print it with print("..."), from std/io.zc
+error: a string on its own no longer prints
+  --> tests/compiler/diagnostics_output/err_match_arm_print_shorthand.zc:10:22
+   |
+10 |         3 => println f"three {n}",
+   |                      ^ here
+   |
+   = help: print it with println("..."), from std/io.zc
+error: a string on its own no longer prints
+  --> tests/compiler/diagnostics_output/err_match_arm_print_shorthand.zc:11:22
+   |
+11 |         _ => println "other"
+   |                      ^ here
+   |
+   = help: print it with println("..."), from std/io.zc
+[exit 1]
