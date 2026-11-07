@@ -970,7 +970,9 @@ skip_method_mangling:
     }
 #endif
 
-    g_emitting_callee = 1;
+    // Only a name can be a variant that gets its () from this call: a variant inside
+    // a longer callee (`table[Shape::Empty.tag].run`) still needs its own.
+    g_emitting_callee = node->call.callee->kind == NODE_EXPR_VAR;
     codegen_expression(ctx, node->call.callee);
     g_emitting_callee = 0;
 skip_callee_gen:

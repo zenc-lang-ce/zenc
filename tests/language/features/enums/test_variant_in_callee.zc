@@ -1,0 +1,32 @@
+// language/features/enums: a variant without payload written without `()` is a
+// call to its constructor, also inside the expression that selects what a call
+// calls. Only a variant that is itself the callee gets its `()` from that call.
+enum Shape { Empty, Circle(int) }
+
+struct Handler { run: fn*(int) -> int; }
+
+fn twice(x: int) -> int { return x * 2; }
+fn thrice(x: int) -> int { return x * 3; }
+
+fn tag_of(shape: Shape) -> int { return shape.tag; }
+
+fn handlers() -> Handler* {
+    static let table: Handler[2] = [Handler { run: twice }, Handler { run: thrice }];
+    return table;
+}
+
+test "variant in the index of a callee" {
+    let table: Handler[2] = [Handler { run: twice }, Handler { run: thrice }];
+    assert(table[Shape::Empty.tag].run(5) == 10, "indexes with the tag of the variant");
+}
+
+test "variant in an argument of a call inside a callee" {
+    let table: Handler[2] = [Handler { run: twice }, Handler { run: thrice }];
+    assert(table[tag_of(Shape::Empty)].run(5) == 10, "passes the variant to the inner call");
+    assert(handlers()[Shape::Empty.tag].run(5) == 10, "a call and a variant in one callee");
+}
+
+test "variant that is the callee" {
+    assert(Shape::Empty().tag == 0, "explicit () on a variant without payload");
+    assert(Shape::Circle(1).tag == 1, "constructor of a variant with payload");
+}
