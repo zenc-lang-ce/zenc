@@ -65,7 +65,7 @@ void handle_expr_member(ParserContext *ctx, ASTNode *node)
     }
     else
     {
-        // `Color.Red` never gets here: the parser reads it as `Color::Red` (dot_names_variant).
+        // `Color.Red` never gets here: the parser reads it as `Color::Red` (next_is_dot_variant).
         codegen_expression(ctx, node->member.target);
         char *lt = infer_type(ctx, node->member.target);
         int actually_ptr = 0;
