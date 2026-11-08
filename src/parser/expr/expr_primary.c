@@ -1413,6 +1413,15 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node->var_ref.owner = owner;
                 node->var_ref.member = owner_member;
                 node->type_info = find_symbol_type_info(ctx, acc);
+                // A variant without payload has no symbol: its enum is the type.
+                if (!node->type_info && variant.name)
+                {
+                    EnumVariantReg *reg = find_enum_variant_of(ctx, variant.scope, variant.name);
+                    if (reg)
+                    {
+                        node->type_info = type_new_enum(reg->enum_name);
+                    }
+                }
 
                 if (sym)
                 {
@@ -1420,23 +1429,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     node->definition_token = sym->decl_token;
                 }
 
-                char *type_str = find_symbol_type(ctx, acc);
-
-                if (type_str)
-                {
-                    node->var_ref.suggestion = NULL;
-                }
-                else
-                {
-                    if (sym || should_suppress_undef_warning(ctx, acc))
-                    {
-                        node->var_ref.suggestion = NULL;
-                    }
-                    else
-                    {
-                        node->var_ref.suggestion = find_similar_symbol(ctx, acc);
-                    }
-                }
+                node->var_ref.suggestion =
+                    (node->type_info || sym || should_suppress_undef_warning(ctx, acc))
+                        ? NULL
+                        : find_similar_symbol(ctx, acc);
             }
         }
     }

@@ -423,7 +423,8 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
 
             if (arg && arg->kind == NODE_EXPR_VAR)
             {
-                Type *inner_t = find_symbol_type_info(ctx, arg->var_ref.name);
+                Type *inner_t =
+                    arg->type_info ? arg->type_info : find_symbol_type_info(ctx, arg->var_ref.name);
                 if (!inner_t)
                 {
                     ZenSymbol *s = find_symbol_entry(ctx, arg->var_ref.name);

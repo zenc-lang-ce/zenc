@@ -813,6 +813,8 @@ Type *type_new_array(Type *inner, int size);
 Type *type_new_tuple(Type **elements, int count);
 /** @brief The instance `tpl<args>` of a generic struct or enum. */
 Type *type_new_instance(const char *tpl, Type **args, int count);
+/** @brief The enum declared as `name`. */
+Type *type_new_enum(const char *name);
 /**
  * @brief The name the definition of a struct, enum, alias or trait type is registered under,
  * which its C name and its methods' C names build on: for a generic instance, the mangled name

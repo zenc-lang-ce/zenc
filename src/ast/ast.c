@@ -569,6 +569,13 @@ const char *c_safe_name(const char *name, int cpp)
     return safe;
 }
 
+Type *type_new_enum(const char *name)
+{
+    Type *t = type_new(TYPE_ENUM);
+    t->name = xstrdup(name);
+    return t;
+}
+
 Type *type_new_instance(const char *tpl, Type **args, int count)
 {
     Type *t = type_new(TYPE_STRUCT);

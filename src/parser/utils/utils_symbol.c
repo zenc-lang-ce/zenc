@@ -62,9 +62,7 @@ Type *find_symbol_type_info(ParserContext *ctx, const char *n)
     EnumVariantReg *enum_variant = find_enum_variant(ctx, n);
     if (enum_variant)
     {
-        Type *t = type_new(TYPE_ENUM);
-        t->name = xstrdup(enum_variant->enum_name);
-        return t;
+        return type_new_enum(enum_variant->enum_name);
     }
 
     return NULL;
@@ -323,7 +321,6 @@ void register_enum_variant(ParserContext *ctx, const char *vname, const char *en
     EnumVariantReg *r = xcalloc(1, sizeof(EnumVariantReg));
     r->enum_name = ename ? xstrdup(ename) : NULL;
     r->variant_name = vname ? xstrdup(vname) : NULL;
-    r->mangled_name = ename && vname ? mangle_variant_symbol(ename, vname) : NULL;
     r->tag_id = tag;
     r->next = ctx->enum_variants;
     ctx->enum_variants = r;
@@ -334,15 +331,13 @@ static int variant_reg_is_of(EnumVariantReg *r, const char *enum_name)
     return r->enum_name && strcmp(r->enum_name, enum_name) == 0;
 }
 
-// A qualified name (`Color__Red`, `Option__int32_t__Some`) is the C name of one variant; a
-// bare name (`Red`) is the first variant with that name.
+// A variant written without its enum (`Red`): the first variant with that name. A qualified
+// one (`Color::Red`) is resolved where it is parsed, from the node's `var_ref.variant`.
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name)
 {
-    int qualified = strstr(name, "__") != NULL;
     for (EnumVariantReg *r = ctx->enum_variants; r; r = r->next)
     {
-        const char *candidate = qualified ? r->mangled_name : r->variant_name;
-        if (candidate && strcmp(candidate, name) == 0)
+        if (r->variant_name && strcmp(r->variant_name, name) == 0)
         {
             return r;
         }
