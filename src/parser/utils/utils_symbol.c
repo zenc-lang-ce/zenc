@@ -110,9 +110,10 @@ void init_builtins(void)
     init = 1;
 }
 
-FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
-                       ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
-                       int is_pure, const char *link_name, Token decl_token, int is_export)
+void register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
+                   ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
+                   int is_pure, const char *link_name, const char *own_name, Token decl_token,
+                   int is_export)
 {
     FuncSig *f = NULL;
     if (ctx->config->mode_lsp || ctx->config->misra_mode)
@@ -145,6 +146,7 @@ FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int c
     f->is_varargs = is_varargs;
     f->is_pure = is_pure;
     f->required = 0;
+    f->own_name = own_name;
 
     Scope *target_scope = scope ? scope : ctx->current_scope;
     audit_section_5(ctx, target_scope ? target_scope : ctx->global_scope, name, link_name,
@@ -177,16 +179,6 @@ FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int c
     ft->is_raw = 1;
     ft->traits.has_drop = 0;
     sym->type_info = ft;
-    return f;
-}
-
-void register_method(ParserContext *ctx, Scope *scope, ASTNode *method, int is_export)
-{
-    FuncSig *sig = register_func(ctx, scope, method->func.name, method->func.count,
-                                 method->func.default_values, method->func.arg_types,
-                                 method->func.ret_type_info, method->func.is_varargs,
-                                 method->func.pure, method->link_name, method->token, is_export);
-    sig->own_name = method->func.method_name;
 }
 
 const char *callee_own_name(ParserContext *ctx, ASTNode *callee)

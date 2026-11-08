@@ -213,7 +213,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     if (!gen_param && !ctx->current_impl_struct)
     {
         register_func(ctx, ctx->current_scope->parent, name, count, default_values, arg_types,
-                      ret_type_obj, is_varargs, 0, link_name, name_tok, is_export);
+                      ret_type_obj, is_varargs, 0, link_name, NULL, name_tok, is_export);
         // Note: required is set after return by caller (parser_core.c)
     }
 

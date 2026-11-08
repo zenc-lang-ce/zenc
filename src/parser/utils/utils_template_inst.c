@@ -301,7 +301,8 @@ char *instantiate_function(ParserContext *ctx, FunctionInstance instance)
 
     register_func(ctx, ctx->global_scope, mangled, new_fn->func.count, new_fn->func.default_values,
                   new_fn->func.arg_types, new_fn->func.ret_type_info, new_fn->func.is_varargs,
-                  new_fn->func.pure, new_fn->link_name, new_fn->token, new_fn->func.is_export);
+                  new_fn->func.pure, new_fn->link_name, NULL, new_fn->token,
+                  new_fn->func.is_export);
 
     trigger_instantiations(ctx, new_fn->func.body);
 
@@ -375,7 +376,10 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
         meth->func.name =
             mangle_method_symbol(mangled_struct_name, trait_name, meth->func.method_name);
 
-        register_method(ctx, ctx->global_scope, meth, meth->func.is_export);
+        register_func(ctx, ctx->global_scope, meth->func.name, meth->func.count,
+                      meth->func.default_values, meth->func.arg_types, meth->func.ret_type_info,
+                      meth->func.is_varargs, meth->func.pure, meth->link_name,
+                      meth->func.method_name, meth->token, meth->func.is_export);
 
         // The instances the method's return type names (`-> Option<T>`).
         trigger_type_instantiation(ctx, meth->func.ret_type_info);
@@ -401,15 +405,13 @@ static void register_enum_constructor(ParserContext *ctx, const char *m, const c
     {
         Type **at = xmalloc(sizeof(Type *));
         at[0] = payload;
-        register_func(ctx, ctx->global_scope, mangled_var, 1, NULL, at, ret_t, 0, 0, NULL, token,
-                      is_export)
-            ->own_name = xstrdup(var_name);
+        register_func(ctx, ctx->global_scope, mangled_var, 1, NULL, at, ret_t, 0, 0, NULL,
+                      xstrdup(var_name), token, is_export);
     }
     else
     {
-        register_func(ctx, ctx->global_scope, mangled_var, 0, NULL, NULL, ret_t, 0, 0, NULL, token,
-                      is_export)
-            ->own_name = xstrdup(var_name);
+        register_func(ctx, ctx->global_scope, mangled_var, 0, NULL, NULL, ret_t, 0, 0, NULL,
+                      xstrdup(var_name), token, is_export);
     }
     zfree(mangled_var);
 }

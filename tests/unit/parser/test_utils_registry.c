@@ -100,7 +100,7 @@ UTEST(struct_miss_cache, is_off_until_enabled)
 
 static void register_function(ParserContext *ctx, Scope *scope, const char *name, int count)
 {
-    register_func(ctx, scope, name, count, NULL, NULL, NULL, 0, 0, NULL, TOKEN_UNKNOWN, 0);
+    register_func(ctx, scope, name, count, NULL, NULL, NULL, 0, 0, NULL, NULL, TOKEN_UNKNOWN, 0);
 }
 
 UTEST(find_func, finds_a_registered_function)
