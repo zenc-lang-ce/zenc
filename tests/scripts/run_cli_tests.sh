@@ -122,6 +122,20 @@ else
     check "zc transpile emits C source" 0
 fi
 
+# `-I <dir>` with a space reaches the C compiler as `-I<dir>`, not as a bare `-I` that would
+# take the next flag as its directory.
+mkdir -p "$workdir/hdr"
+printf '#define CLI_INCLUDE_VALUE 42\n' > "$workdir/hdr/cli_include.h"
+printf 'include "cli_include.h"\nfn main() {\n    let x: int = CLI_INCLUDE_VALUE;\n}\n' \
+    > "$workdir/include_dir.zc"
+out=$("$ZC" build -v -I "$workdir/hdr" "$workdir/include_dir.zc" -o "$workdir/include_dir" 2>&1)
+if [ -x "$workdir/include_dir" ] && echo "$out" | grep -q -- " -I$workdir/hdr " &&
+    ! echo "$out" | grep -qE -- ' -I( |$)'; then
+    check "-I with a space passes the directory with the flag" 1
+else
+    check "-I with a space passes the directory with the flag" 0
+fi
+
 # --- Program output ----------------------------------------------------------
 
 # Runs a program and compares its exact standard output (stdin from $3).

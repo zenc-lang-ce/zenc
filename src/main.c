@@ -523,7 +523,7 @@ int main(int argc, char **argv)
             }
             if (i_path)
             {
-                append_flag(cfg->gcc_flags, sizeof(cfg->gcc_flags), arg, NULL);
+                append_flag(cfg->gcc_flags, sizeof(cfg->gcc_flags), "-I", i_path);
                 zvec_push_Str(&cfg->include_paths, xstrdup(i_path));
             }
         }
