@@ -50,9 +50,11 @@ Follow "Testing a change" in CONTRIBUTING.md. In short:
 1. `make` and `make test`.
 2. Run the program that showed the bug with `zc run`, not only `zc check`:
    the two follow different paths ("How the phases run" in CONTRIBUTING.md).
-3. Compare with a build of `main`: `tests/scripts/compare_compilers.sh`, and
-   `scripts/measure_all.sh` when the change should not alter the generated C.
-   If you touched the typechecker, `scripts/check_vs_run.sh` must not go up.
+3. Compare with a build of `main` (the table in "Testing a change" says which
+   scripts a change needs): `tests/scripts/compare_compilers.sh`, and
+   `scripts/measure_all.sh`, whose only differences in the generated C are
+   the ones the change intends. If you touched the typechecker,
+   `scripts/check_vs_run.sh` must not go up.
 4. Before pushing C code: `scripts/validate_gcc14.sh` with the files you
    changed, if docker is available. Otherwise say in the PR that the gcc-14
    checks were not run locally.
@@ -64,7 +66,8 @@ fixed because it compiles, or because `zc check` accepts it.
 
 - **Fill the disk.** A full run over the suite writes hundreds of MB of
   generated C. Write outputs to a temporary directory, delete them as you go,
-  and keep only what differs. The scripts in `scripts/` already do it. Do not
+  and keep only what differs. The scripts in `scripts/` already do it, in
+  `$ZC_WORK`: set it to a folder of your own scratch space. Do not
   commit generated C, binaries or test outputs.
 - **Copy the repository** to build a reference compiler. Export `main` with
   `git archive` instead (about 20 MB once built), and delete it when done.

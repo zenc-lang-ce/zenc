@@ -148,6 +148,24 @@ concern, applied everywhere. When changing compiler code, follow these.
 
 ### Testing a change
 
+Which checks a change needs, besides its tests (each one is explained below):
+
+| The change touches | Run |
+| --- | --- |
+| Anything in `src/` | `make test`, `compare_compilers.sh` and `measure_all.sh` against `main` |
+| Codegen (`src/codegen/`) | also `cpp_cmp.sh` |
+| The typechecker (`src/analysis/`) | also `check_vs_run.sh`, and add the program to `check_clean` |
+| Any C file, before pushing | `validate_gcc14.sh` with the files you changed |
+| Code you believe is dead, before removing it | `trace_all.sh` |
+
+The scripts in `scripts/` are bash and run on macOS and Linux; on Windows,
+run them from WSL. `validate_gcc14.sh` also needs docker. They write to
+`$ZC_WORK` (default `$TMPDIR/zc-work`, or `/tmp/zc-work`) and delete what
+they generate as they go, keeping only reports and what differs; a full run
+over the suite produces hundreds of MB, so point `ZC_WORK` at a disk with
+room. `check_vs_run.sh` and `tests/scripts/compare_compilers.sh` use a
+temporary directory instead. Each script's header explains its arguments.
+
 - **Add a test** with every fix: the program that failed, in the folder of
   its area (see [tests/DOCS.md](tests/DOCS.md)), and at least one variant of
   it that reaches the same code (see "Fix the cause, not the reported input"
