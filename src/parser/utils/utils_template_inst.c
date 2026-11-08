@@ -398,8 +398,7 @@ static void register_enum_constructor(ParserContext *ctx, const char *m, const c
     char *mangled_var = mangle_variant_symbol(m, var_name);
     register_enum_variant(ctx, var_name, m, tag_id);
 
-    Type *ret_t = type_new(TYPE_ENUM);
-    ret_t->name = xstrdup(m);
+    Type *ret_t = type_new_enum(m);
 
     if (payload)
     {
@@ -496,8 +495,7 @@ static void instantiate_generic(ParserContext *ctx, const char *tpl, Type **args
         i->enm.is_export = t->struct_node->enm.is_export;
 
         // Copy type attributes (e.g. has_drop)
-        i->type_info = type_new(TYPE_ENUM);
-        i->type_info->name = xstrdup(m);
+        i->type_info = type_new_enum(m);
         if (t->struct_node->type_info)
         {
             i->type_info->traits = t->struct_node->type_info->traits;
