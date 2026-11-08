@@ -1,6 +1,9 @@
 ## Description
 Please include a summary of the change and which issue is fixed.
 
+## Cause
+For a bug fix: where the wrong value or state is produced, which other inputs reach the same code, and whether the fix covers them.
+
 ## Type of change
 - [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
@@ -13,4 +16,5 @@ Please include a summary of the change and which issue is fixed.
 - [ ] I have made corresponding changes to the documentation
 - [ ] My changes generate no new warnings
 - [ ] I have added tests that prove my fix is effective or that my feature works
+- [ ] The fix does not test for a name or a literal taken from the issue (see "Rules" in CONTRIBUTING.md)
 - [ ] New and existing unit tests pass locally with my changes
