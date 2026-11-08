@@ -50,20 +50,29 @@ them; code that does not follow them yet is not a precedent.
   strings in AST nodes. The one exception is C written by the user
   (`@ctype`, `@crepr`).
 - **Decide on kinds, not on names.** Compare `Type.kind` and `node->kind`,
-  not type-name strings. `strcmp(type, "Vec") == 0` is wrong both ways: it
-  takes a user type called `Vec` for the standard one, and it misses an alias.
+  not the names of types, functions, methods or fields. `strcmp(type, "Vec")
+  == 0` is wrong both ways: it takes a user type called `Vec` for the standard
+  one, and it misses an alias.
 - **The compiler does not know the standard library.** Do not hard-code std
-  type, field or method names; go through traits and protocols. Some places
-  still do it; do not add new ones.
+  type, function, field or method names; go through traits and protocols.
+  Some places still do it; do not add new ones.
 - **One mechanism per concern.** Before writing a helper, look for the
   existing one. Examples: `mangle_method_symbol` for method symbols,
   `ast_children` to walk a node's children, `should_suppress_undef_warning`
   for calls to undeclared C functions. If you find two copies of the same
   rule, merge them.
+- **Fix the cause, not the reported input.** An issue shows one input; the
+  bug is the rule in the compiler that handles it wrong. Find where the wrong
+  state is produced, and check the fix against variants of the input: another
+  name, another literal, another position, `zc run` as well as `zc check`. If
+  a variant still fails in the same way, the fix covers a case, not the bug.
+  Signs of a patch: the fix tests for a name or a literal that appears in the
+  issue, or the PR leaves inputs that fail in the same way out of scope.
 - **Prefer the fix that simplifies the compiler.** Between fixes for the same
   bug, choose the one that leaves less code and fewer special cases: fix a
   wrong value where it is produced instead of patching every reader. A patch
-  for a single case is a last resort.
+  for a single case is a last resort: the PR says why the general fix is not
+  possible, and an issue tracks it.
 - **Small functions, focused files.** Some functions are already hundreds of
   lines long. Do not make them longer: put what you add in a helper. Put a
   new file's code around one concern; do not add to catch-all modules such as
@@ -140,9 +149,11 @@ concern, applied everywhere. When changing compiler code, follow these.
 ### Testing a change
 
 - **Add a test** with every fix: the program that failed, in the folder of
-  its area (see [tests/DOCS.md](tests/DOCS.md)). A typechecker fix also adds
-  its program to `tests/compiler/check_clean/`, which `zc check` must accept
-  with no errors (`make test-check`).
+  its area (see [tests/DOCS.md](tests/DOCS.md)), and at least one variant of
+  it that reaches the same code (see "Fix the cause, not the reported input"
+  above). A typechecker fix also adds its program to
+  `tests/compiler/check_clean/`, which `zc check` must accept with no errors
+  (`make test-check`).
 - **Run the suite:** `make test`.
 - **Compare with `main`.** Build `main` apart, for example
   `git archive main | tar -x -C ../zc-ref && make -C ../zc-ref`, and compare:

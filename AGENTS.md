@@ -23,7 +23,9 @@ Instructions for AI coding agents working on the Zen C compiler. They build on
 
 - **Find the cause before fixing.** Reproduce the bug with a small `.zc`
   program, then find where the wrong value is produced. Fix it there, not
-  where it is read.
+  where it is read. Then try variants of the program (another name, another
+  literal, another position): if one still fails in the same way, the fix
+  covers a case, not the bug.
 - **Choose the fix that simplifies the compiler** (see "Rules" in
   CONTRIBUTING.md). If you see two ways, say which one simplifies and
   recommend it.
@@ -71,8 +73,9 @@ fixed because it compiles, or because `zc check` accepts it.
   differences" means nothing. Write to a real file.
 - **Leave temporary traces.** `grep -rn 'TEMP-TRACE\|TT-REACHED' src` must
   print nothing before you commit.
-- **Patch one case.** `strcmp(type, "string") == 0` and similar special cases
-  are a last resort, not a fix.
+- **Patch one case.** `strcmp(type, "string") == 0`, a check for a function
+  name taken from the issue, and similar special cases are a last resort, not
+  a fix. Do not leave inputs that fail in the same way out of scope.
 - **Store C text in the AST**, or compare type names as strings (see "Rules"
   in CONTRIBUTING.md).
 - **Change a test's expectation to make it pass** without explaining why the
