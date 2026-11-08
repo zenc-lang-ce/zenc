@@ -305,7 +305,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
         char *acc = ident;
         // Set when acc ends up naming an enum variant: its enum and its name.
-        QualifiedName variant = {0};
+        TypeMember variant = {0};
         // Set when acc ends up naming an instance of a generic function.
         FunctionInstance instance = {0};
         // Set when acc ends up naming an instance of a generic struct or enum.
@@ -502,8 +502,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 char *v_mangled = mangle_variant_symbol(acc, method_name);
                                 if (v_mangled)
                                 {
-                                    variant.scope = xstrdup(acc);
-                                    variant.name = xstrdup(method_name);
+                                    variant.owner = def->type_info;
+                                    variant.member = xstrdup(method_name);
                                     zfree(acc);
                                     acc = v_mangled;
                                     tmp = acc;
@@ -591,8 +591,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             }
                             if (is_variant)
                             {
-                                variant.scope = xstrdup(acc);
-                                variant.name = xstrdup(method_name);
+                                variant.owner = path_type ? path_type : type_from_name(ctx, acc);
+                                variant.member = xstrdup(method_name);
                                 tmp = mangle_variant_symbol(acc, method_name);
                             }
                             else if (tpl_def)
@@ -1414,9 +1414,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node->var_ref.member = owner_member;
                 node->type_info = find_symbol_type_info(ctx, acc);
                 // A variant without payload has no symbol: its enum is the type.
-                if (!node->type_info && variant.name)
+                if (!node->type_info && variant.member)
                 {
-                    EnumVariantReg *reg = find_enum_variant_of(ctx, variant.scope, variant.name);
+                    EnumVariantReg *reg =
+                        find_enum_variant_of(ctx, type_def_name(variant.owner), variant.member);
                     if (reg)
                     {
                         node->type_info = type_new_enum(reg->enum_name);

@@ -480,9 +480,9 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
             Type *owner = replace_type_formal(ctx, n->var_ref.owner, b, os, ns);
             char *owner_name = type_mangle_spelling(owner);
             new_node->var_ref.owner = owner;
-            if (n->var_ref.variant.scope)
+            if (n->var_ref.variant.member)
             {
-                new_node->var_ref.variant.scope = owner_name;
+                new_node->var_ref.variant.owner = owner;
                 new_node->var_ref.name = mangle_variant_symbol(owner_name, n->var_ref.member);
             }
             else

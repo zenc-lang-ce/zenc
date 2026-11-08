@@ -185,9 +185,9 @@ const char *callee_own_name(ParserContext *ctx, ASTNode *callee)
     {
         return NULL;
     }
-    if (callee->var_ref.variant.name)
+    if (callee->var_ref.variant.member)
     {
-        return callee->var_ref.variant.name;
+        return callee->var_ref.variant.member;
     }
     FuncSig *sig = callee->var_ref.name ? find_func(ctx, callee->var_ref.name) : NULL;
     if (sig && sig->own_name)
@@ -515,8 +515,9 @@ int expr_is_rvalue(ParserContext *ctx, ASTNode *e)
         return !e->member.is_pointer_access && expr_is_rvalue(ctx, e->member.target);
     case NODE_EXPR_VAR:
         // `Shape::Circle` written without (): the variant constructor's result.
-        return e->var_ref.variant.name &&
-               find_enum_variant_of(ctx, e->var_ref.variant.scope, e->var_ref.variant.name);
+        return e->var_ref.variant.member &&
+               find_enum_variant_of(ctx, type_def_name(e->var_ref.variant.owner),
+                                    e->var_ref.variant.member);
     default:
         return 0;
     }

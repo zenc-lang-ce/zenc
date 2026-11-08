@@ -223,6 +223,16 @@ typedef struct QualifiedName
 } QualifiedName;
 
 /**
+ * @brief The member `member` of the type `owner`: `Color::Red` is the variant `Red` of the
+ *        enum `Color`.
+ */
+typedef struct TypeMember
+{
+    Type *owner;  ///< The type the member belongs to: `Color`, `Option<int>`.
+    char *member; ///< `Red`, `Some`.
+} TypeMember;
+
+/**
  * @brief An instance of a generic function, `f<int>`: the function and the types its
  *        parameters take. Its C name is computed from them.
  */
@@ -453,7 +463,7 @@ struct ASTNode
             char *name;
             char *suggestion;
             struct ZenSymbol *symbol;
-            QualifiedName variant;     ///< An enum variant: its enum (resolved) and its name.
+            TypeMember variant;        ///< An enum variant: its enum and its name.
             FunctionInstance instance; ///< An instance of a generic function: `f<int>`.
             /// `Vec<T>` in `Vec<T>::new` inside a template: the instance whose `member` this
             /// names. The copy for an instance of the template renames it from this type.
