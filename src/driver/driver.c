@@ -97,6 +97,27 @@ int driver_run(ZenCompiler *compiler)
     return result;
 }
 
+// How many of the functions a whole program could leave out it left out (--prune-unused), and
+// with -v which ones.
+static void report_pruned_functions(const ZenCompiler *compiler, const ParserContext *ctx)
+{
+    int pruned = ctx->cg.left_out_body_count;
+    int total = pruned + ctx->cg.written_body_count;
+    if (compiler->config.quiet || total == 0)
+    {
+        return;
+    }
+    printf(COLOR_BOLD COLOR_GREEN "      Pruned" COLOR_RESET " %d of %d functions (%d%%)\n", pruned,
+           total, pruned * 100 / total);
+    if (compiler->config.verbose)
+    {
+        for (int i = 0; i < pruned; i++)
+        {
+            printf("             %s\n", ctx->cg.left_out_bodies[i]);
+        }
+    }
+}
+
 static int compile_program(ZenCompiler *compiler)
 {
     // The counts are per compilation: the build fails when error_count is not 0 (see
@@ -359,8 +380,13 @@ static int compile_program(ZenCompiler *compiler)
                                                        : (z_is_windows() ? "a.exe" : "a.out");
     ArgList compile_args;
     arg_list_init(&compile_args);
-    int whole_program = !compiler->config.mode_transpile && (!backend || backend->needs_cc) &&
-                        build_compile_arg_list(&compile_args, outfile, temp_source_buf, compiler);
+    int compiles_c = !compiler->config.mode_transpile && (!backend || backend->needs_cc);
+    if (compiler->config.prune_unused && !compiles_c)
+    {
+        zwarn("--prune-unused has no effect when zc does not compile the C it writes");
+    }
+    int whole_program =
+        compiles_c && build_compile_arg_list(&compile_args, outfile, temp_source_buf, compiler);
     ctx.cg.emit_reached_only = whole_program;
 
     // Readable too: emit_function_bodies reads back what it has written, at the offsets ftell
@@ -414,13 +440,8 @@ static int compile_program(ZenCompiler *compiler)
     // Compile C
     if (whole_program)
     {
-        int left_out = remove_unused_prototypes(&ctx, temp_source_buf);
-        if (compiler->config.verbose && left_out > 0)
-        {
-            printf(COLOR_BOLD COLOR_BLUE "     Left out" COLOR_RESET
-                                         " %d functions nothing calls\n",
-                   left_out);
-        }
+        remove_unused_prototypes(&ctx, temp_source_buf);
+        report_pruned_functions(compiler, &ctx);
     }
 
     if (compiler->config.verbose)

@@ -452,11 +452,11 @@ fi
 
 # --- Linkage of the program's functions --------------------------------------
 
-# A build of the generated C alone makes the functions that are not `main` or @export static,
-# so the C compiler leaves out the ones nothing calls.
+# With --prune-unused, a build of the generated C alone makes the functions that are not `main`
+# or @export static, so the C compiler leaves out the ones nothing calls.
 mkdir -p "$workdir/linkage"
 printf 'fn used() -> int { return 1; }\nfn never_called() -> int { return 7; }\n@export fn api() -> int { return 2; }\nfn main() {\n    if used() + api() != 3 { exit(1); }\n}\n' > "$workdir/linkage/whole.zc"
-"$ZC" build -w "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" >/dev/null 2>&1
+"$ZC" build -w --prune-unused "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" >/dev/null 2>&1
 if [ -x "$workdir/linkage/whole" ] && "$workdir/linkage/whole"; then
     check "a whole-program build runs" 1
 else
@@ -474,7 +474,7 @@ fi
 # A function of the program that a C header of the preamble also declares (`abs`) keeps external
 # linkage: C rejects a static definition after an extern declaration.
 printf 'fn abs(n: int) -> int {\n    if n < 0 { return -n; }\n    return n;\n}\nfn main() {\n    if abs(-3) != 3 { exit(1); }\n}\n' > "$workdir/linkage/own_abs.zc"
-"$ZC" build -w "$workdir/linkage/own_abs.zc" -o "$workdir/linkage/own_abs" >/dev/null 2>&1
+"$ZC" build -w --prune-unused "$workdir/linkage/own_abs.zc" -o "$workdir/linkage/own_abs" >/dev/null 2>&1
 if [ -x "$workdir/linkage/own_abs" ] && "$workdir/linkage/own_abs"; then
     check "a whole-program build defines a function a C header declares" 1
 else
@@ -482,7 +482,7 @@ else
 fi
 # zc also leaves those functions out of the C it compiles (kept here with --emit-c), but not
 # one that the C runtime calls without its name.
-"$ZC" build -w --emit-c "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" >/dev/null 2>&1
+"$ZC" build -w --prune-unused --emit-c "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" >/dev/null 2>&1
 if [ -f "$workdir/linkage/whole.c" ] && ! grep -q 'never_called' "$workdir/linkage/whole.c" &&
     grep -q ' used(void)' "$workdir/linkage/whole.c"; then
     check "a whole-program build leaves unused functions out of its C" 1
@@ -490,7 +490,7 @@ else
     check "a whole-program build leaves unused functions out of its C" 0
 fi
 printf 'let ready: int = 0;\n@constructor\nfn set_ready() {\n    ready = 1;\n}\nfn main() {\n    if ready != 1 { exit(1); }\n}\n' > "$workdir/linkage/ctor.zc"
-"$ZC" build -w "$workdir/linkage/ctor.zc" -o "$workdir/linkage/ctor" >/dev/null 2>&1
+"$ZC" build -w --prune-unused "$workdir/linkage/ctor.zc" -o "$workdir/linkage/ctor" >/dev/null 2>&1
 if [ -x "$workdir/linkage/ctor" ] && "$workdir/linkage/ctor"; then
     check "a whole-program build keeps a @constructor nothing calls" 1
 else
@@ -501,11 +501,37 @@ fi
 # external linkage.
 printf 'extern fn from_c() -> c_int;\nfn called_from_c() -> int { return 40; }\nfn main() {\n    if from_c() != 42 { exit(1); }\n}\n' > "$workdir/linkage/with_c.zc"
 printf 'int called_from_c(void);\nint from_c(void) { return called_from_c() + 2; }\n' > "$workdir/linkage/helper.c"
-"$ZC" build -w "$workdir/linkage/with_c.zc" "$workdir/linkage/helper.c" -o "$workdir/linkage/with_c" >/dev/null 2>&1
+"$ZC" build -w --prune-unused "$workdir/linkage/with_c.zc" "$workdir/linkage/helper.c" -o "$workdir/linkage/with_c" >/dev/null 2>&1
 if [ -x "$workdir/linkage/with_c" ] && "$workdir/linkage/with_c"; then
     check "a C file of the user calls a function of the program" 1
 else
     check "a C file of the user calls a function of the program" 0
+fi
+
+# Without --prune-unused, zc writes every function.
+"$ZC" build -w --emit-c "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" >/dev/null 2>&1
+if [ -f "$workdir/linkage/whole.c" ] && grep -q 'never_called' "$workdir/linkage/whole.c"; then
+    check "a build without --prune-unused keeps unused functions in its C" 1
+else
+    check "a build without --prune-unused keeps unused functions in its C" 0
+fi
+# --prune-unused reports how many functions it left out, and -v which ones.
+out=$("$ZC" build -w --prune-unused -v "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" 2>&1)
+if echo "$out" | grep -Eq 'Pruned [0-9]+ of [0-9]+ functions \([0-9]+%\)' &&
+    echo "$out" | grep -Eq '^ +never_called$'; then
+    check "--prune-unused reports the functions it left out" 1
+else
+    check "--prune-unused reports the functions it left out" 0
+    echo "$out" | head -5
+fi
+# It warns when the build is not a whole program, instead of doing nothing silently.
+out=$("$ZC" build -w --prune-unused "$workdir/linkage/with_c.zc" "$workdir/linkage/helper.c" \
+    -o "$workdir/linkage/with_c" 2>&1)
+if echo "$out" | grep -q -- '--prune-unused has no effect with'; then
+    check "--prune-unused warns when other code may call the program" 1
+else
+    check "--prune-unused warns when other code may call the program" 0
+    echo "$out" | head -5
 fi
 
 # --- Installed layout ------------------------------------------------------

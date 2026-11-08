@@ -115,6 +115,8 @@ void print_usage(void)
                     "Freestanding mode (no standard library)");
     print_help_item(COLOR_CYAN "--misra" COLOR_RESET, "Generate strictly MISRA C compliant code");
     print_help_item(COLOR_CYAN "--cpp, --cuda" COLOR_RESET, "C++ or CUDA compatibility modes");
+    print_help_item(COLOR_CYAN "--prune-unused" COLOR_RESET,
+                    "Leave out of the C the functions nothing calls");
     print_help_item(COLOR_CYAN "-S, -E, -shared" COLOR_RESET,
                     "To the C compiler: assembly / preprocess only / shared library");
 
@@ -133,6 +135,7 @@ void print_command_help(const char *command)
         print_help_item("-g, -g0", "Enable/disable debug information");
         print_help_item("--release", "Release mode (equivalent to -O3 -g0)");
         print_help_item("-shared", "Build a shared library (.so, .dll)");
+        print_help_item("--prune-unused", "Leave out the functions nothing calls (-v lists them)");
         print_help_item("-v, --verbose", "Show all granular compilation phases");
         print_help_item("-q, --quiet", "Suppress non-essential status messages");
     }
@@ -190,13 +193,22 @@ void print_command_help(const char *command)
 // can be `static`: the C compiler drops the ones nothing calls (most methods of each generic
 // instance). Not with C or object files of the user (from the command line or a `//> link:`
 // directive), a shared library, an object or assembly output, symbols exported to libraries
-// (`-rdynamic`), MISRA (whose C already makes them `static`) or CUDA.
-static int builds_whole_program(const ArgList *list, const char *temp_source_file,
-                                const CompilerConfig *cfg)
+// (`-rdynamic`), MISRA (whose C already makes them `static`) or CUDA. Returns NULL when it does;
+// otherwise the option or file that prevents it.
+static const char *whole_program_obstacle(const ArgList *list, const char *temp_source_file,
+                                          const CompilerConfig *cfg)
 {
-    if (cfg->misra_mode || cfg->use_cuda || cfg->c_files.length > 0)
+    if (cfg->misra_mode)
     {
-        return 0;
+        return "--misra";
+    }
+    if (cfg->use_cuda)
+    {
+        return "--cuda";
+    }
+    if (cfg->c_files.length > 0)
+    {
+        return cfg->c_files.data[0];
     }
     for (size_t i = 1; i < list->count; i++)
     {
@@ -205,15 +217,15 @@ static int builds_whole_program(const ArgList *list, const char *temp_source_fil
             strcmp(arg, "-c") == 0 || strcmp(arg, "-rdynamic") == 0 ||
             strstr(arg, "export-dynamic") != NULL)
         {
-            return 0;
+            return arg;
         }
         const char *ext = arg[0] != '-' ? strrchr(arg, '.') : NULL;
         if (ext && ZC_IS_BACKEND_EXT(ext) && strcmp(arg, temp_source_file) != 0)
         {
-            return 0;
+            return arg;
         }
     }
-    return 1;
+    return NULL;
 }
 
 int build_compile_arg_list(ArgList *list, const char *outfile, const char *temp_source_file,
@@ -422,12 +434,18 @@ int build_compile_arg_list(ArgList *list, const char *outfile, const char *temp_
         }
     }
 
-    if (builds_whole_program(list, temp_source_file, cfg))
+    if (!cfg->prune_unused)
     {
-        arg_list_add(list, "-DZC_WHOLE_PROGRAM");
-        return 1;
+        return 0;
     }
-    return 0;
+    const char *obstacle = whole_program_obstacle(list, temp_source_file, cfg);
+    if (obstacle)
+    {
+        zwarn("--prune-unused has no effect with %s", obstacle);
+        return 0;
+    }
+    arg_list_add(list, "-DZC_WHOLE_PROGRAM");
+    return 1;
 }
 
 void arg_list_init(ArgList *list)
