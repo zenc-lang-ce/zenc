@@ -260,11 +260,15 @@ void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
         node->unary.operand->kind == NODE_EXPR_VAR)
     {
         *out_var_ref_name = node->unary.operand->var_ref.name;
-        *out_struct_name = find_symbol_type(ctx, *out_var_ref_name);
+        ASTNode *operand = node->unary.operand;
+        Type *t =
+            operand->type_info ? operand->type_info : find_symbol_type_info(ctx, *out_var_ref_name);
+        *out_struct_name = t ? type_mangle_spelling(t) : NULL;
     }
     else if (node->kind == NODE_EXPR_VAR)
     {
-        Type *rhs_t = find_symbol_type_info(ctx, node->var_ref.name);
+        Type *rhs_t =
+            node->type_info ? node->type_info : find_symbol_type_info(ctx, node->var_ref.name);
         if (rhs_t && rhs_t->kind == TYPE_POINTER && rhs_t->inner &&
             rhs_t->inner->kind == TYPE_STRUCT)
         {
@@ -273,7 +277,7 @@ void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
         }
         else
         {
-            char *rhs_type_str = find_symbol_type(ctx, node->var_ref.name);
+            char *rhs_type_str = rhs_t ? type_mangle_spelling(rhs_t) : NULL;
             if (rhs_type_str)
             {
                 char *clean_rhs = rhs_type_str;

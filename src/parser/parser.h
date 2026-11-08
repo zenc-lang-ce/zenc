@@ -699,11 +699,6 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, Type *type_info, T
 Type *find_symbol_type_info(ParserContext *ctx, const char *n);
 
 /**
- * @brief Finds a symbol's type.
- */
-char *find_symbol_type(ParserContext *ctx, const char *n);
-
-/**
  * @brief Finds a symbol's entry.
  */
 ZenSymbol *find_symbol_entry(ParserContext *ctx, const char *n);

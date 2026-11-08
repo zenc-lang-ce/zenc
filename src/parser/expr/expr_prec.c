@@ -1396,8 +1396,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
             else if (lhs->kind == NODE_EXPR_VAR)
             {
-                char *type = lhs->type_info ? type_mangle_spelling(lhs->type_info)
-                                            : find_symbol_type(ctx, lhs->var_ref.name);
+                Type *lhs_t =
+                    lhs->type_info ? lhs->type_info : find_symbol_type_info(ctx, lhs->var_ref.name);
+                char *type = lhs_t ? type_mangle_spelling(lhs_t) : NULL;
                 if (type && strchr(type, '*'))
                 {
                     node->member.is_pointer_access = 1;
@@ -1619,7 +1620,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             // 2. Mark RHS as moved (Transfer ownership) if it's a Move type
             if (rhs->kind == NODE_EXPR_VAR)
             {
-                Type *inner_t = find_symbol_type_info(ctx, rhs->var_ref.name);
+                Type *inner_t =
+                    rhs->type_info ? rhs->type_info : find_symbol_type_info(ctx, rhs->var_ref.name);
                 // If type info not on var, try looking up symbol
                 if (!inner_t)
                 {
@@ -1653,13 +1655,14 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             // 4. Trait Object Wrapping for Assignment
             char *raw_lhs_type = NULL;
             int allocated_lhs = 0;
-            if (lhs->kind == NODE_EXPR_VAR)
+            Type *lhs_t = lhs->type_info;
+            if (!lhs_t && lhs->kind == NODE_EXPR_VAR)
             {
-                raw_lhs_type = find_symbol_type(ctx, lhs->var_ref.name);
+                lhs_t = find_symbol_type_info(ctx, lhs->var_ref.name);
             }
-            if (!raw_lhs_type && lhs->type_info)
+            if (lhs_t)
             {
-                raw_lhs_type = type_mangle_spelling(lhs->type_info);
+                raw_lhs_type = type_mangle_spelling(lhs_t);
                 allocated_lhs = 1;
             }
 
@@ -1771,7 +1774,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             if (lhs->kind == NODE_EXPR_VAR)
             {
                 // Check if the variable is const
-                Type *inner_t = find_symbol_type_info(ctx, lhs->var_ref.name);
+                Type *inner_t =
+                    lhs->type_info ? lhs->type_info : find_symbol_type_info(ctx, lhs->var_ref.name);
                 if (inner_t && inner_t->is_const)
                 {
                     zpanic_at(op, "Cannot assign to const variable '%s'", lhs->var_ref.name);
@@ -1797,7 +1801,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
                 if (base && base->kind == NODE_EXPR_VAR)
                 {
-                    Type *inner_t = find_symbol_type_info(ctx, base->var_ref.name);
+                    Type *inner_t = base->type_info
+                                        ? base->type_info
+                                        : find_symbol_type_info(ctx, base->var_ref.name);
                     if (inner_t && inner_t->is_const)
                     {
                         zpanic_at(op, "Cannot assign to element of const variable '%s'",
