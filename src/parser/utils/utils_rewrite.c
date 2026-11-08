@@ -187,12 +187,10 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                         Type *st = type_from_name(ctx, ctx->current_impl_struct);
                         if (ctx->current_impl_template_param)
                         {
-                            st = type_new(TYPE_STRUCT);
-                            st->name = xstrdup(ctx->current_impl_struct);
-                            st->count = 1;
-                            st->args = xmalloc(sizeof(Type *));
-                            st->args[0] = type_new(TYPE_GENERIC);
-                            st->args[0]->name = xstrdup(ctx->current_impl_template_param);
+                            Type **args = xmalloc(sizeof(Type *));
+                            args[0] = type_new(TYPE_GENERIC);
+                            args[0]->name = xstrdup(ctx->current_impl_template_param);
+                            st = type_new_instance(ctx->current_impl_struct, args, 1);
                         }
                         st->is_const = is_const_param;
                         Type *ptr = type_new_ptr(st);
