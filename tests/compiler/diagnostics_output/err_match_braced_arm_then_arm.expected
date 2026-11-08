@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_match_braced_arm_then_arm.zc...
+error: Expected ',' or '}' after match arm
+  --> tests/compiler/diagnostics_output/err_match_braced_arm_then_arm.zc:10:34
+   |
+10 |         1 => { println("one"); } 2 => 20,
+   |                                  ^ here
+   |
+[exit 1]

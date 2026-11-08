@@ -1,0 +1,17 @@
+// language/control-flow: arms on separate lines need no comma between them, so a string at the
+// start of a line is the pattern of the next arm, even after an arm that ends with a name.
+import "std/io.zc"
+
+fn one() -> int { return 1; }
+
+test "a string pattern after an arm without a comma" {
+    let picked = 0;
+    let println = 5;
+    match "c" {
+        "a" => one()
+        "b" => println
+        "c" => { picked = println; }
+        _ => { picked = -1; }
+    }
+    assert(picked == 5, "the arm of the string pattern c should run");
+}

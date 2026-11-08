@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_match_arms_on_one_line.zc...
+error: Expected ',' or '}' after match arm
+  --> tests/compiler/diagnostics_output/err_match_arms_on_one_line.zc:10:17
+   |
+10 |         1 => 10 2 => 20,
+   |                 ^ here
+   |
+[exit 1]
