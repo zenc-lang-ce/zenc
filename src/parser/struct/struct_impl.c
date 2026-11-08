@@ -21,7 +21,6 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
 {
     ASTNode *h = NULL;
     ASTNode *tl = NULL;
-    ctx->current_impl_template_param = template_param;
     while (1)
     {
         ctx->current_impl_methods = h;
@@ -98,15 +97,18 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         }
         tl = f;
     }
-    ctx->current_impl_template_param = NULL;
     return h;
 }
 
-// The type an impl adds methods to: the struct or enum of that name (a template by its name
-// alone), or the type an alias stands for (a plain alias the type it names, an opaque alias
-// itself).
+// The type an impl adds methods to: a primitive (`impl f64`), the struct or enum of that name
+// (a template by its name alone), or the type an alias stands for (a plain alias the type it
+// names, an opaque alias itself).
 static Type *impl_target(ParserContext *ctx, const char *name)
 {
+    if (is_primitive_type_name(name))
+    {
+        return type_new(get_primitive_type_kind(name));
+    }
     ASTNode *def = find_type_alias_node(ctx, name) ? NULL : find_struct_def(ctx, name);
     int is_template = def && ((def->kind == NODE_STRUCT && def->strct.is_template) ||
                               (def->kind == NODE_ENUM && def->enm.is_template));
@@ -258,7 +260,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             }
         }
 
-        ctx->current_impl_struct = name2;
+        ctx->current_impl_target = target;
 
         lexer_next(l);
 
@@ -285,7 +287,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             zfree(full_target_name); // It was strdup/ref. Wait, xstrdup needs free.
         }
 
-        ctx->current_impl_struct = NULL; // Restore context
+        ctx->current_impl_target = NULL; // Restore context
         ASTNode *n = ast_create(NODE_IMPL_TRAIT);
         n->impl_trait.trait_name = name1;
         n->impl_trait.target = target;
@@ -338,7 +340,15 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         Type *target = impl_target(ctx, name1);
         name1 = type_impl_name(target);
 
-        ctx->current_impl_struct = name1; // For patch_self_args inside parse_function
+        // The type of `self` in its methods: in `impl Vec<T>`, a `Vec<T>`.
+        ctx->current_impl_target = target;
+        if (gen_param)
+        {
+            Type **args = xmalloc(sizeof(Type *));
+            args[0] = type_new(TYPE_GENERIC);
+            args[0]->name = xstrdup(gen_param);
+            ctx->current_impl_target = type_new_instance(name1, args, 1);
+        }
 
         if (gen_param)
         {
@@ -360,7 +370,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             n->impl.target = target;
             n->impl.methods = h;
             register_impl_template(ctx, name1, gen_param, n);
-            ctx->current_impl_struct = NULL;
+            ctx->current_impl_target = NULL;
             if (gen_param)
             {
                 ctx->known_generics_count--;
@@ -372,7 +382,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             // REGULAR IMPL
             lexer_next(l);
             ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, NULL);
-            ctx->current_impl_struct = NULL;
+            ctx->current_impl_target = NULL;
             ASTNode *n = ast_create(NODE_IMPL);
             n->impl.target = target;
             n->impl.methods = h;

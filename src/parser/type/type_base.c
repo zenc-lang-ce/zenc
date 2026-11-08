@@ -114,9 +114,9 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
 #endif
 
         // Self type alias: Replace "Self" with current impl struct type
-        if (strcmp(name, "Self") == 0 && ctx->current_impl_struct)
+        if (strcmp(name, "Self") == 0 && ctx->current_impl_target)
         {
-            name = xstrdup(ctx->current_impl_struct);
+            name = type_impl_name(ctx->current_impl_target);
         }
 
         // Handle Namespace :: (A::B -> A_B)

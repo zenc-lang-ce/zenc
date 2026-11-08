@@ -65,11 +65,11 @@ void check_unused_parameters(ParserContext *ctx, Scope *scope, const char *func_
 // without `<T>` (`impl Drop for Vec`): instantiation copies its methods.
 static int in_generic_impl(ParserContext *ctx)
 {
-    if (!ctx->current_impl_struct)
+    if (!ctx->current_impl_target)
     {
         return 0;
     }
-    ASTNode *def = find_struct_def(ctx, ctx->current_impl_struct);
+    ASTNode *def = find_struct_def(ctx, type_impl_name(ctx->current_impl_target));
     return def && ((def->kind == NODE_STRUCT && def->strct.is_template) ||
                    (def->kind == NODE_ENUM && def->enm.is_template));
 }
@@ -83,7 +83,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     // Methods are emitted with a prefix (`Type__default`) and extern functions
     // keep their C name, so only free functions may not be named like a C
     // keyword.
-    if (!ctx->current_impl_struct && !is_extern)
+    if (!ctx->current_impl_target && !is_extern)
     {
         check_c_identifier(name_tok);
     }
@@ -201,7 +201,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     // Auto-prefix function name if in module context
     // Don't prefix generic templates or functions inside impl blocks (already
     // mangled)
-    if (ctx->imports.current_module_prefix && !gen_param && !ctx->current_impl_struct &&
+    if (ctx->imports.current_module_prefix && !gen_param && !ctx->current_impl_target &&
         !is_extern && !is_extern_symbol(ctx, name))
     {
         char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name);
@@ -210,7 +210,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     }
 
     // Register if concrete (Global functions only)
-    if (!gen_param && !ctx->current_impl_struct)
+    if (!gen_param && !ctx->current_impl_target)
     {
         register_func(ctx, ctx->current_scope->parent, name, count, default_values, arg_types,
                       ret_type_obj, is_varargs, 0, link_name, NULL, name_tok, is_export);
@@ -286,7 +286,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     node->func.c_type_overrides = ctype_overrides;
     node->link_name = link_name ? xstrdup(link_name) : NULL;
     node->func.module_prefix = ctx->imports.current_module_prefix;
-    node->func.impl_struct = ctx->current_impl_struct;
+    node->func.impl_target = ctx->current_impl_target;
     node->func.filename = ctx->current_filename;
 
     if (pending)
@@ -298,13 +298,13 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     if (gen_param)
     {
         node->func.generic_params = xstrdup(gen_param);
-        if (!ctx->current_impl_struct)
+        if (!ctx->current_impl_target)
         {
             register_func_template(ctx, name, gen_param, node);
             return NULL;
         }
     }
-    if (!ctx->current_impl_struct)
+    if (!ctx->current_impl_target)
     {
         add_to_func_list(ctx, node);
     }
@@ -338,7 +338,7 @@ void parse_pending_bodies(ParserContext *ctx)
 {
     Scope *saved_scope = ctx->current_scope;
     char *saved_prefix = ctx->imports.current_module_prefix;
-    char *saved_impl = ctx->current_impl_struct;
+    Type *saved_impl = ctx->current_impl_target;
     ASTNode *saved_impl_methods = ctx->current_impl_methods;
     const char *saved_filename = ctx->current_filename;
     int saved_in_method = ctx->in_method_with_self;
@@ -397,14 +397,14 @@ void parse_pending_bodies(ParserContext *ctx)
         if (node->kind == NODE_TEST)
         {
             ctx->imports.current_module_prefix = node->test_stmt.module_prefix;
-            ctx->current_impl_struct = NULL;
+            ctx->current_impl_target = NULL;
             ctx->current_filename = node->test_stmt.filename;
             curr_func_ret = NULL;
         }
         else
         {
             ctx->imports.current_module_prefix = node->func.module_prefix;
-            ctx->current_impl_struct = node->func.impl_struct;
+            ctx->current_impl_target = node->func.impl_target;
             ctx->current_filename = node->func.filename;
             curr_func_ret = node->func.ret_type_info;
         }
@@ -436,7 +436,7 @@ void parse_pending_bodies(ParserContext *ctx)
     ctx->parse_depth--;
     ctx->current_scope = saved_scope;
     ctx->imports.current_module_prefix = saved_prefix;
-    ctx->current_impl_struct = saved_impl;
+    ctx->current_impl_target = saved_impl;
     ctx->current_impl_methods = saved_impl_methods;
     ctx->current_filename = saved_filename;
     ctx->in_method_with_self = saved_in_method;
