@@ -262,6 +262,54 @@ static int may_be_internal(ParserContext *ctx, ASTNode *func, const char *c_func
            !c_headers_declare_function(ctx, c_function_name);
 }
 
+// The name of `func` in C.
+static const char *func_c_name(ParserContext *ctx, ASTNode *func, const char *name_override)
+{
+    return func->link_name ? func->link_name
+                           : c_name(ctx, name_override ? name_override : func->func.name);
+}
+
+// Whether the program reaches `func` only through calls by its name, which the C shows: it is
+// internal, the C runtime does not run it (@constructor, @destructor), and no attribute makes the
+// linker keep or place it (@section, custom ones such as @used or @alias).
+static int reached_only_by_name(ParserContext *ctx, ASTNode *func, const char *c_function_name)
+{
+    return may_be_internal(ctx, func, c_function_name) && !func->func.constructor &&
+           !func->func.destructor && !func->func.section && !func->func.attributes;
+}
+
+void function_span_begin(ParserContext *ctx, ASTNode *func, const char *name_override)
+{
+    ctx->cg.open_span_name = NULL;
+    const char *name = func_c_name(ctx, func, name_override);
+    if (ctx->cg.emitter.mode != EMITTER_FILE || !reached_only_by_name(ctx, func, name))
+    {
+        return;
+    }
+    ctx->cg.open_span_name = name;
+    ctx->cg.open_span_start = ftell(ctx->cg.emitter.file);
+}
+
+void function_span_end(ParserContext *ctx, int is_definition)
+{
+    if (!ctx->cg.open_span_name)
+    {
+        return;
+    }
+    if (ctx->cg.function_span_count == ctx->cg.function_span_cap)
+    {
+        ctx->cg.function_span_cap = ctx->cg.function_span_cap ? ctx->cg.function_span_cap * 2 : 256;
+        ctx->cg.function_spans = xrealloc(ctx->cg.function_spans,
+                                          sizeof(FunctionSpan) * (size_t)ctx->cg.function_span_cap);
+    }
+    FunctionSpan *span = &ctx->cg.function_spans[ctx->cg.function_span_count++];
+    span->name = ctx->cg.open_span_name;
+    span->start = ctx->cg.open_span_start;
+    span->end = ftell(ctx->cg.emitter.file);
+    span->is_definition = is_definition;
+    ctx->cg.open_span_name = NULL;
+}
+
 // Emit function signature using Type info for correct C codegen
 void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_override)
 {
@@ -295,9 +343,7 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
 
     char *ret_suffix = NULL;
 
-    const char *final_name = (func->link_name)
-                                 ? func->link_name
-                                 : c_name(ctx, name_override ? name_override : func->func.name);
+    const char *final_name = func_c_name(ctx, func, name_override);
 
     if (strcmp(final_name, "z_plugin_init") != 0 && may_be_internal(ctx, func, final_name))
     {

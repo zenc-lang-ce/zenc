@@ -403,7 +403,15 @@ static int compile_program(ZenCompiler *compiler)
                                                        : (z_is_windows() ? "a.exe" : "a.out");
     ArgList compile_args;
     arg_list_init(&compile_args);
-    build_compile_arg_list(&compile_args, outfile, temp_source_buf, compiler);
+    if (build_compile_arg_list(&compile_args, outfile, temp_source_buf, compiler))
+    {
+        int removed = prune_unreachable_functions(&ctx, temp_source_buf);
+        if (compiler->config.verbose && removed > 0)
+        {
+            printf(COLOR_BOLD COLOR_BLUE "     Removed" COLOR_RESET " %d functions nothing calls\n",
+                   removed);
+        }
+    }
 
     if (compiler->config.verbose)
     {

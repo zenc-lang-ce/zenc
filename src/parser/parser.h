@@ -335,6 +335,18 @@ typedef struct PendingBody
 } PendingBody;
 
 /**
+ * @brief Where the text of a prototype or a definition of a function that may be internal
+ *        (see function_span_begin) is in the C file being written: bytes [start, end).
+ */
+typedef struct FunctionSpan
+{
+    const char *name; ///< The function's name in C.
+    long start;
+    long end;
+    int is_definition; ///< 1 for the definition, 0 for a prototype.
+} FunctionSpan;
+
+/**
  * @brief Global compilation state and symbol table.
  *
  * ParserContext maintains the state of the compiler during parsing and analysis.
@@ -462,6 +474,12 @@ struct ParserContext
         int loop_defer_capacity;  ///< Allocated slots of loop_defer_boundary.
         int loop_depth;           ///< Current loop nesting depth.
         int func_defer_boundary;  ///< Defer stack index at function entry.
+
+        FunctionSpan *function_spans; ///< The functions written so far, for prune_unreachable.
+        int function_span_count;
+        int function_span_cap;
+        const char *open_span_name; ///< The function whose text is being written, or NULL.
+        long open_span_start;
     } cg;
 
     // Type Validation

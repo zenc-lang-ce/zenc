@@ -81,7 +81,12 @@ int arg_run(ArgList *list);
  */
 void arg_list_add_from_string(ArgList *list, const char *str);
 
-void build_compile_arg_list(ArgList *list, const char *outfile, const char *temp_source_file,
-                            ZenCompiler *compiler);
+/**
+ * @brief The command that compiles the generated C `temp_source_file` into `outfile`. Returns 1
+ *        when it builds a whole program (it then defines ZC_WHOLE_PROGRAM): nothing but the
+ *        generated C can call the program's functions.
+ */
+int build_compile_arg_list(ArgList *list, const char *outfile, const char *temp_source_file,
+                           ZenCompiler *compiler);
 
 #endif

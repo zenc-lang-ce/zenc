@@ -107,6 +107,22 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t);
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr);
 void emit_rvalue_address(ParserContext *ctx, ASTNode *expr);
 void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_override);
+/**
+ * @brief Marks the start of the text of `func` (its prototype or its definition) in the C file
+ *        being written, when nothing outside that file may call it by name (it is not `main`,
+ *        an @export...); function_span_end marks its end. prune_unreachable_functions reads
+ *        these spans. Nothing is recorded when the code goes to a buffer.
+ */
+void function_span_begin(ParserContext *ctx, ASTNode *func, const char *name_override);
+void function_span_end(ParserContext *ctx, int is_definition);
+/**
+ * @brief Rewrites the C file `path`, just written, without the functions nothing reaches: the
+ *        text outside the spans (main, tests, vtables, drop glue, raw blocks...) names the
+ *        functions it uses, and each definition the ones it calls. Only for a C file that is
+ *        a whole program (no other code calls its functions by name). Returns the number of
+ *        functions removed, or -1 if the file was left as it was.
+ */
+int prune_unreachable_functions(ParserContext *ctx, const char *path);
 /** @brief Name of the drop glue of the value `value` holds by value, when it is a struct with
  * Drop or a tuple that needs dropping (the glue is `<name>__Drop__glue`); otherwise NULL. */
 char *value_drop_struct(ParserContext *ctx, ASTNode *value);
