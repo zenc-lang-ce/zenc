@@ -30,6 +30,12 @@ void emit_source_mapping_duplicate(ParserContext *ctx, ASTNode *node)
     allow_duplicate_source_mapping--;
 }
 
+void forget_source_mapping(void)
+{
+    last_source_mapping_line = -1;
+    last_source_mapping_file = NULL;
+}
+
 void emit_source_mapping(ParserContext *ctx, ASTNode *node)
 {
     if (!ctx->config->mode_debug || ctx->config->misra_output)

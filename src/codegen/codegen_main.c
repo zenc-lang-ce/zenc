@@ -974,27 +974,7 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
 
         int test_count = emit_tests_and_runner(ctx, kids);
 
-        ASTNode *iter = merged_funcs;
-        while (iter)
-        {
-            // An impl of a template is emitted with each instance.
-            if ((iter->kind == NODE_IMPL || iter->kind == NODE_IMPL_TRAIT) &&
-                impl_on_template(ctx, iter))
-            {
-                iter = iter->next;
-                continue;
-            }
-            if (iter->cfg_condition)
-            {
-                EMIT(ctx, "#if %s\n", iter->cfg_condition);
-            }
-            codegen_node_single(ctx, iter);
-            if (iter->cfg_condition)
-            {
-                EMIT(ctx, "#endif\n");
-            }
-            iter = iter->next;
-        }
+        emit_function_bodies(ctx, merged_funcs);
 
         int has_user_main = 0;
         ASTNode *chk = merged_funcs;

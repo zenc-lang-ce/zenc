@@ -126,7 +126,6 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     {
         return;
     }
-    function_span_begin(ctx, node, NULL);
     if (node->cfg_condition)
     {
         EMIT(ctx, "#if %s\n", node->cfg_condition);
@@ -378,7 +377,6 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     {
         EMIT(ctx, "#endif\n");
     }
-    function_span_end(ctx, 1);
 }
 
 void handle_node_impl_trait(ParserContext *ctx, ASTNode *node)

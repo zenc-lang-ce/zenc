@@ -353,7 +353,18 @@ static int compile_program(ZenCompiler *compiler)
         snprintf(temp_source_buf, sizeof(temp_source_buf), "out%s", ext_p);
     }
 
-    FILE *out_f = fopen(temp_source_buf, "w");
+    // The command that compiles the C, decided before writing it: when it builds a whole program,
+    // codegen writes only the function bodies the program reaches.
+    const char *outfile = compiler->config.output_file ? compiler->config.output_file
+                                                       : (z_is_windows() ? "a.exe" : "a.out");
+    ArgList compile_args;
+    arg_list_init(&compile_args);
+    int whole_program = !compiler->config.mode_transpile && (!backend || backend->needs_cc) &&
+                        build_compile_arg_list(&compile_args, outfile, temp_source_buf, compiler);
+    ctx.cg.emit_reached_only = whole_program;
+
+    // Readable too: emit_function_bodies reads back what it has written.
+    FILE *out_f = fopen(temp_source_buf, "w+");
     if (!out_f)
     {
         perror("fopen temp output");
@@ -399,17 +410,14 @@ static int compile_program(ZenCompiler *compiler)
     }
 
     // Compile C
-    const char *outfile = compiler->config.output_file ? compiler->config.output_file
-                                                       : (z_is_windows() ? "a.exe" : "a.out");
-    ArgList compile_args;
-    arg_list_init(&compile_args);
-    if (build_compile_arg_list(&compile_args, outfile, temp_source_buf, compiler))
+    if (whole_program)
     {
-        int removed = prune_unreachable_functions(&ctx, temp_source_buf);
-        if (compiler->config.verbose && removed > 0)
+        int left_out = remove_unused_prototypes(&ctx, temp_source_buf);
+        if (compiler->config.verbose && left_out > 0)
         {
-            printf(COLOR_BOLD COLOR_BLUE "     Removed" COLOR_RESET " %d functions nothing calls\n",
-                   removed);
+            printf(COLOR_BOLD COLOR_BLUE "     Left out" COLOR_RESET
+                                         " %d functions nothing calls\n",
+                   left_out);
         }
     }
 

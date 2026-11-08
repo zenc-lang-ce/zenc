@@ -108,21 +108,33 @@ char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr);
 void emit_rvalue_address(ParserContext *ctx, ASTNode *expr);
 void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_override);
 /**
- * @brief Marks the start of the text of `func` (its prototype or its definition) in the C file
- *        being written, when nothing outside that file may call it by name (it is not `main`,
- *        an @export...); function_span_end marks its end. prune_unreachable_functions reads
- *        these spans. Nothing is recorded when the code goes to a buffer.
+ * @brief The C name of `func` when a whole program may leave it out: nothing outside the
+ *        generated C calls it (it is not `main`, an @export...), and the C runtime and the
+ *        linker do not reach it without a call by that name (@constructor, @section...).
+ *        Otherwise NULL.
  */
-void function_span_begin(ParserContext *ctx, ASTNode *func, const char *name_override);
-void function_span_end(ParserContext *ctx, int is_definition);
+const char *omissible_function_name(ParserContext *ctx, ASTNode *func, const char *name_override);
 /**
- * @brief Rewrites the C file `path`, just written, without the functions nothing reaches: the
- *        text outside the spans (main, tests, vtables, drop glue, raw blocks...) names the
- *        functions it uses, and each definition the ones it calls. Only for a C file that is
- *        a whole program (no other code calls its functions by name). Returns the number of
- *        functions removed, or -1 if the file was left as it was.
+ * @brief Mark the start and the end of the prototype of `func` in the C file being written,
+ *        when a whole program may leave the function out; remove_unused_prototypes reads them.
+ *        Nothing is recorded when the code goes to a buffer.
  */
-int prune_unreachable_functions(ParserContext *ctx, const char *path);
+void prototype_span_begin(ParserContext *ctx, ASTNode *func, const char *name_override);
+void prototype_span_end(ParserContext *ctx);
+/**
+ * @brief Writes the bodies of `funcs`, the functions and impls of the program. For a whole
+ *        program written to a file (cg.emit_reached_only), only those the program reaches: the
+ *        C written so far (main, tests, vtables, drop glue, raw blocks, initializers) names the
+ *        functions it uses, and each body written names the ones it calls. Bodies keep their
+ *        order.
+ */
+void emit_function_bodies(ParserContext *ctx, ASTNode *funcs);
+/**
+ * @brief Rewrites the C file `path`, just written by emit_function_bodies, without the
+ *        prototypes of the functions whose bodies it left out. Returns the number of functions
+ *        left out, or -1 if the file could not be rewritten.
+ */
+int remove_unused_prototypes(ParserContext *ctx, const char *path);
 /** @brief Name of the drop glue of the value `value` holds by value, when it is a struct with
  * Drop or a tuple that needs dropping (the glue is `<name>__Drop__glue`); otherwise NULL. */
 char *value_drop_struct(ParserContext *ctx, ASTNode *value);
@@ -174,6 +186,8 @@ void emit_simple_enum(ParserContext *ctx, ASTNode *node);
  * @brief Emits C preprocessor directives for source mapping.
  */
 void emit_source_mapping(ParserContext *ctx, ASTNode *node);
+/** @brief The next emit_source_mapping writes its #line even if it repeats the last one. */
+void forget_source_mapping(void);
 /**
  * @brief Emits C preprocessor directives for source mapping.
  * Special override for emit_source_mapping that allows duplicate source mappings for 1:N expression

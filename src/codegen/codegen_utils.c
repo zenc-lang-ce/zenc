@@ -278,35 +278,40 @@ static int reached_only_by_name(ParserContext *ctx, ASTNode *func, const char *c
            !func->func.destructor && !func->func.section && !func->func.attributes;
 }
 
-void function_span_begin(ParserContext *ctx, ASTNode *func, const char *name_override)
+const char *omissible_function_name(ParserContext *ctx, ASTNode *func, const char *name_override)
 {
-    ctx->cg.open_span_name = NULL;
     const char *name = func_c_name(ctx, func, name_override);
-    if (ctx->cg.emitter.mode != EMITTER_FILE || !reached_only_by_name(ctx, func, name))
-    {
-        return;
-    }
-    ctx->cg.open_span_name = name;
-    ctx->cg.open_span_start = ftell(ctx->cg.emitter.file);
+    return reached_only_by_name(ctx, func, name) ? name : NULL;
 }
 
-void function_span_end(ParserContext *ctx, int is_definition)
+void prototype_span_begin(ParserContext *ctx, ASTNode *func, const char *name_override)
+{
+    ctx->cg.open_span_name = ctx->cg.emitter.mode == EMITTER_FILE
+                                 ? omissible_function_name(ctx, func, name_override)
+                                 : NULL;
+    if (ctx->cg.open_span_name)
+    {
+        ctx->cg.open_span_start = ftell(ctx->cg.emitter.file);
+    }
+}
+
+void prototype_span_end(ParserContext *ctx)
 {
     if (!ctx->cg.open_span_name)
     {
         return;
     }
-    if (ctx->cg.function_span_count == ctx->cg.function_span_cap)
+    if (ctx->cg.prototype_span_count == ctx->cg.prototype_span_cap)
     {
-        ctx->cg.function_span_cap = ctx->cg.function_span_cap ? ctx->cg.function_span_cap * 2 : 256;
-        ctx->cg.function_spans = xrealloc(ctx->cg.function_spans,
-                                          sizeof(FunctionSpan) * (size_t)ctx->cg.function_span_cap);
+        ctx->cg.prototype_span_cap =
+            ctx->cg.prototype_span_cap ? ctx->cg.prototype_span_cap * 2 : 256;
+        ctx->cg.prototype_spans = xrealloc(
+            ctx->cg.prototype_spans, sizeof(PrototypeSpan) * (size_t)ctx->cg.prototype_span_cap);
     }
-    FunctionSpan *span = &ctx->cg.function_spans[ctx->cg.function_span_count++];
+    PrototypeSpan *span = &ctx->cg.prototype_spans[ctx->cg.prototype_span_count++];
     span->name = ctx->cg.open_span_name;
     span->start = ctx->cg.open_span_start;
     span->end = ftell(ctx->cg.emitter.file);
-    span->is_definition = is_definition;
     ctx->cg.open_span_name = NULL;
 }
 
