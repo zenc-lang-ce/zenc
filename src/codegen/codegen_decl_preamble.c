@@ -163,7 +163,8 @@ void emit_preamble(ParserContext *ctx)
              "any zc_any\n#endif\n");
         EMIT(ctx, "%s",
              "#ifdef ZC_STATIC_PLUGIN\n#define ZC_FUNC static\n#define ZC_GLOBAL "
-             "static\n#else\n#define ZC_FUNC\n#define ZC_GLOBAL\n#endif\n");
+             "static\n#elif defined(ZC_WHOLE_PROGRAM)\n#define ZC_FUNC static\n#define "
+             "ZC_GLOBAL\n#else\n#define ZC_FUNC\n#define ZC_GLOBAL\n#endif\n");
         EMIT(ctx, "%s",
              "typedef struct { void *func; void *ctx; void (*drop)(void*); } z_closure_T;\n");
         EMIT(ctx, "%s",

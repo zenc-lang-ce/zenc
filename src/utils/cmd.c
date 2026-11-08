@@ -185,6 +185,37 @@ void print_command_help(const char *command)
     }
 }
 
+// Whether the command `list` builds an executable from the generated C alone. Then no other code
+// can call a function of the program by name, and the functions that are not `main` or @export
+// can be `static`: the C compiler drops the ones nothing calls (most methods of each generic
+// instance). Not with C or object files of the user (from the command line or a `//> link:`
+// directive), a shared library, an object or assembly output, symbols exported to libraries
+// (`-rdynamic`), MISRA (whose C already makes them `static`) or CUDA.
+static int builds_whole_program(const ArgList *list, const char *temp_source_file,
+                                const CompilerConfig *cfg)
+{
+    if (cfg->misra_mode || cfg->use_cuda || cfg->c_files.length > 0)
+    {
+        return 0;
+    }
+    for (size_t i = 1; i < list->count; i++)
+    {
+        const char *arg = list->args[i];
+        if (strcmp(arg, "-shared") == 0 || strcmp(arg, "-S") == 0 || strcmp(arg, "-E") == 0 ||
+            strcmp(arg, "-c") == 0 || strcmp(arg, "-rdynamic") == 0 ||
+            strstr(arg, "export-dynamic") != NULL)
+        {
+            return 0;
+        }
+        const char *ext = arg[0] != '-' ? strrchr(arg, '.') : NULL;
+        if (ext && ZC_IS_BACKEND_EXT(ext) && strcmp(arg, temp_source_file) != 0)
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 void build_compile_arg_list(ArgList *list, const char *outfile, const char *temp_source_file,
                             ZenCompiler *compiler)
 {
@@ -389,6 +420,11 @@ void build_compile_arg_list(ArgList *list, const char *outfile, const char *temp
             arg_list_add(list, "-iquote");
             arg_list_add(list, abs_input_dir);
         }
+    }
+
+    if (builds_whole_program(list, temp_source_file, cfg))
+    {
+        arg_list_add(list, "-DZC_WHOLE_PROGRAM");
     }
 }
 
