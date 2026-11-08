@@ -1,0 +1,14 @@
+// ARGS: build
+// Any name followed by a string on the line of a match arm is reported at the string.
+import "std/io.zc"
+
+fn foo(_s: string) -> int { return 1; }
+
+fn main() {
+    let n = 1;
+    match n {
+        1 => foo "one",
+        _ => 0
+    }
+    println(f"{foo(\"x\")}");
+}

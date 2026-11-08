@@ -1,0 +1,14 @@
+// ARGS: build
+// Two match arms on one line need a comma between them.
+import "std/io.zc"
+
+fn foo(_s: string) -> int { return 1; }
+
+fn main() {
+    let n = 1;
+    match n {
+        1 => 10 2 => 20,
+        _ => 0
+    }
+    println(f"{foo(\"x\")}");
+}
