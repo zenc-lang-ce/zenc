@@ -253,10 +253,13 @@ void emit_rvalue_address(ParserContext *ctx, ASTNode *expr)
 // Whether nothing outside the generated C may call the function by name, so that a whole-program
 // build can give it internal linkage (ZC_FUNC is `static` with ZC_WHOLE_PROGRAM): not `main`, an
 // @export, an extern declaration, a function with the C name given by @link_name, or a weak one.
-static int may_be_internal(ASTNode *func)
+// Nor one a C header declares (a program's own `abs`): C rejects a static definition after an
+// extern declaration.
+static int may_be_internal(ParserContext *ctx, ASTNode *func, const char *c_function_name)
 {
     return !func->func.is_export && !func->func.is_extern && !func->link_name && !func->func.weak &&
-           strcmp(func->func.name, "main") != 0;
+           strcmp(func->func.name, "main") != 0 &&
+           !c_headers_declare_function(ctx, c_function_name);
 }
 
 // Emit function signature using Type info for correct C codegen
@@ -296,7 +299,7 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
                                  ? func->link_name
                                  : c_name(ctx, name_override ? name_override : func->func.name);
 
-    if (strcmp(final_name, "z_plugin_init") != 0 && may_be_internal(func))
+    if (strcmp(final_name, "z_plugin_init") != 0 && may_be_internal(ctx, func, final_name))
     {
         EMIT(ctx, "ZC_FUNC ");
     }

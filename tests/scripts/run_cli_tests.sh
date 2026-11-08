@@ -437,6 +437,16 @@ if command -v nm >/dev/null 2>&1 && [ -x "$workdir/linkage/whole" ]; then
     fi
 fi
 
+# A function of the program that a C header of the preamble also declares (`abs`) keeps external
+# linkage: C rejects a static definition after an extern declaration.
+printf 'fn abs(n: int) -> int {\n    if n < 0 { return -n; }\n    return n;\n}\nfn main() {\n    if abs(-3) != 3 { exit(1); }\n}\n' > "$workdir/linkage/own_abs.zc"
+"$ZC" build -w "$workdir/linkage/own_abs.zc" -o "$workdir/linkage/own_abs" >/dev/null 2>&1
+if [ -x "$workdir/linkage/own_abs" ] && "$workdir/linkage/own_abs"; then
+    check "a whole-program build defines a function a C header declares" 1
+else
+    check "a whole-program build defines a function a C header declares" 0
+fi
+
 # A C file of the user may call any function of the program by name: with one, they keep
 # external linkage.
 printf 'extern fn from_c() -> c_int;\nfn called_from_c() -> int { return 40; }\nfn main() {\n    if from_c() != 42 { exit(1); }\n}\n' > "$workdir/linkage/with_c.zc"

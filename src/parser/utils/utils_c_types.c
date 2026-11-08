@@ -409,6 +409,11 @@ Type *c_function_return_type(ParserContext *ctx, const char *name)
     return c_type_from_text(ctx, c_declaration(ctx, C_SYMBOL_FUNCTION, name));
 }
 
+int c_headers_declare_function(ParserContext *ctx, const char *name)
+{
+    return c_declaration(ctx, C_SYMBOL_FUNCTION, name) != NULL;
+}
+
 Type *c_variable_type(ParserContext *ctx, const char *name)
 {
     if (ctx->config->misra_mode || ctx->config->is_freestanding)
