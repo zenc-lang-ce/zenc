@@ -79,6 +79,54 @@ static Type *generic_arg_from_value(Type *field, Type *value, const char *param)
     return NULL;
 }
 
+// Whether `.` comes next and, with what follows it, names a variant of the enum `name`, as
+// `::` would: `Color.Green`, `Shape.Rect(1, 2)`, `Maybe<int>.Nothing` (`generic` is the
+// instance). A variable or constant called `name` hides the enum: then `.` reads one of its
+// fields.
+static int dot_names_variant(ParserContext *ctx, Lexer *l, const char *name, Type *generic)
+{
+    Token dot = lexer_peek(l);
+    if (dot.kind != TOK_OP || !is_token(dot, "."))
+    {
+        return 0;
+    }
+    ZenSymbol *sym = find_symbol_entry(ctx, name);
+    if (sym && (sym->kind == SYM_VARIABLE || sym->kind == SYM_CONSTANT))
+    {
+        return 0;
+    }
+    Lexer lookahead = *l;
+    lexer_next(&lookahead);
+    Token field = lexer_next(&lookahead);
+    if (field.kind != TOK_IDENT)
+    {
+        return 0;
+    }
+
+    ASTNode *def = find_struct_def(ctx, name);
+    if (!def && ctx->imports.current_module_prefix)
+    {
+        def = find_struct_def(ctx, mangle_module_symbol(ctx->imports.current_module_prefix, name));
+    }
+    if (!def && generic)
+    {
+        GenericTemplate *gt = find_generic_template(ctx, generic->name);
+        def = gt ? gt->struct_node : NULL;
+    }
+    if (!def || def->kind != NODE_ENUM)
+    {
+        return 0;
+    }
+    for (ASTNode *v = def->enm.variants; v; v = v->next)
+    {
+        if (is_token(field, v->variant.name))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 {
     ASTNode *node = NULL;
@@ -320,7 +368,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 break;
             }
             int changed = 0;
-            if (lexer_peek(l).kind == TOK_DCOLON)
+            if (lexer_peek(l).kind == TOK_DCOLON || dot_names_variant(ctx, l, acc, generic_type))
             {
                 lexer_next(l);
                 Token suffix = lexer_next(l);

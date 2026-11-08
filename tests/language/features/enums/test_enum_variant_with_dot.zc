@@ -1,0 +1,74 @@
+// language/features/enums: test_enum_variant_with_dot
+// `Enum.Variant` names the same variant as `Enum::Variant`, with or without a
+// payload and wherever a value goes, also for an enum of another module and an
+// instance of a generic enum. A variable called like the enum hides it: then
+// `.` reads one of the variable's fields.
+import "_enum_dot_colors.zc"
+
+enum Color { Red, Green }
+
+enum Shape { Dot, Rect(int, int) }
+
+@link_name("c_tone")
+enum Tone { Soft, Loud }
+
+enum Maybe<T> { Nothing, Just(T) }
+
+struct Palette { Green: int; }
+
+fn is_green(c: Color) -> bool {
+    return c == Color::Green;
+}
+
+fn area(s: Shape) -> int {
+    match s {
+        Shape::Dot => { return 0; },
+        Shape::Rect(w, h) => { return w * h; },
+    }
+    return -1;
+}
+
+fn pick() -> Color {
+    return Color.Green;
+}
+
+test "a variant without payload written with a dot" {
+    let c = Color.Green;
+    let typed: Color = Color.Red;
+    assert(is_green(c), "Color.Green should be Color::Green");
+    assert(!is_green(typed), "Color.Red should be Color::Red");
+    assert(is_green(Color.Green), "Color.Green as an argument");
+    assert(c == Color.Green, "Color.Green in a comparison");
+    assert(is_green(pick()), "Color.Green returned");
+}
+
+test "a variant with and without payload of the same enum" {
+    expect_eq(area(Shape.Dot), 0, "Shape.Dot should be Shape::Dot");
+    expect_eq(area(Shape.Rect(2, 3)), 6, "Shape.Rect(2, 3) should be Shape::Rect(2, 3)");
+}
+
+test "a variant of an enum with link_name written with a dot" {
+    let t = Tone.Loud;
+    assert(t == Tone::Loud, "Tone.Loud should be Tone::Loud");
+}
+
+test "a variant of an enum of another module written with a dot" {
+    let h = Hue.Warm;
+    assert(h == Hue::Warm, "Hue.Warm should be Hue::Warm");
+    assert(default_hue() == Hue::Cold, "Hue.Cold inside the module should be Hue::Cold");
+}
+
+test "a variant of a generic enum instance written with a dot" {
+    let m: Maybe<int> = Maybe<int>.Nothing;
+    let is_nothing = false;
+    match m {
+        Maybe::Nothing => { is_nothing = true; },
+        _ => {},
+    }
+    assert(is_nothing, "Maybe<int>.Nothing should be Maybe<int>::Nothing");
+}
+
+test "a variable called like the enum" {
+    let Color = Palette { Green: 4 };
+    expect_eq(Color.Green, 4, "Color.Green should read the variable's field");
+}
