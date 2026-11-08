@@ -366,7 +366,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         if (lexer_peek(l).kind == TOK_SEMICOLON)
         {
             lexer_next(l); // eat ;
-            ASTNode *size_expr = parse_expression(ctx, l);
+            ASTNode *size_expr = parse_constant_expression(ctx, l);
             long long compiled_size = 0;
             int size = 0;
             if (eval_const_int_expr(size_expr, ctx, &compiled_size))

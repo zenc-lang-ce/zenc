@@ -111,7 +111,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             {
                 lexer_next(l);
                 Token value_tok = lexer_peek(l);
-                ASTNode *value_expr = parse_expression(ctx, l);
+                ASTNode *value_expr = parse_constant_expression(ctx, l);
                 long long value = 0;
                 if (!value_expr || !eval_const_int_expr(value_expr, ctx, &value))
                 {

@@ -1,0 +1,7 @@
+// ARGS: build
+enum Shape { Dot, Circle(float) }
+
+fn main() {
+    let s: Shape = Dot;
+    let c = Circle(1.0);
+}

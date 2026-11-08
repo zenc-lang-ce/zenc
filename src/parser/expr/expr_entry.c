@@ -21,6 +21,15 @@ ASTNode *parse_expression(ParserContext *ctx, Lexer *l)
     return n;
 }
 
+ASTNode *parse_constant_expression(ParserContext *ctx, Lexer *l)
+{
+    int saved = ctx->in_constant_expression;
+    ctx->in_constant_expression = 1;
+    ASTNode *n = parse_expression(ctx, l);
+    ctx->in_constant_expression = saved;
+    return n;
+}
+
 Precedence get_token_precedence(Token t)
 {
     if (t.kind == TOK_INT || t.kind == TOK_FLOAT || t.kind == TOK_STRING || t.kind == TOK_IDENT ||
