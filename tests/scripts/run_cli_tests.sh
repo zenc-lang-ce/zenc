@@ -86,6 +86,18 @@ else
     check "unknown flag reports error" 0
 fi
 
+# An option that needs a value, given as the last argument, is an error: it is not ignored, nor
+# passed to the C compiler on its own.
+missing_ok=1
+for option in -o -I -L -l -D -O --cc --backend --backend-opt; do
+    out=$("$ZC" build "$ZC/does_not_exist.zc" "$option" 2>&1)
+    if [ $? -eq 0 ] || ! echo "$out" | grep -q "missing .* after '$option'"; then
+        echo "    $option: $out"
+        missing_ok=0
+    fi
+done
+check "an option without its value reports error" "$missing_ok"
+
 # --- Compile + run smoke test ----------------------------------------------
 
 workdir="$(mktemp -d)"
