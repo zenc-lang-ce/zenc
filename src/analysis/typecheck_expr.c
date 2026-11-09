@@ -1003,11 +1003,12 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
     // `Red` hides the variant `Color::Red`. The parser resolves names in the same order
     // (find_symbol_type_info). A variant without payload is a value of the enum, not a call
     // to a constructor.
-    QualifiedName *variant = &node->var_ref.variant;
+    TypeMember *variant = &node->var_ref.variant;
     EnumVariantReg *enum_variant = NULL;
-    if (variant->name)
+    if (variant->member)
     {
-        enum_variant = find_enum_variant_of(tc->pctx, variant->scope, variant->name);
+        enum_variant =
+            find_enum_variant_of(tc->pctx, type_def_name(variant->owner), variant->member);
     }
     else if (!find_symbol_entry(tc->pctx, node->var_ref.name))
     {

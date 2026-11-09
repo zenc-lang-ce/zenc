@@ -51,10 +51,11 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
             return 1;
         }
         // Check for enum variants
-        QualifiedName *variant = &node->var_ref.variant;
-        EnumVariantReg *ev = variant->name
-                                 ? find_enum_variant_of(ctx, variant->scope, variant->name)
-                                 : find_enum_variant(ctx, node->var_ref.name);
+        TypeMember *variant = &node->var_ref.variant;
+        EnumVariantReg *ev =
+            variant->member
+                ? find_enum_variant_of(ctx, type_def_name(variant->owner), variant->member)
+                : find_enum_variant(ctx, node->var_ref.name);
         if (ev)
         {
             *out_val = (long long)ev->tag_id;

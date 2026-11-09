@@ -1767,10 +1767,11 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
             }
 
             // Check for enum variants (constructors)
-            QualifiedName *variant = &node->call.callee->var_ref.variant;
-            EnumVariantReg *ev = variant->name
-                                     ? find_enum_variant_of(ctx, variant->scope, variant->name)
-                                     : find_enum_variant(ctx, node->call.callee->var_ref.name);
+            TypeMember *variant = &node->call.callee->var_ref.variant;
+            EnumVariantReg *ev =
+                variant->member
+                    ? find_enum_variant_of(ctx, type_def_name(variant->owner), variant->member)
+                    : find_enum_variant(ctx, node->call.callee->var_ref.name);
             if (ev)
             {
                 return ev->enum_name;

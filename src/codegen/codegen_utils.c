@@ -451,7 +451,7 @@ char *drop_value_stmt(Type *t, const char *lvalue, int depth)
 int moves_drop_value(ParserContext *ctx, ASTNode *node)
 {
     // An enum variant (`Slot::Empty`) builds a new value each time: there is nothing to invalidate.
-    if (node->kind == NODE_EXPR_VAR && node->var_ref.variant.name)
+    if (node->kind == NODE_EXPR_VAR && node->var_ref.variant.member)
     {
         return 0;
     }

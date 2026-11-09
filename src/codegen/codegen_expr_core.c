@@ -218,12 +218,13 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
     }
 
     const char *name = node->var_ref.name;
-    const QualifiedName *variant = &node->var_ref.variant;
-    const char *enum_c_name = variant->name ? link_name_of(ctx, variant->scope) : NULL;
+    const TypeMember *variant = &node->var_ref.variant;
+    const char *enum_c_name =
+        variant->member ? link_name_of(ctx, type_def_name(variant->owner)) : NULL;
     if (enum_c_name)
     {
         // A variant of an enum with @link_name: C names it after the enum's C name.
-        EMIT(ctx, "%s", mangle_variant_symbol(enum_c_name, variant->name));
+        EMIT(ctx, "%s", mangle_variant_symbol(enum_c_name, variant->member));
     }
     else if (strcmp(name, "self") == 0 && node->type_info && node->type_info->kind == TYPE_STRUCT)
     {
@@ -245,8 +246,8 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
 
     // A variant without a payload is a call to its constructor, unless the parent
     // NODE_EXPR_CALL adds the ().
-    if (!g_emitting_callee && variant->name &&
-        find_enum_variant_of(ctx, variant->scope, variant->name))
+    if (!g_emitting_callee && variant->member &&
+        find_enum_variant_of(ctx, type_def_name(variant->owner), variant->member))
     {
         EMIT(ctx, "()");
     }
