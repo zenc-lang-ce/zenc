@@ -22,6 +22,7 @@ if [ $# -ne 3 ]; then
     echo "Usage: $0 REF_ZC NEW_ZC TAG"
     exit 2
 fi
+tests=$(bash tests/scripts/list_tests.sh) || exit 2
 WORK=${ZC_WORK:-${TMPDIR:-/tmp}/zc-work}
 mkdir -p "$WORK"
 tag=$3
@@ -68,7 +69,7 @@ export -f one onem
 here=$(pwd)
 awesome=${AWESOME_ZENC:-../awesome-zenc}
 {
-    bash tests/scripts/list_tests.sh | sed "s#^#$here/#"
+    echo "$tests" | sed "s#^#$here/#"
     if [ -d "$awesome" ]; then
         find "$(cd "$awesome" && pwd)" -name '*.zc' | grep -v /std/
     else

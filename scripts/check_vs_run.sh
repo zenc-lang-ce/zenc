@@ -24,6 +24,10 @@ if [ $# -gt 0 ]; then
 else
     read_lines TESTS < <("$TEST_SCRIPTS/list_tests.sh")
 fi
+if [ ${#TESTS[@]} -eq 0 ]; then
+    echo "Error: no tests to measure"
+    exit 2
+fi
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
