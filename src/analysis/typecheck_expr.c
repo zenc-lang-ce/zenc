@@ -2,6 +2,24 @@
 #include "typecheck_internal.h"
 #include "../utils/utils.h"
 
+int check_match_binding_move(TypeChecker *tc, ASTNode *rvalue)
+{
+    if (!rvalue || rvalue->kind != NODE_EXPR_VAR || !rvalue->type_info ||
+        is_type_copy(tc->pctx, rvalue->type_info))
+    {
+        return 0;
+    }
+    ZenSymbol *sym = tc_lookup(tc, rvalue->var_ref.name);
+    if (!sym || !sym->is_borrowed)
+    {
+        return 0;
+    }
+    const char *hints[] = {"The matched value keeps ownership of its payload and drops it",
+                           "Use the binding in place, or bind it with 'ref' to borrow it", NULL};
+    tc_move_error_with_hints(tc, rvalue->token, "Cannot move out of a match binding", hints);
+    return 1;
+}
+
 void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
 {
     if (!rvalue || !rvalue->type_info)
@@ -17,7 +35,7 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
     if (rvalue->kind == NODE_EXPR_VAR)
     {
         ZenSymbol *sym = tc_lookup(tc, rvalue->var_ref.name);
-        if (sym)
+        if (sym && !check_match_binding_move(tc, rvalue))
         {
             mark_symbol_moved(tc->pctx, sym, rvalue);
         }

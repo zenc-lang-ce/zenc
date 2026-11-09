@@ -442,7 +442,7 @@ void tc_exit_scope(TypeChecker *tc)
     exit_scope(tc->pctx);
 }
 
-void tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int is_immutable)
+ZenSymbol *tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int is_immutable)
 {
     CompilerConfig *cfg = &tc->pctx->compiler->config;
     if (cfg->misra_mode)
@@ -457,6 +457,7 @@ void tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int i
         sym->is_immutable = is_immutable;
         sym->scope_depth = tc->current_depth;
     }
+    return sym;
 }
 
 ZenSymbol *tc_lookup(TypeChecker *tc, const char *name)

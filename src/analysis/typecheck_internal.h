@@ -30,7 +30,7 @@ int get_asm_register_size(Type *t);
 void collect_symbols(ASTNode *node, SymbolSet *reads, SymbolSet *writes);
 void tc_enter_scope(TypeChecker *tc);
 void tc_exit_scope(TypeChecker *tc);
-void tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int is_immutable);
+ZenSymbol *tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int is_immutable);
 ZenSymbol *tc_lookup(TypeChecker *tc, const char *name);
 void mark_type_as_used(TypeChecker *tc, Type *t);
 void check_side_effect_collision(TypeChecker *tc, ASTNode *left, ASTNode *right, Token token);
@@ -38,6 +38,9 @@ void check_all_args_side_effects(TypeChecker *tc, ASTNode *receiver, ASTNode *ar
 
 // Expression checkers (defined in typecheck_expr.c)
 void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue);
+// Reports moving `rvalue` when it is a value bound by a match arm, a copy of a payload that the
+// matched value still owns and drops. Returns 1 when it reported it.
+int check_match_binding_move(TypeChecker *tc, ASTNode *rvalue);
 void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth);
 void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth);
 void check_expr_var(TypeChecker *tc, ASTNode *node);
