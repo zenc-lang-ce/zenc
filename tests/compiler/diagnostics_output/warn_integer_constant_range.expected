@@ -1,0 +1,32 @@
+   Compiling tests/compiler/diagnostics_output/warn_integer_constant_range.zc...
+warning: Integer constant 300 does not fit in 'u8' (8-bit)
+  --> tests/compiler/diagnostics_output/warn_integer_constant_range.zc:24:9
+   |
+24 |     let too_big: u8 = 300;
+   |         ^ here
+   |
+warning: Integer constant -1 does not fit in 'u8' (8-bit)
+  --> tests/compiler/diagnostics_output/warn_integer_constant_range.zc:25:9
+   |
+25 |     let wrapped: u8 = -1;
+   |         ^ here
+   |
+warning: Integer constant 128 does not fit in 'i8' (8-bit)
+  --> tests/compiler/diagnostics_output/warn_integer_constant_range.zc:26:13
+   |
+26 |     let q = Pixel { level: 0, offset: 128 };
+   |             ^ here
+   |
+warning: Integer constant 100000 does not fit in 'u16' (16-bit)
+  --> tests/compiler/diagnostics_output/warn_integer_constant_range.zc:27:25
+   |
+27 |     let t = scale(LIMIT * 100);
+   |                         ^ here
+   |
+warning: Implicit narrowing conversion from 'int' (32-bit) to 'u8' (8-bit)
+  --> tests/compiler/diagnostics_output/warn_integer_constant_range.zc:30:9
+   |
+30 |     let narrowed: u8 = count;
+   |         ^ here
+   |
+[exit 0]
