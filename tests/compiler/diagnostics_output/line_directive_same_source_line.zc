@@ -1,0 +1,3 @@
+// ARGS: run -q
+import "std/io.zc"
+fn main() { let a = [1, 2, 3]; let i = 5; println(f"{a[i]}"); }

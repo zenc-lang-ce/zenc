@@ -54,6 +54,8 @@ typedef struct Emitter
     int indent_level;
     int pending_indent;
     size_t output_line;
+    /** Every newline ever written, buffers included; unlike output_line, a pop does not undo it. */
+    size_t newline_count;
     EmitterSavedState saved_stack[EMITTER_SAVED_STACK_MAX];
     int saved_count;
 } Emitter;
