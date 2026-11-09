@@ -11,6 +11,7 @@
 #include "../parser/parser.h"
 #include "../platform/os.h"
 #include <ctype.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -117,6 +118,18 @@ static void reach_names_in(BodySet *set, const char *text, long len)
     }
 }
 
+// The position in `file` of what is read back later. Without it the bodies to write cannot be
+// chosen, so it is an error of the system, like running out of memory.
+static long position_in(FILE *file)
+{
+    long position = ftell(file);
+    if (position < 0)
+    {
+        zfatal("could not read back the generated C: %s", strerror(errno));
+    }
+    return position;
+}
+
 // The bytes [start, end) of `file`.
 static char *read_range(FILE *file, long start, long end)
 {
@@ -135,7 +148,7 @@ static void reach_names_in_written_text(ParserContext *ctx, BodySet *set)
 {
     FILE *out = ctx->cg.emitter.file;
     fflush(out);
-    long size = ftell(out);
+    long size = position_in(out);
     char *text = read_range(out, 0, size);
     long from = 0;
     for (int s = 0; s < ctx->cg.prototype_span_count; s++)
@@ -154,7 +167,7 @@ static void write_body(ParserContext *ctx, Body *body, FILE *scratch)
     emitter_init_file(&ctx->cg.emitter, scratch);
     // A body may follow another than in the list: its first #line must not be skipped.
     forget_source_mapping();
-    body->start = ftell(scratch);
+    body->start = position_in(scratch);
     if (body->top->cfg_condition)
     {
         EMIT(ctx, "#if %s\n", body->top->cfg_condition);
@@ -177,7 +190,7 @@ static void write_body(ParserContext *ctx, Body *body, FILE *scratch)
         EMIT(ctx, "#endif\n");
     }
     fflush(scratch);
-    body->end = ftell(scratch);
+    body->end = position_in(scratch);
     body->written = 1;
     ctx->cg.emitter = saved;
 }
@@ -347,7 +360,7 @@ int remove_unused_prototypes(ParserContext *ctx, const char *path)
         return -1;
     }
     fseek(in, 0, SEEK_END);
-    long size = ftell(in);
+    long size = position_in(in);
     char *text = read_range(in, 0, size);
     fclose(in);
 

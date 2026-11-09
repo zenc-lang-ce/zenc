@@ -291,7 +291,14 @@ void prototype_span_begin(ParserContext *ctx, ASTNode *func, const char *name_ov
                                  : NULL;
     if (ctx->cg.open_span_name)
     {
-        ctx->cg.open_span_start = ftell(ctx->cg.emitter.file);
+        // Without its position the prototype cannot be removed: it stays, which is always valid C.
+        long start = ftell(ctx->cg.emitter.file);
+        if (start < 0)
+        {
+            ctx->cg.open_span_name = NULL;
+            return;
+        }
+        ctx->cg.open_span_start = start;
     }
 }
 
@@ -299,6 +306,12 @@ void prototype_span_end(ParserContext *ctx)
 {
     if (!ctx->cg.open_span_name)
     {
+        return;
+    }
+    long end = ftell(ctx->cg.emitter.file);
+    if (end < 0)
+    {
+        ctx->cg.open_span_name = NULL;
         return;
     }
     if (ctx->cg.prototype_span_count == ctx->cg.prototype_span_cap)
@@ -311,7 +324,7 @@ void prototype_span_end(ParserContext *ctx)
     PrototypeSpan *span = &ctx->cg.prototype_spans[ctx->cg.prototype_span_count++];
     span->name = ctx->cg.open_span_name;
     span->start = ctx->cg.open_span_start;
-    span->end = ftell(ctx->cg.emitter.file);
+    span->end = end;
     ctx->cg.open_span_name = NULL;
 }
 
