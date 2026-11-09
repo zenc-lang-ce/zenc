@@ -1,0 +1,40 @@
+// language/features/enums: test_bare_variant_in_constants
+// A variant is written with its enum (`Size::Big`), except in a constant
+// expression, which the compiler computes itself: the size of an array and
+// the value of another variant may name it alone. A variable, a parameter or
+// a function with the name of a variant is not the variant.
+enum Size { Small = 2, Big = 4 }
+
+enum Level { Low = 1, High = Low + 4 }
+
+enum Speed { Fast, Slow }
+
+fn plus_one(Small: int) -> int {
+    return Small + 1;
+}
+
+fn Fast() -> int {
+    return 7;
+}
+
+test "a variant alone as an array size" {
+    let cells: [int; Big];
+    expect_eq(sizeof(cells) / sizeof(int), (usize)4, "[int; Big] should hold Size::Big elements");
+}
+
+test "a variant alone in the value of another variant" {
+    expect_eq((int)Level::High, 5, "High = Low + 4 should be 5");
+}
+
+test "a parameter named like a variant" {
+    expect_eq(plus_one(10), 11, "Small should be the parameter");
+}
+
+test "a local variable named like a variant" {
+    let Small = 3;
+    expect_eq(Small + 1, 4, "Small should be the local variable");
+}
+
+test "a function named like a variant" {
+    expect_eq(Fast(), 7, "Fast() should call the function");
+}

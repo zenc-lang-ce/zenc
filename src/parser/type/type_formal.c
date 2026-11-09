@@ -190,7 +190,7 @@ static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
             continue;
         }
 
-        ASTNode *size_expr = parse_expression(ctx, l);
+        ASTNode *size_expr = parse_constant_expression(ctx, l);
         long long compiled_size = 0;
         int size = 0;
         if (!size_expr)

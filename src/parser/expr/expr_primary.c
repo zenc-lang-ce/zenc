@@ -1027,6 +1027,27 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         }
 
         FuncSig *sig = find_func(ctx, acc);
+
+        // A variant is written with its enum: `Shape::Dot`, `Shape::Circle(1.0)`. Alone
+        // (`Dot`, `Circle(1.0)`) it only names one in a constant expression, which the
+        // compiler computes itself; anywhere else C would get an undeclared name. A variable,
+        // a parameter or a function with that name is not a variant.
+        if (!variant.name && !sig && !ctx->in_constant_expression && !find_symbol_entry(ctx, acc))
+        {
+            EnumVariantReg *bare = find_enum_variant(ctx, acc);
+            if (bare && strcmp(bare->variant_name, acc) == 0)
+            {
+                char msg[MAX_SHORT_MSG_LEN];
+                char hint[MAX_SHORT_MSG_LEN];
+                snprintf(msg, sizeof(msg), "'%s' is a variant of the enum '%s'", acc,
+                         bare->enum_name);
+                snprintf(hint, sizeof(hint), "write it with its enum: %s::%s", bare->enum_name,
+                         acc);
+                const char *hints[] = {hint, NULL};
+                zerror_with_hints(t, msg, hints);
+            }
+        }
+
         if (strcmp(acc, "readln") == 0 && lexer_peek(l).kind == TOK_LPAREN)
         {
             lexer_next(l);

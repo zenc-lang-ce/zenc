@@ -406,6 +406,7 @@ struct ParserContext
     ASTNode *current_impl_methods;           ///< Head of method list for current impl block.
     int in_method_with_self;                 ///< 1 if parsing body of method with self parameter.
     int self_is_pointer;                     ///< 1 if self is a pointer receiver (self*).
+    int in_constant_expression; ///< 1 while parse_constant_expression reads an expression.
 
     // Deferred function bodies
     PendingBody *pending_bodies;               ///< First body waiting to be parsed (FIFO).
@@ -911,6 +912,11 @@ ASTNode *parse_block(ParserContext *ctx, Lexer *l);
 /** A block that is the value of an expression: its last string literal is the value. */
 ASTNode *parse_value_block(ParserContext *ctx, Lexer *l);
 ASTNode *parse_expression(ParserContext *ctx, Lexer *l);
+/**
+ * An expression the compiler computes while parsing (an array size, the value of an enum
+ * variant, a C macro): it may name a variant without its enum (`[int; Big]`).
+ */
+ASTNode *parse_constant_expression(ParserContext *ctx, Lexer *l);
 ASTNode *parse_expr_prec(ParserContext *ctx, Lexer *l, Precedence min_prec);
 ASTNode *parse_return(ParserContext *ctx, Lexer *l);
 ASTNode *parse_assert(ParserContext *ctx, Lexer *l);

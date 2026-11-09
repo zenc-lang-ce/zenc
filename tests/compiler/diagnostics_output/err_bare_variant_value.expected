@@ -1,0 +1,30 @@
+   Compiling tests/compiler/diagnostics_output/err_bare_variant_value.zc...
+error: 'Dot' is a variant of the enum 'Shape'
+  --> tests/compiler/diagnostics_output/err_bare_variant_value.zc:5:20
+   |
+5  |     let s: Shape = Dot;
+   |                    ^ here
+   |
+   = help: write it with its enum: Shape::Dot
+error: 'Circle' is a variant of the enum 'Shape'
+  --> tests/compiler/diagnostics_output/err_bare_variant_value.zc:6:13
+   |
+6  |     let c = Circle(1.0);
+   |             ^ here
+   |
+   = help: write it with its enum: Shape::Circle
+warning: Unused variable 'c'
+  --> tests/compiler/diagnostics_output/err_bare_variant_value.zc:6:9
+   |
+6  |     let c = Circle(1.0);
+   |         ^ here
+   |
+   = note: Consider removing it or prefixing with '_'
+warning: Unused variable 's'
+  --> tests/compiler/diagnostics_output/err_bare_variant_value.zc:5:9
+   |
+5  |     let s: Shape = Dot;
+   |         ^ here
+   |
+   = note: Consider removing it or prefixing with '_'
+[exit 1]

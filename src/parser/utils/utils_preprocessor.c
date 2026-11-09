@@ -476,7 +476,7 @@ void try_parse_macro_const(ParserContext *ctx, const char *content)
         return;
     }
 
-    ASTNode *expr = parse_expression(ctx, &l);
+    ASTNode *expr = parse_constant_expression(ctx, &l);
     if (!expr)
     {
         return;
