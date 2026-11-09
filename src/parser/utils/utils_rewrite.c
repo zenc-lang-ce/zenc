@@ -160,45 +160,15 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
             if (is_token(param_tok, "self"))
             {
                 names[count] = xstrdup("self");
-                if (ctx->current_impl_struct)
+                if (ctx->current_impl_target)
                 {
-                    char *buf_type = xmalloc(strlen(ctx->current_impl_struct) + 2);
-                    sprintf(buf_type, "%s*", ctx->current_impl_struct); /* safe */
+                    // self is a pointer to the impl's type, in the signature and the body.
+                    Type *st = type_clone(ctx->current_impl_target);
+                    st->is_const = is_const_param;
+                    Type *ptr = type_new_ptr(st);
 
-                    if (is_primitive_type_name(ctx->current_impl_struct))
-                    {
-                        // Primitives: self is a pointer in signature and body
-                        TypeKind pk = get_primitive_type_kind(ctx->current_impl_struct);
-                        Type *bt = type_new(pk);
-                        if (pk == TYPE_STRUCT)
-                        { // Fallback if get_primitive_type_kind failed for some reason
-                            bt->name = xstrdup(ctx->current_impl_struct);
-                        }
-                        bt->is_const = is_const_param;
-                        Type *ptr = type_new_ptr(bt);
-
-                        add_symbol(ctx, "self", ptr, 0);
-                        types[count] = ptr;
-                    }
-                    else
-                    {
-                        // Structs and opaque aliases: self is a pointer in signature and body.
-                        // In `impl Vec<T>` it is a `Vec<T>*`.
-                        Type *st = type_from_name(ctx, ctx->current_impl_struct);
-                        if (ctx->current_impl_template_param)
-                        {
-                            Type **args = xmalloc(sizeof(Type *));
-                            args[0] = type_new(TYPE_GENERIC);
-                            args[0]->name = xstrdup(ctx->current_impl_template_param);
-                            st = type_new_instance(ctx->current_impl_struct, args, 1);
-                        }
-                        st->is_const = is_const_param;
-                        Type *ptr = type_new_ptr(st);
-
-                        add_symbol(ctx, "self", ptr, 0);
-                        types[count] = ptr;
-                    }
-                    zfree(buf_type);
+                    add_symbol(ctx, "self", ptr, 0);
+                    types[count] = ptr;
                 }
                 else
                 {

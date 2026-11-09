@@ -155,8 +155,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             self_node->var_ref.name = xstrdup("self");
             self_node->token = dot_tok;
 
-            Type *inner_type =
-                type_from_name(ctx, ctx->current_impl_struct ? ctx->current_impl_struct : "Self");
+            Type *inner_type = ctx->current_impl_target ? type_clone(ctx->current_impl_target)
+                                                        : type_from_name(ctx, "Self");
             self_node->type_info = type_new_ptr(inner_type);
 
             node = ast_create(NODE_EXPR_MEMBER);
@@ -886,9 +886,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 }
 
                 // `Self { ... }` builds the impl's struct, as `Self` names it in a type.
-                if (strcmp(acc, "Self") == 0 && ctx->current_impl_struct)
+                if (strcmp(acc, "Self") == 0 && ctx->current_impl_target)
                 {
-                    acc = xstrdup(ctx->current_impl_struct);
+                    acc = type_impl_name(ctx->current_impl_target);
                 }
 #if FF_COMPATIBILITY_0_5
                 if (!generic_type)
