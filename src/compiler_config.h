@@ -62,6 +62,7 @@ typedef struct CompilerConfig
     int use_typecheck;
     int warn_as_errors;
     int no_suppress_warnings;
+    int prune_unused; ///< --prune-unused: a whole program leaves out what nothing reaches.
     int misra_mode;
     ZcProfile profile;
     int misra_output; ///< 1 = prefer MISRA-conforming generated C.

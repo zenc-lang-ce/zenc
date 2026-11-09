@@ -2,11 +2,11 @@
 // Writing only the functions a whole program reaches.
 //
 // zc emits every method of every instance of a generic type and every function of the std
-// modules a program imports, and most of them the program never calls. In a whole program (see
-// builds_whole_program in the driver) only the generated C can call them, so codegen writes a
-// body only when the C already written names it. The references are read from the C itself: it
-// names every function it calls, including the calls codegen adds (drop, iterators, operators)
-// and the ones inside raw blocks, which the AST does not show.
+// modules a program imports, and most of them the program never calls. In a whole program, built
+// with --prune-unused (see whole_program_obstacle in the driver), only the generated C can call
+// them, so codegen writes a body only when the C already written names it. The references are
+// read from the C itself: it names every function it calls, including the calls codegen adds
+// (drop, iterators, operators) and the ones inside raw blocks, which the AST does not show.
 #include "codegen.h"
 #include "../parser/parser.h"
 #include "../platform/os.h"
@@ -320,15 +320,21 @@ void emit_function_bodies(ParserContext *ctx, ASTNode *funcs)
         }
     }
 
-    // The names written, sorted (set.names is), for remove_unused_prototypes; then the bodies, in
-    // the order of the list.
+    // The names written, sorted (set.names is), for remove_unused_prototypes, and those left out,
+    // for the driver to report; then the bodies, in the order of the list.
     ctx->cg.written_bodies = xmalloc(sizeof(char *) * (size_t)(set.name_count + 1));
     ctx->cg.written_body_count = 0;
+    ctx->cg.left_out_bodies = xmalloc(sizeof(char *) * (size_t)(set.name_count + 1));
+    ctx->cg.left_out_body_count = 0;
     for (int n = 0; n < set.name_count; n++)
     {
         if (set.names[n].reached)
         {
             ctx->cg.written_bodies[ctx->cg.written_body_count++] = set.names[n].name;
+        }
+        else
+        {
+            ctx->cg.left_out_bodies[ctx->cg.left_out_body_count++] = set.names[n].name;
         }
     }
     for (int b = 0; b < set.body_count; b++)

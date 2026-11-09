@@ -484,6 +484,8 @@ struct ParserContext
         long open_span_start;
         const char **written_bodies; ///< Sorted C names of the bodies emit_function_bodies wrote.
         int written_body_count;
+        const char **left_out_bodies; ///< Sorted C names of the bodies it left out.
+        int left_out_body_count;
     } cg;
 
     // Type Validation

@@ -388,6 +388,10 @@ int main(int argc, char **argv)
         {
             cfg->no_suppress_warnings = 1;
         }
+        else if (strcmp(arg, "--prune-unused") == 0)
+        {
+            cfg->prune_unused = 1;
+        }
         else if (strcmp(arg, "--cpp") == 0)
         {
             if (z_is_windows())
