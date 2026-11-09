@@ -53,6 +53,14 @@ them; code that does not follow them yet is not a precedent.
   not the names of types, functions, methods or fields. `strcmp(type, "Vec")
   == 0` is wrong both ways: it takes a user type called `Vec` for the standard
   one, and it misses an alias.
+- **A backend receives structured data and never analyzes strings.**
+  Everything a backend needs to decide (the type of an expression, which
+  declaration a name resolves to, which function a call targets, what to
+  drop) must already be in the AST as structured data, put there by the
+  parser or the typechecker. A backend does not parse, compare or search
+  names or type text to find out what something is. If it lacks a datum, add
+  it to the AST where it is produced; do not rebuild it from a string when
+  emitting. Code that does this today is debt, not a precedent.
 - **The compiler does not know the standard library.** Do not hard-code std
   type, function, field or method names; go through traits and protocols.
   Some places still do it; do not add new ones.
