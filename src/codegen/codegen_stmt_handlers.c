@@ -668,29 +668,9 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                     codegen_expression(ctx, node->var_decl.init_expr);
                 }
             }
-            else if (node->type_info)
+            else if (zero_initializer(ctx, node->type_info))
             {
-                TypeKind k = node->type_info->kind;
-                if (k == TYPE_ARRAY || k == TYPE_STRUCT)
-                {
-                    EMIT(ctx, " = %s", ctx->config->use_cpp ? "{}" : "{0}");
-                }
-                else if (is_int_type(k))
-                {
-                    EMIT(ctx, " = 0");
-                }
-                else if (k == TYPE_F32 || k == TYPE_FLOAT)
-                {
-                    EMIT(ctx, " = 0.0f");
-                }
-                else if (k == TYPE_F64)
-                {
-                    EMIT(ctx, " = 0.0");
-                }
-                else if (k == TYPE_BOOL)
-                {
-                    EMIT(ctx, " = false");
-                }
+                EMIT(ctx, " = %s", zero_initializer(ctx, node->type_info));
             }
             EMIT(ctx, ";\n");
             if (node->var_decl.init_expr && emit_move_invalidation(ctx, node->var_decl.init_expr))

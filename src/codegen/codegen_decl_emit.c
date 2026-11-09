@@ -104,6 +104,14 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
                     zfree(tname);
                 }
             }
+            else
+            {
+                // A global without a value is zeroed explicitly. Without an initializer it is a
+                // tentative definition, which some C compilers emit as a common symbol, with an
+                // alignment the linker derives from its size (Apple's clang and ld).
+                const char *zero = zero_initializer(ctx, node->type_info);
+                EMIT(ctx, " = %s", zero ? zero : (ctx->config->use_cpp ? "{}" : "{0}"));
+            }
             EMIT(ctx, ";\n");
             // A global with Drop has a drop flag: assigning to it drops the old value.
             if (node->kind == NODE_VAR_DECL)
