@@ -68,25 +68,6 @@ Type *find_symbol_type_info(ParserContext *ctx, const char *n)
     return NULL;
 }
 
-char *find_symbol_type(ParserContext *ctx, const char *n)
-{
-    ZenSymbol *sym = symbol_lookup(ctx->current_scope, n);
-    if (sym)
-    {
-        return (sym->type_info && sym->type_info->kind != TYPE_UNKNOWN)
-                   ? type_mangle_spelling(sym->type_info)
-                   : NULL;
-    }
-
-    EnumVariantReg *ev = find_enum_variant(ctx, n);
-    if (ev)
-    {
-        return xstrdup(ev->enum_name);
-    }
-
-    return NULL;
-}
-
 ZenSymbol *find_symbol_entry(ParserContext *ctx, const char *n)
 {
     return symbol_lookup(ctx->current_scope, n);

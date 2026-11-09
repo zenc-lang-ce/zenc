@@ -1091,7 +1091,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         // (`Dot`, `Circle(1.0)`) it only names one in a constant expression, which the
         // compiler computes itself; anywhere else C would get an undeclared name. A variable,
         // a parameter or a function with that name is not a variant.
-        if (!variant.name && !sig && !ctx->in_constant_expression && !find_symbol_entry(ctx, acc))
+        if (!variant.member && !sig && !ctx->in_constant_expression && !find_symbol_entry(ctx, acc))
         {
             EnumVariantReg *bare = find_enum_variant(ctx, acc);
             if (bare && strcmp(bare->variant_name, acc) == 0)

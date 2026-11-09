@@ -1016,8 +1016,7 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
     }
     if (enum_variant)
     {
-        Type *enum_type = type_new(TYPE_ENUM);
-        enum_type->name = xstrdup(enum_variant->enum_name);
+        Type *enum_type = type_new_enum(enum_variant->enum_name);
         // Naming a variant uses its enum, as declaring something of its type does (MISRA
         // Rule 2.4 reports the types a program declares and never uses).
         mark_type_as_used(tc, enum_type);
