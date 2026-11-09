@@ -1,0 +1,35 @@
+   Compiling tests/compiler/diagnostics_output/err_default_shadowed_by_local.zc...
+warning: Variable 'limit' shadows a previous declaration
+  --> tests/compiler/diagnostics_output/err_default_shadowed_by_local.zc:25:9
+   |
+25 |     let limit = 100;
+   |         ^ here
+   |
+   = note: This can lead to confusion
+error: A default value of 'clamp' uses 'limit', which is a local variable here
+  --> tests/compiler/diagnostics_output/err_default_shadowed_by_local.zc:26:13
+   |
+26 |     let a = clamp(7);
+   |             ^ here
+   |
+error: A default value of 'top' uses 'limit', which is a local variable here
+  --> tests/compiler/diagnostics_output/err_default_shadowed_by_local.zc:27:13
+   |
+27 |     let b = r.top();
+   |             ^ here
+   |
+warning: Variable 'limit' shadows a previous declaration
+  --> tests/compiler/diagnostics_output/err_default_shadowed_by_local.zc:25:9
+   |
+25 |     let limit = 100;
+   |         ^ here
+   |
+   = note: This can lead to confusion
+warning: Variable 'limit' shadows a previous declaration
+  --> tests/compiler/diagnostics_output/err_default_shadowed_by_local.zc:25:9
+   |
+25 |     let limit = 100;
+   |         ^ here
+   |
+   = note: This can lead to confusion
+[exit 1]

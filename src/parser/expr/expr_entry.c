@@ -189,7 +189,7 @@ static void add_name(char ***list, int *count, const char *name)
 }
 
 // Recursively find all variable references in an expression/statement.
-static void find_var_refs(ASTNode *node, char ***refs, int *ref_count)
+void find_var_refs(ASTNode *node, char ***refs, int *ref_count)
 {
     if (!node)
     {

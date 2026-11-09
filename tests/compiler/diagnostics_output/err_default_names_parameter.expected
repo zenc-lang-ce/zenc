@@ -1,0 +1,20 @@
+   Compiling tests/compiler/diagnostics_output/err_default_names_parameter.zc...
+error: The default value of 'b' uses the parameter 'a'
+  --> tests/compiler/diagnostics_output/err_default_names_parameter.zc:4:29
+   |
+4  | fn after(a: int, b: int = a + 1) -> int {
+   |                             ^ here
+   |
+error: The default value of 'b' uses the parameter 'c'
+  --> tests/compiler/diagnostics_output/err_default_names_parameter.zc:8:20
+   |
+8  | fn before(b: int = c, c: int = 7) -> int {
+   |                    ^ here
+   |
+error: The default value of 'dx' uses the parameter 'self'
+  --> tests/compiler/diagnostics_output/err_default_names_parameter.zc:17:37
+   |
+17 |     fn shifted(self, dx: int = self.x) -> int {
+   |                                     ^ here
+   |
+[exit 1]
