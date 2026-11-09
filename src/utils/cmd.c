@@ -216,8 +216,8 @@ static int builds_whole_program(const ArgList *list, const char *temp_source_fil
     return 1;
 }
 
-void build_compile_arg_list(ArgList *list, const char *outfile, const char *temp_source_file,
-                            ZenCompiler *compiler)
+int build_compile_arg_list(ArgList *list, const char *outfile, const char *temp_source_file,
+                           ZenCompiler *compiler)
 {
     CompilerConfig *cfg = &compiler->config;
 
@@ -425,7 +425,9 @@ void build_compile_arg_list(ArgList *list, const char *outfile, const char *temp
     if (builds_whole_program(list, temp_source_file, cfg))
     {
         arg_list_add(list, "-DZC_WHOLE_PROGRAM");
+        return 1;
     }
+    return 0;
 }
 
 void arg_list_init(ArgList *list)

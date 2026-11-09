@@ -480,6 +480,22 @@ if [ -x "$workdir/linkage/own_abs" ] && "$workdir/linkage/own_abs"; then
 else
     check "a whole-program build defines a function a C header declares" 0
 fi
+# zc also leaves those functions out of the C it compiles (kept here with --emit-c), but not
+# one that the C runtime calls without its name.
+"$ZC" build -w --emit-c "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" >/dev/null 2>&1
+if [ -f "$workdir/linkage/whole.c" ] && ! grep -q 'never_called' "$workdir/linkage/whole.c" &&
+    grep -q ' used(void)' "$workdir/linkage/whole.c"; then
+    check "a whole-program build leaves unused functions out of its C" 1
+else
+    check "a whole-program build leaves unused functions out of its C" 0
+fi
+printf 'let ready: int = 0;\n@constructor\nfn set_ready() {\n    ready = 1;\n}\nfn main() {\n    if ready != 1 { exit(1); }\n}\n' > "$workdir/linkage/ctor.zc"
+"$ZC" build -w "$workdir/linkage/ctor.zc" -o "$workdir/linkage/ctor" >/dev/null 2>&1
+if [ -x "$workdir/linkage/ctor" ] && "$workdir/linkage/ctor"; then
+    check "a whole-program build keeps a @constructor nothing calls" 1
+else
+    check "a whole-program build keeps a @constructor nothing calls" 0
+fi
 
 # A C file of the user may call any function of the program by name: with one, they keep
 # external linkage.

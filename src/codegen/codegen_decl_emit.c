@@ -227,8 +227,10 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                     {
                         EMIT(ctx, "extern \"C\" ");
                     }
+                    prototype_span_begin(ctx, f, NULL);
                     emit_func_signature(ctx, f, NULL);
                     EMIT(ctx, ";\n");
+                    prototype_span_end(ctx);
                 }
             }
             if (f->cfg_condition)
@@ -260,8 +262,10 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 {
                     EMIT(ctx, "#if %s\n", m->cfg_condition);
                 }
+                prototype_span_begin(ctx, m, m->func.name);
                 emit_func_signature(ctx, m, m->func.name);
                 EMIT(ctx, ";\n");
+                prototype_span_end(ctx);
                 if (m->cfg_condition)
                 {
                     EMIT(ctx, "#endif\n");
@@ -299,8 +303,10 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 {
                     EMIT(ctx, "#if %s\n", m->cfg_condition);
                 }
+                prototype_span_begin(ctx, m, NULL);
                 emit_func_signature(ctx, m, NULL);
                 EMIT(ctx, ";\n");
+                prototype_span_end(ctx);
                 if (m->cfg_condition)
                 {
                     EMIT(ctx, "#endif\n");

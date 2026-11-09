@@ -334,6 +334,17 @@ typedef struct PendingBody
 } PendingBody;
 
 /**
+ * @brief Where the prototype of a function a whole program may leave out (see
+ *        prototype_span_begin) is in the C file being written: bytes [start, end).
+ */
+typedef struct PrototypeSpan
+{
+    const char *name; ///< The function's name in C.
+    long start;
+    long end;
+} PrototypeSpan;
+
+/**
  * @brief Global compilation state and symbol table.
  *
  * ParserContext maintains the state of the compiler during parsing and analysis.
@@ -462,6 +473,17 @@ struct ParserContext
         int loop_defer_capacity;  ///< Allocated slots of loop_defer_boundary.
         int loop_depth;           ///< Current loop nesting depth.
         int func_defer_boundary;  ///< Defer stack index at function entry.
+
+        /// Write only the function bodies the program reaches (a whole program, written to a
+        /// file): see emit_function_bodies.
+        int emit_reached_only;
+        PrototypeSpan *prototype_spans; ///< For remove_unused_prototypes.
+        int prototype_span_count;
+        int prototype_span_cap;
+        const char *open_span_name; ///< The prototype being written, or NULL.
+        long open_span_start;
+        const char **written_bodies; ///< Sorted C names of the bodies emit_function_bodies wrote.
+        int written_body_count;
     } cg;
 
     // Type Validation
