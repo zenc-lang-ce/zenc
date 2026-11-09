@@ -79,6 +79,65 @@ static Type *generic_arg_from_value(Type *field, Type *value, const char *param)
     return NULL;
 }
 
+// Whether `.` comes next and, with what follows it, names a variant of the enum `name`, as
+// `::` would: `Color.Green`, `Shape.Rect(1, 2)`, `Maybe<int>.Nothing` (`generic` is the
+// instance). A variable or constant called `name` hides the enum: then `.` reads one of its
+// fields.
+static int next_is_dot_variant(ParserContext *ctx, Lexer *l, const char *name, Type *generic)
+{
+    // The next token has to be a `.`; the caller checks `::` itself.
+    Token dot = lexer_peek(l);
+    if (dot.kind != TOK_OP || !is_token(dot, "."))
+    {
+        return 0;
+    }
+    // A variable or constant called `name` hides the enum (`let Color = Palette{...}`):
+    // `Color.Green` reads its field.
+    ZenSymbol *sym = find_symbol_entry(ctx, name);
+    if (sym && (sym->kind == SYM_VARIABLE || sym->kind == SYM_CONSTANT))
+    {
+        return 0;
+    }
+    // Read past the `.` on a copy of the lexer, so nothing is consumed: a name has to
+    // follow it.
+    Lexer lookahead = *l;
+    lexer_next(&lookahead);
+    Token field = lexer_next(&lookahead);
+    if (field.kind != TOK_IDENT)
+    {
+        return 0;
+    }
+
+    // Find the type called `name`: as written (`Color`)...
+    ASTNode *def = find_struct_def(ctx, name);
+    // ...with the prefix of the current module, for a type declared inside it...
+    if (!def && ctx->imports.current_module_prefix)
+    {
+        def = find_struct_def(ctx, mangle_module_symbol(ctx->imports.current_module_prefix, name));
+    }
+    // ...or, for an instance of a generic type (`Maybe<int>`), its template.
+    if (!def && generic)
+    {
+        GenericTemplate *gt = find_generic_template(ctx, generic->name);
+        def = gt ? gt->struct_node : NULL;
+    }
+    // The type has to be an enum: on a struct, `.` stays a field access.
+    if (!def || def->kind != NODE_ENUM)
+    {
+        return 0;
+    }
+    // And the name after the `.` has to be one of its variants: `Color.other` is not
+    // read as `Color::other`.
+    for (ASTNode *v = def->enm.variants; v; v = v->next)
+    {
+        if (is_token(field, v->variant.name))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 {
     ASTNode *node = NULL;
@@ -320,7 +379,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 break;
             }
             int changed = 0;
-            if (lexer_peek(l).kind == TOK_DCOLON)
+            if (lexer_peek(l).kind == TOK_DCOLON || next_is_dot_variant(ctx, l, acc, generic_type))
             {
                 lexer_next(l);
                 Token suffix = lexer_next(l);

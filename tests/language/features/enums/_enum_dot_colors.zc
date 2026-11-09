@@ -1,0 +1,6 @@
+// Helper module for test_enum_variant_with_dot: an enum used with a dot inside its module.
+enum Hue { Warm, Cold }
+
+fn default_hue() -> Hue {
+    return Hue.Cold;
+}

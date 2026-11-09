@@ -65,21 +65,7 @@ void handle_expr_member(ParserContext *ctx, ASTNode *node)
     }
     else
     {
-        // When X is the name of an enum, `X.y` is the variant y of that enum (`Color.Red`).
-        // But when X has a type, X is a variable or parameter that happens to share its name
-        // with an enum, and `X.y` reads its field y: the variable hides the enum.
-        if (node->member.target->kind == NODE_EXPR_VAR && !node->member.target->type_info)
-        {
-            ASTNode *def = find_struct_def(ctx, node->member.target->var_ref.name);
-            if (def && def->kind == NODE_ENUM)
-            {
-                const char *enum_c_name =
-                    def->link_name ? def->link_name : node->member.target->var_ref.name;
-                EMIT(ctx, "%s", mangle_variant_symbol(enum_c_name, node->member.field));
-                return;
-            }
-        }
-
+        // `Color.Red` never gets here: the parser reads it as `Color::Red` (next_is_dot_variant).
         codegen_expression(ctx, node->member.target);
         char *lt = infer_type(ctx, node->member.target);
         int actually_ptr = 0;
