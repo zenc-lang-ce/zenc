@@ -986,7 +986,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     check_move_usage(ctx, arg, arg ? arg->token : t1);
                     if (arg && arg->kind == NODE_EXPR_VAR)
                     {
-                        Type *inner_t = find_symbol_type_info(ctx, arg->var_ref.name);
+                        Type *inner_t = arg->type_info
+                                            ? arg->type_info
+                                            : find_symbol_type_info(ctx, arg->var_ref.name);
                         if (!inner_t)
                         {
                             ZenSymbol *s = find_symbol_entry(ctx, arg->var_ref.name);
@@ -1394,7 +1396,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
             else if (lhs->kind == NODE_EXPR_VAR)
             {
-                char *type = find_symbol_type(ctx, lhs->var_ref.name);
+                char *type = lhs->type_info ? type_mangle_spelling(lhs->type_info)
+                                            : find_symbol_type(ctx, lhs->var_ref.name);
                 if (type && strchr(type, '*'))
                 {
                     node->member.is_pointer_access = 1;

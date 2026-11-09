@@ -218,7 +218,6 @@ typedef struct EnumVariantReg
 {
     char *enum_name;    ///< Name of the enum.
     char *variant_name; ///< Name of the variant.
-    char *mangled_name; ///< Mangled name (Enum__Variant).
     int tag_id;         ///< Integration tag value.
     struct EnumVariantReg *next;
 } EnumVariantReg;
