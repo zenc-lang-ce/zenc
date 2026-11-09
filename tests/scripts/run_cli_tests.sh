@@ -450,6 +450,48 @@ else
     check "doc names a method with __ in it whole" 0
 fi
 
+# --- Linkage of the program's functions --------------------------------------
+
+# A build of the generated C alone makes the functions that are not `main` or @export static,
+# so the C compiler leaves out the ones nothing calls.
+mkdir -p "$workdir/linkage"
+printf 'fn used() -> int { return 1; }\nfn never_called() -> int { return 7; }\n@export fn api() -> int { return 2; }\nfn main() {\n    if used() + api() != 3 { exit(1); }\n}\n' > "$workdir/linkage/whole.zc"
+"$ZC" build -w "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" >/dev/null 2>&1
+if [ -x "$workdir/linkage/whole" ] && "$workdir/linkage/whole"; then
+    check "a whole-program build runs" 1
+else
+    check "a whole-program build runs" 0
+fi
+if command -v nm >/dev/null 2>&1 && [ -x "$workdir/linkage/whole" ]; then
+    syms=$(nm "$workdir/linkage/whole" 2>/dev/null)
+    if ! echo "$syms" | grep -q 'never_called' && echo "$syms" | grep -Eq ' T _?api$'; then
+        check "a whole-program build drops unused functions and keeps @export ones" 1
+    else
+        check "a whole-program build drops unused functions and keeps @export ones" 0
+    fi
+fi
+
+# A function of the program that a C header of the preamble also declares (`abs`) keeps external
+# linkage: C rejects a static definition after an extern declaration.
+printf 'fn abs(n: int) -> int {\n    if n < 0 { return -n; }\n    return n;\n}\nfn main() {\n    if abs(-3) != 3 { exit(1); }\n}\n' > "$workdir/linkage/own_abs.zc"
+"$ZC" build -w "$workdir/linkage/own_abs.zc" -o "$workdir/linkage/own_abs" >/dev/null 2>&1
+if [ -x "$workdir/linkage/own_abs" ] && "$workdir/linkage/own_abs"; then
+    check "a whole-program build defines a function a C header declares" 1
+else
+    check "a whole-program build defines a function a C header declares" 0
+fi
+
+# A C file of the user may call any function of the program by name: with one, they keep
+# external linkage.
+printf 'extern fn from_c() -> c_int;\nfn called_from_c() -> int { return 40; }\nfn main() {\n    if from_c() != 42 { exit(1); }\n}\n' > "$workdir/linkage/with_c.zc"
+printf 'int called_from_c(void);\nint from_c(void) { return called_from_c() + 2; }\n' > "$workdir/linkage/helper.c"
+"$ZC" build -w "$workdir/linkage/with_c.zc" "$workdir/linkage/helper.c" -o "$workdir/linkage/with_c" >/dev/null 2>&1
+if [ -x "$workdir/linkage/with_c" ] && "$workdir/linkage/with_c"; then
+    check "a C file of the user calls a function of the program" 1
+else
+    check "a C file of the user calls a function of the program" 0
+fi
+
 # --- Installed layout ------------------------------------------------------
 
 # `make install` puts the binary in PREFIX/bin and the stdlib in

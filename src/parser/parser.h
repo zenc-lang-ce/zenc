@@ -1009,6 +1009,9 @@ void register_c_header_types(ParserContext *ctx, const struct CHeaderFile *heade
 /// The return type of a C function the program calls undeclared, from the headers it includes
 /// and those of the hosted preamble; NULL when it is not known.
 Type *c_function_return_type(ParserContext *ctx, const char *name);
+/// Whether a C header the program sees (its includes and those of the preamble) declares the
+/// function `name`: a definition of it in the program must keep external linkage.
+int c_headers_declare_function(ParserContext *ctx, const char *name);
 /// The type of the C variable `name` its header declares (`stdin`, through a macro such as
 /// `#define stdin __stdinp`), or NULL.
 Type *c_variable_type(ParserContext *ctx, const char *name);
