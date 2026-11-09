@@ -1,0 +1,12 @@
+// language/features/opaque-types: test_opaque_alias_of_alias
+// An opaque alias of another opaque alias: the typedef of the alias it names is emitted
+// first, so the C compiles (it was emitted after it).
+
+opaque alias ItemId = u32;
+opaque alias RootId = ItemId;
+
+test "an opaque alias of an opaque alias" {
+    let root: RootId = 3;
+    let other: RootId = 3;
+    expect(root == other, "two values of the alias of an alias should compare equal");
+}
