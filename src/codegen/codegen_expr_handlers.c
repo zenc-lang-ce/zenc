@@ -521,12 +521,23 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
              strcmp(node->binary.op, "==") != 0 && strcmp(node->binary.op, "!=") != 0 &&
              strcmp(node->binary.op, "<=") != 0 && strcmp(node->binary.op, ">=") != 0);
 
-        // Assigning to a variable that holds a value with Drop drops the old value first.
-        char *clean_type = NULL;
+        // Assigning to a variable that holds a value with Drop drops the old value first: the
+        // glue of a struct, enum or tuple, or the drop of a closure that owns its context.
+        char *drop_old = NULL;
         if (is_assignment && strcmp(node->binary.op, "=") == 0 &&
             node->binary.left->kind == NODE_EXPR_VAR)
         {
-            clean_type = value_drop_struct(ctx, node->binary.left);
+            char *glue = value_drop_struct(ctx, node->binary.left);
+            if (glue)
+            {
+                size_t sz = strlen(glue) + 32;
+                drop_old = xmalloc(sz);
+                snprintf(drop_old, sz, "%s__Drop__glue(_z_dest);", glue);
+            }
+            else if (is_owning_closure(node->binary.left->type_info))
+            {
+                drop_old = drop_value_stmt(node->binary.left->type_info, "(*_z_dest)", 0);
+            }
         }
 
         if (is_assignment && strcmp(node->binary.op, "=") == 0 &&
@@ -534,7 +545,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
         {
             emit_array_assignment(ctx, node->binary.left, node->binary.right);
         }
-        else if (clean_type)
+        else if (drop_old)
         {
             // The variable's type, not ZC_AUTO: tcc has no __auto_type.
             EMIT(ctx, "({ __typeof__((");
@@ -549,8 +560,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             codegen_expression(ctx, node->binary.left);
             EMIT(ctx, "); ");
 
-            EMIT(ctx, "if (__z_drop_flag_%s) %s__Drop__glue(_z_dest); ",
-                 node->binary.left->var_ref.name, clean_type);
+            EMIT(ctx, "if (__z_drop_flag_%s) %s ", node->binary.left->var_ref.name, drop_old);
             EMIT(ctx, "*_z_dest = _z_tmp; ");
             EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
 
@@ -616,11 +626,6 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                 codegen_expression_with_move(ctx, node->binary.right);
             }
             EMIT(ctx, ")");
-        }
-
-        if (clean_type)
-        {
-            zfree(clean_type);
         }
     }
     if (ctx->config->misra_mode)
