@@ -244,32 +244,43 @@ char *token_strdup(Token t)
     return s;
 }
 
-char *token_get_string_content(Token t)
+int token_string_content_offset(Token t, int *end_offset)
 {
     int is_multi = 0;
     int is_fstring = (t.kind == TOK_FSTRING);
     int is_raw = (t.kind == TOK_RAW_STRING);
     int start_offset = 1;
-    int end_offset = 1;
+    int closing = 1;
 
     if (is_fstring)
     {
         is_multi = (t.len >= 7 && t.start[1] == '"' && t.start[2] == '"' && t.start[3] == '"');
         start_offset = is_multi ? 4 : 2;
-        end_offset = is_multi ? 3 : 1;
+        closing = is_multi ? 3 : 1;
     }
     else if (is_raw)
     {
         is_multi = (t.len >= 7 && t.start[1] == '"' && t.start[2] == '"' && t.start[3] == '"');
         start_offset = is_multi ? 4 : 2;
-        end_offset = is_multi ? 3 : 1;
+        closing = is_multi ? 3 : 1;
     }
     else
     {
         is_multi = (t.len >= 6 && t.start[0] == '"' && t.start[1] == '"' && t.start[2] == '"');
         start_offset = is_multi ? 3 : 1;
-        end_offset = is_multi ? 3 : 1;
+        closing = is_multi ? 3 : 1;
     }
+    if (end_offset)
+    {
+        *end_offset = closing;
+    }
+    return start_offset;
+}
+
+char *token_get_string_content(Token t)
+{
+    int end_offset = 1;
+    int start_offset = token_string_content_offset(t, &end_offset);
 
     int content_len = (int)(t.len) - start_offset - end_offset;
     if (content_len < 0)

@@ -5,6 +5,7 @@
 void lexer_init(Lexer *l, const char *src, CompilerConfig *cfg, const char *filename)
 {
     l->src = src;
+    l->end = NULL;
     l->pos = 0;
     l->line = 1;
     l->col = 1;
@@ -103,7 +104,7 @@ Token lexer_next(Lexer *l)
     }
 
     // Check for EOF.
-    if (!*s)
+    if (!*s || (l->end && s >= l->end))
     {
         return (Token){TOK_EOF, s, 0, start_line, start_col, l->filename};
     }

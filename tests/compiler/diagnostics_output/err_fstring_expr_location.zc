@@ -1,0 +1,25 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// A diagnostic about an expression inside an f-string points at the expression: its own line
+// and column, also on a later line of a multiline f-string, and prints the line it is on.
+
+import "std/io.zc"
+
+struct Res {
+    id: int;
+}
+
+impl Drop for Res {
+    fn drop(self) {}
+}
+
+fn take(r: Res) -> int {
+    return r.id;
+}
+
+fn main() {
+    let xs = [Res { id: 1 }, Res { id: 2 }];
+    println(f"first {take(xs[0])}");
+    println(f"""one line
+then {take(xs[1]):%d} more""");
+}

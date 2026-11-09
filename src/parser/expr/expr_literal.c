@@ -853,8 +853,10 @@ static ASTNode *fstring_text_part(const char *start, const char *end)
 
 // The `{...}` that starts at `brace`, up to its closing brace: the expression parsed and
 // typed with the current scope, and the printf conversion written after a ':' (not `::`).
+// `brace` is a copy of the content of `srctoken`, `brace_offset` characters into it.
 // Returns NULL after reporting an error; *end is left at the closing brace.
-static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brace, char **end)
+static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brace,
+                                  size_t brace_offset, char **end)
 {
     char *p = brace + 1;
     char *colon = NULL;
@@ -901,6 +903,8 @@ static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brac
         zpanic_at(srctoken, "Unclosed interpolation brace in printf-sugar");
         return NULL;
     }
+    // Where the expression ends in the source, from the brace: at the ':' or at the '}'.
+    size_t expr_end = (size_t)((colon ? colon : p) - brace);
     *p = 0;
     *end = p;
 
@@ -929,12 +933,57 @@ static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brac
         expr++;
     }
 
-    // The lexer keeps pointers into the text it reads: parse a copy that outlives it.
-    char *src = xstrdup(expr);
+    // The lexer keeps pointers into the text it reads, and a diagnostic prints the line of a
+    // token from them: parse a copy of the expression's source line, with the expression in its
+    // place, so that its tokens have the line and column it has in the file. The lexer stops at
+    // `stop`, the end of the expression.
+    char *line_copy = NULL;
+    size_t prefix = 0;
+    size_t stop = 0;
+    int line = srctoken.line;
+    int col = srctoken.col;
+    if (srctoken.start && srctoken.col > 0)
+    {
+        const char *in_source =
+            srctoken.start + token_string_content_offset(srctoken, NULL) + brace_offset;
+        const char *source_expr = in_source + (expr - brace);
+        const char *source_end = in_source + expr_end;
+        const char *line_start = srctoken.start - (srctoken.col - 1);
+        for (const char *c = line_start; c < source_expr; c++)
+        {
+            if (*c == '\n')
+            {
+                line++;
+                line_start = c + 1;
+            }
+        }
+        const char *line_end = source_end;
+        while (*line_end && *line_end != '\n')
+        {
+            line_end++;
+        }
+        prefix = (size_t)(source_expr - line_start);
+        size_t expr_len = strlen(expr);
+        size_t rest = (size_t)(line_end - source_end);
+        line_copy = xmalloc(prefix + expr_len + rest + 1);
+        memcpy(line_copy, line_start, prefix);
+        memcpy(line_copy + prefix, expr, expr_len);
+        memcpy(line_copy + prefix + expr_len, source_end, rest);
+        line_copy[prefix + expr_len + rest] = 0;
+        stop = prefix + expr_len;
+        col = (int)prefix + 1;
+    }
+    else
+    {
+        line_copy = xstrdup(expr);
+        stop = strlen(expr);
+    }
     Lexer lex;
-    lexer_init(&lex, src, ctx->config, ctx->current_filename);
-    lex.line = srctoken.line;
-    lex.col = srctoken.col;
+    lexer_init(&lex, line_copy, ctx->config, ctx->current_filename);
+    lex.end = line_copy + stop;
+    lex.pos = (int)prefix;
+    lex.line = line;
+    lex.col = col;
 
     ASTNode *expr_node = parse_expression(ctx, &lex);
     if (!expr_node)
@@ -967,7 +1016,7 @@ static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brac
     // The codegen no longer has this scope: keep what the name says the type is.
     if (!expr_node->type_info)
     {
-        part->fstring_part.symbol_type = find_symbol_type_info(ctx, src);
+        part->fstring_part.symbol_type = find_symbol_type_info(ctx, expr);
     }
     return part;
 }
@@ -1005,7 +1054,7 @@ ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *con
         if (*brace)
         {
             char *end = NULL;
-            expr = fstring_expr_part(ctx, srctoken, brace, &end);
+            expr = fstring_expr_part(ctx, srctoken, brace, (size_t)(brace - s), &end);
             if (!expr)
             {
                 ctx->silent_warnings = saved_silent;
