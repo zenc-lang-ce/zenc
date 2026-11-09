@@ -232,6 +232,16 @@ static void emit_fstring_expr(ParserContext *ctx, ASTNode *part, const char *wri
                  rw, writer, to_string, addr);
         }
     }
+    else if (force_simple && ctx->config->use_cpp)
+    {
+        // In C++, `_z_str` is a function and evaluates its argument: copy the value once, so
+        // that the expression is evaluated once. The copy is not dropped: the value is of a
+        // simple type or borrowed. A copy, not a reference, also reads a packed field.
+        EMIT(ctx,
+             "({ ZC_AUTO_INIT(_z_interp_val, %s); %s_z_str(_z_interp_val), "
+             "_z_arg(_z_interp_val)); }); ",
+             rw, writer);
+    }
     else if (force_simple)
     {
         EMIT(ctx, "%s_z_str(%s), _z_arg(%s)); ", writer, rw, rw);
