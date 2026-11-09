@@ -363,8 +363,10 @@ static int compile_program(ZenCompiler *compiler)
                         build_compile_arg_list(&compile_args, outfile, temp_source_buf, compiler);
     ctx.cg.emit_reached_only = whole_program;
 
-    // Readable too: emit_function_bodies reads back what it has written.
-    FILE *out_f = fopen(temp_source_buf, "w+");
+    // Readable too: emit_function_bodies reads back what it has written, at the offsets ftell
+    // gave while writing. Binary, so that those offsets are the bytes fread returns: in text
+    // mode (Windows), every "\n" is written as "\r\n" but read back as one byte.
+    FILE *out_f = fopen(temp_source_buf, "w+b");
     if (!out_f)
     {
         perror("fopen temp output");
