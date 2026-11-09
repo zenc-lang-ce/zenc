@@ -117,12 +117,14 @@ if [ ! -f "$ZC" ]; then
     exit 1
 fi
 
+# The lists are read with `read -d '' -a`, one element per line: bash 3.2 (the /bin/bash of
+# macOS) has no `mapfile`, and without it the list came out empty and nothing ran.
 if [ ${#TEST_FILES[@]} -gt 0 ]; then
-    mapfile -t TEST_LIST < <(printf "%s\n" "${TEST_FILES[@]}" | grep "$TEST_DIR"/)
+    IFS=$'\n' read -r -d '' -a TEST_LIST < <(printf "%s\n" "${TEST_FILES[@]}" | grep "$TEST_DIR"/)
 else
-    mapfile -t TEST_LIST < <(find "$TEST_DIR" -name "*.zc" -not -name "_*.zc" -not -path "*/backends/*" -not -path "*/diagnostics_output/*" | sort)
+    IFS=$'\n' read -r -d '' -a TEST_LIST < <(find "$TEST_DIR" -name "*.zc" -not -name "_*.zc" -not -path "*/backends/*" -not -path "*/diagnostics_output/*" | sort)
     if [ $USE_CPP -eq 1 ] && [ -d "$TEST_DIR/backends/cpp" ]; then
-        mapfile -t CPP_TESTS < <(find "$TEST_DIR/backends/cpp" -name "test_*.zc" | sort)
+        IFS=$'\n' read -r -d '' -a CPP_TESTS < <(find "$TEST_DIR/backends/cpp" -name "test_*.zc" | sort)
         TEST_LIST=("${TEST_LIST[@]}" "${CPP_TESTS[@]}")
     fi
 
@@ -130,7 +132,7 @@ fi
 
 # Filter by ZC_TEST_FILTER env var if set (path/name substring match, case-insensitive)
 if [ -n "$ZC_TEST_FILTER" ]; then
-    mapfile -t FILTERED < <(printf "%s\n" "${TEST_LIST[@]}" | grep -i "$ZC_TEST_FILTER")
+    IFS=$'\n' read -r -d '' -a FILTERED < <(printf "%s\n" "${TEST_LIST[@]}" | grep -i "$ZC_TEST_FILTER")
     TEST_LIST=("${FILTERED[@]}")
     if [ ${#TEST_LIST[@]} -eq 0 ]; then
         echo "** No tests match filter '$ZC_TEST_FILTER' **"
@@ -221,8 +223,10 @@ run_test() {
     local tmp_out="test_out_parallel_${job_id}.out"
     local cmd_str="$ZC run \"$test_file\" -o \"$tmp_out\" -w --emit-c ${zc_args[*]}"
 
+    # `tr` drops the NUL bytes: BSD sed (macOS) rejects `sed 's/\x0//g'`, and with pipefail every
+    # test then failed with no output.
     run_single() {
-        $ZC run "$test_file" -o "$tmp_out" -w --emit-c "${zc_args[@]}" 2>&1 | sed 's/\x0//g'
+        $ZC run "$test_file" -o "$tmp_out" -w --emit-c "${zc_args[@]}" 2>&1 | tr -d '\000'
     }
 
     local output
