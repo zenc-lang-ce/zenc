@@ -469,6 +469,28 @@ ZenSymbol *tc_lookup(TypeChecker *tc, const char *name)
     return sym;
 }
 
+// Marks the struct or enum `name` as used, and the template it is an instance of
+// (`Maybe__int32_t` uses `Maybe`): MISRA Rule 2.4 reports the ones a program never uses. The
+// kind of a Type does not tell a struct from an enum (the type of `m: Mode` is a TYPE_STRUCT
+// even when Mode is an enum), so the name is looked up as either.
+static void mark_struct_or_enum_used(TypeChecker *tc, const char *name)
+{
+    ZenSymbol *sym = symbol_lookup_kind(tc->pctx->global_scope, name, SYM_STRUCT);
+    if (!sym)
+    {
+        sym = symbol_lookup_kind(tc->pctx->global_scope, name, SYM_ENUM);
+    }
+    if (sym)
+    {
+        sym->is_used = 1;
+    }
+    Instantiation *inst = find_instantiation(tc->pctx, name);
+    if (inst && inst->template_name && strcmp(inst->template_name, name) != 0)
+    {
+        mark_struct_or_enum_used(tc, inst->template_name);
+    }
+}
+
 void mark_type_as_used(TypeChecker *tc, Type *t)
 {
     if (!t)
@@ -489,18 +511,9 @@ void mark_type_as_used(TypeChecker *tc, Type *t)
         return;
     }
 
-    if (curr->kind == TYPE_STRUCT || curr->kind == TYPE_ENUM)
+    if ((curr->kind == TYPE_STRUCT || curr->kind == TYPE_ENUM) && curr->name)
     {
-        if (curr->name)
-        {
-            ZenSymbol *sym =
-                symbol_lookup_kind(tc->pctx->global_scope, curr->name,
-                                   (curr->kind == TYPE_STRUCT) ? SYM_STRUCT : SYM_ENUM);
-            if (sym)
-            {
-                sym->is_used = 1;
-            }
-        }
+        mark_struct_or_enum_used(tc, curr->name);
     }
     else if (curr->kind == TYPE_ALIAS)
     {
