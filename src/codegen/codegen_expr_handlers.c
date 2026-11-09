@@ -246,6 +246,52 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
     }
 }
 
+// `left = right` with fixed-size arrays. C cannot assign an array, so `right` is copied into a
+// temporary and the temporary's bytes into `left`; an array literal initializes the temporary,
+// since it is not an expression in C. An array of values that need dropping is moved, in the
+// order an assignment of a struct with Drop follows: the source is marked as moved out, and a
+// variable's old value is dropped before it takes the new one (so `a = a` keeps its value).
+static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *right)
+{
+    Type *t = left->type_info;
+    char *c_type = c_type_spelling(ctx, t);
+    int drops = type_needs_drop(ctx, t);
+
+    EMIT(ctx, "({ ");
+    emit_var_decl_type(ctx, c_type, "_z_src");
+    if (right->kind == NODE_EXPR_ARRAY_LITERAL)
+    {
+        EMIT(ctx, " = ");
+        codegen_expression(ctx, right);
+        EMIT(ctx, "; ");
+    }
+    else
+    {
+        EMIT(ctx, "; memcpy(_z_src, ");
+        codegen_expression(ctx, right);
+        EMIT(ctx, ", sizeof(%s)); ", c_type);
+        if (drops && emit_moved_out(ctx, right))
+        {
+            EMIT(ctx, "; ");
+        }
+    }
+
+    const char *flag_name = (drops && left->kind == NODE_EXPR_VAR) ? left->var_ref.name : NULL;
+    if (flag_name)
+    {
+        EMIT(ctx, "if (__z_drop_flag_%s) { %s } ", flag_name,
+             drop_value_stmt(t, c_name(ctx, flag_name), 0));
+    }
+    EMIT(ctx, "memcpy(");
+    codegen_expression(ctx, left);
+    EMIT(ctx, ", _z_src, sizeof(%s)); ", c_type);
+    if (flag_name)
+    {
+        EMIT(ctx, "__z_drop_flag_%s = 1; ", flag_name);
+    }
+    EMIT(ctx, "})");
+}
+
 void handle_expr_binary(ParserContext *ctx, ASTNode *node)
 {
     if (ctx->config->misra_mode)
@@ -483,7 +529,12 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             clean_type = value_drop_struct(ctx, node->binary.left);
         }
 
-        if (clean_type)
+        if (is_assignment && strcmp(node->binary.op, "=") == 0 &&
+            is_fixed_size_array(node->binary.left->type_info))
+        {
+            emit_array_assignment(ctx, node->binary.left, node->binary.right);
+        }
+        else if (clean_type)
         {
             // The variable's type, not ZC_AUTO: tcc has no __auto_type.
             EMIT(ctx, "({ __typeof__((");

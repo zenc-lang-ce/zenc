@@ -94,6 +94,11 @@ const char *c_name(ParserContext *ctx, const char *name);
  */
 char *declared_c_type(ParserContext *ctx, ASTNode *decl);
 /**
+ * @brief Whether `t`, through its aliases, is a fixed-size array (`int[3]`), not a slice. C
+ *        cannot initialize or assign such an array from another one: codegen copies its bytes.
+ */
+int is_fixed_size_array(Type *t);
+/**
  * @brief The type of capture `index` of a lambda spelled in C; `int` when the parser found no
  *        type for it.
  */
@@ -150,6 +155,9 @@ char *drop_glue_name(Type *t);
  * from must be invalidated: a closure that owns its context, or a struct or enum with Drop. */
 int moves_drop_value(ParserContext *ctx, ASTNode *node);
 int emit_move_invalidation(ParserContext *ctx, ASTNode *node);
+/** @brief Marks `node`, a variable or a field whose value was moved, as moved out: clears the
+ * variable's drop flag, or zeroes the field. Returns 0 when it emitted nothing. */
+int emit_moved_out(ParserContext *ctx, ASTNode *node);
 void codegen_expression_with_move(ParserContext *ctx, ASTNode *node);
 void emit_mangled_name(ParserContext *ctx, const char *base, const char *method);
 int is_simple_enum(ParserContext *ctx, const char *enum_name);

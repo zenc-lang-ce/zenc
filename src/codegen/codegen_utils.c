@@ -69,6 +69,12 @@ char *declared_c_type(ParserContext *ctx, ASTNode *decl)
     return (t && t->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, t) : NULL;
 }
 
+int is_fixed_size_array(Type *t)
+{
+    t = resolve_alias(t);
+    return t && t->kind == TYPE_ARRAY && t->array_size > 0;
+}
+
 char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index)
 {
     Type *t = lambda->lambda.captured_types_info[index];
@@ -578,47 +584,48 @@ int emit_move_invalidation(ParserContext *ctx, ASTNode *node)
         return 0;
     }
 
-    if (moves_drop_value(ctx, node))
-    {
-        if (node->kind == NODE_EXPR_VAR)
-        {
-            char *df_prefix = "";
-            if (ctx->cg.current_lambda)
-            {
-                for (int i = 0; i < ctx->cg.current_lambda->lambda.capture_count; i++)
-                {
-                    if (strcmp(node->var_ref.name,
-                               ctx->cg.current_lambda->lambda.captured_vars[i]) == 0)
-                    {
-                        if (ctx->cg.current_lambda->lambda.capture_modes &&
-                            ctx->cg.current_lambda->lambda.capture_modes[i] == 0)
-                        {
-                            df_prefix = "ctx->";
-                        }
-                        break;
-                    }
-                }
-            }
+    return moves_drop_value(ctx, node) ? emit_moved_out(ctx, node) : 0;
+}
 
-            if (strcmp(node->var_ref.name, "self") != 0)
-            {
-                EMIT(ctx, "%s__z_drop_flag_%s = 0", df_prefix, node->var_ref.name);
-                return 1;
-            }
-            return 0;
-        }
-        else if (node->kind == NODE_EXPR_MEMBER)
+int emit_moved_out(ParserContext *ctx, ASTNode *node)
+{
+    if (!node)
+    {
+        return 0;
+    }
+    if (node->kind == NODE_EXPR_MEMBER)
+    {
+        // For members: memset(&foo.bar, 0, sizeof(foo.bar))
+        EMIT(ctx, "memset(&");
+        codegen_expression(ctx, node);
+        EMIT(ctx, ", 0, sizeof(");
+        codegen_expression(ctx, node);
+        EMIT(ctx, "))");
+        return 1;
+    }
+    if (node->kind != NODE_EXPR_VAR || strcmp(node->var_ref.name, "self") == 0)
+    {
+        return 0;
+    }
+
+    const char *df_prefix = "";
+    if (ctx->cg.current_lambda)
+    {
+        for (int i = 0; i < ctx->cg.current_lambda->lambda.capture_count; i++)
         {
-            // For members: memset(&foo.bar, 0, sizeof(foo.bar))
-            EMIT(ctx, "memset(&");
-            codegen_expression(ctx, node);
-            EMIT(ctx, ", 0, sizeof(");
-            codegen_expression(ctx, node);
-            EMIT(ctx, "))");
-            return 1;
+            if (strcmp(node->var_ref.name, ctx->cg.current_lambda->lambda.captured_vars[i]) == 0)
+            {
+                if (ctx->cg.current_lambda->lambda.capture_modes &&
+                    ctx->cg.current_lambda->lambda.capture_modes[i] == 0)
+                {
+                    df_prefix = "ctx->";
+                }
+                break;
+            }
         }
     }
-    return 0;
+    EMIT(ctx, "%s__z_drop_flag_%s = 0", df_prefix, node->var_ref.name);
+    return 1;
 }
 
 // Emits expression, wrapping it in a move-invalidation block if it's a consuming variable usage
