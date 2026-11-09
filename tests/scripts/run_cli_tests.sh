@@ -89,7 +89,7 @@ fi
 # An option that needs a value, given as the last argument, is an error: it is not ignored, nor
 # passed to the C compiler on its own.
 missing_ok=1
-for option in -o -I -L -l -D -O --cc --backend --backend-opt; do
+for option in -o -I -L -l -D --cc --backend --backend-opt; do
     out=$("$ZC" build "$ZC/does_not_exist.zc" "$option" 2>&1)
     if [ $? -eq 0 ] || ! echo "$out" | grep -q "missing .* after '$option'"; then
         echo "    $option: $out"
@@ -146,6 +146,14 @@ if [ -x "$workdir/include_dir" ] && echo "$out" | grep -q -- " -I$workdir/hdr " 
     check "-I with a space passes the directory with the flag" 1
 else
     check "-I with a space passes the directory with the flag" 0
+fi
+
+# A bare `-O` is the C compiler's `-O`: it does not take the next argument (here, the input file).
+out=$("$ZC" build -v -O "$workdir/smoke.zc" -o "$workdir/smoke_o" 2>&1)
+if [ -x "$workdir/smoke_o" ] && echo "$out" | grep -qE -- ' -O( |$)'; then
+    check "a bare -O does not take the next argument" 1
+else
+    check "a bare -O does not take the next argument" 0
 fi
 
 # --- Program output ----------------------------------------------------------

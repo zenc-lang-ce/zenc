@@ -115,12 +115,10 @@ int main(int argc, char **argv)
     z_compiler_setup(&compiler);
 
     int i;
-    const char *optimization_level = NULL;
     char *input_file_copy;
 
     i = 0;
     (void)i;
-    (void)optimization_level;
     (void)input_file_copy;
 
     if (argc < 2)
@@ -566,20 +564,9 @@ int main(int argc, char **argv)
         }
         else if (strncmp(arg, "-O", 2) == 0)
         {
-            if (strlen(arg) > 2)
-            {
-                optimization_level = arg + 2;
-            }
-            else if (i + 1 < argc)
-            {
-                optimization_level = argv[++i];
-            }
-            else
-            {
-                report_missing_option_value(arg, "optimization level");
-                return 1;
-            }
-            append_flag(cfg->gcc_flags, sizeof(cfg->gcc_flags), "-O", optimization_level);
+            // The level goes with the option (`-O2`); a bare `-O` is the C compiler's own `-O`
+            // and does not take the next argument.
+            append_flag(cfg->gcc_flags, sizeof(cfg->gcc_flags), arg, NULL);
         }
         else if (strcmp(arg, "-g") == 0)
         {
