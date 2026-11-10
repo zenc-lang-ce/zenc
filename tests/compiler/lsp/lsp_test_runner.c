@@ -1890,6 +1890,34 @@ static void test_member_hover(void)
     printf("PASS: test_member_hover\n");
 }
 
+static void test_loop_variable_hover(void)
+{
+    printf("Running test_loop_variable_hover...\n");
+    // The variable of a `for`: declared where it is written, with the type of an element of what
+    // it walks, and the counter of a range.
+    // Line 0: import "std/vec.zc"
+    // Line 1: struct Entry { day: u16; }
+    // Line 2: fn walk(v: Vec<Entry>) -> int {
+    // Line 3:     let total = 0;
+    // Line 4:     for entry in v { total = total + entry.day; }
+    // Line 5:     for i in 0..3 { total = total + i; }
+    // Line 6:     return total;
+    // Line 7: }
+    const char *uri = "file:///tmp/test_loop_variable.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_loop_variable.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"import \\\"std/vec.zc\\\"\\n"
+                 "struct Entry { day: u16; }\\nfn walk(v: Vec<Entry>) -> int {\\n    let total = "
+                 "0;\\n    for entry in v { total = total + entry.day; }\\n    for i in 0..3 { total = "
+                 "total + i; }\\n    return total;\\n}\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 952, 4, 9, "let entry: Entry");
+    expect_hover_in(uri, 953, 4, 38, "let entry: Entry");
+    expect_hover_in(uri, 954, 5, 8, "let i: int");
+    expect_hover_in(uri, 955, 5, 36, "let i: int");
+    printf("PASS: test_loop_variable_hover\n");
+}
+
 static void test_primitive_hover(void)
 {
     printf("Running test_primitive_hover...\n");
@@ -3241,6 +3269,7 @@ int main()
     test_deleted_declarations();
     test_uri_with_spaces();
     test_primitive_hover();
+    test_loop_variable_hover();
     test_member_hover();
     test_c_struct_field_completion();
     test_shutdown();

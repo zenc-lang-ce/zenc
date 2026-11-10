@@ -325,6 +325,28 @@ static void lsp_index_add_params(ParserContext *ctx, LSPIndex *idx, int count, c
     }
 }
 
+// A `let` or `def` named `name` and written at `t`, with its type when it is known. A declaration
+// the parser generates under a name that is not the token's (`__it` of a `for ... in`) is none.
+static void add_variable_def(ParserContext *ctx, LSPIndex *idx, Token t, const char *name,
+                             Type *type, DeclarationKind kind, ASTNode *node)
+{
+    if (!name || !t.start || strlen(name) != t.len || strncmp(t.start, name, t.len) != 0)
+    {
+        return;
+    }
+    const char *keyword = kind == DECLARATION_CONSTANT ? "def" : "let";
+    char hover[MAX_SHORT_MSG_LEN];
+    if (type && type->kind != TYPE_UNKNOWN)
+    {
+        snprintf(hover, sizeof(hover), "%s %s: %s", keyword, name, zen_c_type_spelling(ctx, type));
+    }
+    else
+    {
+        snprintf(hover, sizeof(hover), "%s %s", keyword, name);
+    }
+    lsp_index_add_def(idx, t, kind, hover, node);
+}
+
 // Walker.
 
 static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int depth)
@@ -358,19 +380,18 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
                                  node->type_info ? node->type_info->args : NULL,
                                  node->lambda.param_tokens);
         }
-        else if (node->kind == NODE_VAR_DECL)
+        else if (node->kind == NODE_VAR_DECL || node->kind == NODE_CONST)
         {
-            char hover[MAX_SHORT_MSG_LEN];
-            const char *name = node->var_decl.name ? node->var_decl.name : "unknown";
-            snprintf(hover, sizeof(hover), "let %s", name);
-            lsp_index_add_def(idx, node->token, DECLARATION_VARIABLE, hover, node);
+            Type *type = node->var_decl.type_info ? node->var_decl.type_info : node->type_info;
+            add_variable_def(ctx, idx, node->token, node->var_decl.name, type,
+                             node->kind == NODE_CONST ? DECLARATION_CONSTANT : DECLARATION_VARIABLE,
+                             node);
         }
-        else if (node->kind == NODE_CONST)
+        else if (node->kind == NODE_FOR_RANGE)
         {
-            char hover[MAX_SHORT_MSG_LEN];
-            const char *name = node->var_decl.name ? node->var_decl.name : "unknown";
-            snprintf(hover, sizeof(hover), "def %s", name);
-            lsp_index_add_def(idx, node->token, DECLARATION_CONSTANT, hover, node);
+            // `for i in 0..n`: no node declares `i`.
+            add_variable_def(ctx, idx, node->for_range.var_token, node->for_range.var_name,
+                             type_new(TYPE_INT), DECLARATION_VARIABLE, NULL);
         }
         else if (node->kind == NODE_STRUCT)
         {
