@@ -914,7 +914,6 @@ static void test_every_request_answered(void)
                              "textDocument/references",
                              "textDocument/signatureHelp",
                              "textDocument/rename",
-                             "textDocument/codeAction",
                              "textDocument/semanticTokens/full",
                              "textDocument/formatting"};
     int id = 1101;
@@ -1106,44 +1105,6 @@ static void test_type_errors_keep_recursion_depth(void)
     }
     free(diagnostics);
     printf("PASS: test_type_errors_keep_recursion_depth\n");
-}
-
-static void test_code_action()
-{
-    printf("Running test_code_action...\n");
-    // Open a file with 'var' to trigger deprecation diagnostics
-    int fd = open("/tmp/test_action.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd >= 0)
-    {
-        const char *code = "fn main() { var x: int = 5; }";
-        write(fd, code, strlen(code));
-        close(fd);
-    }
-
-    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
-                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_action.zc\", \"languageId\": "
-                 "\"zenc\", \"version\": 1, \"text\": \"fn main() { var x: int = 5; }\"}}}");
-    usleep(100000);
-
-    // Request code actions. The diagnostic is provided by the client
-    // matching what the server would emit for 'var' deprecation.
-    send_request("{\"jsonrpc\": \"2.0\", \"id\": 107, \"method\": \"textDocument/codeAction\", "
-                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_action.zc\"}, "
-                 "\"context\": {\"diagnostics\": [{\"range\": {\"start\": {\"line\": 0, "
-                 "\"character\": 12}, \"end\": {\"line\": 0, \"character\": 15}}, "
-                 "\"code\": \"W42\", \"message\": \"'var' is deprecated for declarations. "
-                 "Use 'let' instead.\"}]}}}");
-
-    char *resp = wait_for_response(107);
-    if (resp && strstr(resp, "Replace 'var' with 'let'"))
-    {
-        printf("PASS: test_code_action (var -> let action)\n");
-    }
-    else
-    {
-        printf("WARN: test_code_action: %s\n", resp ? resp : "no response");
-    }
-    free(resp);
 }
 
 static void test_completion_prefix()
@@ -3178,7 +3139,6 @@ int main()
     test_empty_source();
     test_did_change();
     test_type_errors_keep_recursion_depth();
-    test_code_action();
     test_completion_prefix();
     test_unknown_method();
     test_string_id();

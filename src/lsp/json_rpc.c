@@ -188,7 +188,7 @@ static cJSON *initialize(const cJSON *params)
         "\"definitionProvider\":true,\"declarationProvider\":true,\"hoverProvider\":true,"
         "\"referencesProvider\":true,\"documentSymbolProvider\":true,"
         "\"workspaceSymbolProvider\":true,"
-        "\"renameProvider\":true,\"codeActionProvider\":true,"
+        "\"renameProvider\":true,"
         "\"documentFormattingProvider\":true,"
         "\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\"]},"
         "\"completionProvider\":{"
@@ -341,12 +341,6 @@ void lsp_handle_message(const char *json_str)
     else if (strcmp(method, "textDocument/signatureHelp") == 0)
     {
         result = uri ? lsp_signature_help(uri, line, col) : NULL;
-    }
-    else if (strcmp(method, "textDocument/codeAction") == 0)
-    {
-        cJSON *diagnostics =
-            cJSON_GetObjectItem(cJSON_GetObjectItem(params, "context"), "diagnostics");
-        result = uri && diagnostics ? lsp_code_action(uri, diagnostics) : NULL;
     }
     else if (strcmp(method, "textDocument/semanticTokens/full") == 0)
     {
