@@ -137,6 +137,7 @@ ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_ex
     }
 
     ASTNode *node = ast_create(NODE_TYPE_ALIAS);
+    node->token = n;
     node->type_alias.alias = xmalloc(n.len + 1);
     strncpy(node->type_alias.alias, n.start, n.len);
     node->type_alias.alias[n.len] = 0;

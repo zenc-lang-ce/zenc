@@ -101,6 +101,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         TypeAlias *alias_node = find_type_alias_node(ctx, name);
         if (alias_node)
         {
+            register_type_usage(ctx, name, t);
             zfree(name);
             return alias_type(alias_node);
         }

@@ -106,6 +106,43 @@ void lsp_index_add_ref(LSPIndex *idx, Token t, Token def_t, ASTNode *node)
     lsp_index_add(idx, r);
 }
 
+void lsp_index_add_type_ref(LSPIndex *idx, Token t, const char *name)
+{
+    // The token is where the name is written: a name that is qualified (`m::Box`), mangled or
+    // renamed by an import is not that text, and its range would be a wrong one.
+    if (t.line <= 0 || !name || !t.start || strlen(name) != t.len ||
+        strncmp(t.start, name, t.len) != 0)
+    {
+        return;
+    }
+    // One node per name: a file may name the same type many times.
+    ASTNode *named = idx->type_names;
+    while (named && strcmp(named->var_ref.name, name) != 0)
+    {
+        named = named->next;
+    }
+    if (!named)
+    {
+        named = ast_create(NODE_EXPR_VAR);
+        named->token = t;
+        named->var_ref.name = xstrdup(name);
+        named->next = idx->type_names;
+        idx->type_names = named;
+    }
+
+    LSPRange *r = calloc(1, sizeof(LSPRange));
+    r->kind = RANGE_REFERENCE;
+    r->start_line = t.line - 1;
+    r->start_col = t.col - 1;
+    r->end_line = t.line - 1;
+    r->end_col = (int)(t.col) - 1 + (int)(t.len);
+    r->def_line = -1;
+    r->def_col = -1;
+    r->node = named;
+
+    lsp_index_add(idx, r);
+}
+
 LSPRange *lsp_find_at(LSPIndex *idx, int line, int col)
 {
     LSPRange *curr = idx->head;
@@ -323,6 +360,17 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
         if (node->definition_token.line > 0)
         {
             lsp_index_add_ref(idx, node->token, node->definition_token, node);
+        }
+        else if (node->kind == NODE_EXPR_STRUCT_INIT)
+        {
+            // `Box { v: 1 }`: its token is where the type's name is written.
+            lsp_index_add_type_ref(idx, node->token, node->struct_init.struct_name);
+        }
+        else if (node->kind == NODE_EXPR_VAR && node->var_ref.variant.owner &&
+                 node->var_ref.variant.owner->name)
+        {
+            // `Mode::On`: its token is where the enum's name is written.
+            lsp_index_add_type_ref(idx, node->token, node->var_ref.variant.owner->name);
         }
 
         // Walk every child list. Trait methods are prototypes, kept out of the index.
