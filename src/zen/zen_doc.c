@@ -117,25 +117,68 @@ static void print_markdown_doc(const char *comment)
     zfree(cleaned);
 }
 
-static const char *unmangle_name(const char *name)
+// The name a declaration writes (`helper`), from its name token: the node's own name can be its
+// C name (`_geo__helper`, in a module).
+static void print_declared_name(Token name_token, const char *name)
 {
-    if (!name)
+    if (name_token.start && name_token.len > 0)
     {
-        return NULL;
+        printf("%.*s", (int)name_token.len, name_token.start);
     }
-    const char *last = (char *)strstr(name, "__");
-    if (last)
+    else
     {
-        // Find the LAST __
-        const char *next = (char *)strstr(last + 2, "__");
-        while (next)
+        printf("%s", name);
+    }
+}
+
+// A function's signature as it declares it (`fn len(self) -> i32;`). The receiver is written as
+// programs write it, `self` or `const self`, not by its type (`Point*`): it is the receiver by
+// its name.
+static void print_signature(struct ParserContext *ctx, ASTNode *fn, const char *name)
+{
+    printf("```zc\nfn ");
+    print_declared_name(fn->token, name);
+    printf("(");
+    for (int i = 0; i < fn->func.count; i++)
+    {
+        const char *param = fn->func.param_names ? fn->func.param_names[i] : NULL;
+        Type *type = fn->func.arg_types ? fn->func.arg_types[i] : NULL;
+        if (param && strcmp(param, "self") == 0)
         {
-            last = next;
-            next = strstr(last + 2, "__");
+            int is_const =
+                type && type->kind == TYPE_POINTER && type->inner && type->inner->is_const;
+            printf("%sself", is_const ? "const " : "");
         }
-        return last + 2;
+        else
+        {
+            if (param)
+            {
+                printf("%s: ", param);
+            }
+            if (type)
+            {
+                char *spelled = zen_c_type_spelling(ctx, type);
+                printf("%s", spelled);
+                zfree(spelled);
+            }
+            else
+            {
+                printf("?");
+            }
+        }
+        if (i < fn->func.count - 1)
+        {
+            printf(", ");
+        }
     }
-    return name;
+    printf(")");
+    if (fn->func.ret_type_info)
+    {
+        char *spelled = zen_c_type_spelling(ctx, fn->func.ret_type_info);
+        printf(" -> %s", spelled);
+        zfree(spelled);
+    }
+    printf(";\n```\n");
 }
 
 static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int level)
@@ -151,57 +194,30 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
         {
         case NODE_FUNCTION:
         {
-            const char *display_name = unmangle_name(node->func.name);
-            printf("\n## function `%s`\n", display_name);
+            // The title as programs write the name (`geo::helper`), the signature as declared.
+            printf("\n## function `%s`\n",
+                   node->func.written_name ? node->func.written_name : node->func.name);
             if (node->doc_comment)
             {
                 print_markdown_doc(node->doc_comment);
             }
 
-            // Print signature
-            printf("```zc\nfn %s(", display_name);
-            for (int i = 0; i < node->func.count; i++)
-            {
-                if (node->func.param_names && node->func.param_names[i])
-                {
-                    printf("%s: ", node->func.param_names[i]);
-                }
-                if (node->func.arg_types && node->func.arg_types[i])
-                {
-                    char *tstr = zen_c_type_spelling(ctx, node->func.arg_types[i]);
-                    printf("%s", tstr);
-                    zfree(tstr);
-                }
-                else
-                {
-                    printf("?");
-                }
-                if (i < node->func.count - 1)
-                {
-                    printf(", ");
-                }
-            }
-            printf(")");
-            if (node->func.ret_type_info)
-            {
-                char *rstr = zen_c_type_spelling(ctx, node->func.ret_type_info);
-                printf(" -> %s", rstr);
-                zfree(rstr);
-            }
-            printf(";\n```\n");
+            print_signature(ctx, node, node->func.name);
             break;
         }
 
         case NODE_STRUCT:
         {
-            const char *display_name = unmangle_name(node->strct.name);
-            printf("\n## struct `%s`\n", display_name);
+            printf("\n## struct `%s`\n",
+                   node->strct.written_name ? node->strct.written_name : node->strct.name);
             if (node->doc_comment)
             {
                 print_markdown_doc(node->doc_comment);
             }
 
-            printf("```zc\nstruct %s {\n", display_name);
+            printf("```zc\nstruct ");
+            print_declared_name(node->token, node->strct.name);
+            printf(" {\n");
             ASTNode *field = node->strct.fields;
             while (field)
             {
@@ -230,14 +246,16 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
 
         case NODE_ENUM:
         {
-            const char *display_name = unmangle_name(node->enm.name);
-            printf("\n## enum `%s`\n", display_name);
+            printf("\n## enum `%s`\n",
+                   node->enm.written_name ? node->enm.written_name : node->enm.name);
             if (node->doc_comment)
             {
                 print_markdown_doc(node->doc_comment);
             }
 
-            printf("```zc\nenum %s {\n", display_name);
+            printf("```zc\nenum ");
+            print_declared_name(node->token, node->enm.name);
+            printf(" {\n");
             ASTNode *variant = node->enm.variants;
             while (variant)
             {
@@ -265,7 +283,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
 
         case NODE_CONST:
         {
-            const char *display_name = unmangle_name(node->var_decl.name);
+            const char *display_name = node->var_decl.name;
             printf("\n## const `%s`\n", display_name);
             if (node->doc_comment)
             {
@@ -278,7 +296,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
 
         case NODE_TYPE_ALIAS:
         {
-            const char *display_name = unmangle_name(node->type_alias.alias);
+            const char *display_name = node->type_alias.alias;
             printf("\n## alias `%s`\n", display_name);
             if (node->doc_comment)
             {
@@ -292,11 +310,8 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
         case NODE_IMPL:
         case NODE_IMPL_TRAIT:
         {
-            const char *raw_name = (node->kind == NODE_IMPL)
-                                       ? type_impl_name(node->impl.target)
-                                       : type_impl_name(node->impl_trait.target);
-            const char *sname = unmangle_name(raw_name);
-            printf("\n## impl for `%s`\n", sname);
+            Type *target = (node->kind == NODE_IMPL) ? node->impl.target : node->impl_trait.target;
+            printf("\n## impl for `%s`\n", zen_c_type_spelling(ctx, target));
             if (node->doc_comment)
             {
                 print_markdown_doc(node->doc_comment);
@@ -314,7 +329,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
                     {
                         print_markdown_doc(method->doc_comment);
                     }
-                    printf("```zc\nfn %s(...);\n```\n", mname);
+                    print_signature(ctx, method, mname);
                 }
                 method = method->next;
             }

@@ -202,9 +202,11 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     // Auto-prefix function name if in module context
     // Don't prefix generic templates or functions inside impl blocks (already
     // mangled)
+    char *written_name = NULL;
     if (ctx->imports.current_module_prefix && !gen_param && !ctx->current_impl_target &&
         !is_extern && !is_extern_symbol(ctx, name))
     {
+        written_name = module_written_name(ctx, name);
         char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name);
         zfree(name);
         name = prefixed_name;
@@ -276,6 +278,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     ASTNode *node = ast_create(NODE_FUNCTION);
     node->token = name_tok; // Save definition location
     node->func.name = name;
+    node->func.written_name = written_name;
 
     node->func.arg_types = arg_types;
     node->func.param_names = param_names;
