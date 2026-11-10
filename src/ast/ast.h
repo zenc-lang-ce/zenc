@@ -891,6 +891,12 @@ int is_composite_expression(ASTNode *node);
  */
 char *type_mangle_spelling(Type *t);
 char *type_to_string(Type *t);
+/**
+ * @brief A type as the program writes it, for diagnostics and the editor: `Vec<Vec<f64>>`,
+ * `(int, bool)`. type_to_string spells instances and tuples by their C name, as the compiler
+ * identifies them; this is never a name to look up.
+ */
+char *type_to_zen_c_string(Type *t);
 char *type_to_c_string(Type *t, int misra_mode);
 /**
  * @brief The C name of the struct or enum `name` (its @link_name), or NULL to write `name`.

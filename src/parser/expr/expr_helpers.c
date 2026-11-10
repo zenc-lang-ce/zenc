@@ -323,17 +323,6 @@ static Type *instance_type(Type *t)
     return t;
 }
 
-// An instance's arguments as the message spells them: `int32_t,String`.
-static char *instance_args_text(Type *instance)
-{
-    char **spelled = xmalloc(sizeof(char *) * (size_t)instance->count);
-    for (int i = 0; i < instance->count; i++)
-    {
-        spelled[i] = type_to_string(instance->args[i]);
-    }
-    return join_with_commas(spelled, instance->count);
-}
-
 // Two instances of one generic with different arguments (`Handle<A>` and
 // `Handle<B>`) are different types even when their fields are the same, also
 // behind pointers (where C only warns, and `-w` hides it).
@@ -360,8 +349,8 @@ static void check_generic_instance_argument(Type *expected, ASTNode *arg)
     const char *stars = STARS + (8 - depth);
     char want_text[MAX_SHORT_MSG_LEN];
     char have_text[MAX_SHORT_MSG_LEN];
-    snprintf(want_text, sizeof(want_text), "%s<%s>%s", want->name, instance_args_text(want), stars);
-    snprintf(have_text, sizeof(have_text), "%s<%s>%s", have->name, instance_args_text(have), stars);
+    snprintf(want_text, sizeof(want_text), "%s%s", type_to_zen_c_string(want), stars);
+    snprintf(have_text, sizeof(have_text), "%s%s", type_to_zen_c_string(have), stars);
     zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want_text,
               have_text);
     return;
@@ -389,8 +378,8 @@ void check_argument_type(ParserContext *ctx, Type *expected, ASTNode *arg)
     {
         return;
     }
-    char *want = type_to_string(expected);
-    char *have = type_to_string(got);
+    char *want = type_to_zen_c_string(expected);
+    char *have = type_to_zen_c_string(got);
     zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want, have);
     return;
 }
@@ -899,7 +888,7 @@ void check_format_string(ASTNode *call, Token t)
             }
 
             Type *vt = curr_arg->type_info;
-            char *got_type = vt ? type_to_string(vt) : "?";
+            char *got_type = vt ? type_to_zen_c_string(vt) : "?";
 
             if (spec == 'd' || spec == 'i' || spec == 'u' || spec == 'x' || spec == 'X' ||
                 spec == 'o')

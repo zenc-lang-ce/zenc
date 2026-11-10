@@ -291,7 +291,7 @@ static void lsp_index_add_params(LSPIndex *idx, int count, char **names, Type **
         char hover[MAX_SHORT_MSG_LEN];
         if (types && types[i] && types[i]->kind != TYPE_UNKNOWN)
         {
-            snprintf(hover, sizeof(hover), "%s: %s", names[i], type_to_string(types[i]));
+            snprintf(hover, sizeof(hover), "%s: %s", names[i], type_to_zen_c_string(types[i]));
         }
         else
         {
@@ -319,8 +319,9 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             if (!lsp_function_signature(node->token, hover, sizeof(hover)))
             {
                 const char *name = node->func.name ? node->func.name : "unknown";
-                const char *ret =
-                    node->func.ret_type_info ? type_to_string(node->func.ret_type_info) : "void";
+                const char *ret = node->func.ret_type_info
+                                      ? type_to_zen_c_string(node->func.ret_type_info)
+                                      : "void";
                 snprintf(hover, sizeof(hover), "fn %s(...) -> %s", name, ret);
             }
             lsp_index_add_def(idx, node->token, hover, node);
@@ -362,7 +363,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
                 {
                     char fh[MAX_SHORT_MSG_LEN];
                     const char *fname = field->field.name ? field->field.name : "unknown";
-                    const char *ftype = type_to_string(field->type_info);
+                    const char *ftype = type_to_zen_c_string(field->type_info);
                     snprintf(fh, sizeof(fh), "field %s: %s", fname, ftype);
                     lsp_index_add_def(idx, field->token, fh, field);
                 }
@@ -393,7 +394,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *alias = node->type_alias.alias ? node->type_alias.alias : "unknown";
-            const char *orig = node->type_info ? type_to_string(node->type_info) : "unknown";
+            const char *orig = node->type_info ? type_to_zen_c_string(node->type_info) : "unknown";
             snprintf(hover, sizeof(hover), "alias %s = %s", alias, orig);
             lsp_index_add_def(idx, node->token, hover, node);
         }
