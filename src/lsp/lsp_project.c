@@ -435,12 +435,9 @@ static const IgnoreRule *is_ignored(const char *path, const char *name, int is_d
 
 static void scan_file(const char *path)
 {
-    char uri[MAX_PATH_LEN + 16];
-    snprintf(uri, sizeof(uri), "file://%s", path);
-
     // Deduplicate indexing. A file an import indexed first (index_imported_modules) is indexed
     // again here, as a file of the workspace.
-    ProjectFile *known = lsp_project_get_file(uri);
+    ProjectFile *known = lsp_project_get_file_by_path(path);
     if (known && !known->is_external)
     {
         return;
@@ -452,7 +449,7 @@ static void scan_file(const char *path)
         return;
     }
 
-    lsp_project_update_file(uri, src);
+    lsp_project_update_file(lsp_path_to_uri(path), src);
     g_indexed_file_count++;
 
     // Free source after update
@@ -514,22 +511,84 @@ static void scan_dir(const char *dir_path, StringList *files)
     closedir(d);
 }
 
+static int hex_digit(char c)
+{
+    if (c >= '0' && c <= '9')
+    {
+        return c - '0';
+    }
+    c = (char)toupper((unsigned char)c);
+    return c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+}
+
+char *lsp_uri_to_path(const char *uri)
+{
+    if (strncmp(uri, "file://", 7) != 0)
+    {
+        return xstrdup(uri);
+    }
+    const char *s = uri + 7;
+    char *path = xmalloc(strlen(s) + 1);
+    size_t used = 0;
+    for (; *s; s++)
+    {
+        int high = s[0] == '%' ? hex_digit(s[1]) : -1;
+        int low = high >= 0 ? hex_digit(s[2]) : -1;
+        if (low >= 0)
+        {
+            path[used++] = (char)(high * 16 + low);
+            s += 2;
+        }
+        else
+        {
+            path[used++] = *s;
+        }
+    }
+    path[used] = 0;
+    // `file:///C:/x`: that `/` belongs to the URI, not to the path.
+    if (path[0] == '/' && isalpha((unsigned char)path[1]) && path[2] == ':')
+    {
+        memmove(path, path + 1, used);
+    }
+    return path;
+}
+
+char *lsp_path_to_uri(const char *path)
+{
+    size_t length = strlen(path);
+    size_t capacity = length * 3 + sizeof("file:///");
+    char *uri = xmalloc(capacity);
+    size_t used = (size_t)snprintf(uri, capacity, "file://");
+    if (isalpha((unsigned char)path[0]) && path[1] == ':')
+    {
+        uri[used++] = '/';
+    }
+    for (size_t i = 0; i < length; i++)
+    {
+        unsigned char c = (unsigned char)path[i];
+        if (c == '\\')
+        {
+            uri[used++] = '/';
+        }
+        else if (isalnum(c) || strchr("/-._~:", c))
+        {
+            uri[used++] = (char)c;
+        }
+        else
+        {
+            static const char hex[] = "0123456789ABCDEF";
+            uri[used++] = '%';
+            uri[used++] = hex[c >> 4];
+            uri[used++] = hex[c & 0x0F];
+        }
+    }
+    uri[used] = 0;
+    return uri;
+}
+
 ProjectFile *lsp_project_get_file(const char *uri)
 {
-    if (!g_project)
-    {
-        return NULL;
-    }
-    ProjectFile *curr = g_project->files;
-    while (curr)
-    {
-        if (strcmp(curr->uri, uri) == 0)
-        {
-            return curr;
-        }
-        curr = curr->next;
-    }
-    return NULL;
+    return uri ? lsp_project_get_file_by_path(lsp_uri_to_path(uri)) : NULL;
 }
 
 ProjectFile *lsp_project_get_file_by_path(const char *path)
@@ -548,19 +607,11 @@ ProjectFile *lsp_project_get_file_by_path(const char *path)
     return NULL;
 }
 
-static ProjectFile *add_project_file(const char *uri)
+static ProjectFile *add_project_file(const char *path)
 {
     ProjectFile *f = xcalloc(1, sizeof(ProjectFile));
-    f->uri = xstrdup(uri);
-    // Simple path extraction from URI (file://...)
-    if (strncmp(uri, "file://", 7) == 0)
-    {
-        f->path = xstrdup(uri + 7);
-    }
-    else
-    {
-        f->path = xstrdup(uri);
-    }
+    f->path = xstrdup(path);
+    f->uri = lsp_path_to_uri(path);
 
     f->next = g_project->files;
     g_project->files = f;
@@ -612,10 +663,7 @@ static void index_imported_modules(ASTNode *nodes, TypeUsage *usages_before,
         {
             continue;
         }
-        size_t size = strlen(path) + sizeof("file://");
-        char *uri = xmalloc(size);
-        snprintf(uri, size, "file://%s", path);
-        ProjectFile *module = add_project_file(uri);
+        ProjectFile *module = add_project_file(path);
         module->is_external = 1;
         module->ast = n->import_stmt.module_root;
         // The text it was parsed from, so code the parser generates in it stays out of the index.
@@ -636,7 +684,7 @@ void lsp_project_update_file(const char *uri, const char *src)
     ProjectFile *pf = lsp_project_get_file(uri);
     if (!pf)
     {
-        pf = add_project_file(uri);
+        pf = add_project_file(lsp_uri_to_path(uri));
     }
     // Opened or in the workspace: a file of the project, even if an import read it first.
     pf->is_external = 0;

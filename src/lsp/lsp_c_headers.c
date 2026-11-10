@@ -428,9 +428,7 @@ static char *find_module_file(const char *name, const char *from_dir)
 // Text of a module: the client's version when it is open, otherwise the file on disk.
 static char *module_text(const char *path)
 {
-    char uri[MAX_PATH_LEN + 8];
-    snprintf(uri, sizeof(uri), "file://%s", path);
-    ProjectFile *file = lsp_project_get_file(uri);
+    ProjectFile *file = lsp_project_get_file_by_path(path);
     if (file && file->source)
     {
         return c_headers_copy_text(file->source, strlen(file->source));
@@ -1720,43 +1718,6 @@ int lsp_c_headers_field_type(const char *document_path, const char *source, cons
     return found;
 }
 
-static char *path_to_uri(const char *path)
-{
-    size_t length = strlen(path);
-    char *uri = libc_malloc(length * 3 + 16);
-    if (!uri)
-    {
-        return NULL;
-    }
-    size_t capacity = length * 3 + 16;
-    size_t used = (size_t)snprintf(uri, capacity, "file://");
-    if (isalpha((unsigned char)path[0]) && path[1] == ':')
-    {
-        uri[used++] = '/';
-    }
-    for (size_t i = 0; i < length; i++)
-    {
-        unsigned char c = (unsigned char)path[i];
-        if (c == '\\')
-        {
-            uri[used++] = '/';
-        }
-        else if (isalnum(c) || strchr("/-._~:", c))
-        {
-            uri[used++] = (char)c;
-        }
-        else
-        {
-            static const char hex[] = "0123456789ABCDEF";
-            uri[used++] = '%';
-            uri[used++] = hex[c >> 4];
-            uri[used++] = hex[c & 0x0F];
-        }
-    }
-    uri[used] = '\0';
-    return uri;
-}
-
 static cJSON *make_range(int line, int column, int length)
 {
     cJSON *range = cJSON_CreateObject();
@@ -1773,14 +1734,8 @@ static cJSON *make_range(int line, int column, int length)
 
 static cJSON *make_location(const char *path, int line, int column, int length)
 {
-    char *uri = path_to_uri(path);
-    if (!uri)
-    {
-        return NULL;
-    }
     cJSON *location = cJSON_CreateObject();
-    cJSON_AddStringToObject(location, "uri", uri);
-    libc_free(uri);
+    cJSON_AddStringToObject(location, "uri", lsp_path_to_uri(path));
     cJSON_AddItemToObject(location, "range", make_range(line, column, length));
     return location;
 }
@@ -1829,15 +1784,9 @@ struct cJSON *lsp_c_headers_origin_location(const CHeaderOrigin *origin, CHeader
     {
         return make_location(origin->path, 0, 0, 0);
     }
-    char *uri = path_to_uri(origin->path);
-    if (!uri)
-    {
-        return NULL;
-    }
     cJSON *link = cJSON_CreateObject();
     cJSON_AddItemToObject(link, "originSelectionRange", lsp_c_headers_origin_range(origin, kind));
-    cJSON_AddStringToObject(link, "targetUri", uri);
-    libc_free(uri);
+    cJSON_AddStringToObject(link, "targetUri", lsp_path_to_uri(origin->path));
     cJSON_AddItemToObject(link, "targetRange", make_range(0, 0, 0));
     cJSON_AddItemToObject(link, "targetSelectionRange", make_range(0, 0, 0));
     cJSON *links = cJSON_CreateArray();

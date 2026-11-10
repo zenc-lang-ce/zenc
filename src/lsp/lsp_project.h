@@ -16,8 +16,8 @@ struct cJSON;
  */
 typedef struct ProjectFile
 {
-    char *path;      ///< Absolute file path.
-    char *uri;       ///< file:// URI.
+    char *path;      ///< Absolute file path: what identifies the file.
+    char *uri;       ///< Its file:// URI, percent-encoded, as responses give it (lsp_path_to_uri).
     char *source;    ///< Cached source content (in-memory).
     ASTNode *ast;    ///< Cached AST for semantic analysis.
     LSPIndex *index; ///< File-specific symbol index.
@@ -53,7 +53,15 @@ void lsp_project_init(const char *root_path);
 // Perform full project indexing
 void lsp_project_index_workspace(void);
 
-// Find a file in the project
+// The path of a file:// URI as a client writes it: without the scheme, percent-decoded, and
+// without the `/` before a Windows drive (`file:///C:/x` is `C:/x`). Any other URI is copied as it
+// is. In the arena.
+char *lsp_uri_to_path(const char *uri);
+
+// The file:// URI of a path, percent-encoded, as a client expects it. In the arena.
+char *lsp_path_to_uri(const char *path);
+
+// Find a file in the project by its URI, however the client encodes it.
 ProjectFile *lsp_project_get_file(const char *uri);
 
 // Find a file in the project by its path, as tokens name it (Token.file); NULL if not there.

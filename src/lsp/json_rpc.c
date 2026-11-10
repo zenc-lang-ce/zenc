@@ -104,34 +104,6 @@ void lsp_progress_end(const char *text)
     send_progress(progress_value("end", text, -1));
 }
 
-// Decode percent-encoded URI in-place (e.g. "file%20name" -> "file name")
-static void uri_decode(char *s)
-{
-    if (!s)
-    {
-        return;
-    }
-    char *r = s;
-    while (*s)
-    {
-        if (*s == '%' && s[1] && s[2])
-        {
-            char hi = (char)toupper((unsigned char)s[1]);
-            char lo = (char)toupper((unsigned char)s[2]);
-            if ((hi >= '0' && hi <= '9') || (hi >= 'A' && hi <= 'F'))
-            {
-                int v = (hi >= 'A' ? hi - 'A' + 10 : hi - '0') * 16;
-                v += (lo >= 'A' ? lo - 'A' + 10 : lo - '0');
-                *r++ = (char)v;
-                s += 3;
-                continue;
-            }
-        }
-        *r++ = *s++;
-    }
-    *r = 0;
-}
-
 // Helper to extract textDocument params
 static void get_params(cJSON *root, char **uri, int *line, int *col)
 {
@@ -149,7 +121,6 @@ static void get_params(cJSON *root, char **uri, int *line, int *col)
         if (u && u->valuestring)
         {
             *uri = xstrdup(u->valuestring);
-            uri_decode(*uri);
         }
     }
 
@@ -189,53 +160,26 @@ static cJSON *initialize(const cJSON *params)
     g_lsp_definition_link_support = cJSON_IsTrue(cJSON_GetObjectItem(definition, "linkSupport"));
     g_work_done_progress = cJSON_IsTrue(
         cJSON_GetObjectItem(cJSON_GetObjectItem(capabilities, "window"), "workDoneProgress"));
-    char *root = NULL;
-    if (params)
+    // The root: a path (rootPath, from before rootUri), or the URI of rootUri or of the first
+    // workspace folder.
+    cJSON *root_path = cJSON_GetObjectItem(params, "rootPath");
+    cJSON *root_uri = cJSON_GetObjectItem(params, "rootUri");
+    cJSON *folder_uri = cJSON_GetObjectItem(
+        cJSON_GetArrayItem(cJSON_GetObjectItem(params, "workspaceFolders"), 0), "uri");
+    const char *root = ".";
+    if (cJSON_IsString(root_path))
     {
-        cJSON *rp = cJSON_GetObjectItem(params, "rootPath");
-        if (rp && rp->valuestring)
-        {
-            root = xstrdup(rp->valuestring);
-            uri_decode(root);
-        }
-        else
-        {
-            cJSON *ru = cJSON_GetObjectItem(params, "rootUri");
-            if (ru && ru->valuestring)
-            {
-                root = xstrdup(ru->valuestring);
-            }
-        }
-
-        // Try workspaceFolders if rootPath/rootUri weren't set
-        if (!root)
-        {
-            cJSON *wfs = cJSON_GetObjectItem(params, "workspaceFolders");
-            if (wfs && cJSON_GetArraySize(wfs) > 0)
-            {
-                cJSON *wf = cJSON_GetArrayItem(wfs, 0);
-                cJSON *wf_uri = cJSON_GetObjectItem(wf, "uri");
-                if (wf_uri && wf_uri->valuestring)
-                {
-                    root = xstrdup(wf_uri->valuestring);
-                }
-            }
-        }
+        root = root_path->valuestring;
     }
-
-    if (root && strncmp(root, "file://", 7) == 0)
+    else if (cJSON_IsString(root_uri))
     {
-        char *clean = xstrdup(root + 7);
-        zfree(root);
-        root = clean;
-        uri_decode(root);
+        root = lsp_uri_to_path(root_uri->valuestring);
     }
-
-    lsp_project_init(root ? root : ".");
-    if (root)
+    else if (cJSON_IsString(folder_uri))
     {
-        zfree(root);
+        root = lsp_uri_to_path(folder_uri->valuestring);
     }
+    lsp_project_init(root);
 
     const char *result_text =
         "{"

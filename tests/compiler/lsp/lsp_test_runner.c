@@ -1886,6 +1886,44 @@ static int completion_kind(int id, const char *path, int line, int character, co
     return kind;
 }
 
+static void test_uri_with_spaces(void)
+{
+    printf("Running test_uri_with_spaces...\n");
+    // A file whose path has spaces: its URI is percent-encoded, both in what the client sends and
+    // in what the server answers. On disk it declares `on_disk`; the editor has `in_editor`.
+    mkdir("/tmp/zc lsp space", 0755);
+    write_file("/tmp/zc lsp space/a b.zc", "fn on_disk() -> int { return 1; }\n");
+    const char *uri = "file:///tmp/zc%20lsp%20space/a%20b.zc";
+    // Line 0: fn in_editor() -> int { return 2; }
+    // Line 1: fn use_it() -> int { return in_editor(); }
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/zc%20lsp%20space/a%20b.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"fn in_editor() -> int { "
+                 "return 2; }\\nfn use_it() -> int { return in_editor(); }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 940, 0, 4, "fn in_editor() -> int");
+
+    // The definition is given with the URI encoded, as the client sent it.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 941, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/zc%20lsp%20space/a%20b.zc\"}, "
+                 "\"position\": {\"line\": 1, \"character\": 30}}}");
+    char *resp = wait_for_response(941);
+    if (!resp || !strstr(resp, "\"uri\":\"file:///tmp/zc%20lsp%20space/a%20b.zc\""))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("A URI with spaces is answered percent-encoded");
+    }
+    free(resp);
+
+    // Closed, the file is the one on disk again.
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didClose\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/zc%20lsp%20space/a%20b.zc\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 942, 0, 4, "fn on_disk() -> int");
+    printf("PASS: test_uri_with_spaces\n");
+}
+
 static void test_keyword_completion(void)
 {
     printf("Running test_keyword_completion...\n");
@@ -3135,6 +3173,7 @@ int main()
     test_member_completion();
     test_local_completion();
     test_keyword_completion();
+    test_uri_with_spaces();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
