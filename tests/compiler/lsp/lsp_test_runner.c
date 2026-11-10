@@ -1971,6 +1971,25 @@ static void test_generic_function_hover(void)
     printf("PASS: test_generic_function_hover\n");
 }
 
+static void test_literal_field_hover(void)
+{
+    printf("Running test_literal_field_hover...\n");
+    // The name of a field in a struct literal is that field, not the value it takes.
+    // Line 0: struct Retraction { told: int; day: u16; }
+    // Line 1: fn make(told: int) -> Retraction { return Retraction { told: told, day: 1 }; }
+    const char *uri = "file:///tmp/test_literal_field_hover.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_literal_field_hover.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"struct Retraction { told: "
+                 "int; day: u16; }\\nfn make(told: int) -> Retraction { return Retraction { told: "
+                 "told, day: 1 }; }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 967, 1, 56, "field told: i32");
+    expect_hover_in(uri, 968, 1, 62, "```zc\\ntold: i32");
+    expect_hover_in(uri, 969, 1, 68, "field day: u16");
+    printf("PASS: test_literal_field_hover\n");
+}
+
 static void test_primitive_hover(void)
 {
     printf("Running test_primitive_hover...\n");
@@ -3322,6 +3341,7 @@ int main()
     test_deleted_declarations();
     test_uri_with_spaces();
     test_primitive_hover();
+    test_literal_field_hover();
     test_generic_function_hover();
     test_variant_hover();
     test_loop_variable_hover();

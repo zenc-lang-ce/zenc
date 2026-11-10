@@ -1045,7 +1045,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
                         ASTNode *val = parse_expression(ctx, l);
                         ASTNode *assign = ast_create(NODE_FIELD_INIT);
-                        assign->token = t;
+                        assign->token = fn;
                         assign->var_decl.name = token_strdup(fn);
                         assign->var_decl.init_expr = val;
                         if (!head)
@@ -1062,6 +1062,27 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     lexer_next(l);
                 }
                 node->struct_init.fields = head;
+
+                // For the language server: each field where its struct, or the template of a
+                // generic one, declares it.
+                GenericTemplate *declaring_template =
+                    def ? NULL : find_generic_template(ctx, struct_name);
+                ASTNode *declaring = def                  ? def
+                                     : declaring_template ? declaring_template->struct_node
+                                                          : NULL;
+                for (ASTNode *f = declaring && declaring->kind == NODE_STRUCT ? head : NULL; f;
+                     f = f->next)
+                {
+                    for (ASTNode *d = declaring->strct.fields; d; d = d->next)
+                    {
+                        if (d->kind == NODE_FIELD && d->field.name &&
+                            strcmp(d->field.name, f->var_decl.name) == 0)
+                        {
+                            f->definition_token = d->token;
+                            break;
+                        }
+                    }
+                }
 
                 // `Box{val: 5}` names the instance its fields give the parameter: `Box<int>`.
                 GenericTemplate *gtpl = generic_type ? NULL : find_generic_template(ctx, acc);

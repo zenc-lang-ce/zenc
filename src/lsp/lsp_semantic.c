@@ -213,6 +213,13 @@ static int node_token_type(const ASTNode *node, int *modifiers)
     case NODE_FIELD:
     case NODE_EXPR_MEMBER:
         return TOKEN_TYPE_MEMBER;
+    case NODE_FIELD_INIT:
+        // `x` of `Point { x: 1 }`; a positional vector literal names its values `_v0`... and
+        // writes no name.
+        return node->var_decl.name && strlen(node->var_decl.name) == node->token.len &&
+                       strncmp(node->token.start, node->var_decl.name, node->token.len) == 0
+                   ? TOKEN_TYPE_MEMBER
+                   : -1;
     case NODE_ENUM:
     case NODE_ENUM_VARIANT:
         return TOKEN_TYPE_ENUM;

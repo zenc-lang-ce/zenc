@@ -46,6 +46,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - An integer constant is checked against the range of its target: `take(20)` for a `u8` no longer warns, and `let big: u8 = 300;` does.
   - An error inside an f-string interpolation points at the expression and prints its line.
   - A MISRA diagnostic about a struct field points at the field.
+  - A diagnostic about a field of a struct literal (a type mismatch, a pointer that escapes, a MISRA rule) points at that field, not at the name of the struct.
   - MISRA Rule 2.4 does not flag an enum the program uses; `assert` and `test` blocks are reported under Rule 21.6 instead of C that does not compile.
 - `#line` is emitted when the file changes on the same line, and again when a newline was written since the last one; a `for` loop restores the lexer after its lookahead.
 - The C is written in binary mode on Windows.
@@ -69,6 +70,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - The variable of a `for` has hover and go to definition, with the type of the elements it walks (`for entry in list`, `for i, x in v`, `for i in 0..n`), and the hover of a `let` gives its type.
   - Enum variants have hover and go to definition where they are declared, built (`Value::Hour(3)`, `Value::Nothing`) and matched (`Value::Hour(h) =>`, `Hour(h) =>`, `Some(x) =>` on an Option); the hover gives the enum and the payload: `Value::Hour(i32)`.
   - Generic functions (`fn f<T>`) are indexed: their name, parameters and body have hover and go to definition, and so have their calls (`f<int>(1)`, `f(1)`).
+  - The field names of a struct literal (`Point { x: 1, y: 2 }`, `Box<int> { val: 3 }`) have hover and go to definition.
 - `zc-format` no longer needs the language server: it is built with `ZC_LSP=0` too.
 - REPL: Backspace and Escape work in reverse search.
 
