@@ -45,6 +45,12 @@ typedef struct LSPIndex
     /// The nodes that hold the names of the types the file refers to (see lsp_index_add_type_ref),
     /// one per name, linked by `next`.
     ASTNode *type_names;
+    /// The text of the file and where each of its lines starts: a range is only added where its
+    /// token is written (see lsp_build_index).
+    const char *source;
+    size_t source_len;
+    size_t *line_starts;
+    int line_count;
 } LSPIndex;
 
 // API.
@@ -69,6 +75,11 @@ LSPRange *lsp_find_at(LSPIndex *idx, int line, int col);
 int lsp_function_signature(Token name, char *out, size_t size);
 
 // Walker.
-void lsp_build_index(LSPIndex *idx, ASTNode *root);
+/**
+ * @brief Indexes the nodes of a file parsed from `source`. Code that the parser generates from a
+ * text of its own (`@derive`, `comptime`) has tokens with the file's name but not its positions:
+ * the ranges of a token that is not written at its position in `source` are left out.
+ */
+void lsp_build_index(LSPIndex *idx, ASTNode *root, const char *source);
 
 #endif

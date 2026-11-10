@@ -437,6 +437,29 @@ static void test_hover_parameters(void)
     printf("PASS: test_hover_parameters\n");
 }
 
+static void test_hover_beside_generated_code(void)
+{
+    printf("Running test_hover_beside_generated_code...\n");
+    // `@derive` writes its methods as a text of their own and parses it: their tokens have the
+    // name of this file and the positions of that text, from line 1. They are not in the file,
+    // and they must not hide what is written on its first line.
+    // Line 0: struct Point { x: int; } fn helper(count: int) -> int { return count; }
+    // Line 1: @derive(Eq, Clone)
+    // Line 2: struct Pair { a: int; b: int; }
+    const char *uri = "file:///tmp/test_hover_generated.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_hover_generated.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Point { x: int; } fn helper(count: int) -> int { return count; "
+                 "}\\n@derive(Eq, Clone)\\nstruct Pair { a: int; b: int; }\\n\"}}}");
+    usleep(100000);
+
+    expect_hover_in(uri, 323, 0, 28, "fn helper(count: int) -> int");
+    expect_hover_in(uri, 324, 0, 35, "```zc\\ncount: i32\\n```");
+    expect_hover_in(uri, 325, 0, 63, "```zc\\ncount: i32\\n```");
+    printf("PASS: test_hover_beside_generated_code\n");
+}
+
 static void test_type_name_lookup(void)
 {
     printf("Running test_type_name_lookup...\n");
@@ -2481,6 +2504,7 @@ int main()
     test_hover_signature();
     test_fstring_interpolation_lookup();
     test_hover_parameters();
+    test_hover_beside_generated_code();
     test_type_name_lookup();
     test_completion();
     test_struct_completion();
