@@ -156,6 +156,34 @@ else
     check "a bare -O does not take the next argument" 0
 fi
 
+# Options can come before the command, as the usage line shows; one that takes a value (`-o`)
+# takes it there too, and `--` still goes with `run`.
+"$ZC" -q -o "$workdir/before" build "$workdir/smoke.zc" > /dev/null 2>&1
+if [ -x "$workdir/before" ] && "$workdir/before" | grep -q "cli-smoke-ok"; then
+    check "options before the command" 1
+else
+    check "options before the command" 0
+fi
+
+out=$("$ZC" -q run "$workdir/args.zc" -o "$workdir/args_before" -- --version 2>&1)
+if [ "$out" = "[--version]" ]; then
+    check "-- after options before the command" 1
+else
+    check "-- after options before the command" 0
+fi
+
+# `-g` gives the C compiler `-g`, so a debugger finds the .zc lines; without it, or after
+# `-g0`, it does not.
+out_g=$("$ZC" build -v -g "$workdir/smoke.zc" -o "$workdir/smoke_g" 2>&1)
+out_plain=$("$ZC" build -v "$workdir/smoke.zc" -o "$workdir/smoke_plain" 2>&1)
+out_g0=$("$ZC" build -v -g -g0 "$workdir/smoke.zc" -o "$workdir/smoke_g0" 2>&1)
+if echo "$out_g" | grep -qE -- ' -g( |$)' && ! echo "$out_plain" | grep -qE -- ' -g( |$)' &&
+    ! echo "$out_g0" | grep -qE -- ' -g( |$)'; then
+    check "-g passes -g to the C compiler" 1
+else
+    check "-g passes -g to the C compiler" 0
+fi
+
 # --- Program output ----------------------------------------------------------
 
 # Runs a program and compares its exact standard output (stdin from $3).

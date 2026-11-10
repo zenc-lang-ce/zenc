@@ -47,6 +47,7 @@ typedef struct CompilerConfig
 
     int mode_run;
     int mode_debug;
+    int debug_info; // Pass -g to the C compiler (`zc -g`, `zc debug`)
     int mode_check;
     int mode_transpile;
     int emit_c;

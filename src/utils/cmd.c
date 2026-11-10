@@ -238,6 +238,10 @@ int build_compile_arg_list(ArgList *list, const char *outfile, const char *temp_
 
     // GCC Flags
     arg_list_add_from_string(list, cfg->gcc_flags);
+    if (cfg->debug_info)
+    {
+        arg_list_add(list, "-g");
+    }
     arg_list_add_from_string(list, compiler->cflags);
 
     // Suppress warnings triggered by transpiled code
