@@ -42,6 +42,9 @@ typedef struct LSPIndex
 {
     LSPRange *head; ///< First range in the file.
     LSPRange *tail; ///< Last range in the file.
+    /// The nodes that hold the names of the types the file refers to (see lsp_index_add_type_ref),
+    /// one per name, linked by `next`.
+    ASTNode *type_names;
 } LSPIndex;
 
 // API.
@@ -51,6 +54,12 @@ void lsp_index_add_def(LSPIndex *idx, Token t, const char *hover, ASTNode *node)
 void lsp_index_add_def_range(LSPIndex *idx, Token start, Token end, const char *hover,
                              ASTNode *node);
 void lsp_index_add_ref(LSPIndex *idx, Token t, Token def_t, ASTNode *node);
+/**
+ * @brief Adds the use of a type name as a reference by name: its definition is looked up, in any
+ * file of the project, when it is asked for. The reference carries a node that only holds the
+ * name, as the node of a variable's reference does.
+ */
+void lsp_index_add_type_ref(LSPIndex *idx, Token t, const char *name);
 LSPRange *lsp_find_at(LSPIndex *idx, int line, int col);
 
 /**

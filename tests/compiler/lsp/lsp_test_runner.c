@@ -312,7 +312,7 @@ static void expect_hover_in(const char *uri, int id, int line, int character,
     {
         printf("Expected hover \"%s\" at %d:%d, got: %s\n", expected, line, character,
                resp ? resp : "(no response)");
-        fail("Hover must find the symbols inside an f-string interpolation");
+        fail("Hover must show the symbol under the cursor");
     }
     free(resp);
 }
@@ -356,6 +356,53 @@ static void test_fstring_interpolation_lookup(void)
     }
     free(resp);
     printf("PASS: test_fstring_interpolation_lookup\n");
+}
+
+static void test_type_name_lookup(void)
+{
+    printf("Running test_type_name_lookup...\n");
+    // Line 0: struct Box { v: int; }
+    // Line 1: enum Mode { On, Off }
+    // Line 2: alias Id = int;
+    // Line 3: fn show(b: Box, m: Mode) -> Box {
+    // Line 4:     let c: Box = Box { v: 1 };
+    // Line 5:     let a = Mode::On;
+    // Line 6:     let i: Id = 3;
+    // Line 7:     return c;
+    // Line 8: }
+    const char *uri = "file:///tmp/test_type_lookup.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_type_lookup.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Box { v: int; }\\nenum Mode { On, Off }\\nalias Id = int;\\n"
+                 "fn show(b: Box, m: Mode) -> Box {\\n    let c: Box = Box { v: 1 };\\n    "
+                 "let a = Mode::On;\\n    let i: Id = 3;\\n    return c;\\n}\\n\"}}}");
+    usleep(100000);
+
+    // The name of a type in a parameter, a return type and a variable's type.
+    expect_hover_in(uri, 401, 3, 11, "struct Box");
+    expect_hover_in(uri, 402, 3, 19, "enum Mode");
+    expect_hover_in(uri, 403, 3, 28, "struct Box");
+    expect_hover_in(uri, 404, 4, 11, "struct Box");
+    // In a struct literal, in the path of an enum's variant, and an alias.
+    expect_hover_in(uri, 405, 4, 17, "struct Box");
+    expect_hover_in(uri, 406, 5, 12, "enum Mode");
+    expect_hover_in(uri, 407, 6, 11, "alias Id");
+    // The alias's own name is a definition too.
+    expect_hover_in(uri, 408, 2, 6, "alias Id");
+
+    // Go to definition leads to the declaration of the type.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 409, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_type_lookup.zc\"}, "
+                 "\"position\": {\"line\": 4, \"character\": 17}}}");
+    char *resp = wait_for_response(409);
+    if (!resp || !strstr(resp, "\"line\":0") || !strstr(resp, "test_type_lookup.zc"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition on a type name must lead to the struct's declaration");
+    }
+    free(resp);
+    printf("PASS: test_type_name_lookup\n");
 }
 
 static void test_definition_partial_code()
@@ -2354,6 +2401,7 @@ int main()
     test_hover();
     test_hover_signature();
     test_fstring_interpolation_lookup();
+    test_type_name_lookup();
     test_completion();
     test_struct_completion();
     test_diagnostics();

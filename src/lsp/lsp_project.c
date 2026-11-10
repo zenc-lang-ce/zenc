@@ -603,6 +603,10 @@ void lsp_project_update_file(const char *uri, const char *src)
     g_project->ctx->compiler->error_count = 0;
     g_project->ctx->compiler->warning_count = 0;
 
+    // The parser lists every type name it reads (newest first), to validate them when it is done.
+    // The server has no use for that validation, which reports nothing here: it indexes the names
+    // this parse read, and drops them with the parse.
+    TypeUsage *usages_before = g_project->ctx->pending_type_validations;
     ASTNode *root = parse_program(g_project->ctx, &l);
     if (root)
     {
@@ -610,15 +614,21 @@ void lsp_project_update_file(const char *uri, const char *src)
         pf->index = lsp_index_new();
         lsp_build_index(pf->index, root);
 
-        if (!g_is_indexing)
+        for (TypeUsage *use = g_project->ctx->pending_type_validations; use && use != usages_before;
+             use = use->next)
         {
-            validate_types(g_project->ctx);
+            // The names the file imports were read too, in their own files.
+            if (use->location.file && strcmp(use->location.file, pf->path) == 0)
+            {
+                lsp_index_add_type_ref(pf->index, use->location, use->name);
+            }
         }
     }
     else
     {
         pf->ast = NULL;
     }
+    g_project->ctx->pending_type_validations = usages_before;
 
     g_project->ctx->current_filename = saved_filename;
 }
