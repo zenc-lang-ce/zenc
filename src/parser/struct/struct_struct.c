@@ -17,6 +17,9 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
 {
 
     lexer_next(l); // eat struct or union
+    // `register_generic` skips a name that is already a generic parameter: what the struct
+    // registers is undone by restoring the count, not by subtracting what it declared.
+    int generics_before = ctx->known_generics_count;
     Token n = lexer_next(l);
     check_identifier(n);
     char *name = token_strdup(n);
@@ -363,7 +366,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     if (gp_count > 0)
     {
         node->strct.is_template = 1;
-        ctx->known_generics_count -= gp_count;
+        ctx->known_generics_count = generics_before;
         register_template(ctx, name, node);
     }
 

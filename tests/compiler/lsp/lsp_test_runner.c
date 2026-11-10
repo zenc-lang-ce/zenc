@@ -405,6 +405,28 @@ static void test_type_name_lookup(void)
     printf("PASS: test_type_name_lookup\n");
 }
 
+static void test_generic_impls_keep_server_alive(void)
+{
+    printf("Running test_generic_impls_keep_server_alive...\n");
+    // `impl<T> A for Cell<T>` names `T` twice. The count of generic parameters in scope went
+    // below zero, and the methods of `impl B for Cell` read it as a length: the server died.
+    // Line 0: trait A { fn a(self) -> int; }
+    // Line 1: trait B { fn b(self) -> int; }
+    // Line 2: struct Cell<T> { v: T; }
+    // Line 3: impl<T> A for Cell<T> { fn a(self) -> int { return 1; } }
+    // Line 4: impl B for Cell { fn b(self) -> int { return 2; } }
+    const char *uri = "file:///tmp/test_generic_impls.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_generic_impls.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"trait A { fn a(self) -> int; }\\ntrait B { fn b(self) -> int; }\\nstruct "
+                 "Cell<T> { v: T; }\\nimpl<T> A for Cell<T> { fn a(self) -> int { return 1; } "
+                 "}\\nimpl B for Cell { fn b(self) -> int { return 2; } }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 501, 2, 8, "struct Cell");
+    printf("PASS: test_generic_impls_keep_server_alive\n");
+}
+
 static void test_definition_partial_code()
 {
     printf("Running test_definition_partial_code...\n");
@@ -2402,6 +2424,7 @@ int main()
     test_hover_signature();
     test_fstring_interpolation_lookup();
     test_type_name_lookup();
+    test_generic_impls_keep_server_alive();
     test_completion();
     test_struct_completion();
     test_diagnostics();

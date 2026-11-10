@@ -120,6 +120,11 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 
     lexer_next(l); // eat impl
 
+    // `register_generic` skips a name that is already a generic parameter, as the `T` of
+    // `impl<T> Show for Box<T>` is the second time: what the impl registers is undone by
+    // restoring the count, not by subtracting what it declared.
+    int generics_before = ctx->known_generics_count;
+
     // Handle impl<T> Struct<T> syntax: generic param declared before struct name
     char *gen_param = NULL;
     if (lexer_peek(l).kind == TOK_LANGLE)
@@ -315,14 +320,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             register_impl_template(ctx, name2, gp, n);
         }
 
-        if (gen_param)
-        {
-            ctx->known_generics_count--;
-        }
-        if (target_gen_param)
-        {
-            ctx->known_generics_count--;
-        }
+        ctx->known_generics_count = generics_before;
         return n;
     }
     else
@@ -371,10 +369,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             n->impl.methods = h;
             register_impl_template(ctx, name1, gen_param, n);
             ctx->current_impl_target = NULL;
-            if (gen_param)
-            {
-                ctx->known_generics_count--;
-            }
+            ctx->known_generics_count = generics_before;
             return NULL; // Do not emit generic template
         }
         else
@@ -388,10 +383,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             n->impl.methods = h;
             add_to_impl_list(ctx, n);
 
-            if (gen_param)
-            {
-                ctx->known_generics_count--;
-            }
+            ctx->known_generics_count = generics_before;
             return n;
         }
     }

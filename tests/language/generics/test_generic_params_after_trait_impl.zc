@@ -1,0 +1,31 @@
+// language/generics: the generic parameters in scope are restored after an impl, also when the
+// `T` of `impl<T> A for Cell<T>` is named twice in its header. The count went below zero, and the
+// next method of an impl on a generic struct read it as a length (it crashed the compiler).
+trait A {
+    fn a(self) -> int;
+}
+
+trait B {
+    fn b(self) -> int;
+}
+
+struct Cell<T> {
+    v: T;
+}
+
+impl<T> A for Cell<T> {
+    fn a(self) -> int {
+        return 1;
+    }
+}
+
+impl B for Cell {
+    fn b(self) -> int {
+        return 2;
+    }
+}
+
+test "an impl on a generic struct after impl<T> Trait for Struct<T>" {
+    let c = Cell<int> { v: 3 };
+    expect_eq(c.a() + c.b(), 3, "both methods should be callable");
+}
