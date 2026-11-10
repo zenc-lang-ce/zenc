@@ -63,6 +63,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - The workspace index leaves out what the project's .gitignore or `exclude` in zenc.server.json leave out, and nothing else: it no longer skips `node_modules`, `obj`, `vhdl` and `vivado` by their names.
   - `initialize` gives the compiler's version as the server's, instead of 1.0.0.
   - Completion no longer offers the constructs the language removed: `repeat`, `unless`, `guard`, `do`, `async`, `await` and `autofree`.
+- `zc-format` no longer needs the language server: it is built with `ZC_LSP=0` too.
 - REPL: Backspace and Escape work in reverse search.
 
 ### Added

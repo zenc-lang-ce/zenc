@@ -4,7 +4,7 @@
 #include "lsp_project.h"
 #include "lsp_semantic.h"
 #include "lsp_analysis.h"
-#include "lsp_formatter.h"
+#include "../zen/zen_format.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -209,7 +209,7 @@ static cJSON *initialize(const cJSON *params)
 static cJSON *formatting_edits(const char *uri)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
-    char *formatted = pf && pf->source ? lsp_format_source(pf->source) : NULL;
+    char *formatted = pf && pf->source ? zen_format_source(pf->source) : NULL;
     if (!formatted)
     {
         return NULL;

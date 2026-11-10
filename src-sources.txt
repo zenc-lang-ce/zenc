@@ -101,13 +101,13 @@ src/lsp/lsp_analysis.c
 src/lsp/lsp_semantic.c
 src/lsp/lsp_index.c
 src/lsp/lsp_locals.c
-src/lsp/lsp_formatter.c
 src/lsp/lsp_project.c
 src/lsp/lsp_c_headers.c
 src/lsp/lsp_config.c
 src/utils/cJSON.c
 src/tools/tool_common.c
 src/zen/zen_doc.c
+src/zen/zen_format.c
 src/repl/repl.c
 src/repl/repl_highlight.c
 src/repl/repl_readline.c
