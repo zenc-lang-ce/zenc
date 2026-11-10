@@ -139,7 +139,7 @@ int lsp_main(ZenCompiler *compiler, int argc, char **argv)
         g_lsp_request_is_readonly = 1;
 
         // Process JSON-RPC.
-        handle_request(body);
+        lsp_handle_message(body);
 
         if (g_lsp_request_is_readonly)
         {

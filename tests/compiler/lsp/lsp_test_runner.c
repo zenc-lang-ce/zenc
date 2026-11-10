@@ -822,12 +822,17 @@ static void test_references_partial_code()
 static void test_request_unopened_file()
 {
     printf("Running test_request_unopened_file...\n");
-    // Hover on a URI that was never didOpen'd — tests null-pointer guards.
-    // The server may not respond, so verify it's still alive via a hover on
-    // a known-opened file (test_lsp.zc from test_hover).
+    // Hover on a URI that was never didOpen'd — tests null-pointer guards. The answer is null.
     send_request("{\"jsonrpc\": \"2.0\", \"id\": 102, \"method\": \"textDocument/hover\", "
                  "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_nonexistent.zc\"}, "
                  "\"position\": {\"line\": 0, \"character\": 0}}}");
+    char *unknown = wait_for_response(102);
+    if (!unknown || !strstr(unknown, "\"result\":null"))
+    {
+        printf("Hover on a file never opened answered: %s\n", unknown ? unknown : "(nothing)");
+        fail("A request on a file the server does not know is answered with null");
+    }
+    free(unknown);
 
     // Hover on a known file to verify server is still alive
     send_request("{\"jsonrpc\": \"2.0\", \"id\": 103, \"method\": \"textDocument/hover\", "
@@ -844,6 +849,90 @@ static void test_request_unopened_file()
         printf("WARN: test_request_unopened_file: %s\n", resp ? resp : "no response");
     }
     free(resp);
+}
+
+// Sends `request` (with id `id`) and waits for its response; returns 1 if it arrives, 0 if not.
+// A request the server does not answer would keep wait_for_response waiting forever, so a
+// request that is always answered goes right after it, and the wait ends with that one.
+static int send_and_wait_for_response(const char *request, int id)
+{
+    send_request(request);
+    int sentinel = id + 1000;
+    char check[160];
+    snprintf(check, sizeof(check),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"workspace/symbol\", "
+             "\"params\": {\"query\": \"\"}}",
+             sentinel);
+    send_request(check);
+    int answered = 0;
+    for (int i = 0; i < 500; i++)
+    {
+        char *msg = read_message();
+        if (!msg)
+        {
+            break;
+        }
+        cJSON *json = cJSON_Parse(msg);
+        free(msg);
+        const cJSON *got = json ? cJSON_GetObjectItem(json, "id") : NULL;
+        int got_id = cJSON_IsNumber(got) ? got->valueint : -1;
+        cJSON_Delete(json);
+        if (got_id == id)
+        {
+            answered = 1;
+        }
+        else if (got_id == sentinel)
+        {
+            break;
+        }
+    }
+    return answered;
+}
+
+static void test_every_request_answered(void)
+{
+    printf("Running test_every_request_answered...\n");
+    // On a file the server does not know, and with parameters missing: the client waits for
+    // an answer to each request, so each gets one.
+    const char *at_position = "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"%s\", \"params\": "
+                              "{\"textDocument\": {\"uri\": \"file:///tmp/never_opened.zc\"}, "
+                              "\"position\": {\"line\": 0, \"character\": 0}, "
+                              "\"newName\": \"other\", \"context\": {\"diagnostics\": []}}}";
+    const char *methods[] = {"textDocument/definition",
+                             "textDocument/declaration",
+                             "textDocument/hover",
+                             "textDocument/completion",
+                             "textDocument/documentSymbol",
+                             "textDocument/references",
+                             "textDocument/signatureHelp",
+                             "textDocument/rename",
+                             "textDocument/codeAction",
+                             "textDocument/semanticTokens/full",
+                             "textDocument/formatting"};
+    int id = 1101;
+    for (size_t i = 0; i < sizeof(methods) / sizeof(methods[0]); i++, id++)
+    {
+        char request[512];
+        snprintf(request, sizeof(request), at_position, id, methods[i]);
+        if (!send_and_wait_for_response(request, id))
+        {
+            printf("No answer to %s on a file the server does not know\n", methods[i]);
+            fail("Every request gets an answer");
+        }
+    }
+    for (size_t i = 0; i < sizeof(methods) / sizeof(methods[0]); i++, id++)
+    {
+        char request[256];
+        snprintf(request, sizeof(request),
+                 "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"%s\", \"params\": {}}", id,
+                 methods[i]);
+        if (!send_and_wait_for_response(request, id))
+        {
+            printf("No answer to %s without its parameters\n", methods[i]);
+            fail("Every request gets an answer");
+        }
+    }
+    printf("PASS: test_every_request_answered\n");
 }
 
 static void test_empty_source()
@@ -2802,6 +2891,7 @@ int main()
     test_definition_partial_code();
     test_references_partial_code();
     test_request_unopened_file();
+    test_every_request_answered();
     test_empty_source();
     test_did_change();
     test_type_errors_keep_recursion_depth();

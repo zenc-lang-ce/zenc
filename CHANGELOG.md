@@ -54,6 +54,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - Go to definition reaches the standard library from a workspace that does not contain it.
   - A definition in another file is looked up in that file, not at the same line of the open one.
   - Go to definition, hover, references and rename follow the declaration a name resolves to, not every declaration with that name: renaming a local or a parameter edits only its own uses, and a type name leads to the type its file declares.
+  - Every request gets an answer: on a file the server does not know, or without its parameters, it is `null` instead of none, which left the client waiting.
 - REPL: Backspace and Escape work in reverse search.
 
 ### Added
