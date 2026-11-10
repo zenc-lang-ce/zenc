@@ -1886,6 +1886,25 @@ static int completion_kind(int id, const char *path, int line, int character, co
     return kind;
 }
 
+static void test_primitive_hover(void)
+{
+    printf("Running test_primitive_hover...\n");
+    // Every name of a primitive, its aliases too, describes its type and gives its C spelling.
+    // Line 0: let a: int = 1;
+    // Line 1: let b: int32 = 2;
+    // Line 2: let c: c_long = 3;
+    const char *uri = "file:///tmp/test_primitive_hover.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_primitive_hover.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"let a: int = 1;\\nlet b: "
+                 "int32 = 2;\\nlet c: c_long = 3;\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 943, 0, 8, "**int**: 32-bit signed integer. `int32_t` in C.");
+    expect_hover_in(uri, 944, 1, 8, "**int32**: 32-bit signed integer. `int32_t` in C.");
+    expect_hover_in(uri, 945, 2, 8, "`long` in C.");
+    printf("PASS: test_primitive_hover\n");
+}
+
 static void test_uri_with_spaces(void)
 {
     printf("Running test_uri_with_spaces...\n");
@@ -3174,6 +3193,7 @@ int main()
     test_local_completion();
     test_keyword_completion();
     test_uri_with_spaces();
+    test_primitive_hover();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");

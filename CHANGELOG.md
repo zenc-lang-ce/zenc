@@ -59,6 +59,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - Semantic highlighting covers the whole file: every declaration and method, and what is inside the bodies of `if`, `while`, `for` and `match`, not only the first declaration. Completion offers the locals of every kind of body, such as a `match` arm.
   - Keywords are the language's, from one table that the lexer reads too: `for` and `in` are highlighted as keywords, and `print`, `println` and `printf` are functions. Completion offers each keyword where it starts a construct, and C functions such as `malloc` as functions, not keywords; words that are not Zen C (`module`, `unsafe`, `typedef`) are not offered.
   - A file whose path has spaces or other characters that a URI encodes: the server answers its URI encoded, and closing it goes back to the file on disk (it kept the editor's text).
+  - Hover describes every primitive type by any of its names (`int32`, `byte` and `c_long` too), with its C spelling.
 - REPL: Backspace and Escape work in reverse search.
 
 ### Added

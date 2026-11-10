@@ -296,109 +296,81 @@ cJSON *lsp_goto_definition(const char *uri, int line, int col)
     return result;
 }
 
-static const char *get_primitive_doc(const char *word)
+// What a value of a primitive type is, for its hover. NULL for a kind that no primitive has.
+ZEN_CONST static const char *primitive_description(TypeKind kind)
 {
-    if (strcmp(word, "int") == 0)
+    switch (kind)
     {
-        return "**int**: 32-bit signed integer (guaranteed size).";
+    case TYPE_VOID:
+        return "The empty type: it has no values.";
+    case TYPE_BOOL:
+        return "Boolean: `true` or `false`.";
+    case TYPE_CHAR:
+        return "A C character.";
+    case TYPE_STRING:
+        return "A string of UTF-8 characters.";
+    case TYPE_I8:
+        return "8-bit signed integer.";
+    case TYPE_U8:
+        return "8-bit unsigned integer.";
+    case TYPE_BYTE:
+        return "A byte: 8-bit unsigned integer.";
+    case TYPE_I16:
+        return "16-bit signed integer.";
+    case TYPE_U16:
+        return "16-bit unsigned integer.";
+    case TYPE_I32:
+        return "32-bit signed integer.";
+    case TYPE_U32:
+        return "32-bit unsigned integer.";
+    case TYPE_RUNE:
+        return "A Unicode scalar value (a 32-bit code point).";
+    case TYPE_I64:
+        return "64-bit signed integer.";
+    case TYPE_U64:
+        return "64-bit unsigned integer.";
+    case TYPE_I128:
+        return "128-bit signed integer.";
+    case TYPE_U128:
+        return "128-bit unsigned integer.";
+    case TYPE_F32:
+        return "32-bit floating point number.";
+    case TYPE_F64:
+        return "64-bit floating point number.";
+    case TYPE_USIZE:
+        return "Unsigned integer of the size of a pointer.";
+    case TYPE_ISIZE:
+        return "Signed integer of the size of a pointer.";
+    case TYPE_C_INT:
+    case TYPE_C_UINT:
+    case TYPE_C_LONG:
+    case TYPE_C_ULONG:
+    case TYPE_C_LONGLONG:
+    case TYPE_C_ULONGLONG:
+    case TYPE_C_SHORT:
+    case TYPE_C_USHORT:
+    case TYPE_C_CHAR:
+    case TYPE_C_UCHAR:
+        return "The C type, whose size depends on the platform.";
+    default:
+        return NULL;
     }
-    if (strcmp(word, "uint") == 0)
+}
+
+// The hover of a primitive type's name (`i32`, `int`, `c_long`...), as `primitives.c` defines
+// them; NULL when `word` is none. In the arena.
+static char *primitive_hover(const char *word)
+{
+    const ZenPrimitive *primitive = find_primitive_by_name(word);
+    const char *description = primitive ? primitive_description(primitive->kind) : NULL;
+    if (!description)
     {
-        return "**uint**: 32-bit unsigned integer (guaranteed size).";
+        return NULL;
     }
-    if (strcmp(word, "i8") == 0)
-    {
-        return "**i8**: 8-bit signed integer.";
-    }
-    if (strcmp(word, "u8") == 0)
-    {
-        return "**u8**: 8-bit unsigned integer (byte).";
-    }
-    if (strcmp(word, "i16") == 0)
-    {
-        return "**i16**: 16-bit signed integer.";
-    }
-    if (strcmp(word, "u16") == 0)
-    {
-        return "**u16**: 16-bit unsigned integer.";
-    }
-    if (strcmp(word, "i32") == 0)
-    {
-        return "**i32**: 32-bit signed integer.";
-    }
-    if (strcmp(word, "u32") == 0)
-    {
-        return "**u32**: 32-bit unsigned integer.";
-    }
-    if (strcmp(word, "i64") == 0)
-    {
-        return "**i64**: 64-bit signed integer.";
-    }
-    if (strcmp(word, "u64") == 0)
-    {
-        return "**u64**: 64-bit unsigned integer.";
-    }
-    if (strcmp(word, "f32") == 0)
-    {
-        return "**f32**: 32-bit floating point number.";
-    }
-    if (strcmp(word, "f64") == 0)
-    {
-        return "**f64**: 64-bit floating point number.";
-    }
-    if (strcmp(word, "bool") == 0)
-    {
-        return "**bool**: Boolean type representing `true` or `false`.";
-    }
-    if (strcmp(word, "rune") == 0)
-    {
-        return "**rune**: Unicode scalar value (32-bit UTF-32 code point).";
-    }
-    if (strcmp(word, "string") == 0)
-    {
-        return "**string**: Immutable sequence of UTF-8 characters.";
-    }
-    if (strcmp(word, "void") == 0)
-    {
-        return "**void**: The empty type.";
-    }
-    if (strcmp(word, "usize") == 0)
-    {
-        return "**usize**: Unsigned integer type of the same size as a pointer.";
-    }
-    if (strcmp(word, "isize") == 0)
-    {
-        return "**isize**: Signed integer type of the same size as a pointer.";
-    }
-    if (strcmp(word, "U0") == 0 || strcmp(word, "u0") == 0)
-    {
-        return "**u0**: Zero-sized unit type.";
-    }
-    if (strcmp(word, "c_int") == 0)
-    {
-        return "**c_int**: C-compatible `int` (size varies by platform).";
-    }
-    if (strcmp(word, "c_char") == 0)
-    {
-        return "**c_char**: C-compatible `char` (size varies by platform).";
-    }
-    if (strcmp(word, "c_long") == 0)
-    {
-        return "**c_long**: C-compatible `long` (size varies by platform).";
-    }
-    if (strcmp(word, "c_ulong") == 0)
-    {
-        return "**c_ulong**: C-compatible `unsigned long` (size varies by platform).";
-    }
-    if (strcmp(word, "c_longlong") == 0)
-    {
-        return "**c_longlong**: C-compatible `long long`.";
-    }
-    if (strcmp(word, "c_ulonglong") == 0)
-    {
-        return "**c_ulonglong**: C-compatible `unsigned long long`.";
-    }
-    return NULL;
+    size_t size = strlen(word) + strlen(description) + strlen(primitive->c_name) + 32;
+    char *hover = xmalloc(size);
+    snprintf(hover, size, "**%s**: %s `%s` in C.", word, description, primitive->c_name);
+    return hover;
 }
 
 static char *get_word_at(const char *src, int line, int col)
@@ -539,7 +511,7 @@ cJSON *lsp_hover(const char *uri, int line, int col)
         char *word = get_word_at(pf->source, line, col);
         if (word)
         {
-            const char *doc = get_primitive_doc(word);
+            const char *doc = primitive_hover(word);
             if (doc)
             {
                 text = doc;
