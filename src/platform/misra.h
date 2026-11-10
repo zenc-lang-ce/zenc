@@ -98,6 +98,10 @@ void misra_check_reserved_identifier(ParserContext *ctx, const char *name, Token
 void misra_check_banned_function(ParserContext *ctx, const char *name, Token tok);
 // Rule 21.6: an f-string is written with snprintf (as a value) or fprintf (printed).
 void misra_check_fstring(ParserContext *ctx, Token tok);
+// Rule 21.6: `assert` and `expect` report a failure with fprintf, and a `test` block counts
+// and prints its failures with it.
+void misra_check_assertion(ParserContext *ctx, Token tok);
+void misra_check_test(ParserContext *ctx, Token tok);
 void misra_check_file_dereference(ParserContext *ctx, struct Type *type, Token tok);
 void misra_check_tuple_size(ParserContext *ctx, struct Type *ret_type, Token token);
 void misra_check_string_compare(ParserContext *ctx, struct Type *left, struct Type *right,

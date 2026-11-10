@@ -1,0 +1,8 @@
+// EXPECT: Rule 21.6
+// `assert` reports its failure with fprintf (<stdio.h>), which Rule 21.6 bans.
+
+fn main() -> int {
+    let x: int = 3;
+    assert(x == 3, "three");
+    return 0;
+}
