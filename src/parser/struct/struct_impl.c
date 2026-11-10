@@ -291,6 +291,8 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         ASTNode *n = ast_create(NODE_IMPL_TRAIT);
         n->impl_trait.trait_name = name1;
         n->impl_trait.target = target;
+        n->impl_trait.trait_token = t1;
+        n->impl_trait.target_token = t2;
         n->impl_trait.methods = h;
         add_to_impl_list(ctx, n);
 
@@ -368,6 +370,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             ASTNode *n = ast_create(NODE_IMPL);
             n->token = t1;
             n->impl.target = target;
+            n->impl.target_token = t1;
             n->impl.methods = h;
             register_impl_template(ctx, name1, gen_param, n);
             ctx->current_impl_target = NULL;
@@ -385,6 +388,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             ctx->current_impl_target = NULL;
             ASTNode *n = ast_create(NODE_IMPL);
             n->impl.target = target;
+            n->impl.target_token = t1;
             n->impl.methods = h;
             add_to_impl_list(ctx, n);
 
