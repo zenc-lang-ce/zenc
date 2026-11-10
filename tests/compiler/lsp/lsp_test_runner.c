@@ -437,6 +437,101 @@ static void test_hover_parameters(void)
     printf("PASS: test_hover_parameters\n");
 }
 
+// The lines where the ranges of `items` (locations, or the edits of a rename) start, as a string
+// such as "1,2": empty when there are none.
+static void range_lines(const cJSON *items, char *out, size_t size)
+{
+    size_t used = 0;
+    out[0] = 0;
+    const cJSON *item = NULL;
+    cJSON_ArrayForEach(item, items)
+    {
+        const cJSON *range = cJSON_GetObjectItem(item, "range");
+        const cJSON *start = range ? cJSON_GetObjectItem(range, "start") : NULL;
+        const cJSON *line = start ? cJSON_GetObjectItem(start, "line") : NULL;
+        if (cJSON_IsNumber(line) && used + 16 < size)
+        {
+            used += (size_t)snprintf(out + used, size - used, "%s%d", used ? "," : "",
+                                     line->valueint);
+        }
+    }
+}
+
+// Sends a references (or rename) request at (line, character) of `uri` and checks the lines of
+// what it answers.
+static void expect_occurrence_lines(const char *uri, int id, const char *method, int line,
+                                    int character, const char *expected)
+{
+    char req[512];
+    snprintf(req, sizeof(req),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/%s\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"%s\"}, "
+             "\"position\": {\"line\": %d, \"character\": %d}, "
+             "\"context\": {\"includeDeclaration\": true}, \"newName\": \"renamed\"}}",
+             id, method, uri, line, character);
+    send_request(req);
+    char *resp = wait_for_response(id);
+    cJSON *json = resp ? cJSON_Parse(resp) : NULL;
+    const cJSON *result = json ? cJSON_GetObjectItem(json, "result") : NULL;
+    if (strcmp(method, "rename") == 0)
+    {
+        const cJSON *changes = result ? cJSON_GetObjectItem(result, "changes") : NULL;
+        result = changes ? cJSON_GetObjectItem(changes, uri) : NULL;
+    }
+    char lines[256];
+    range_lines(result, lines, sizeof(lines));
+    if (strcmp(lines, expected) != 0)
+    {
+        printf("Expected %s at %d:%d on lines \"%s\", got \"%s\": %s\n", method, line, character,
+               expected, lines, resp ? resp : "(no response)");
+        fail("References and rename must find the symbol under the cursor, not its name");
+    }
+    cJSON_Delete(json);
+    free(resp);
+}
+
+static void test_occurrences_by_scope(void)
+{
+    printf("Running test_occurrences_by_scope...\n");
+    // Line 0: fn first() -> int {
+    // Line 1:     let count = 1;
+    // Line 2:     return count;
+    // Line 3: }
+    // Line 4: fn second() -> int {
+    // Line 5:     let count = 2;
+    // Line 6:     return count + 1;
+    // Line 7: }
+    // Line 8: fn take(count: int) -> int { return count * 2; }
+    const char *uri = "file:///tmp/test_occurrences_scope.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_occurrences_scope.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"fn first() -> int {\\n    let count = 1;\\n    return count;\\n}\\n"
+                 "fn second() -> int {\\n    let count = 2;\\n    return count + 1;\\n}\\n"
+                 "fn take(count: int) -> int { return count * 2; }\\n\"}}}");
+    usleep(100000);
+
+    // Each `count` is its own: a local of `first`, one of `second`, and a parameter.
+    expect_occurrence_lines(uri, 331, "rename", 1, 8, "1,2");
+    expect_occurrence_lines(uri, 332, "references", 6, 11, "5,6");
+    expect_occurrence_lines(uri, 333, "rename", 8, 8, "8,8");
+    expect_occurrence_lines(uri, 334, "references", 8, 36, "8,8");
+
+    // The use of the parameter leads to the parameter, not to the first `count` of the file.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 335, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/test_occurrences_scope.zc\"}, "
+                 "\"position\": {\"line\": 8, \"character\": 36}}}");
+    char *resp = wait_for_response(335);
+    if (!resp || !strstr(resp, "\"start\":{\"line\":8,\"character\":8}"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition on a parameter's use must lead to the parameter");
+    }
+    free(resp);
+    printf("PASS: test_occurrences_by_scope\n");
+}
+
 static void test_hover_beside_generated_code(void)
 {
     printf("Running test_hover_beside_generated_code...\n");
@@ -2683,6 +2778,7 @@ int main()
     test_hover_signature();
     test_fstring_interpolation_lookup();
     test_hover_parameters();
+    test_occurrences_by_scope();
     test_hover_beside_generated_code();
     test_hover_type_names();
     test_hover_module_type_names();
