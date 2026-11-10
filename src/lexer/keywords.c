@@ -6,6 +6,9 @@
 
 enum
 {
+    // A construct the language removed: the parser reads it to point at its replacement, and
+    // completion does not offer it.
+    REMOVED = 0,
     TOP = KEYWORD_AT_TOP_LEVEL,
     BODY = KEYWORD_IN_BODY,
     LOOP = KEYWORD_IN_LOOP,
@@ -35,7 +38,7 @@ static const ZenKeyword KEYWORDS[] = {
     KEYWORD("or", TOK_OR, 1, BODY),
     KEYWORD("not", TOK_NOT, 0, BODY),
     KEYWORD("opaque", TOK_OPAQUE, 1, TOP),
-    KEYWORD("do", TOK_DO, 0, BODY),
+    KEYWORD("do", TOK_DO, 0, REMOVED),
 
     // Read by their text, and reserved.
     KEYWORD("let", TOK_IDENT, 1, TOP | BODY),
@@ -48,9 +51,9 @@ static const ZenKeyword KEYWORDS[] = {
     KEYWORD("break", TOK_IDENT, 1, LOOP),
     KEYWORD("continue", TOK_IDENT, 1, LOOP),
     KEYWORD("loop", TOK_IDENT, 1, BODY),
-    KEYWORD("repeat", TOK_IDENT, 1, BODY),
-    KEYWORD("unless", TOK_IDENT, 1, BODY),
-    KEYWORD("guard", TOK_IDENT, 1, BODY),
+    KEYWORD("repeat", TOK_IDENT, 1, REMOVED),
+    KEYWORD("unless", TOK_IDENT, 1, REMOVED),
+    KEYWORD("guard", TOK_IDENT, 1, REMOVED),
     KEYWORD("launch", TOK_IDENT, 1, BODY),
     KEYWORD("goto", TOK_IDENT, 1, BODY),
     KEYWORD("plugin", TOK_IDENT, 1, TOP),
@@ -67,12 +70,12 @@ static const ZenKeyword KEYWORDS[] = {
     KEYWORD("extern", TOK_IDENT, 0, TOP),
     KEYWORD("export", TOK_IDENT, 0, TOP),
     KEYWORD("inline", TOK_IDENT, 0, TOP),
-    KEYWORD("async", TOK_IDENT, 0, TOP),
+    KEYWORD("async", TOK_IDENT, 0, REMOVED),
     KEYWORD("type", TOK_IDENT, 0, TOP),
     KEYWORD("raw", TOK_IDENT, 0, TOP | BODY),
     KEYWORD("embed", TOK_IDENT, 0, BODY),
-    KEYWORD("await", TOK_IDENT, 0, BODY),
-    KEYWORD("autofree", TOK_IDENT, 0, BODY),
+    KEYWORD("await", TOK_IDENT, 0, REMOVED),
+    KEYWORD("autofree", TOK_IDENT, 0, REMOVED),
     KEYWORD("typeof", TOK_IDENT, 0, BODY),
     KEYWORD("true", TOK_IDENT, 0, BODY),
     KEYWORD("false", TOK_IDENT, 0, BODY),

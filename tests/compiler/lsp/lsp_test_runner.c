@@ -1923,8 +1923,9 @@ static void test_keyword_completion(void)
         int line;
         const char *label;
         int kind;
-    } cases[] = {{2, "match", 14}, {2, "malloc", 3}, {2, "module", -1}, {2, "import", -1},
-                 {0, "import", 14}, {0, "if", -1}, {0, "malloc", -1}};
+    } cases[] = {{2, "match", 14}, {2, "malloc", 3},   {2, "module", -1}, {2, "import", -1},
+                 {0, "import", 14}, {0, "if", -1},      {0, "malloc", -1}, {2, "repeat", -1},
+                 {2, "unless", -1}, {0, "async", -1}};
     for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++)
     {
         int kind = completion_kind(870 + (int)c, path, cases[c].line, cases[c].line ? 4 : 0,
