@@ -179,11 +179,10 @@ void lsp_check_file(const char *uri, const char *json_src)
         cJSON_AddItemToObject(diag, "range", range);
         cJSON_AddNumberToObject(diag, "severity", d->severity);
         cJSON_AddStringToObject(diag, "message", d->message);
+        // The DiagnosticID, as the JSON output of the command line gives it.
         if (d->id != DIAG_NONE)
         {
-            char code_str[32];
-            snprintf(code_str, sizeof(code_str), "W%d", d->id);
-            cJSON_AddStringToObject(diag, "code", code_str);
+            cJSON_AddNumberToObject(diag, "code", d->id);
         }
 
         cJSON_AddItemToArray(diag_array, diag);
