@@ -1,0 +1,10 @@
+   Compiling tests/compiler/diagnostics_output/c_header_unknown_struct.zc...
+error: Unknown struct 'KnownPairr'
+  --> tests/compiler/diagnostics_output/c_header_unknown_struct.zc:6:17
+   |
+6  |     let _typo = KnownPairr { x: 1 };
+   |                 ^ here
+   |
+     error: semantic analysis found 1 error
+       Check failed with 1 errors
+[exit 1]

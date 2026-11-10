@@ -497,6 +497,9 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         // Otherwise a second import of the same header (e.g. via a std module)
         // would be misreported as a circular import.
         zmap_remove(&ctx->imports.currently_parsing, fn);
+        // What the header declares is read as `include "x.h"` reads it, so the program can use
+        // its types; a header the compiler cannot find (a system header) is left alone.
+        scan_c_header_contents(ctx, fn, 0);
         mark_file_imported(ctx, fn);
         ASTNode *n = ast_create(NODE_INCLUDE);
         n->include.path = xstrdup(fn);
