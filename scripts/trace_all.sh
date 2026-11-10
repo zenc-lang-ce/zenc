@@ -17,6 +17,7 @@ if [ $# -ne 2 ]; then
     echo "Usage: $0 ZC OUTFILE"
     exit 2
 fi
+tests=$(bash tests/scripts/list_tests.sh) || exit 2
 ZC=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 OUT=$2
 WORK=${ZC_WORK:-${TMPDIR:-/tmp}/zc-work}
@@ -34,7 +35,7 @@ one() {
 export -f one
 awesome=${AWESOME_ZENC:-../awesome-zenc}
 {
-    bash tests/scripts/list_tests.sh
+    echo "$tests"
     if [ -d "$awesome" ]; then
         find "$awesome" -name '*.zc' | grep -v /std/
     fi

@@ -11,6 +11,7 @@ if [ $# -ne 2 ]; then
     echo "Usage: $0 REF_ZC NEW_ZC"
     exit 2
 fi
+tests=$(bash tests/scripts/list_tests.sh) || exit 2
 WORK=${ZC_WORK:-${TMPDIR:-/tmp}/zc-work}
 mkdir -p "$WORK"
 O=${WORK:?}/cpp_o
@@ -39,7 +40,7 @@ one() {
 export -f one
 awesome=${AWESOME_ZENC:-../awesome-zenc}
 {
-    bash tests/scripts/list_tests.sh | sed "s#^#$HERE/#"
+    echo "$tests" | sed "s#^#$HERE/#"
     if [ -d "$awesome" ]; then
         find "$(cd "$awesome" && pwd)" -name '*.zc' | grep -v /std/
     fi
