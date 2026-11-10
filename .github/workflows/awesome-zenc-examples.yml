@@ -3,8 +3,8 @@ name: Awesome Zenc Examples Verification
 on:
   push:
     branches: [ "main" ]
+  # Every pull request, whatever its base (see ci.yml).
   pull_request:
-    branches: [ "main" ]
   schedule:
     - cron: '0 0 * * *'
 

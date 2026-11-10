@@ -4,8 +4,10 @@ on:
   push:
     branches: [ "main" ]
     tags: [ "v*" ]
+  # Every pull request, whatever its base: one stacked on another PR, or aimed at a next/<version>
+  # branch, must be tested too. When the PR below is merged, GitHub moves the base of the one on
+  # top to main without running the CI again.
   pull_request:
-    branches: [ "main" ]
 
 permissions:
   contents: read
