@@ -297,6 +297,67 @@ static void test_hover_signature(void)
     printf("PASS: test_hover_signature\n");
 }
 
+static void expect_hover_in(const char *uri, int id, int line, int character,
+                            const char *expected)
+{
+    char req[512];
+    snprintf(req, sizeof(req),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/hover\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"%s\"}, "
+             "\"position\": {\"line\": %d, \"character\": %d}}}",
+             id, uri, line, character);
+    send_request(req);
+    char *resp = wait_for_response(id);
+    if (!resp || !strstr(resp, expected))
+    {
+        printf("Expected hover \"%s\" at %d:%d, got: %s\n", expected, line, character,
+               resp ? resp : "(no response)");
+        fail("Hover must find the symbols inside an f-string interpolation");
+    }
+    free(resp);
+}
+
+static void test_fstring_interpolation_lookup(void)
+{
+    printf("Running test_fstring_interpolation_lookup...\n");
+    // Line 0: fn add(a: int, b: int) -> int { return a + b; }
+    // Line 1: fn main() {
+    // Line 2:     let x = add(2, 3);
+    // Line 3:     let s = f"sum {add(2, 3)} {x}";
+    // Line 4:     let t = f"a\t{x} {{b}} {add(x, 1)}";
+    // Line 5: }
+    const char *uri = "file:///tmp/test_fstring_lookup.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_fstring_lookup.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"fn add(a: int, b: int) -> int { return a + b; }\\nfn main() {\\n    let x = "
+                 "add(2, 3);\\n    let s = f\\\"sum {add(2, 3)} {x}\\\";\\n    let t = "
+                 "f\\\"a\\\\t{x} {{b}} {add(x, 1)}\\\";\\n}\\n\"}}}");
+    usleep(100000);
+
+    // A call and a variable, as outside the f-string.
+    expect_hover_in(uri, 301, 3, 19, "fn add(a: int, b: int) -> int");
+    expect_hover_in(uri, 302, 3, 31, "let x");
+    // After an escape, after `{{b}}`, and as the argument of a call.
+    expect_hover_in(uri, 303, 4, 18, "let x");
+    expect_hover_in(uri, 304, 4, 28, "fn add(a: int, b: int) -> int");
+    expect_hover_in(uri, 305, 4, 32, "let x");
+
+    // Go to definition leads to the declaration, in this file.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 306, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/test_fstring_lookup.zc\"}, "
+                 "\"position\": {\"line\": 3, \"character\": 31}}}");
+    char *resp = wait_for_response(306);
+    if (!resp || !strstr(resp, "test_fstring_lookup.zc"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition must work on a variable inside an f-string interpolation");
+    }
+    free(resp);
+    printf("PASS: test_fstring_interpolation_lookup\n");
+}
+
 static void test_definition_partial_code()
 {
     printf("Running test_definition_partial_code...\n");
@@ -2292,6 +2353,7 @@ int main()
     test_initialize();
     test_hover();
     test_hover_signature();
+    test_fstring_interpolation_lookup();
     test_completion();
     test_struct_completion();
     test_diagnostics();

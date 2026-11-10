@@ -335,6 +335,15 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             }
         }
 
+        // The expressions of an f-string are not children (ast_children() leaves them out).
+        if (node->kind == NODE_EXPR_FSTRING)
+        {
+            for (ASTNode *part = node->fstring.parts; part; part = part->next)
+            {
+                lsp_walk_node(idx, part->fstring_part.expr, depth + 1);
+            }
+        }
+
         // Move to next sibling without recursion.
         node = node->next;
     }
