@@ -364,6 +364,7 @@ struct ASTNode
         struct
         {
             char *name;
+            char *written_name; // As programs write it, when `name` has a module prefix.
             ASTNode *variants;
             int is_template;
             char *generic_param;
@@ -531,6 +532,8 @@ struct ASTNode
         struct
         {
             char *name;
+            char *written_name; // As programs write it when `name` has a module prefix:
+                                // `math::Vector` for `_math__Vector`.
             ASTNode *fields;
             int is_template;
             char **generic_params;   // Array of generic parameter names (for example, ["K", "V"])
@@ -892,11 +895,17 @@ int is_composite_expression(ASTNode *node);
 char *type_mangle_spelling(Type *t);
 char *type_to_string(Type *t);
 /**
- * @brief A type as the program writes it, for diagnostics and the editor: `Vec<Vec<f64>>`,
- * `(int, bool)`. type_to_string spells instances and tuples by their C name, as the compiler
- * identifies them; this is never a name to look up.
+ * @brief How programs write the struct or enum `name` when it is not its name (`math::Vector`
+ * for `_math__Vector`), or NULL to write `name`.
  */
-char *type_to_zen_c_string(Type *t);
+typedef const char *(*WrittenNameLookup)(void *context, const char *name);
+/**
+ * @brief A type as the program writes it, for diagnostics and the editor: `Vec<Vec<f64>>`,
+ * `(int, bool)`, and a struct or enum by what `lookup` gives. type_to_string spells instances
+ * and tuples by their C name, as the compiler identifies them; this is never a name to look
+ * up. The parser's zen_c_type_spelling passes the lookup.
+ */
+char *type_to_zen_c_string_with(Type *t, WrittenNameLookup lookup, void *context);
 char *type_to_c_string(Type *t, int misra_mode);
 /**
  * @brief The C name of the struct or enum `name` (its @link_name), or NULL to write `name`.

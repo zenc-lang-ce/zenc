@@ -241,8 +241,8 @@ static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, const ch
     if (param_base && param_base->kind == TYPE_STRUCT && rt && !may_be_struct(rt))
     {
         char msg[MAX_SHORT_MSG_LEN];
-        char *expected = type_to_zen_c_string(param);
-        char *found = type_to_zen_c_string(rt);
+        char *expected = zen_c_type_spelling(ctx, param);
+        char *found = zen_c_type_spelling(ctx, rt);
         snprintf(msg, sizeof(msg), "Operator '%s' expects '%s' as right operand, found '%s'", op,
                  expected, found);
         zpanic_with_suggestion(op_tok, msg,
@@ -671,7 +671,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             {
                 char msg[MAX_SHORT_MSG_LEN];
                 snprintf(msg, sizeof(msg), "'->' needs a pointer to a struct, not '%s'",
-                         type_to_zen_c_string(lhs->type_info));
+                         zen_c_type_spelling(ctx, lhs->type_info));
                 zpanic_with_hints(op, msg, lambda_hint);
                 break;
             }
@@ -2240,8 +2240,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     char msg[MAX_SHORT_MSG_LEN];
                     snprintf(msg, sizeof(msg),
                              "Type mismatch in comparison: cannot compare '%s' and '%s'",
-                             type_to_zen_c_string(lhs->type_info), /* safe */
-                             type_to_zen_c_string(rhs->type_info));
+                             zen_c_type_spelling(ctx, lhs->type_info), /* safe */
+                             zen_c_type_spelling(ctx, rhs->type_info));
 
                     char suggestion[MAX_SHORT_MSG_LEN];
                     snprintf(suggestion, sizeof(suggestion),
@@ -2446,8 +2446,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                         "Left operand has type '%s', right operand has type '%s'\n "
                                         "  = "
                                         "note: Consider casting one operand to match the other",
-                                        type_to_zen_c_string(lhs->type_info),
-                                        type_to_zen_c_string(rhs->type_info));
+                                        zen_c_type_spelling(ctx, lhs->type_info),
+                                        zen_c_type_spelling(ctx, rhs->type_info));
 
                                 zpanic_with_suggestion(op, msg, suggestion);
                             }

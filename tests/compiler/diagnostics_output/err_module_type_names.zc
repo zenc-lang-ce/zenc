@@ -1,0 +1,10 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// A struct of a module imported with an alias is shown as the program writes it,
+// `shapes::Vector`, not by its C name (`_shapes__Vector`).
+import "tests/compiler/diagnostics_output/modules/_shapes.zc" as shapes;
+
+fn main() {
+    let v = shapes::Vector { x: 1 };
+    let _n: int = v;
+}

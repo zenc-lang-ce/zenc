@@ -279,8 +279,8 @@ int lsp_function_signature(Token name, char *out, size_t size)
 // The parameters of a function or a lambda, `self` included, are definitions of their own. They
 // have no node: rename and references read a definition's name from its node, and the owner's
 // would stand for each of its parameters.
-static void lsp_index_add_params(LSPIndex *idx, int count, char **names, Type **types,
-                                 Token *tokens)
+static void lsp_index_add_params(ParserContext *ctx, LSPIndex *idx, int count, char **names,
+                                 Type **types, Token *tokens)
 {
     for (int i = 0; names && tokens && i < count; i++)
     {
@@ -291,7 +291,7 @@ static void lsp_index_add_params(LSPIndex *idx, int count, char **names, Type **
         char hover[MAX_SHORT_MSG_LEN];
         if (types && types[i] && types[i]->kind != TYPE_UNKNOWN)
         {
-            snprintf(hover, sizeof(hover), "%s: %s", names[i], type_to_zen_c_string(types[i]));
+            snprintf(hover, sizeof(hover), "%s: %s", names[i], zen_c_type_spelling(ctx, types[i]));
         }
         else
         {
@@ -303,7 +303,7 @@ static void lsp_index_add_params(LSPIndex *idx, int count, char **names, Type **
 
 // Walker.
 
-static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
+static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int depth)
 {
     if (depth > 32)
     {
@@ -320,17 +320,17 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             {
                 const char *name = node->func.name ? node->func.name : "unknown";
                 const char *ret = node->func.ret_type_info
-                                      ? type_to_zen_c_string(node->func.ret_type_info)
+                                      ? zen_c_type_spelling(ctx, node->func.ret_type_info)
                                       : "void";
                 snprintf(hover, sizeof(hover), "fn %s(...) -> %s", name, ret);
             }
             lsp_index_add_def(idx, node->token, hover, node);
-            lsp_index_add_params(idx, node->func.count, node->func.param_names,
+            lsp_index_add_params(ctx, idx, node->func.count, node->func.param_names,
                                  node->func.arg_types, node->func.param_tokens);
         }
         else if (node->kind == NODE_LAMBDA)
         {
-            lsp_index_add_params(idx, node->lambda.count, node->lambda.param_names,
+            lsp_index_add_params(ctx, idx, node->lambda.count, node->lambda.param_names,
                                  node->type_info ? node->type_info->args : NULL,
                                  node->lambda.param_tokens);
         }
@@ -363,7 +363,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
                 {
                     char fh[MAX_SHORT_MSG_LEN];
                     const char *fname = field->field.name ? field->field.name : "unknown";
-                    const char *ftype = type_to_zen_c_string(field->type_info);
+                    const char *ftype = zen_c_type_spelling(ctx, field->type_info);
                     snprintf(fh, sizeof(fh), "field %s: %s", fname, ftype);
                     lsp_index_add_def(idx, field->token, fh, field);
                 }
@@ -394,7 +394,8 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *alias = node->type_alias.alias ? node->type_alias.alias : "unknown";
-            const char *orig = node->type_info ? type_to_zen_c_string(node->type_info) : "unknown";
+            const char *orig =
+                node->type_info ? zen_c_type_spelling(ctx, node->type_info) : "unknown";
             snprintf(hover, sizeof(hover), "alias %s = %s", alias, orig);
             lsp_index_add_def(idx, node->token, hover, node);
         }
@@ -433,7 +434,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             ASTChildren children = ast_children(node);
             for (int i = 0; i < children.count; i++)
             {
-                lsp_walk_node(idx, *children.slots[i], depth + 1);
+                lsp_walk_node(ctx, idx, *children.slots[i], depth + 1);
             }
         }
 
@@ -442,7 +443,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
         {
             for (ASTNode *part = node->fstring.parts; part; part = part->next)
             {
-                lsp_walk_node(idx, part->fstring_part.expr, depth + 1);
+                lsp_walk_node(ctx, idx, part->fstring_part.expr, depth + 1);
             }
         }
 
@@ -451,7 +452,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
     }
 }
 
-void lsp_build_index(LSPIndex *idx, ASTNode *root, const char *source)
+void lsp_build_index(ParserContext *ctx, LSPIndex *idx, ASTNode *root, const char *source)
 {
     idx->source = source;
     if (source)
@@ -473,5 +474,5 @@ void lsp_build_index(LSPIndex *idx, ASTNode *root, const char *source)
             }
         }
     }
-    lsp_walk_node(idx, root, 0);
+    lsp_walk_node(ctx, idx, root, 0);
 }

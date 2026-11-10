@@ -326,7 +326,7 @@ static Type *instance_type(Type *t)
 // Two instances of one generic with different arguments (`Handle<A>` and
 // `Handle<B>`) are different types even when their fields are the same, also
 // behind pointers (where C only warns, and `-w` hides it).
-static void check_generic_instance_argument(Type *expected, ASTNode *arg)
+static void check_generic_instance_argument(ParserContext *ctx, Type *expected, ASTNode *arg)
 {
     Type *want_type = expected;
     Type *have_type = arg->type_info;
@@ -349,8 +349,8 @@ static void check_generic_instance_argument(Type *expected, ASTNode *arg)
     const char *stars = STARS + (8 - depth);
     char want_text[MAX_SHORT_MSG_LEN];
     char have_text[MAX_SHORT_MSG_LEN];
-    snprintf(want_text, sizeof(want_text), "%s%s", type_to_zen_c_string(want), stars);
-    snprintf(have_text, sizeof(have_text), "%s%s", type_to_zen_c_string(have), stars);
+    snprintf(want_text, sizeof(want_text), "%s%s", zen_c_type_spelling(ctx, want), stars);
+    snprintf(have_text, sizeof(have_text), "%s%s", zen_c_type_spelling(ctx, have), stars);
     zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want_text,
               have_text);
     return;
@@ -363,7 +363,7 @@ void check_argument_type(ParserContext *ctx, Type *expected, ASTNode *arg)
     {
         return;
     }
-    check_generic_instance_argument(expected, arg);
+    check_generic_instance_argument(ctx, expected, arg);
     int expected_opaque = expected->kind == TYPE_ALIAS && expected->alias.is_opaque_alias;
     int got_opaque = got->kind == TYPE_ALIAS && got->alias.is_opaque_alias;
     if (!expected_opaque && !got_opaque)
@@ -378,8 +378,8 @@ void check_argument_type(ParserContext *ctx, Type *expected, ASTNode *arg)
     {
         return;
     }
-    char *want = type_to_zen_c_string(expected);
-    char *have = type_to_zen_c_string(got);
+    char *want = zen_c_type_spelling(ctx, expected);
+    char *have = zen_c_type_spelling(ctx, got);
     zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want, have);
     return;
 }
@@ -741,7 +741,7 @@ char *infer_scan_format(ParserContext *ctx, ASTNode **args, int ac)
     return fmt;
 }
 
-void check_format_string(ASTNode *call, Token t)
+void check_format_string(ParserContext *ctx, ASTNode *call, Token t)
 {
     if (call->kind != NODE_EXPR_CALL)
     {
@@ -888,7 +888,7 @@ void check_format_string(ASTNode *call, Token t)
             }
 
             Type *vt = curr_arg->type_info;
-            char *got_type = vt ? type_to_zen_c_string(vt) : "?";
+            char *got_type = vt ? zen_c_type_spelling(ctx, vt) : "?";
 
             if (spec == 'd' || spec == 'i' || spec == 'u' || spec == 'x' || spec == 'X' ||
                 spec == 'o')

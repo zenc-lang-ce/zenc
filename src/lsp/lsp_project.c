@@ -612,7 +612,7 @@ void lsp_project_update_file(const char *uri, const char *src)
     {
         pf->ast = root;
         pf->index = lsp_index_new();
-        lsp_build_index(pf->index, root, pf->source);
+        lsp_build_index(g_project->ctx, pf->index, root, pf->source);
 
         for (TypeUsage *use = g_project->ctx->pending_type_validations; use && use != usages_before;
              use = use->next)

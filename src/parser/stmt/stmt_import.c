@@ -549,7 +549,9 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
     lexer_init(&i, src, ctx->config, fn);
 
     char *prev_module_prefix = ctx->imports.current_module_prefix;
+    char *prev_module_alias = ctx->imports.current_module_alias;
     char *temp_module_prefix = NULL;
+    ctx->imports.current_module_alias = alias;
 
     if (alias)
     {
@@ -607,6 +609,7 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
     ctx->current_filename = (char *)saved_fn;
 
     ctx->imports.current_module_prefix = prev_module_prefix;
+    ctx->imports.current_module_alias = prev_module_alias;
     if (temp_module_prefix)
     {
         zfree(temp_module_prefix);

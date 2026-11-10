@@ -1943,7 +1943,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             call->call.args = args.head;
             call->call.arg_names = args.has_named ? args.arg_names : NULL;
             call->call.count = args.count;
-            check_format_string(call, t);
+            check_format_string(ctx, call, t);
 
             // Try to infer type if callee has function type info
             if (node->type_info && node->type_info->kind == TYPE_FUNCTION && node->type_info->inner)

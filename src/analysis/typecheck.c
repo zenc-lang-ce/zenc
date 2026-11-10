@@ -47,16 +47,16 @@ static Type *option_result_binding_type(ASTNode *def, const char *variant, int c
 
 // What a `return` in `from`, a function or a lambda, must give: the name of its return type
 // ("void" when it returns nothing) and the type itself (NULL when unknown).
-static void return_target(ASTNode *from, const char **name, Type **type)
+static void return_target(ParserContext *ctx, ASTNode *from, const char **name, Type **type)
 {
     if (from->kind == NODE_LAMBDA)
     {
         Type *fn = get_inner_type(from->type_info);
         *type = (fn && fn->kind == TYPE_FUNCTION) ? fn->inner : NULL;
-        *name = *type ? type_to_zen_c_string(*type) : NULL;
+        *name = *type ? zen_c_type_spelling(ctx, *type) : NULL;
         return;
     }
-    *name = type_to_zen_c_string(from->func.ret_type_info);
+    *name = zen_c_type_spelling(ctx, from->func.ret_type_info);
     *type = from->func.ret_type_info;
 }
 
@@ -267,7 +267,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         {
             const char *ret_type = NULL;
             Type *ret_type_info = NULL;
-            return_target(tc->returns_from, &ret_type, &ret_type_info);
+            return_target(tc->pctx, tc->returns_from, &ret_type, &ret_type_info);
             int func_is_void = !ret_type || strcmp(ret_type, "void") == 0;
 
             if (func_is_void && node->ret.value)

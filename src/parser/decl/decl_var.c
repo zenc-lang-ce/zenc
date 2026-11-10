@@ -468,8 +468,8 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
             if (!is_numeric && !is_pointer && !is_function && !is_struct && !is_array &&
                 (!is_opaque || !check_opaque_alias_compat(ctx, type_obj, t)))
             {
-                char *expected = type_to_zen_c_string(type_obj);
-                char *got = type_to_zen_c_string(t);
+                char *expected = zen_c_type_spelling(ctx, type_obj);
+                char *got = zen_c_type_spelling(ctx, t);
                 zpanic_at(init->token, "Type validation failed. Expected '%s', but got '%s'",
                           expected, got);
                 return NULL;
