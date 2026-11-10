@@ -99,6 +99,11 @@ char *declared_c_type(ParserContext *ctx, ASTNode *decl);
  */
 int is_fixed_size_array(Type *t);
 /**
+ * @brief The C initializer that zeroes a value of type `t` (`{0}`, `0`, `0.0`, `false`...), or
+ *        NULL for a type it has none for (a pointer, an enum, a closure...).
+ */
+const char *zero_initializer(ParserContext *ctx, Type *t);
+/**
  * @brief The type of capture `index` of a lambda spelled in C; `int` when the parser found no
  *        type for it.
  */

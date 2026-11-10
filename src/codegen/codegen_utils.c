@@ -75,6 +75,36 @@ int is_fixed_size_array(Type *t)
     return t && t->kind == TYPE_ARRAY && t->array_size > 0;
 }
 
+const char *zero_initializer(ParserContext *ctx, Type *t)
+{
+    if (!t)
+    {
+        return NULL;
+    }
+    TypeKind k = t->kind;
+    if (k == TYPE_ARRAY || k == TYPE_STRUCT)
+    {
+        return ctx->config->use_cpp ? "{}" : "{0}";
+    }
+    if (is_int_type(k))
+    {
+        return "0";
+    }
+    if (k == TYPE_F32 || k == TYPE_FLOAT)
+    {
+        return "0.0f";
+    }
+    if (k == TYPE_F64)
+    {
+        return "0.0";
+    }
+    if (k == TYPE_BOOL)
+    {
+        return "false";
+    }
+    return NULL;
+}
+
 char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index)
 {
     Type *t = lambda->lambda.captured_types_info[index];
