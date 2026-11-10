@@ -46,9 +46,7 @@ static void lsp_index_add(LSPIndex *idx, LSPRange *r)
     }
 }
 
-// Whether the token's text is in the file at the token's line and column. The code that the
-// parser generates from a text of its own is not: its positions count from the start of that text.
-static int lsp_index_is_written(const LSPIndex *idx, Token t)
+int lsp_index_is_written(const LSPIndex *idx, Token t)
 {
     if (t.line <= 0 || t.col <= 0 || !t.start)
     {

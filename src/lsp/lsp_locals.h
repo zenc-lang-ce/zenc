@@ -26,4 +26,13 @@ ASTNode *lsp_find_local_decl(ASTNode *func, const char *name);
  */
 int lsp_has_loop_before(ASTNode *func, int line);
 
+/**
+ * @brief Calls `found` with each `let` and `def` of the body of `func` written at or before
+ *        `line` (0-based), in the bodies of its statements too, in source order.
+ *
+ * Not in the body of a lambda: its locals are not the function's.
+ */
+void lsp_for_each_local(ASTNode *func, int line, void (*found)(ASTNode *decl, void *data),
+                        void *data);
+
 #endif

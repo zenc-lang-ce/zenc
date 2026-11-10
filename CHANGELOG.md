@@ -56,6 +56,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - Go to definition, hover, references and rename follow the declaration a name resolves to, not every declaration with that name: renaming a local or a parameter edits only its own uses, and a type name leads to the type its file declares.
   - Every request gets an answer: on a file the server does not know, or without its parameters, it is `null` instead of none, which left the client waiting.
   - The variants offered after `value.` are enum members, not values, and a `def` is highlighted as readonly.
+  - Semantic highlighting covers the whole file: every declaration and method, and what is inside the bodies of `if`, `while`, `for` and `match`, not only the first declaration. Completion offers the locals of every kind of body, such as a `match` arm.
 - REPL: Backspace and Escape work in reverse search.
 
 ### Added

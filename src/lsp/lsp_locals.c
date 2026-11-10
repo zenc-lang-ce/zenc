@@ -82,3 +82,34 @@ int lsp_has_loop_before(ASTNode *func, int line)
 {
     return func && has_loop_before(func->func.body, line);
 }
+
+static void for_each_local(ASTNode *node, int line, void (*found)(ASTNode *decl, void *data),
+                           void *data)
+{
+    for (; node; node = node->next)
+    {
+        if ((node->kind == NODE_VAR_DECL || node->kind == NODE_CONST) && node->token.line > 0 &&
+            node->token.line - 1 <= line)
+        {
+            found(node, data);
+        }
+        if (node->kind == NODE_LAMBDA)
+        {
+            continue;
+        }
+        ASTChildren children = ast_children(node);
+        for (int i = 0; i < children.count; i++)
+        {
+            for_each_local(*children.slots[i], line, found, data);
+        }
+    }
+}
+
+void lsp_for_each_local(ASTNode *func, int line, void (*found)(ASTNode *decl, void *data),
+                        void *data)
+{
+    if (func && func->kind == NODE_FUNCTION)
+    {
+        for_each_local(func->func.body, line, found, data);
+    }
+}
