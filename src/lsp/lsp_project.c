@@ -605,6 +605,7 @@ static ProjectFile *add_project_file(const char *path)
 typedef struct
 {
     TypeUsage *usages;
+    GenericParameterUse *generic_parameter_uses;
     GenericImplTemplate *impls;
     GenericFuncTemplate *functions;
     ASTNode *implicit_imports; ///< The std modules the parser imports by itself (std/test.zc).
@@ -612,7 +613,8 @@ typedef struct
 
 static ParseMarks parse_marks(void)
 {
-    ParseMarks marks = {g_project->ctx->pending_type_validations, g_project->ctx->impl_templates,
+    ParseMarks marks = {g_project->ctx->pending_type_validations,
+                        g_project->ctx->generic_parameter_uses, g_project->ctx->impl_templates,
                         g_project->ctx->func_templates, g_project->ctx->implicit_std_imports};
     return marks;
 }
@@ -672,6 +674,25 @@ static void index_parsed_file(ProjectFile *pf, ASTNode *root, ParseMarks before)
         if (use->location.file && strcmp(use->location.file, pf->path) == 0)
         {
             lsp_index_add_type_ref(pf->index, g_project->ctx, use->location, use->name);
+        }
+    }
+
+    for (GenericParameterUse *use = g_project->ctx->generic_parameter_uses;
+         use && use != before.generic_parameter_uses; use = use->next)
+    {
+        if (!use->at.file || strcmp(use->at.file, pf->path) != 0)
+        {
+            continue;
+        }
+        if (use->at.start == use->declaration.start)
+        {
+            char hover[MAX_SHORT_MSG_LEN];
+            snprintf(hover, sizeof(hover), "type parameter %.*s", (int)use->at.len, use->at.start);
+            lsp_index_add_def(pf->index, use->at, DECLARATION_TYPE_PARAMETER, hover, NULL);
+        }
+        else
+        {
+            lsp_index_add_ref(pf->index, use->at, use->declaration, NULL);
         }
     }
 }
@@ -789,6 +810,7 @@ void lsp_project_update_file(const char *uri, const char *src)
         pf->generic_function_count = 0;
     }
     g_project->ctx->pending_type_validations = before.usages;
+    g_project->ctx->generic_parameter_uses = before.generic_parameter_uses;
 
     g_project->ctx->current_filename = saved_filename;
 }

@@ -90,6 +90,8 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     char *name = token_strdup(name_tok);
 
     char *gen_param = NULL;
+    Token *gen_tokens = NULL; // Where each one of `gen_param` is declared.
+    int gen_count = 0;
     if (lexer_peek(l).kind == TOK_LANGLE)
     {
         lexer_next(l);
@@ -119,6 +121,8 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
                 strcat(buf, ",");
             }
             strcat(buf, s);
+            gen_tokens = xrealloc(gen_tokens, sizeof(Token) * (size_t)(gen_count + 1));
+            gen_tokens[gen_count++] = gt;
 
             // Check for shadowing
             if (is_known_generic(ctx, s))
@@ -148,16 +152,9 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
 
     // Register generic parameters so type parsing recognizes them
     int saved_generic_count = ctx->known_generics_count;
-    if (gen_param)
+    for (int i = 0; i < gen_count; i++)
     {
-        char *tmp = xstrdup(gen_param);
-        char *tok = strtok(tmp, ",");
-        while (tok)
-        {
-            register_generic(ctx, tok);
-            tok = strtok(NULL, ",");
-        }
-        zfree(tmp);
+        register_generic(ctx, gen_tokens[i]);
     }
 
     enter_scope(ctx);
@@ -249,9 +246,10 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         if (is_template)
         {
             pending->generic_count = ctx->known_generics_count;
-            pending->generics = xmalloc(sizeof(char *) * (size_t)(ctx->known_generics_count + 1));
+            pending->generics =
+                xmalloc(sizeof(GenericParameter) * (size_t)(ctx->known_generics_count + 1));
             memcpy(pending->generics, ctx->known_generics,
-                   sizeof(char *) * (size_t)ctx->known_generics_count);
+                   sizeof(GenericParameter) * (size_t)ctx->known_generics_count);
         }
 
         // Restore previous state
@@ -350,10 +348,12 @@ void parse_pending_bodies(ParserContext *ctx)
     Type *saved_ret = curr_func_ret;
     char *saved_doc = ctx->last_doc_comment;
     int saved_generic_count = ctx->known_generics_count;
-    char *saved_generics[MAX_KNOWN_GENERICS];
+    GenericParameter *saved_generics =
+        xmalloc(sizeof(GenericParameter) * (size_t)(saved_generic_count + 1));
     if (saved_generic_count > 0)
     {
-        memcpy(saved_generics, ctx->known_generics, sizeof(char *) * (size_t)saved_generic_count);
+        memcpy(saved_generics, ctx->known_generics,
+               sizeof(GenericParameter) * (size_t)saved_generic_count);
     }
 
     // We increment parse depth so a parse_program_nodes inside a body does not start another round.
@@ -386,7 +386,7 @@ void parse_pending_bodies(ParserContext *ctx)
         if (pending->generic_count > 0)
         {
             memcpy(ctx->known_generics, pending->generics,
-                   sizeof(char *) * (size_t)pending->generic_count);
+                   sizeof(GenericParameter) * (size_t)pending->generic_count);
         }
         ctx->known_generics_count = pending->generic_count;
 
@@ -435,7 +435,8 @@ void parse_pending_bodies(ParserContext *ctx)
     // Restore context state
     if (saved_generic_count > 0)
     {
-        memcpy(ctx->known_generics, saved_generics, sizeof(char *) * (size_t)saved_generic_count);
+        memcpy(ctx->known_generics, saved_generics,
+               sizeof(GenericParameter) * (size_t)saved_generic_count);
     }
     ctx->known_generics_count = saved_generic_count;
     ctx->parse_depth--;

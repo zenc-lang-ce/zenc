@@ -307,7 +307,11 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             }
         }
 
-        if (!is_known_generic(ctx, name) && strcmp(name, "Self") != 0)
+        if (is_known_generic(ctx, name))
+        {
+            record_generic_parameter_use(ctx, t);
+        }
+        else if (strcmp(name, "Self") != 0)
         {
             register_type_usage(ctx, name, t);
         }
