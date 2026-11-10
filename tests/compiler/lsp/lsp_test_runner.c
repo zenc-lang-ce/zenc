@@ -358,6 +358,85 @@ static void test_fstring_interpolation_lookup(void)
     printf("PASS: test_fstring_interpolation_lookup\n");
 }
 
+static void test_hover_parameters(void)
+{
+    printf("Running test_hover_parameters...\n");
+    // Line 0: struct Counter { total: int; }
+    // Line 1: impl Counter {
+    // Line 2:     fn add(self, n: int) -> int {
+    // Line 3:         self.total = self.total + n;
+    // Line 4:         return self.total;
+    // Line 5:     }
+    // Line 6: }
+    // Line 7: fn twice(value: f64) -> f64 { return value * 2.0; }
+    const char *uri = "file:///tmp/test_hover_params.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_hover_params.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Counter { total: int; }\\nimpl Counter {\\n    fn add(self, n: int) -> "
+                 "int {\\n        self.total = self.total + n;\\n        return self.total;\\n    "
+                 "}\\n}\\nfn twice(value: f64) -> f64 { return value * 2.0; }\\nfn run() -> f64 { "
+                 "return twice(1.0); }\\nfn other() { let q = 2; let x = 3; }\\nfn lambdas() "
+                 "{\\n    let a = fn(q: int) -> int { return q * 2; };\\n    let b = (m: int, n: "
+                 "int) => m + n;\\n    let c = x => x * 2;\\n}\\n\"}}}");
+    usleep(100000);
+
+    // `self` has the type of its impl, where it is declared and where it is used.
+    expect_hover_in(uri, 311, 2, 12, "self: Counter*");
+    expect_hover_in(uri, 312, 3, 9, "self: Counter*");
+    expect_hover_in(uri, 313, 4, 16, "self: Counter*");
+    // A parameter has its own type, not the one of a variable of that name elsewhere.
+    expect_hover_in(uri, 314, 2, 17, "n: i32");
+    expect_hover_in(uri, 315, 3, 34, "n: i32");
+    // The whole hover: the function's signature has `value: f64` in it too.
+    expect_hover_in(uri, 316, 7, 38, "```zc\\nvalue: f64\\n```");
+
+    // A parameter is not an occurrence of its function: renaming `twice` edits its
+    // declaration and its call, and nothing in the parameter list.
+    // Line 7: fn twice(value: f64) -> f64 { return value * 2.0; }
+    // Line 8: fn run() -> f64 { return twice(1.0); }
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 317, \"method\": \"textDocument/rename\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_hover_params.zc\"}, "
+                 "\"position\": {\"line\": 7, \"character\": 4}, \"newName\": \"renamed\"}}");
+    char *resp = wait_for_response(317);
+    int edits = 0;
+    for (const char *p = resp; p && (p = strstr(p, "newText")) != NULL; p++)
+    {
+        edits++;
+    }
+    if (edits != 2)
+    {
+        printf("Expected 2 edits when renaming `twice`, got %d: %s\n", edits,
+               resp ? resp : "(no response)");
+        fail("Renaming a function must not edit its parameters");
+    }
+    free(resp);
+
+    // The parameters of a lambda, in its three forms, are not the `let q` and `let x` of
+    // `other`. Line 9: fn other() { let q = 2; let x = 3; }
+    // Line 11: let a = fn(q: int) -> int { return q * 2; };
+    // Line 12: let b = (m: int, n: int) => m + n;
+    // Line 13: let c = x => x * 2;
+    expect_hover_in(uri, 318, 11, 39, "```zc\\nq: i32\\n```");
+    expect_hover_in(uri, 319, 12, 32, "```zc\\nm: i32\\n```");
+    expect_hover_in(uri, 320, 12, 36, "```zc\\nn: i32\\n```");
+    expect_hover_in(uri, 321, 13, 17, "```zc\\nx: int\\n```");
+
+    // `self` is not renamed: with another name the method has no receiver.
+    // Line 3:         self.total = self.total + n;
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 322, \"method\": \"textDocument/rename\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_hover_params.zc\"}, "
+                 "\"position\": {\"line\": 3, \"character\": 9}, \"newName\": \"this\"}}");
+    resp = wait_for_response(322);
+    if (!resp || !strstr(resp, "\"result\":null"))
+    {
+        printf("Renaming `self` answered: %s\n", resp ? resp : "(no response)");
+        fail("Rename must refuse `self`");
+    }
+    free(resp);
+    printf("PASS: test_hover_parameters\n");
+}
+
 static void test_type_name_lookup(void)
 {
     printf("Running test_type_name_lookup...\n");
@@ -2401,6 +2480,7 @@ int main()
     test_hover();
     test_hover_signature();
     test_fstring_interpolation_lookup();
+    test_hover_parameters();
     test_type_name_lookup();
     test_completion();
     test_struct_completion();

@@ -256,6 +256,31 @@ int lsp_function_signature(Token name, char *out, size_t size)
     return 1;
 }
 
+// The parameters of a function or a lambda, `self` included, are definitions of their own. They
+// have no node: rename and references read a definition's name from its node, and the owner's
+// would stand for each of its parameters.
+static void lsp_index_add_params(LSPIndex *idx, int count, char **names, Type **types,
+                                 Token *tokens)
+{
+    for (int i = 0; names && tokens && i < count; i++)
+    {
+        if (!names[i])
+        {
+            continue;
+        }
+        char hover[MAX_SHORT_MSG_LEN];
+        if (types && types[i] && types[i]->kind != TYPE_UNKNOWN)
+        {
+            snprintf(hover, sizeof(hover), "%s: %s", names[i], type_to_string(types[i]));
+        }
+        else
+        {
+            snprintf(hover, sizeof(hover), "%s", names[i]);
+        }
+        lsp_index_add_def(idx, tokens[i], hover, NULL);
+    }
+}
+
 // Walker.
 
 static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
@@ -279,6 +304,14 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
                 snprintf(hover, sizeof(hover), "fn %s(...) -> %s", name, ret);
             }
             lsp_index_add_def(idx, node->token, hover, node);
+            lsp_index_add_params(idx, node->func.count, node->func.param_names,
+                                 node->func.arg_types, node->func.param_tokens);
+        }
+        else if (node->kind == NODE_LAMBDA)
+        {
+            lsp_index_add_params(idx, node->lambda.count, node->lambda.param_names,
+                                 node->type_info ? node->type_info->args : NULL,
+                                 node->lambda.param_tokens);
         }
         else if (node->kind == NODE_VAR_DECL)
         {

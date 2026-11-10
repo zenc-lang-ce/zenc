@@ -236,6 +236,11 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     lambda->token = lambda_token;
     lambda->line = lambda_token.line;
     lambda->lambda.param_names = param_names;
+    lambda->lambda.param_tokens = xmalloc(sizeof(Token) * (size_t)(count));
+    for (int i = 0; i < count; i++)
+    {
+        lambda->lambda.param_tokens[i] = param_tokens[i];
+    }
     lambda->lambda.body = body;
     lambda->lambda.body = body;
     lambda->lambda.count = count;

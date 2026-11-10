@@ -295,6 +295,7 @@ struct ASTNode
             Type **arg_types;
             ASTNode **default_values; // Default value of each parameter, NULL where it has none.
             char **param_names;       // Explicit parameter names.
+            Token *param_tokens;      // Where each name is written (NULL for trait prototypes).
             int count;
             Type *ret_type_info;
             int is_varargs;
@@ -667,7 +668,8 @@ struct ASTNode
 
         struct
         {
-            char **param_names; // Parameter and return types: type_info->args and ->inner.
+            char **param_names;  // Parameter and return types: type_info->args and ->inner.
+            Token *param_tokens; // Where each name is written.
             ASTNode *body;
             int count;
             int lambda_id;

@@ -165,11 +165,12 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     int count;
     Type **arg_types;
     char **param_names;
+    Token *param_tokens;
     char **ctype_overrides;
     int is_varargs = 0;
 
     if (!parse_and_convert_args(ctx, l, &default_values, &count, &arg_types, &param_names,
-                                &is_varargs, &ctype_overrides))
+                                &param_tokens, &is_varargs, &ctype_overrides))
     {
         return NULL;
     }
@@ -278,6 +279,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
 
     node->func.arg_types = arg_types;
     node->func.param_names = param_names;
+    node->func.param_tokens = param_tokens;
     node->func.count = count;
     node->func.default_values = default_values;
     node->func.ret_type_info = ret_type_obj;
