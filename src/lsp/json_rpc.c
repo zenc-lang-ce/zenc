@@ -8,8 +8,6 @@
 #include <string.h>
 #include <ctype.h>
 
-// Prototype
-
 // The client shows work done progress (`window.workDoneProgress`), read at initialize.
 static int g_work_done_progress = 0;
 // Each progress gets its own token, which is also the id of the request that creates it.

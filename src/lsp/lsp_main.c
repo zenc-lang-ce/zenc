@@ -72,9 +72,8 @@ int lsp_main(ZenCompiler *compiler, int argc, char **argv)
 #else
         const char *null_device = "/dev/null";
 #endif
-        if (!freopen(null_device, "w", stderr))
-        {
-        }
+        // If it cannot be reopened, stderr stays as it is.
+        (void)!freopen(null_device, "w", stderr);
     }
 
     cfg->mode_lsp = 1;

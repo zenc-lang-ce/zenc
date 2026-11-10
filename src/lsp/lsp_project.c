@@ -36,8 +36,6 @@ static ZenCompiler *g_server_compiler = NULL;
 
 // Files parsed by the current workspace indexing, for its summary.
 static int g_indexed_file_count = 0;
-// While the workspace is indexed, files are parsed without validating their types.
-static int g_is_indexing = 0;
 
 static void scan_dir(const char *dir_path, StringList *files);
 static void scan_file(const char *path);
@@ -59,10 +57,6 @@ static IgnoreRule *g_ignore_rules = NULL;
 static int g_ignore_rule_count = 0;
 static size_t g_scan_root_length = 0;
 
-// Initialize the project with a root directory
-
-// Perform full project indexing
-
 void lsp_set_compiler(ZenCompiler *compiler)
 {
     g_server_compiler = compiler;
@@ -78,12 +72,6 @@ void lsp_project_init(const char *root_path)
     if (g_project)
     {
         return;
-    }
-
-    // Close any previous hoist_out before creating a new project context
-    if (g_project && g_project->ctx && g_project->ctx->cg.hoist_out)
-    {
-        fclose(g_project->ctx->cg.hoist_out);
     }
 
     g_project = xcalloc(1, sizeof(LSPProject));
@@ -139,7 +127,6 @@ void lsp_project_index_workspace(void)
     g_scan_root_length = strlen(g_project->root_path);
     double start = z_get_monotonic_time();
     g_indexed_file_count = 0;
-    g_is_indexing = 1;
     // The files are collected first, so that the progress shown by the client has a total.
     StringList files = {0};
     scan_dir(g_project->root_path, &files);
@@ -155,7 +142,6 @@ void lsp_project_index_workspace(void)
         }
     }
     string_list_free(&files);
-    g_is_indexing = 0;
     char summary[64];
     snprintf(summary, sizeof(summary), "Indexed %d files", g_indexed_file_count);
     lsp_progress_end(summary);
@@ -286,7 +272,6 @@ void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
     fprintf(stderr, "zls: project rebuilt, arena in use: %zu KB\n", g_built_total / 1024);
 }
 
-// Default error handler for indexing phase
 // `*` and `?` match within a path component, as in .gitignore.
 static int glob_match(const char *pattern, const char *text)
 {
