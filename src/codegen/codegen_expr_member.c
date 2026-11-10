@@ -14,6 +14,33 @@
 #include "zprep_plugin.h"
 #include "codegen_internal.h"
 
+// Emits expr dereferenced down to one pointer level: `pp` with `pp: P**` is `(*pp)`. `.`
+// reaches a field through every level of pointer, as the field lookup does
+// (resolve_struct_name_from_type), and C's `->` goes through one.
+static void emit_through_pointers(ParserContext *ctx, ASTNode *expr)
+{
+    int extra_levels = 0;
+    Type *t = get_inner_type(expr->type_info);
+    while (t && t->kind == TYPE_POINTER && (t = get_inner_type(t->inner)) &&
+           t->kind == TYPE_POINTER)
+    {
+        extra_levels++;
+    }
+
+    if (extra_levels == 0)
+    {
+        codegen_expression(ctx, expr);
+        return;
+    }
+    EMIT(ctx, "(");
+    for (int i = 0; i < extra_levels; i++)
+    {
+        EMIT(ctx, "*");
+    }
+    codegen_expression(ctx, expr);
+    EMIT(ctx, ")");
+}
+
 void handle_expr_member(ParserContext *ctx, ASTNode *node)
 {
     if (strcmp(node->member.field, "len") == 0)
@@ -66,7 +93,7 @@ void handle_expr_member(ParserContext *ctx, ASTNode *node)
     else
     {
         // `Color.Red` never gets here: the parser reads it as `Color::Red` (next_is_dot_variant).
-        codegen_expression(ctx, node->member.target);
+        emit_through_pointers(ctx, node->member.target);
         char *lt = infer_type(ctx, node->member.target);
         int actually_ptr = 0;
         if (lt && (lt[strlen(lt) - 1] == '*' || strstr(lt, "*")))

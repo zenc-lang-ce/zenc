@@ -1,0 +1,77 @@
+// language/features/pointers: `.` reaches a field or a method through every level
+// of pointer, as `.` on a `P*` does. With `pp: P**`, `pp.value` used to emit
+// `pp->value`, which is not C, and `pp.get()` passed the `P**` as the `P*` self.
+
+struct Inner {
+    n: int;
+}
+
+struct P {
+    value: int;
+    inner: Inner;
+}
+
+impl P {
+    fn get(self) -> int {
+        return self.value;
+    }
+
+    fn bump(self) {
+        self.value = self.value + 1;
+    }
+}
+
+struct Holder<T> {
+    item: T;
+}
+
+impl Holder<T> {
+    fn peek(self) -> T {
+        return self.item;
+    }
+}
+
+fn value_of(pp: P**) -> int {
+    return pp.value;
+}
+
+test "fields through a pointer to a pointer" {
+    // Arrange
+    let b = P { value: 7, inner: Inner { n: 4 } };
+    let p = &b;
+    let pp = &p;
+    let ppp = &pp;
+
+    // Act
+    pp.value = 9;
+    ppp.inner.n = 5;
+
+    // Assert
+    expect_eq((*pp).value, 9, "(*pp).value should read the field");
+    expect_eq(pp.value, 9, "pp.value should read the field written through pp");
+    expect_eq(ppp.value, 9, "ppp.value should read the field through three pointers");
+    expect_eq(value_of(pp), 9, "pp.value should read the field of a P** parameter");
+    expect_eq(b.inner.n, 5, "ppp.inner.n should write the nested field of b");
+    expect_eq(pp.inner.n, 5, "pp.inner.n should read the nested field");
+}
+
+test "methods through a pointer to a pointer" {
+    // Arrange
+    let b = P { value: 0, inner: Inner { n: 0 } };
+    let p = &b;
+    let pp = &p;
+    let ppp = &pp;
+    let h = Holder<int> { item: 3 };
+    let hp = &h;
+    let hpp = &hp;
+
+    // Act
+    pp.bump();
+    ppp.bump();
+
+    // Assert
+    expect_eq(b.value, 2, "pp.bump() and ppp.bump() should each change b");
+    expect_eq(pp.get(), 2, "pp.get() should pass *pp as self");
+    expect_eq(ppp.get(), 2, "ppp.get() should pass **ppp as self");
+    expect_eq(hpp.peek(), 3, "a method of a generic struct should take *hpp as self");
+}

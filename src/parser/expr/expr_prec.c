@@ -889,6 +889,20 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         {
                             ASTNode *obj = lhs->member.target;
 
+                            // `.` reaches the method through every pointer level, as
+                            // resolve_struct_name_from_type does: with `pp: P**`, the
+                            // receiver is `*pp`.
+                            while (lt && lt->kind == TYPE_POINTER && lt->inner &&
+                                   lt->inner->kind == TYPE_POINTER)
+                            {
+                                ASTNode *deref = ast_create(NODE_EXPR_UNARY);
+                                deref->unary.op = xstrdup("*");
+                                deref->unary.operand = obj;
+                                deref->type_info = lt->inner;
+                                obj = deref;
+                                lt = lt->inner;
+                            }
+
                             // Handle Reference/Pointer adjustment based on signature
                             if (sig->total_args > 0 && sig->arg_types[0] &&
                                 sig->arg_types[0]->kind == TYPE_POINTER)
