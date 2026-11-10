@@ -562,6 +562,12 @@ char *lsp_path_to_uri(const char *path)
     return uri;
 }
 
+ASTNode *lsp_project_top_level(const ProjectFile *pf)
+{
+    ASTNode *node = pf ? pf->ast : NULL;
+    return node && node->kind == NODE_ROOT ? node->root.children : node;
+}
+
 ProjectFile *lsp_project_get_file(const char *uri)
 {
     return uri ? lsp_project_get_file_by_path(lsp_uri_to_path(uri)) : NULL;
@@ -594,28 +600,71 @@ static ProjectFile *add_project_file(const char *path)
     return f;
 }
 
+// What the parser context had before a parse: the lists it adds to, newest first, so what the
+// parse added is what comes before these.
+typedef struct
+{
+    TypeUsage *usages;
+    GenericImplTemplate *impls;
+    GenericFuncTemplate *functions;
+    ASTNode *implicit_imports; ///< The std modules the parser imports by itself (std/test.zc).
+} ParseMarks;
+
+static ParseMarks parse_marks(void)
+{
+    ParseMarks marks = {g_project->ctx->pending_type_validations, g_project->ctx->impl_templates,
+                        g_project->ctx->func_templates, g_project->ctx->implicit_std_imports};
+    return marks;
+}
+
 // The index of `pf`, a file the last parse read from `root`: its nodes, the generic impls the parse
-// registered for it and the type names it read there. Both lists are newest first, down to
-// what was there before the parse.
-static void index_parsed_file(ProjectFile *pf, ASTNode *root, TypeUsage *usages_before,
-                              GenericImplTemplate *templates_before)
+// registered for it and the type names it read there. Its generic impls and functions are kept
+// too, since they are no nodes of its AST.
+static void index_parsed_file(ProjectFile *pf, ASTNode *root, ParseMarks before)
 {
     pf->index = lsp_index_new();
     lsp_build_index(g_project->ctx, pf->index, root, pf->source);
 
     // A generic impl (`impl Vec<T>`) is a template, not a node of the file's AST: its
     // methods are what `Vec<int>::new` goes to.
-    for (GenericImplTemplate *it = g_project->ctx->impl_templates; it && it != templates_before;
+    pf->generic_impl_count = 0;
+    for (GenericImplTemplate *it = g_project->ctx->impl_templates; it && it != before.impls;
+         it = it->next)
+    {
+        pf->generic_impl_count++;
+    }
+    pf->generic_impls = xcalloc((size_t)pf->generic_impl_count + 1, sizeof(ASTNode *));
+    pf->generic_impl_count = 0;
+    for (GenericImplTemplate *it = g_project->ctx->impl_templates; it && it != before.impls;
          it = it->next)
     {
         ASTNode *impl = it->impl_node;
         if (impl && impl->token.file && strcmp(impl->token.file, pf->path) == 0)
         {
+            pf->generic_impls[pf->generic_impl_count++] = impl;
             lsp_build_index(g_project->ctx, pf->index, impl, pf->source);
         }
     }
 
-    for (TypeUsage *use = g_project->ctx->pending_type_validations; use && use != usages_before;
+    pf->generic_function_count = 0;
+    for (GenericFuncTemplate *it = g_project->ctx->func_templates; it && it != before.functions;
+         it = it->next)
+    {
+        pf->generic_function_count++;
+    }
+    pf->generic_functions = xcalloc((size_t)pf->generic_function_count + 1, sizeof(ASTNode *));
+    pf->generic_function_count = 0;
+    for (GenericFuncTemplate *it = g_project->ctx->func_templates; it && it != before.functions;
+         it = it->next)
+    {
+        ASTNode *fn = it->func_node;
+        if (fn && fn->token.file && strcmp(fn->token.file, pf->path) == 0)
+        {
+            pf->generic_functions[pf->generic_function_count++] = fn;
+        }
+    }
+
+    for (TypeUsage *use = g_project->ctx->pending_type_validations; use && use != before.usages;
          use = use->next)
     {
         // The names the file imports were read too, in their own files.
@@ -629,8 +678,23 @@ static void index_parsed_file(ProjectFile *pf, ASTNode *root, TypeUsage *usages_
 // The modules the last parse read that are no file of the project, such as the standard library
 // outside the workspace: their definitions are what `Vec` and `Vec<int>::new` go to. The
 // server's context parses a module once, so each is indexed from the import that read it.
-static void index_imported_modules(ASTNode *nodes, TypeUsage *usages_before,
-                                   GenericImplTemplate *templates_before, int depth)
+static void index_imported_modules(ASTNode *nodes, ParseMarks before, int depth);
+
+// The modules that the parse whose marks are `before` imported without an import of the program
+// (the parser loads std/test.zc for a `test` block): they are no nodes of any AST.
+static void index_implicit_imports(ParseMarks before)
+{
+    for (ASTNode *n = g_project->ctx->implicit_std_imports; n && n != before.implicit_imports;
+         n = n->next)
+    {
+        ASTNode *next = n->next;
+        n->next = NULL; // One import, not the ones before it.
+        index_imported_modules(n, before, 0);
+        n->next = next;
+    }
+}
+
+static void index_imported_modules(ASTNode *nodes, ParseMarks before, int depth)
 {
     for (ASTNode *n = nodes; n && depth < 32; n = n->next)
     {
@@ -644,9 +708,8 @@ static void index_imported_modules(ASTNode *nodes, TypeUsage *usages_before,
         module->ast = n->import_stmt.module_root;
         // The text it was parsed from, so code the parser generates in it stays out of the index.
         module->source = load_file(path, NULL, g_project->ctx->config);
-        index_parsed_file(module, n->import_stmt.module_root, usages_before, templates_before);
-        index_imported_modules(n->import_stmt.module_root, usages_before, templates_before,
-                               depth + 1);
+        index_parsed_file(module, n->import_stmt.module_root, before);
+        index_imported_modules(n->import_stmt.module_root, before, depth + 1);
     }
 }
 
@@ -709,21 +772,22 @@ void lsp_project_update_file(const char *uri, const char *src)
     // The parser lists every type name it reads (newest first), to validate them when it is done.
     // The server has no use for that validation, which reports nothing here: it indexes the names
     // this parse read, and drops them with the parse.
-    TypeUsage *usages_before = g_project->ctx->pending_type_validations;
-    GenericImplTemplate *templates_before = g_project->ctx->impl_templates;
+    ParseMarks before = parse_marks();
     ASTNode *root = parse_program(g_project->ctx, &l);
     if (root)
     {
         pf->ast = root;
-        index_parsed_file(pf, root, usages_before, templates_before);
-        index_imported_modules(root->kind == NODE_ROOT ? root->root.children : root, usages_before,
-                               templates_before, 0);
+        index_parsed_file(pf, root, before);
+        index_imported_modules(root->kind == NODE_ROOT ? root->root.children : root, before, 0);
+        index_implicit_imports(before);
     }
     else
     {
         pf->ast = NULL;
+        pf->generic_impl_count = 0;
+        pf->generic_function_count = 0;
     }
-    g_project->ctx->pending_type_validations = usages_before;
+    g_project->ctx->pending_type_validations = before.usages;
 
     g_project->ctx->current_filename = saved_filename;
 }

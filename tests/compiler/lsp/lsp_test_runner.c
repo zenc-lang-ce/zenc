@@ -1910,6 +1910,48 @@ static void test_uri_with_spaces(void)
     printf("PASS: test_uri_with_spaces\n");
 }
 
+static void test_deleted_declarations(void)
+{
+    printf("Running test_deleted_declarations...\n");
+    // What a file no longer declares is no longer offered: completion and signature help read
+    // the declarations of each file's last parse, not what the parser registered before.
+    // Line 0: struct Kept { v: int; }
+    // Line 1: impl Kept { fn vanish(self) -> int { return 1; } }
+    // Line 2: fn helper_gone(a: int, b: int) -> int { return a + b; }
+    // Line 3: fn main() {
+    // Line 4:     let k = Kept { v: 1 };
+    // Line 5:     k.
+    // Line 6:     helper_gone(1,
+    // Line 7: }
+    const char *path = C_TEST_DIR "/deleted.zc";
+    open_document(path, "struct Kept { v: int; }\nimpl Kept { fn vanish(self) -> int { return 1; } }\n"
+                        "fn helper_gone(a: int, b: int) -> int { return a + b; }\nfn main() {\n    "
+                        "let k = Kept { v: 1 };\n    k.\n    helper_gone(1, \n}\n");
+    if (completion_kind(880, path, 6, 4, "helper_gone") < 0 || completion_kind(881, path, 5, 6, "vanish") < 0)
+    {
+        fail("Completion offers what the file declares");
+    }
+
+    // Lines 1 and 2 are gone: line 3 is `    k.` and line 4 `    helper_gone(1,`.
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didChange\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file://" C_TEST_DIR "/deleted.zc\", \"version\": 2}, "
+                 "\"contentChanges\": [{\"text\": \"struct Kept { v: int; }\\nfn main() {\\n    let k "
+                 "= Kept { v: 1 };\\n    k.\\n    helper_gone(1, \\n}\\n\"}]}}");
+    usleep(100000);
+    if (completion_kind(882, path, 4, 4, "helper_gone") >= 0 || completion_kind(883, path, 3, 6, "vanish") >= 0 ||
+        completion_kind(884, path, 3, 6, "v") < 0)
+    {
+        fail("Completion does not offer what the file no longer declares");
+    }
+    cJSON *help = position_request(885, "textDocument/signatureHelp", path, 4, 19);
+    if (!cJSON_IsNull(cJSON_GetObjectItem(help, "result")))
+    {
+        fail("Signature help does not answer for a function the file no longer declares");
+    }
+    cJSON_Delete(help);
+    printf("PASS: test_deleted_declarations\n");
+}
+
 static void test_keyword_completion(void)
 {
     printf("Running test_keyword_completion...\n");
@@ -3159,6 +3201,7 @@ int main()
     test_member_completion();
     test_local_completion();
     test_keyword_completion();
+    test_deleted_declarations();
     test_uri_with_spaces();
     test_primitive_hover();
     test_c_struct_field_completion();
