@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "zprep.h"
+#include "keywords.h"
 
 void lexer_init(Lexer *l, const char *src, CompilerConfig *cfg, const char *filename)
 {
@@ -231,81 +232,11 @@ Token lexer_next(Lexer *l)
         l->pos += len;
         l->col += len;
 
-        if (len == 4 && strncmp(s, "test", 4) == 0)
+        // A keyword with a token of its own; the parser reads the rest by their text.
+        const ZenKeyword *keyword = zen_keyword_find(s, (size_t)len);
+        if (keyword && keyword->kind != TOK_IDENT)
         {
-            return (Token){TOK_TEST, s, 4, start_line, start_col, l->filename};
-        }
-        if (len == 6 && strncmp(s, "assert", 6) == 0)
-        {
-            return (Token){TOK_ASSERT, s, 6, start_line, start_col, l->filename};
-        }
-        if (len == 6 && strncmp(s, "expect", 6) == 0)
-        {
-            return (Token){TOK_EXPECT, s, 6, start_line, start_col, l->filename};
-        }
-        if (len == 6 && strncmp(s, "sizeof", 6) == 0)
-        {
-            return (Token){TOK_SIZEOF, s, 6, start_line, start_col, l->filename};
-        }
-        if (len == 5 && strncmp(s, "defer", 5) == 0)
-        {
-            return (Token){TOK_DEFER, s, 5, start_line, start_col, l->filename};
-        }
-        if (len == 3 && strncmp(s, "def", 3) == 0)
-        {
-            return (Token){TOK_DEF, s, 3, start_line, start_col, l->filename};
-        }
-        if (len == 5 && strncmp(s, "trait", 5) == 0)
-        {
-            return (Token){TOK_TRAIT, s, 5, start_line, start_col, l->filename};
-        }
-        if (len == 4 && strncmp(s, "impl", 4) == 0)
-        {
-            return (Token){TOK_IMPL, s, 4, start_line, start_col, l->filename};
-        }
-        if (len == 5 && strncmp(s, "alias", 5) == 0)
-        {
-            return (Token){TOK_ALIAS, s, 5, start_line, start_col, l->filename};
-        }
-        if (len == 3 && strncmp(s, "use", 3) == 0)
-        {
-            return (Token){TOK_USE, s, 3, start_line, start_col, l->filename};
-        }
-        if (len == 8 && strncmp(s, "comptime", 8) == 0)
-        {
-            return (Token){TOK_COMPTIME, s, 8, start_line, start_col, l->filename};
-        }
-        if (len == 5 && strncmp(s, "union", 5) == 0)
-        {
-            return (Token){TOK_UNION, s, 5, start_line, start_col, l->filename};
-        }
-        if (len == 3 && strncmp(s, "asm", 3) == 0)
-        {
-            return (Token){TOK_ASM, s, 3, start_line, start_col, l->filename};
-        }
-        if (len == 8 && strncmp(s, "volatile", 8) == 0)
-        {
-            return (Token){TOK_VOLATILE, s, 8, start_line, start_col, l->filename};
-        }
-        if (len == 3 && strncmp(s, "and", 3) == 0)
-        {
-            return (Token){TOK_AND, s, 3, start_line, start_col, l->filename};
-        }
-        if (len == 2 && strncmp(s, "or", 2) == 0)
-        {
-            return (Token){TOK_OR, s, 2, start_line, start_col, l->filename};
-        }
-        if (len == 3 && strncmp(s, "not", 3) == 0)
-        {
-            return (Token){TOK_NOT, s, 3, start_line, start_col, l->filename};
-        }
-        if (len == 6 && strncmp(s, "opaque", 6) == 0)
-        {
-            return (Token){TOK_OPAQUE, s, 6, start_line, start_col, l->filename};
-        }
-        if (len == 2 && strncmp(s, "do", 2) == 0)
-        {
-            return (Token){TOK_DO, s, 2, start_line, start_col, l->filename};
+            return (Token){keyword->kind, s, keyword->len, start_line, start_col, l->filename};
         }
 
         // F-Strings

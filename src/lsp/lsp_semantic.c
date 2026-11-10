@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "../constants.h"
 #include "../ast/primitives.h"
+#include "../lexer/keywords.h"
 #include "lsp_project.h"
 #include "../utils/cJSON.h"
 #include <stdio.h>
@@ -135,30 +136,10 @@ static int compare_tokens(const void *a, const void *b)
     return ta->order - tb->order;
 }
 
-// Keyword check: reuse parser's is_reserved_keyword() + primitives table.
+// Whether the word is a keyword of the language, as the lexer and the parser read them.
 static int is_keyword(const char *w, size_t len)
 {
-    Token t = {.kind = TOK_IDENT, .start = w, .len = len};
-    if (is_reserved_keyword(t))
-    {
-        return 1;
-    }
-
-    static const char *more[] = {
-        "and",      "asm",      "alias",  "assert", "comptime", "def",      "defer",    "eprint",
-        "eprintln", "expect",   "extern", "false",  "import",   "inline",   "match",    "module",
-        "noreturn", "not",      "null",   "opaque", "or",       "print",    "printf",   "println",
-        "private",  "public",   "sizeof", "switch", "test",     "true",     "typeof",   "union",
-        "use",      "volatile", "impl",   "trait",  "in",       "external", "continue", NULL};
-    for (size_t i = 0; more[i]; i++)
-    {
-        size_t klen = strlen(more[i]);
-        if (len == klen && strncmp(w, more[i], len) == 0)
-        {
-            return 1;
-        }
-    }
-    return 0;
+    return zen_keyword_find(w, len) != NULL;
 }
 
 static int is_type_name(const char *w, size_t len)

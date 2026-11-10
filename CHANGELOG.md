@@ -57,6 +57,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - Every request gets an answer: on a file the server does not know, or without its parameters, it is `null` instead of none, which left the client waiting.
   - The variants offered after `value.` are enum members, not values, and a `def` is highlighted as readonly.
   - Semantic highlighting covers the whole file: every declaration and method, and what is inside the bodies of `if`, `while`, `for` and `match`, not only the first declaration. Completion offers the locals of every kind of body, such as a `match` arm.
+  - Keywords are the language's, from one table that the lexer reads too: `for` and `in` are highlighted as keywords, and `print`, `println` and `printf` are functions. Completion offers each keyword where it starts a construct, and C functions such as `malloc` as functions, not keywords; words that are not Zen C (`module`, `unsafe`, `typedef`) are not offered.
 - REPL: Backspace and Escape work in reverse search.
 
 ### Added

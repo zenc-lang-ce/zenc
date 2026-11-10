@@ -2,6 +2,7 @@
 #include "../utils/cJSON.h"
 #include "../constants.h"
 #include "../ast/primitives.h"
+#include "../lexer/keywords.h"
 #include "../utils/utils.h"
 #include "lsp_project.h" // Includes lsp_index.h, parser.h
 #include "lsp_c_headers.h"
@@ -815,6 +816,84 @@ static int add_impl_completions(cJSON *items, const char *type_name, int with_se
     return added;
 }
 
+// How completion writes the construct a keyword starts. A keyword may have more than one (`for`
+// over a range or an iterator).
+static const struct
+{
+    const char *keyword;
+    const char *label;
+    const char *snippet;
+} KEYWORD_SNIPPETS[] = {
+    {"fn", "fn", "fn ${1:name}(${2:args}) {\n    $0\n}"},
+    {"struct", "struct", "struct ${1:Name} {\n    ${2:field}: ${3:type};\n}"},
+    {"enum", "enum", "enum ${1:Name} {\n    ${2:Variant}\n}"},
+    {"trait", "trait", "trait ${1:Name} {\n    fn ${2:method}(self);\n}"},
+    {"impl", "impl", "impl ${1:Struct} {\n    $0\n}"},
+    {"if", "if", "if (${1:condition}) {\n    $0\n}"},
+    {"else", "else", "else {\n    $0\n}"},
+    {"for", "for", "for (${1:let i = 0}; ${2:i < 10}; ${3:i++}) {\n    $0\n}"},
+    {"for", "for..in", "for (${1:item} in ${2:iterator}) {\n    $0\n}"},
+    {"while", "while", "while (${1:condition}) {\n    $0\n}"},
+    {"match", "match",
+     "match (${1:expression}) {\n    ${2:pattern} => ${3:action},\n    _ => $0\n}"},
+    {"defer", "defer", "defer {\n    $0\n}"},
+    {"return", "return", "return $0;"},
+    {"let", "let", "let ${1:var}: ${2:type} = ${3:value};"},
+    {"def", "def", "def ${1:CONST} = ${2:value};"},
+    {"test", "test", "test \"${1:description}\" {\n    $0\n}"},
+    {"assert", "assert", "assert(${1:expression}, \"${2:error message}\");"},
+    {"break", "break", "break;"},
+    {"continue", "continue", "continue;"},
+};
+
+// Names that completion offers in a body besides the program's: functions of C and the built-ins
+// of comptime and lambdas. Not keywords.
+static const struct
+{
+    const char *name;
+    LspCompletionItemKind kind;
+} BUILTINS[] = {
+    {"exit", LSP_COMPLETION_FUNCTION},
+    {"fopen", LSP_COMPLETION_FUNCTION},
+    {"free", LSP_COMPLETION_FUNCTION},
+    {"malloc", LSP_COMPLETION_FUNCTION},
+    {"mkdir", LSP_COMPLETION_FUNCTION},
+    {"printf", LSP_COMPLETION_FUNCTION},
+    {"realloc", LSP_COMPLETION_FUNCTION},
+    {"snprintf", LSP_COMPLETION_FUNCTION},
+    {"sprintf", LSP_COMPLETION_FUNCTION},
+    {"strcmp", LSP_COMPLETION_FUNCTION},
+    {"strcpy", LSP_COMPLETION_FUNCTION},
+    {"strlen", LSP_COMPLETION_FUNCTION},
+    {"system", LSP_COMPLETION_FUNCTION},
+    {"usleep", LSP_COMPLETION_FUNCTION},
+    {"stdout", LSP_COMPLETION_VARIABLE},
+    {"va_list", LSP_COMPLETION_STRUCT},
+    {"code", LSP_COMPLETION_FUNCTION},
+    {"compile_error", LSP_COMPLETION_FUNCTION},
+    {"compile_warn", LSP_COMPLETION_FUNCTION},
+    {"yield", LSP_COMPLETION_FUNCTION},
+    {"__COMPTIME_FILE__", LSP_COMPLETION_CONSTANT},
+    {"__COMPTIME_TARGET__", LSP_COMPLETION_CONSTANT},
+    {"it", LSP_COMPLETION_VARIABLE},
+};
+
+// The places (KeywordPlace) of the keywords that start a construct in `context`.
+static unsigned int keyword_places(LSPContext context)
+{
+    switch (context)
+    {
+    case CTX_GLOBAL:
+        return KEYWORD_AT_TOP_LEVEL;
+    case CTX_LOOP:
+        return KEYWORD_IN_BODY | KEYWORD_IN_LOOP;
+    case CTX_AFTER_IF:
+        return KEYWORD_IN_BODY | KEYWORD_AFTER_IF;
+    default:
+        return KEYWORD_IN_BODY;
+    }
+}
+
 // Adds the completion item of a local, `decl`, to the array `data`.
 static void add_local_completion(ASTNode *decl, void *data)
 {
@@ -1134,89 +1213,48 @@ cJSON *lsp_completion(const char *uri, int line, int col)
 
     if (!dot_completed)
     {
-        typedef struct
+        // The keywords that can start a construct where the cursor is: with the snippets of
+        // KEYWORD_SNIPPETS, or as they are.
+        unsigned int places = keyword_places(context);
+        int keyword_count = 0;
+        const ZenKeyword *keywords = zen_keywords(&keyword_count);
+        for (int i = 0; i < keyword_count; i++)
         {
-            const char *label;
-            const char *snippet;
-            int context_mask; // 1: Global, 2: Function, 4: Loop, 8: AfterIf
-        } KeywordSnippet;
-
-        KeywordSnippet keywords[] = {
-            {"fn", "fn ${1:name}(${2:args}) {\n    $0\n}", 1},
-            {"struct", "struct ${1:Name} {\n    ${2:field}: ${3:type};\n}", 1},
-            {"enum", "enum ${1:Name} {\n    ${2:Variant}\n}", 1},
-            {"trait", "trait ${1:Name} {\n    fn ${2:method}(self);\n}", 1},
-            {"impl", "impl ${1:Struct} {\n    $0\n}", 1},
-            {"if", "if (${1:condition}) {\n    $0\n}", 2 | 4 | 8},
-            {"else", "else {\n    $0\n}", 8},
-            {"for", "for (${1:let i = 0}; ${2:i < 10}; ${3:i++}) {\n    $0\n}", 2 | 4 | 8},
-            {"for..in", "for (${1:item} in ${2:iterator}) {\n    $0\n}", 2 | 4 | 8},
-            {"while", "while (${1:condition}) {\n    $0\n}", 2 | 4 | 8},
-            {"match", "match (${1:expression}) {\n    ${2:pattern} => ${3:action},\n    _ => $0\n}",
-             2 | 4 | 8},
-            {"defer", "defer {\n    $0\n}", 2 | 4 | 8},
-            {"return", "return $0;", 2 | 4 | 8},
-            {"let", "let ${1:var}: ${2:type} = ${3:value};", 2 | 4 | 8},
-            {"def", "def ${1:CONST} = ${2:value};", 1 | 2 | 4 | 8},
-            {"test", "test \"${1:description}\" {\n    $0\n}", 1},
-            {"assert", "assert(${1:expression}, \"${2:error message}\");", 2 | 4 | 8},
-            {"break", "break;", 4},
-            {"continue", "continue;", 4},
-            {NULL, NULL, 0}};
-
-        int active_mask = 0;
-        if (context == CTX_GLOBAL)
-        {
-            active_mask = 1;
-        }
-        else if (context == CTX_FUNCTION)
-        {
-            active_mask = 2;
-        }
-        else if (context == CTX_LOOP)
-        {
-            active_mask = 4;
-        }
-        else if (context == CTX_AFTER_IF)
-        {
-            active_mask = 8;
-        }
-        else if (context == CTX_ASSIGNMENT)
-        {
-            active_mask = 2 | 4 | 8; // Assignments usually in functions
-        }
-
-        // If we are after an if, we still want to allow 'if' keywords (else if)
-        if (context == CTX_AFTER_IF)
-        {
-            active_mask |= 2;
-        }
-
-        for (int i = 0; keywords[i].label; i++)
-        {
-            if (!(keywords[i].context_mask & active_mask))
+            if (!(keywords[i].places & places))
             {
                 continue;
             }
-
-            cJSON *item = cJSON_CreateObject();
-            cJSON_AddStringToObject(item, "label", keywords[i].label);
-            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_KEYWORD);
-            cJSON_AddStringToObject(item, "insertText", keywords[i].snippet);
-            cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
-            cJSON_AddStringToObject(item, "sortText", "001"); // Keywords highest priority
-            cJSON_AddItemToArray(items, item);
+            int snippets = 0;
+            for (size_t k = 0; k < sizeof(KEYWORD_SNIPPETS) / sizeof(KEYWORD_SNIPPETS[0]); k++)
+            {
+                if (strcmp(KEYWORD_SNIPPETS[k].keyword, keywords[i].spelling) != 0)
+                {
+                    continue;
+                }
+                cJSON *item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "label", KEYWORD_SNIPPETS[k].label);
+                cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_KEYWORD);
+                cJSON_AddStringToObject(item, "insertText", KEYWORD_SNIPPETS[k].snippet);
+                cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
+                cJSON_AddStringToObject(item, "sortText", "001"); // Keywords highest priority
+                cJSON_AddItemToArray(items, item);
+                snippets++;
+            }
+            if (!snippets)
+            {
+                cJSON *item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "label", keywords[i].spelling);
+                cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_KEYWORD);
+                cJSON_AddStringToObject(item, "sortText", "008");
+                cJSON_AddItemToArray(items, item);
+            }
         }
 
         // Primitive type names — reuse the authoritative table from primitives.c
         int type_count = 0;
         const ZenPrimitive *types = get_zen_primitives(&type_count);
-        for (int i = 0; i < type_count; i++)
+        for (int i = 0; i < type_count && context != CTX_GLOBAL; i++)
         {
-            if (context == CTX_GLOBAL)
-            {
-                continue;
-            }
             cJSON *item = cJSON_CreateObject();
             cJSON_AddStringToObject(item, "label", types[i].zen_name);
             cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_KEYWORD);
@@ -1224,99 +1262,11 @@ cJSON *lsp_completion(const char *uri, int line, int col)
             cJSON_AddItemToArray(items, item);
         }
 
-        // Non-type keywords and builtins
-        // Not the keywords above with a snippet, nor print/println: functions of std/io.zc.
-        const char *plain_keywords[] = {"alias",
-                                        "and",
-                                        "asm",
-                                        "code",
-                                        "compile_error",
-                                        "compile_warn",
-                                        "comptime",
-                                        "__COMPTIME_FILE__",
-                                        "__COMPTIME_TARGET__",
-                                        "const",
-                                        "do",
-                                        "embed",
-                                        "exit",
-                                        "expect",
-                                        "export",
-                                        "extern",
-                                        "false",
-                                        "fopen",
-                                        "free",
-                                        "goto",
-                                        "guard",
-                                        "import",
-                                        "include",
-                                        "inline",
-                                        "it",
-                                        "launch",
-                                        "loop",
-                                        "malloc",
-                                        "mkdir",
-                                        "module",
-                                        "noreturn",
-                                        "not",
-                                        "null",
-                                        "opaque",
-                                        "or",
-                                        "plugin",
-                                        "printf",
-                                        "raw",
-                                        "realloc",
-                                        "ref",
-                                        "register",
-                                        "repeat",
-                                        "restrict",
-                                        "self",
-                                        "sizeof",
-                                        "snprintf",
-                                        "sprintf",
-                                        "static",
-                                        "stdout",
-                                        "step",
-                                        "strcmp",
-                                        "strcpy",
-                                        "strlen",
-                                        "system",
-                                        "true",
-                                        "type",
-                                        "typedef",
-                                        "union",
-                                        "unless",
-                                        "unsafe",
-                                        "use",
-                                        "usleep",
-                                        "va_list",
-                                        "volatile",
-                                        "with",
-                                        "yield",
-                                        NULL};
-
-        for (int i = 0; plain_keywords[i]; i++)
+        for (size_t i = 0; i < sizeof(BUILTINS) / sizeof(BUILTINS[0]) && context != CTX_GLOBAL; i++)
         {
-            if (context == CTX_GLOBAL)
-            {
-                const char *kw = plain_keywords[i];
-                if (strcmp(kw, "import") != 0 && strcmp(kw, "module") != 0 &&
-                    strcmp(kw, "alias") != 0 && strcmp(kw, "use") != 0 &&
-                    strcmp(kw, "const") != 0 && strcmp(kw, "def") != 0 &&
-                    strcmp(kw, "export") != 0 && strcmp(kw, "extern") != 0 &&
-                    strcmp(kw, "static") != 0 && strcmp(kw, "type") != 0 &&
-                    strcmp(kw, "comptime") != 0 && strcmp(kw, "include") != 0 &&
-                    strcmp(kw, "plugin") != 0 && strcmp(kw, "opaque") != 0 &&
-                    strcmp(kw, "expect") != 0 && strcmp(kw, "test") != 0 &&
-                    strcmp(kw, "raw") != 0 && strcmp(kw, "embed") != 0 && strcmp(kw, "do") != 0 &&
-                    strcmp(kw, "loop") != 0 && strcmp(kw, "unsafe") != 0)
-                {
-                    continue;
-                }
-            }
-
             cJSON *item = cJSON_CreateObject();
-            cJSON_AddStringToObject(item, "label", plain_keywords[i]);
-            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_KEYWORD);
+            cJSON_AddStringToObject(item, "label", BUILTINS[i].name);
+            cJSON_AddNumberToObject(item, "kind", BUILTINS[i].kind);
             cJSON_AddStringToObject(item, "sortText", "008");
             cJSON_AddItemToArray(items, item);
         }
