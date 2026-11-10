@@ -941,6 +941,12 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l);
 ASTNode *parse_expect(ParserContext *ctx, Lexer *l);
 ASTNode *parse_plugin(ParserContext *ctx, Lexer *l, Token tk);
 char *token_get_string_content(Token t);
+/**
+ * @brief Where the content of the string literal `t` starts in its text: the length of its
+ *        opening quotes (`"`, `f"`, `"""`...). *end_offset, if given, gets that of its closing
+ * ones.
+ */
+int token_string_content_offset(Token t, int *end_offset);
 ASTNode *find_struct_def(ParserContext *ctx, const char *name);
 ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char *link_name,
                         int is_export);

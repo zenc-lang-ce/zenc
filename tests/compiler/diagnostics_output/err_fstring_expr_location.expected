@@ -1,0 +1,18 @@
+   Compiling tests/compiler/diagnostics_output/err_fstring_expr_location.zc...
+error: Cannot move out of an index expression
+  --> tests/compiler/diagnostics_output/err_fstring_expr_location.zc:22:27
+   |
+22 |     println(f"first {take(xs[0])}");
+   |                           ^ here
+   |
+   = help: Cannot move an element out of an array or slice.
+error: Cannot move out of an index expression
+  --> tests/compiler/diagnostics_output/err_fstring_expr_location.zc:24:12
+   |
+24 | then {take(xs[1]):%d} more""");
+   |            ^ here
+   |
+   = help: Cannot move an element out of an array or slice.
+     error: semantic analysis found 2 errors
+       Check failed with 2 errors
+[exit 1]

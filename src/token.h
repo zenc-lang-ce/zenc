@@ -96,6 +96,7 @@ typedef struct
 typedef struct
 {
     const char *src;        ///< Source code buffer.
+    const char *end;        ///< Where the text to read ends; NULL to read up to its NUL.
     int pos;                ///< Current position index.
     int line;               ///< Current line number.
     int col;                ///< Current column number.
