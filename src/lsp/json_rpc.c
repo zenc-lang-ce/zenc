@@ -2,6 +2,8 @@
 #include "json_rpc.h"
 #include "../utils/cJSON.h"
 #include "lsp_project.h"
+#include "lsp_semantic.h"
+#include "lsp_analysis.h"
 #include "lsp_formatter.h"
 #include <stdio.h>
 #include <stdlib.h>

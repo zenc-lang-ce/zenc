@@ -4,7 +4,8 @@
 #include "../ast/primitives.h"
 #include "../lexer/keywords.h"
 #include "../utils/utils.h"
-#include "lsp_project.h" // Includes lsp_index.h, parser.h
+#include "lsp_project.h"
+#include "lsp_analysis.h" // Includes lsp_index.h, parser.h
 #include "lsp_c_headers.h"
 #include "lsp_locals.h"
 #include "json_rpc.h"

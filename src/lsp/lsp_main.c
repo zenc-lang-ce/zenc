@@ -2,6 +2,7 @@
 #include "json_rpc.h"
 #include "lsp_main.h"
 #include "lsp_project.h"
+#include "lsp_analysis.h"
 #include "../constants.h"
 #include "../platform/os.h"
 #include "zprep.h"
