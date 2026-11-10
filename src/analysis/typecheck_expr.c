@@ -818,6 +818,24 @@ static int check_array_as_slice(TypeChecker *tc, Type *target, Type *value, Toke
     return 1;
 }
 
+// Whether the integer constant `value` keeps its value in the integer type `t`.
+// A type of 64 bits or more, or of unknown width, takes any constant: the folded
+// value is a long long, which cannot tell -1 from 0xFFFFFFFFFFFFFFFF.
+static int integer_constant_fits(long long value, Type *t)
+{
+    int width = integer_type_width(t);
+    if (width <= 0 || width >= 64)
+    {
+        return 1;
+    }
+    if (is_signed_type(t))
+    {
+        long long limit = 1LL << (width - 1);
+        return value >= -limit && value < limit;
+    }
+    return value >= 0 && value < (1LL << width);
+}
+
 int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t,
                              ASTNode *value_node, int is_call_arg)
 {
@@ -859,10 +877,25 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     {
         int target_width = integer_type_width(resolved_target);
         int value_width = integer_type_width(resolved_value);
+        long long constant;
 
         if (tc->pctx->config->misra_mode)
         {
             misra_check_implicit_conversion(tc->pctx, target, value, value_node, t);
+        }
+        else if (value_node && eval_const_int_expr(value_node, tc->pctx, &constant))
+        {
+            // A constant converts without loss when its value fits, whatever the
+            // type of the expression; one that does not fit changes its value.
+            if (!integer_constant_fits(constant, resolved_target))
+            {
+                char *t_str = type_to_string(target);
+                char msg[MAX_SHORT_MSG_LEN];
+                snprintf(msg, sizeof(msg), "Integer constant %lld does not fit in '%s' (%d-bit)",
+                         constant, t_str, target_width);
+                tc_warning(tc, t, msg);
+                zfree(t_str);
+            }
         }
         else
         {
