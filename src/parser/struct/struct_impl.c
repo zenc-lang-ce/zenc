@@ -171,19 +171,11 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         }
     }
 
-    // Check for "for" (Trait impl)
+    // `impl Trait for Type`: `for` is read by its text (see keywords.c).
     Token pk = lexer_peek(l);
-    if (pk.kind == TOK_FOR ||
-        (pk.kind == TOK_IDENT && strncmp(pk.start, "for", 3) == 0 && pk.len == 3))
+    if (pk.kind == TOK_IDENT && pk.len == 3 && strncmp(pk.start, "for", 3) == 0)
     {
-        if (pk.kind != TOK_FOR)
-        {
-            lexer_next(l);
-        }
-        else
-        {
-            lexer_next(l); // eat for
-        }
+        lexer_next(l); // eat for
         Token t2 = lexer_next(l);
         char *name2 = token_strdup(t2);
 

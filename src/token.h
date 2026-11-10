@@ -60,7 +60,6 @@ typedef enum
     TOK_AND,        ///< 'and' keyword.
     TOK_OR,         ///< 'or' keyword.
     TOK_NOT,        ///< 'not' keyword.
-    TOK_FOR,        ///< 'for' keyword.
     TOK_DO,         ///< 'do' keyword.
     TOK_COMPTIME,   ///< 'comptime' keyword.
     TOK_ELLIPSIS,   ///< ...
