@@ -509,6 +509,86 @@ static void test_hover_module_type_names(void)
     printf("PASS: test_hover_module_type_names\n");
 }
 
+static void test_type_path_lookup(void)
+{
+    printf("Running test_type_path_lookup...\n");
+    // Line 0: struct Ticket { v: int; }
+    // Line 1: impl Ticket { fn of(v: int) -> Ticket { return Ticket { v: v }; } }
+    // Line 2: struct Crate<T> { v: T; }
+    // Line 3: impl Crate<T> { fn make(v: T) -> Crate<T> { return Crate<T> { v: v }; } }
+    // Line 4: fn paths() { let a = Ticket::of(1); let b = Crate<Ticket>::make(a); }
+    const char *uri = "file:///tmp/test_type_paths.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_type_paths.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Ticket { v: int; }\\nimpl Ticket { fn of(v: int) -> Ticket { return "
+                 "Ticket { v: v }; } }\\nstruct Crate<T> { v: T; }\\nimpl Crate<T> { fn make(v: T) "
+                 "-> Crate<T> { return Crate<T> { v: v }; } }\\nfn paths() { let a = "
+                 "Ticket::of(1); let b = Crate<Ticket>::make(a); }\\n\"}}}");
+    usleep(100000);
+
+    // In a path, the type is the type and its member the function: the method of a generic
+    // impl too, which is a template and not a function until it is instantiated.
+    expect_hover_in(uri, 351, 4, 21, "struct Ticket");
+    expect_hover_in(uri, 352, 4, 29, "fn of(v: int) -> Ticket");
+    expect_hover_in(uri, 353, 4, 44, "struct Crate");
+    expect_hover_in(uri, 354, 4, 59, "fn make(v: T) -> Crate<T>");
+    printf("PASS: test_type_path_lookup\n");
+}
+
+static void test_definition_in_other_file(void)
+{
+    printf("Running test_definition_in_other_file...\n");
+    int fd = open("/tmp/_paths_bin.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0)
+    {
+        fail("Could not write /tmp/_paths_bin.zc");
+    }
+    // Line 2 of this file declares `new` where the importer below declares its own.
+    const char *module = "struct Bin<T> { v: T; }\nimpl Bin<T> {\n    fn new() -> Bin<T> { "
+                         "return Bin<T> { v: (T)0 }; }\n}\n";
+    write(fd, module, strlen(module));
+    close(fd);
+    // Open too, as a file of the workspace would be indexed.
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/_paths_bin.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Bin<T> { v: T; }\\nimpl Bin<T> {\\n    fn new() -> Bin<T> { return "
+                 "Bin<T> { v: (T)0 }; }\\n}\\n\"}}}");
+
+    // Line 0: import "./_paths_bin.zc"
+    // Line 1: impl Slot {
+    // Line 2:     fn new() -> Slot {
+    // Line 3:         return Slot { b: Bin<int>::new() };
+    // Line 4:     }
+    // Line 5: }
+    // Line 6: struct Slot { b: Bin<int>; }
+    const char *uri = "file:///tmp/test_paths_other_file.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_paths_other_file.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"import \\\"./_paths_bin.zc\\\"\\nimpl Slot {\\n    fn new() -> Slot {\\n        "
+                 "return Slot { b: Bin<int>::new() };\\n    }\\n}\\nstruct Slot { b: Bin<int>; "
+                 "}\\n\"}}}");
+    usleep(100000);
+
+    // The definition is the one at that position in the other file, not the one at the same
+    // position in this file (`fn new() -> Slot`).
+    expect_hover_in(uri, 361, 3, 35, "fn new() -> Bin<T>");
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 362, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/test_paths_other_file.zc\"}, "
+                 "\"position\": {\"line\": 3, \"character\": 35}}}");
+    char *resp = wait_for_response(362);
+    if (!resp || !strstr(resp, "_paths_bin.zc"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition must reach the file that declares the method");
+    }
+    free(resp);
+    printf("PASS: test_definition_in_other_file\n");
+}
+
 static void test_type_name_lookup(void)
 {
     printf("Running test_type_name_lookup...\n");
@@ -2564,6 +2644,21 @@ static void test_std_import_in_other_project(void)
     }
     free(diagnostics);
 
+    // The std is not in this workspace: its definitions are reached all the same (#103).
+    // Line 1: fn main() { let v = Vec<int>::new(); }
+    expect_hover_in("file:///tmp/zc_lsp_std/main.zc", 1303, 1, 20, "struct Vec");
+    expect_hover_in("file:///tmp/zc_lsp_std/main.zc", 1304, 1, 30, "fn new()");
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 1305, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/zc_lsp_std/main.zc\"}, "
+                 "\"position\": {\"line\": 1, \"character\": 20}}}");
+    char *definition = wait_for_response(1305);
+    if (!definition || !strstr(definition, "std/vec.zc"))
+    {
+        printf("Definition response: %s\n", definition ? definition : "(no response)");
+        fail("Go to definition must reach std/vec.zc from a workspace without it");
+    }
+    free(definition);
+
     send_request(
         "{\"jsonrpc\": \"2.0\", \"id\": 1302, \"method\": \"shutdown\", \"params\": null}");
     free(wait_for_response(1302));
@@ -2591,6 +2686,8 @@ int main()
     test_hover_beside_generated_code();
     test_hover_type_names();
     test_hover_module_type_names();
+    test_type_path_lookup();
+    test_definition_in_other_file();
     test_type_name_lookup();
     test_impl_header_lookup();
     test_completion();

@@ -19,30 +19,40 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - A variant written without its enum (`let s: Shape = Dot;`) is an error that says `Shape::Dot`, instead of C that does not compile.
   - A variable hides an enum or a variant with the same name; `Color_max` is no longer read as `Color::max`.
   - A variant as a callee gets its `()`; `Enum::Variant()` is accepted for a variant without a payload.
+  - A variant without a payload of a generic enum (`Maybe<int>::Nothing`) is a value of its enum, not a function.
 - Drop:
   - Dropped now: enums with `Drop` or a payload that needs it, tuples, arrays, closures (local, in a field or captured) and `@link_name` structs.
-  - Assigning to a variable with `Drop` drops the old value in C too.
+  - Assigning to a variable with `Drop` drops the old value in C too, and assigning a closure drops the old closure.
   - A struct is `Drop` whatever the order of its `impl`; a local that will be dropped gets no unused-variable warning.
   - Tuples that hold a `Drop` value move, and a `const` parameter can be dropped and moved out through a mutable pointer.
-- Slices: `a[i..j]` slices an array.
+- Arrays and slices: `a[i..j]` slices an array; `let b = a;` and `b = a;` copy a fixed-size array, and move one whose elements have `Drop`.
+- A default value that names a parameter of its function, or a local of the caller, is an error instead of reading the caller's variable.
+- A global without a value is zeroed in the C, so `ld` no longer warns about its alignment on arm64 macOS.
 - Names that are C or C++ keywords are written under another name.
 - `match` works through a pointer subject.
-- `-I`, `-O` and other options read their value correctly.
+- CLI: `-I`, `-O` and other options read their value correctly; `-g` passes `-g` to the C compiler; options can come before the command (`zc -g build app.zc`).
+- C headers: `import "x.h"` reads the names the header declares, and `zc check` accepts a struct literal of a type from a header.
 - With `--cpp`, an f-string interpolation is evaluated once.
 - `int` and `i32` share one generic instance.
 - A type alias is emitted once; `@fields` names a `@link_name` struct by its C name.
 - Casts are decided by whether the name is a type, as in C.
-- Typechecker: one exhaustiveness check for `match`; `return` in lambdas, `Self` literals and casts to `@link_name` structs; a struct's address only for a pointer to the same struct.
+- Typechecker: one exhaustiveness check for `match`; `return` in lambdas, `Self` literals and casts to `@link_name` structs; a struct's address only for a pointer to the same struct; moving a value bound by a `match` arm is an error.
 - Diagnostics:
   - `println "..."` is reported at the `match` arm.
   - `extern enum` and `extern const` say they are not declarations.
   - A token that does not start a struct field is reported.
   - A variable used as the message of `assert` or `expect` counts as used.
   - Implicit `std` imports report the module path.
-  - MISRA Rule 2.4 does not flag an enum the program uses.
-- `#line` is emitted when the file changes on the same line; a `for` loop restores the lexer after its lookahead.
+  - An integer constant is checked against the range of its target: `take(20)` for a `u8` no longer warns, and `let big: u8 = 300;` does.
+  - An error inside an f-string interpolation points at the expression and prints its line.
+  - MISRA Rule 2.4 does not flag an enum the program uses; `assert` and `test` blocks are reported under Rule 21.6 instead of C that does not compile.
+- `#line` is emitted when the file changes on the same line, and again when a newline was written since the last one; a `for` loop restores the lexer after its lookahead.
 - The C is written in binary mode on Windows.
-- Language server: completes what the program declares by the name it declares, `__` or not.
+- Language server:
+  - Completes what the program declares by the name it declares, `__` or not.
+  - Hover and go to definition work on type names, inside f-string interpolations, and on both parts of a path: the type and the function of `Vec<int>::new()`.
+  - Go to definition reaches the standard library from a workspace that does not contain it.
+  - A definition in another file is looked up in that file, not at the same line of the open one.
 - REPL: Backspace and Escape work in reverse search.
 
 ### Added

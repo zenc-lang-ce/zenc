@@ -23,13 +23,16 @@ typedef enum
  */
 typedef struct LSPRange
 {
-    int start_line;   ///< Start line (1-based).
-    int start_col;    ///< Start column (1-based).
-    int end_line;     ///< End line.
-    int end_col;      ///< End column (approximated).
-    RangeType kind;   ///< Type of range (def or ref).
-    int def_line;     ///< Line of definition (if reference).
-    int def_col;      ///< Column of definition (if reference).
+    int start_line; ///< Start line (1-based).
+    int start_col;  ///< Start column (1-based).
+    int end_line;   ///< End line.
+    int end_col;    ///< End column (approximated).
+    RangeType kind; ///< Type of range (def or ref).
+    int def_line;   ///< Line of definition (if reference).
+    int def_col;    ///< Column of definition (if reference).
+    /// File of the definition (if reference), as its tokens name it: the position names a
+    /// definition in that file's index. NULL when unknown.
+    const char *def_file;
     char *hover_text; ///< Tooltip text / signature.
     ASTNode *node;    ///< Associated AST node.
     struct LSPRange *next;

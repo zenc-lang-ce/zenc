@@ -695,3 +695,25 @@ char *expected_instance_method(ParserContext *ctx, const char *template_name,
     char *name = mangle_method_symbol(type_mangle_spelling(expected), NULL, method_name);
     return find_func(ctx, name) ? name : NULL;
 }
+
+Token template_method_token(ParserContext *ctx, const char *template_name, const char *method_name)
+{
+    for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
+    {
+        if (!it->struct_name || strcmp(it->struct_name, template_name) != 0)
+        {
+            continue;
+        }
+        ASTNode *impl = it->impl_node;
+        ASTNode *methods = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
+        for (ASTNode *m = methods; m; m = m->next)
+        {
+            if (m->kind == NODE_FUNCTION && m->func.method_name &&
+                strcmp(m->func.method_name, method_name) == 0)
+            {
+                return m->token;
+            }
+        }
+    }
+    return TOKEN_UNKNOWN;
+}

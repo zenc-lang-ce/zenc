@@ -372,6 +372,13 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         // Set when acc names a member of an instance that still names a generic parameter.
         Type *owner = NULL;
         char *owner_member = NULL;
+        // Where the path writes the segment acc names (`FactId` of `FactId::of`), and its last
+        // member (`of`), for the language server.
+        Token segment_token = t;
+        Token member_token = TOKEN_UNKNOWN;
+        // The declaration of that member when it is a method of a generic impl: the method of
+        // an instance (`Vec<int>::new`) is not a function until it is instantiated.
+        Token member_declaration = TOKEN_UNKNOWN;
         while (1)
         {
             if (lexer_peek(l).kind == TOK_EOF)
@@ -388,8 +395,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     zpanic_at(suffix, "Expected identifier after ::");
                     return NULL;
                 }
+                Token type_token = segment_token;
+                segment_token = suffix;
+                member_token = suffix;
                 // acc names a member of the type from here on: `Vec<T>::new`, `T::make`.
                 Type *path_type = generic_type;
+                // The instance whose member this is: `Vec<int>` of `Vec<int>::new`, or the one an
+                // alias names.
+                Type *instance_of = generic_type;
                 if (!path_type && is_known_generic(ctx, acc))
                 {
                     path_type = type_new(TYPE_GENERIC);
@@ -494,6 +507,11 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     else
                     {
                         ASTNode *def = find_struct_def(ctx, acc);
+                        if (def)
+                        {
+                            // `Point::new`: the type's name, as any other type name read.
+                            register_type_usage(ctx, acc, type_token);
+                        }
 
                         int is_opaque_alias = 0;
                         if (!def && ctx->imports.current_module_prefix)
@@ -519,12 +537,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             TypeAlias *ta = find_type_alias_node(ctx, acc);
                             if (ta)
                             {
+                                register_type_usage(ctx, acc, type_token);
                                 is_opaque_alias = ta->is_opaque;
                                 if (!is_opaque_alias)
                                 {
                                     Type *aliased = find_type_alias(ctx, acc);
                                     if (aliased)
                                     {
+                                        instance_of = aliased;
                                         zfree(acc);
                                         acc = type_mangle_spelling(aliased);
                                         def = find_struct_def(ctx, acc);
@@ -537,6 +557,12 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         strncpy(method_name, suffix.start, suffix.len);
                         method_name[suffix.len] = 0;
                         char *tmp = NULL;
+                        if (instance_of && instance_of->kind == TYPE_STRUCT &&
+                            instance_of->count > 0 && instance_of->name)
+                        {
+                            member_declaration =
+                                template_method_token(ctx, instance_of->name, method_name);
+                        }
 
                         if (def || is_opaque_alias)
                         {
@@ -747,6 +773,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                     if (is_struct)
                     {
+                        // `Holder<int>::make`, `Holder<int>{ v: 1 }`: the template's name.
+                        register_type_usage(ctx, acc, segment_token);
                         generic_type = type_new(TYPE_STRUCT);
                         generic_type->name = acc;
                         generic_type->args = arg_types;
@@ -1325,9 +1353,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
             node->call.count = args_provided;
+            node->call.member_token = member_token;
             if (sig)
             {
                 node->definition_token = sig->decl_token;
+            }
+            if (node->definition_token.line <= 0)
+            {
+                node->definition_token = member_declaration;
             }
             node->type_info = sig->ret_type ? sig->ret_type : type_new(TYPE_VOID);
         }
@@ -1359,6 +1392,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
             node->call.count = args_provided;
+            node->call.member_token = member_token;
+            node->definition_token = member_declaration;
 
             GenericFuncTemplate *tpl = find_func_template(ctx, acc);
             if (tpl && tpl->func_node && args_provided > 0 && head)

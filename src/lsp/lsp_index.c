@@ -121,6 +121,7 @@ void lsp_index_add_ref(LSPIndex *idx, Token t, Token def_t, ASTNode *node)
 
     r->def_line = def_t.line - 1;
     r->def_col = def_t.col - 1;
+    r->def_file = def_t.file;
     r->node = node;
 
     lsp_index_add(idx, r);
@@ -414,7 +415,12 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
         // Reference logic.
         if (node->definition_token.line > 0)
         {
-            lsp_index_add_ref(idx, node->token, node->definition_token, node);
+            // A call through a path (`Id::of(1)`) refers to its function where the path writes
+            // it; the path's start is the type's name.
+            Token at = (node->kind == NODE_EXPR_CALL && node->call.member_token.line > 0)
+                           ? node->call.member_token
+                           : node->token;
+            lsp_index_add_ref(idx, at, node->definition_token, node);
         }
         else if (node->kind == NODE_EXPR_STRUCT_INIT)
         {

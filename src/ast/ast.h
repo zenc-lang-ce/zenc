@@ -481,6 +481,9 @@ struct ASTNode
             ASTNode *args;
             char **arg_names;
             int count;
+            // Where a path writes the function, its last segment (`of` of `Id::of(1)`): the
+            // node's token is where the path starts. TOKEN_UNKNOWN for a plain name.
+            Token member_token;
         } call;
 
         struct

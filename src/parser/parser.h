@@ -742,6 +742,12 @@ char *find_similar_symbol(ParserContext *ctx, const char *name);
  */
 char *expected_instance_method(ParserContext *ctx, const char *template_name,
                                const char *method_name);
+/**
+ * @brief Where a generic impl of `template_name` declares `method_name`: the declaration of
+ * `Vec<int>::new`, whose instance is not a function until it is instantiated.
+ * @return The token of the method's name, or TOKEN_UNKNOWN if no generic impl declares it.
+ */
+Token template_method_token(ParserContext *ctx, const char *template_name, const char *method_name);
 
 /**
  * @brief Normalizes a type name (e.g., "int" -> "int32_t").
