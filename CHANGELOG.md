@@ -61,6 +61,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - A file whose path has spaces or other characters that a URI encodes: the server answers its URI encoded, and closing it goes back to the file on disk (it kept the editor's text).
   - Hover describes every primitive type by any of its names (`int32`, `byte` and `c_long` too), with its C spelling.
   - The workspace index leaves out what the project's .gitignore or `exclude` in zenc.server.json leave out, and nothing else: it no longer skips `node_modules`, `obj`, `vhdl` and `vivado` by their names.
+  - `initialize` gives the compiler's version as the server's, instead of 1.0.0.
 - REPL: Backspace and Escape work in reverse search.
 
 ### Added

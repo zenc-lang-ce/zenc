@@ -206,6 +206,12 @@ static void test_initialize()
     {
         fail("Init response missing capabilities");
     }
+    // The server's version is the compiler's (`v0.5.1-...`), not a number of its own.
+    if (!strstr(resp, "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\":\"v"))
+    {
+        printf("Initialize response: %s\n", resp);
+        fail("Init response must give the compiler's version");
+    }
     // The legend of the semantic tokens: a token's type is an index of tokenTypes, and its
     // modifiers bits by the index of tokenModifiers (test_semantic_token_modifiers).
     if (!strstr(resp, "\"tokenTypes\":[\"variable\",\"function\",") ||

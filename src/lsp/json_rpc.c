@@ -183,7 +183,7 @@ static cJSON *initialize(const cJSON *params)
 
     const char *result_text =
         "{"
-        "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\": \"1.0.0\"},"
+        "\"serverInfo\":{\"name\":\"ZenC LS\"},"
         "\"capabilities\":{\"textDocumentSync\":{\"openClose\":true,\"change\":1},"
         "\"definitionProvider\":true,\"declarationProvider\":true,\"hoverProvider\":true,"
         "\"referencesProvider\":true,\"documentSymbolProvider\":true,"
@@ -197,6 +197,7 @@ static cJSON *initialize(const cJSON *params)
         "}}";
 
     cJSON *result = cJSON_Parse(result_text);
+    cJSON_AddStringToObject(cJSON_GetObjectItem(result, "serverInfo"), "version", ZEN_VERSION);
     cJSON *semantic_tokens =
         cJSON_GetObjectItem(cJSON_GetObjectItem(result, "capabilities"), "semanticTokensProvider");
     cJSON_AddItemToObject(semantic_tokens, "legend", lsp_semantic_tokens_legend());
