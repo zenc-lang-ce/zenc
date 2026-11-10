@@ -206,6 +206,14 @@ static void test_initialize()
     {
         fail("Init response missing capabilities");
     }
+    // The legend of the semantic tokens: a token's type is an index of tokenTypes, and its
+    // modifiers bits by the index of tokenModifiers (test_semantic_token_modifiers).
+    if (!strstr(resp, "\"tokenTypes\":[\"variable\",\"function\",") ||
+        !strstr(resp, "\"tokenModifiers\":[\"declaration\",\"definition\",\"readonly\","))
+    {
+        printf("Initialize response: %s\n", resp);
+        fail("Init response must give the legend of the semantic tokens");
+    }
     printf("PASS: test_initialize\n");
     free(resp);
 }
@@ -1882,7 +1890,12 @@ static void test_member_completion(void)
                         "    Po\n"
                         "    my__h\n"
                         "}\n"
-                        "fn my__helper() -> int { return 1; }\n");
+                        "fn my__helper() -> int { return 1; }\n"
+                        "enum Mode { On, Off }\n"
+                        "fn modes() {\n"
+                        "    let m: Mode = Mode::On;\n"
+                        "    m.\n"
+                        "}\n");
     // Fields and methods after `value.`, also with part of the name typed.
     expect_completion(840, path, 12, 6, "x", 5);
     expect_completion(841, path, 12, 6, "len2", 2);
@@ -1898,6 +1911,8 @@ static void test_member_completion(void)
     // A struct and a function by the names they are declared with, `__` included.
     expect_completion(848, path, 16, 6, "Point", 22);
     expect_completion(849, path, 17, 9, "my__helper", 3);
+    // The variants of an enum after `value.` are enum members (20), as after `Enum::`.
+    expect_completion(850, path, 23, 6, "On", 20);
     printf("PASS: test_member_completion\n");
 }
 
@@ -2380,6 +2395,47 @@ static int has_token_at(cJSON *data, int line, int col, int type)
         }
     }
     return 0;
+}
+
+static void test_semantic_token_modifiers(void)
+{
+    printf("Running test_semantic_token_modifiers...\n");
+    // Line 0: def LIMIT = 3;
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_modifiers.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"def LIMIT = 3;\\n\"}}}");
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 52, \"method\": \"textDocument/semanticTokens/full\", "
+        "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_modifiers.zc\"}}}");
+    char *resp = wait_for_response(52);
+    cJSON *json = resp ? cJSON_Parse(resp) : NULL;
+    cJSON *data = cJSON_GetObjectItem(cJSON_GetObjectItem(json, "result"), "data");
+    // Five numbers per token: line and column (relative to the previous token), length, type and
+    // modifiers. A `def` is readonly: index 2 of tokenModifiers, bit 4.
+    int def_modifiers = -1;
+    int line = 0;
+    int col = 0;
+    for (int i = 0; i + 4 < cJSON_GetArraySize(data); i += 5)
+    {
+        int delta_line = cJSON_GetArrayItem(data, i)->valueint;
+        int delta_col = cJSON_GetArrayItem(data, i + 1)->valueint;
+        col = delta_line ? delta_col : col + delta_col;
+        line += delta_line;
+        int modifiers = cJSON_GetArrayItem(data, i + 4)->valueint;
+        if (line == 0 && col == 4)
+        {
+            def_modifiers = modifiers;
+        }
+    }
+    if (def_modifiers != 4)
+    {
+        printf("Modifiers of the def: %d: %s\n", def_modifiers, resp ? resp : "(no response)");
+        fail("A def is readonly");
+    }
+    cJSON_Delete(json);
+    free(resp);
+    printf("PASS: test_semantic_token_modifiers\n");
 }
 
 static void test_semantic_tokens_skip_text(void)
@@ -2881,6 +2937,7 @@ int main()
     test_diagnostic_hints();
     test_semantic_tokens();
     test_semantic_tokens_skip_text();
+    test_semantic_token_modifiers();
     test_definition();
     test_declaration();
     test_references();
