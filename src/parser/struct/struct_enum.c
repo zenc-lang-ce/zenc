@@ -128,6 +128,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
 
             ASTNode *va = ast_create(NODE_ENUM_VARIANT);
             ATTACH_DOC_COMMENT(ctx, va);
+            va->token = vt;
             va->variant.name = vname;
             va->variant.tag_id = v++;      // Use tag_id instead of value
             va->variant.payload = payload; // Store Type*

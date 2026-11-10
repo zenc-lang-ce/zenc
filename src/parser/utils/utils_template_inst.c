@@ -507,13 +507,16 @@ static void instantiate_generic(ParserContext *ctx, const char *tpl, Type **args
         while (v)
         {
             ASTNode *nv = ast_create(NODE_ENUM_VARIANT);
+            nv->token = v->token; // Declared in the template.
             nv->variant.name = xstrdup(v->variant.name);
             nv->variant.tag_id = v->variant.tag_id;
             nv->variant.payload_count = v->variant.payload_count;
             nv->variant.payload = replace_type_formal(ctx, v->variant.payload, &b, NULL, NULL);
 
+            // Declared where the template declares the variant, not where it is instantiated.
             register_enum_constructor(ctx, m, nv->variant.name, nv->variant.tag_id,
-                                      nv->variant.payload, token, i->enm.is_export);
+                                      nv->variant.payload, v->token.line > 0 ? v->token : token,
+                                      i->enm.is_export);
 
             if (!h)
             {
