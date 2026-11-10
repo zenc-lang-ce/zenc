@@ -810,8 +810,8 @@ typedef struct
  *
  * Not included: the tree of an imported module (`import_stmt.module_root`,
  * shared between importers; walk it yourself with a visited set), the array
- * `func.default_values`, and the pieces of an f-string (`fstring.parts`): their
- * expressions carry the position of the string, not their own.
+ * `func.default_values`, and the pieces of an f-string (`fstring.parts`): a walker that
+ * needs their expressions reads them itself (see find_var_refs and lsp_walk_node).
  * For NODE_COMPTIME, both `body` (the code written) and `generated` (the code
  * it produced).
  */
