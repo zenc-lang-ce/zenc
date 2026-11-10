@@ -768,8 +768,17 @@ const char *callee_own_name(ParserContext *ctx, ASTNode *callee);
  * @brief A copy of the default value of argument `index` of `sig`, for a call that leaves the
  *        argument out. Each call gets its own: it is linked into the call's arguments, and
  *        later passes rewrite it in place.
+ *
+ * The copy is compiled where the call is, so a name in it that is a local variable there
+ * would be that variable, not the one the function sees: that is an error, at `call`.
  */
-ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index);
+ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index, Token call);
+
+/**
+ * @brief Appends to `refs` (a copy of) each variable name `node` uses, f-string expressions
+ *        included. Of a nested lambda, only the names it captures; nothing of a comptime block.
+ */
+void find_var_refs(ASTNode *node, char ***refs, int *ref_count);
 
 /**
  * @brief What each parameter of a generic stands for in one of its instances: `T` is `int`.

@@ -1,0 +1,22 @@
+// ARGS: build
+// A default value is compiled in each call that leaves its argument out, where the parameters
+// do not exist: naming one, before or after its own, is an error.
+fn after(a: int, b: int = a + 1) -> int {
+    return a + b;
+}
+
+fn before(b: int = c, c: int = 7) -> int {
+    return b + c;
+}
+
+struct Point {
+    x: int;
+}
+
+impl Point {
+    fn shifted(self, dx: int = self.x) -> int {
+        return self.x + dx;
+    }
+}
+
+fn main() {}

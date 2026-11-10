@@ -812,7 +812,20 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
     return new_node;
 }
 
-ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index)
+ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index, Token call)
 {
-    return copy_ast_replacing(ctx, sig->default_values[index], NULL, NULL, NULL);
+    ASTNode *def = sig->default_values[index];
+    char **refs = NULL;
+    int ref_count = 0;
+    find_var_refs(def, &refs, &ref_count);
+    for (int i = 0; i < ref_count; i++)
+    {
+        ZenSymbol *s = find_symbol_entry(ctx, refs[i]);
+        if (s && s->is_local)
+        {
+            zerror_at(call, "A default value of '%s' uses '%s', which is a local variable here",
+                      sig->own_name ? sig->own_name : sig->name, refs[i]);
+        }
+    }
+    return copy_ast_replacing(ctx, def, NULL, NULL, NULL);
 }

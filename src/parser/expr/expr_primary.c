@@ -1198,7 +1198,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 if (sig->default_values && sig->default_values[i])
                 {
-                    ASTNode *def = copy_default_value(ctx, sig, i);
+                    ASTNode *def = copy_default_value(ctx, sig, i, t);
                     Type *expected = sig->arg_types[i];
                     if (expected && expected->name && is_trait(type_def_name(expected)))
                     {

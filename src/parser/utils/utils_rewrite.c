@@ -67,6 +67,32 @@ char *parse_condition_raw(ParserContext *ctx, Lexer *l)
     }
 }
 
+// A default value is compiled in each call that leaves its argument out, where the parameters
+// do not exist: it cannot name one (of the `count` in `names`), before or after its own.
+static void check_default_names_no_parameter(ASTNode *def, const char *param, char **names,
+                                             int count)
+{
+    if (!def)
+    {
+        return;
+    }
+    char **refs = NULL;
+    int ref_count = 0;
+    find_var_refs(def, &refs, &ref_count);
+    for (char **ref = refs; ref < refs + ref_count; ref++)
+    {
+        for (char **name = names; name < names + count; name++)
+        {
+            if (strcmp(*ref, *name) == 0)
+            {
+                zerror_at(def->token, "The default value of '%s' uses the parameter '%s'", param,
+                          *name);
+                break;
+            }
+        }
+    }
+}
+
 int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_values_out,
                            int *count_out, Type ***types_out, char ***names_out,
                            int *is_varargs_out, char ***ctype_overrides_out)
@@ -242,6 +268,11 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
     {
         zpanic_at(lexer_peek(l), "Expected ')' after args");
         return 0;
+    }
+
+    for (int i = 0; i < count; i++)
+    {
+        check_default_names_no_parameter(default_values[i], names[i], names, count);
     }
 
     *default_values_out = default_values;

@@ -20,7 +20,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 // where the parameter is a trait.
 // `head` already includes the receiver when the method takes `self`, so it is
 // aligned with `sig->arg_types`.
-static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode *head, int *count)
+static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode *head, int *count,
+                                       Token call)
 {
     if (sig->arg_types)
     {
@@ -40,7 +41,7 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
         }
         for (int i = *count; i < sig->total_args && sig->default_values[i]; i++)
         {
-            ASTNode *def = copy_default_value(ctx, sig, i);
+            ASTNode *def = copy_default_value(ctx, sig, i, call);
             if (tail)
             {
                 tail->next = def;
@@ -1061,7 +1062,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
             if (resolved_sig && !has_named)
             {
-                head = apply_method_signature(ctx, resolved_sig, head, &count);
+                head = apply_method_signature(ctx, resolved_sig, head, &count, call->token);
             }
 
             call->call.args = head;
