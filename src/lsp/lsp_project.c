@@ -473,15 +473,6 @@ static void scan_dir(const char *dir_path, StringList *files)
             continue;
         }
 
-        // Project filters: skip known noise directories
-        if (strcmp(dir->d_name, "node_modules") == 0 || strcmp(dir->d_name, "obj") == 0 ||
-            strcmp(dir->d_name, ".git") == 0 ||
-            strcmp(dir->d_name, "vhdl") == 0 || // Often contains large vendor dirs
-            strcmp(dir->d_name, "vivado") == 0)
-        {
-            continue;
-        }
-
         char path[MAX_PATH_LEN];
         snprintf(path, sizeof(path), "%s/%s", dir_path, dir->d_name);
 
