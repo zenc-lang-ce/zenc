@@ -1493,12 +1493,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node->var_ref.owner = owner;
                 node->var_ref.member = owner_member;
                 node->type_info = find_symbol_type_info(ctx, acc);
-                // A variant without payload has no symbol: its enum is the type.
-                if (!node->type_info && variant.member)
+                // A variant without payload is a value of its enum, not a function: an enum
+                // has no symbol for it, but an instance of a generic one has a constructor.
+                if (variant.member)
                 {
                     EnumVariantReg *reg =
                         find_enum_variant_of(ctx, type_def_name(variant.owner), variant.member);
-                    if (reg)
+                    FuncSig *constructor = find_func(ctx, acc);
+                    if (reg && (!constructor || constructor->total_args == 0))
                     {
                         node->type_info = type_new_enum(reg->enum_name);
                     }

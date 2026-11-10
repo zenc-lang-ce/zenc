@@ -1,0 +1,25 @@
+// language/features/enums: a variable initialised with a no-payload variant of a
+// generic enum instance, without a declared type, has the type of the enum.
+enum Maybe<T> { Nothing, Just(T) }
+
+fn is_nothing(m: Maybe<int>) -> bool {
+    match m {
+        Maybe::Nothing => { return true; },
+        _ => { return false; },
+    }
+    return false;
+}
+
+test "variable without a declared type gets the enum of a generic variant" {
+    let n = Maybe<int>::Nothing;
+    let j = Maybe<int>::Just(3);
+    assert(is_nothing(n), "Maybe<int>::Nothing must be Nothing");
+    assert(!is_nothing(j), "Just(3) is not Nothing");
+}
+
+test "the same variable can be passed and reassigned as the enum" {
+    let m = Maybe<int>::Nothing;
+    assert(is_nothing(m), "starts as Nothing");
+    m = Maybe<int>::Just(7);
+    assert(!is_nothing(m), "reassigned to Just(7)");
+}
