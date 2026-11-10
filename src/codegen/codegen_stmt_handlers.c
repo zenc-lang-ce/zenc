@@ -635,7 +635,23 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             emit_var_decl_type(ctx, tname, node->var_decl.name);
             add_symbol_local(ctx, node->var_decl.name, node->type_info);
 
-            if (node->var_decl.init_expr)
+            ASTNode *init = node->var_decl.init_expr;
+            if (init && init->kind != NODE_EXPR_ARRAY_LITERAL &&
+                is_fixed_size_array(node->type_info) && is_fixed_size_array(init->type_info))
+            {
+                // C cannot initialize an array from another array: copy its bytes. An array of
+                // values that need dropping is moved, so its source is marked as moved out.
+                const char *name = c_name(ctx, node->var_decl.name);
+                EMIT(ctx, "; memcpy(%s, ", name);
+                codegen_expression(ctx, init);
+                EMIT(ctx, ", sizeof(%s))", name);
+                if (type_needs_drop(ctx, node->type_info))
+                {
+                    EMIT(ctx, "; ");
+                    emit_moved_out(ctx, init);
+                }
+            }
+            else if (node->var_decl.init_expr)
             {
                 EMIT(ctx, " = ");
                 if (ctx->config->use_cpp && node->type_info &&

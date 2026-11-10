@@ -1,0 +1,90 @@
+// arrays-slices/copy: copying a fixed-size array with `let` or `=` gives an independent array;
+// an array of values with Drop is moved instead, and each value is dropped once.
+
+struct Grid {
+    cells: int[3];
+}
+
+struct Res {
+    id: int;
+}
+
+let drops: int = 0;
+let dropped_ids: int = 0;
+
+impl Drop for Res {
+    fn drop(self) {
+        drops = drops + 1;
+        dropped_ids = dropped_ids + self.id;
+    }
+}
+
+test "let_copies_array" {
+    let a = [1, 2, 3];
+    let b = a;
+    b[0] = 9;
+    expect_eq(b[2], 3, "let b = a should copy every element of a");
+    expect_eq(a[0], 1, "a should keep its value when its copy changes");
+}
+
+test "typed_let_copies_array" {
+    let a = [1, 2, 3];
+    let b: int[3] = a;
+    expect_eq(b[1], 2, "let b: int[3] = a should copy every element of a");
+}
+
+test "let_copies_array_field" {
+    let g = Grid { cells: [1, 2, 3] };
+    let b = g.cells;
+    b[0] = 9;
+    expect_eq(b[2], 3, "let b = g.cells should copy the field");
+    expect_eq(g.cells[0], 1, "the field should keep its value when its copy changes");
+}
+
+test "assignment_copies_array" {
+    let a = [1, 2, 3];
+    let b = [0, 0, 0];
+    b = a;
+    b[0] = 9;
+    expect_eq(b[2], 3, "b = a should copy every element of a");
+    expect_eq(a[0], 1, "a should keep its value when its copy changes");
+}
+
+test "assignment_copies_array_literal" {
+    let b = [0, 0, 0];
+    b = [4, 5, 6];
+    expect_eq(b[0], 4, "b = [4, 5, 6] should copy the literal");
+    expect_eq(b[2], 6, "b = [4, 5, 6] should copy every element of the literal");
+}
+
+test "nested_array_row_copies" {
+    let m = [[1, 2], [3, 4]];
+    let row = m[1];
+    row[0] = 9;
+    expect_eq(row[1], 4, "let row = m[1] should copy the row");
+    expect_eq(m[1][0], 3, "m should keep its value when the copied row changes");
+}
+
+test "let_moves_array_with_drop" {
+    drops = 0;
+    {
+        let a = [Res { id: 1 }, Res { id: 2 }];
+        let b = a;
+        expect_eq(b[1].id, 2, "let b = a should move the elements of a into b");
+    }
+    expect_eq(drops, 2, "each element should be dropped once, by b, when a is moved into b");
+}
+
+test "assignment_moves_array_with_drop" {
+    drops = 0;
+    dropped_ids = 0;
+    {
+        let a = [Res { id: 1 }, Res { id: 2 }];
+        let b = [Res { id: 3 }, Res { id: 4 }];
+        b = a;
+        expect_eq(dropped_ids, 7, "b = a should drop the old elements of b");
+        expect_eq(b[0].id, 1, "b = a should move the elements of a into b");
+    }
+    expect_eq(drops, 4, "each element should be dropped once when a is moved into b");
+    expect_eq(dropped_ids, 10, "the elements of a should be dropped once, by b");
+}
