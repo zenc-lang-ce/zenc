@@ -1197,10 +1197,13 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
 
     // The struct the literal builds: the one its type names, also through an alias.
     Type *struct_type = resolve_alias(node->type_info);
-    ASTNode *def = find_struct_def(tc->pctx, (struct_type && struct_type->name)
-                                                 ? type_def_name(struct_type)
-                                                 : node->struct_init.struct_name);
-    if (!def)
+    const char *struct_name = (struct_type && struct_type->name) ? type_def_name(struct_type)
+                                                                 : node->struct_init.struct_name;
+    ASTNode *def = find_struct_def(tc->pctx, struct_name);
+    // A struct declared in a C header has no definition here: the scanner reads only its name,
+    // so its fields are for the C compiler to check.
+    int is_c_struct = !def && is_extern_symbol(tc->pctx, struct_name);
+    if (!def && !is_c_struct)
     {
         char msg[MAX_SHORT_MSG_LEN];
         snprintf(msg, sizeof(msg), "Unknown struct '%s'", node->struct_init.struct_name);
@@ -1230,7 +1233,7 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         }
 
         // Find corresponding field in definition
-        ASTNode *def_field = def->strct.fields;
+        ASTNode *def_field = def ? def->strct.fields : NULL;
         Type *expected_type = NULL;
         int found = 0;
 
@@ -1261,10 +1264,13 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
 
         if (!found)
         {
-            char msg[MAX_SHORT_MSG_LEN];
-            snprintf(msg, sizeof(msg), "Struct '%s' has no field named '%s'",
-                     node->struct_init.struct_name, field_init->var_decl.name);
-            tc_error(tc, field_init->token, msg);
+            if (!is_c_struct)
+            {
+                char msg[MAX_SHORT_MSG_LEN];
+                snprintf(msg, sizeof(msg), "Struct '%s' has no field named '%s'",
+                         node->struct_init.struct_name, field_init->var_decl.name);
+                tc_error(tc, field_init->token, msg);
+            }
         }
         else if (expected_type && field_init->var_decl.init_expr->type_info)
         {
@@ -1289,7 +1295,7 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
     // Fields left out of a struct literal are zero-initialised (the C designated
     // initializer the build emits), so they are only reported in MISRA mode,
     // which requires explicit initialization.
-    ASTNode *def_field = tc->pctx->config->misra_mode ? def->strct.fields : NULL;
+    ASTNode *def_field = (def && tc->pctx->config->misra_mode) ? def->strct.fields : NULL;
     while (def_field)
     {
         if (def_field->kind == NODE_FIELD && def_field->field.name)
