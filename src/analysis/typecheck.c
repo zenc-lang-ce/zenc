@@ -258,6 +258,9 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             tc->is_stmt_context = 0;
             check_node(tc, node->ret.value, depth + 1);
             tc->is_stmt_context = old_stmt_ctx;
+            // Only this move rule applies to a returned value for now: what returning an index
+            // or a dereference does is left to the memory model.
+            check_match_binding_move(tc, node->ret.value);
         }
         // Check the returned value against the function or lambda the `return` belongs to
         if (tc->returns_from)
@@ -439,12 +442,19 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                                 {
                                     bt = type_new(TYPE_UNSAFE_ANY);
                                 }
-                                if (mcase->match_case.binding_refs &&
-                                    mcase->match_case.binding_refs[i])
+                                int is_ref = mcase->match_case.binding_refs &&
+                                             mcase->match_case.binding_refs[i];
+                                if (is_ref)
                                 {
                                     bt = type_new_ptr(bt);
                                 }
-                                tc_add_symbol(tc, bname, bt, mcase->token, 0);
+                                ZenSymbol *sym = tc_add_symbol(tc, bname, bt, mcase->token, 0);
+                                if (sym && !is_ref)
+                                {
+                                    // Bound by value, the binding is a copy of the payload: the
+                                    // matched value still owns it, and drops it.
+                                    sym->is_borrowed = 1;
+                                }
                             }
                         }
                     }
@@ -1165,13 +1175,6 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     default:
-        // Generic recursion for lists and other nodes.
-        // Special case for Return to trigger move?
-        if (node->kind == NODE_RETURN && node->ret.value)
-        {
-            // If returning a value, check if it can be moved.
-            check_move_for_rvalue(tc, node->ret.value);
-        }
         break;
     }
     RECURSION_EXIT(tc->pctx);
