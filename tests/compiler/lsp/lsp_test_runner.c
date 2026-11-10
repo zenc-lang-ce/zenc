@@ -1853,6 +1853,43 @@ static int completion_kind(int id, const char *path, int line, int character, co
     return kind;
 }
 
+static void test_member_hover(void)
+{
+    printf("Running test_member_hover...\n");
+    // A field and a method reached through `.`: hover and go to definition lead to their
+    // declarations, through `self` and through a pointer.
+    // Line 0: struct Log { count: int; }
+    // Line 1: impl Log {
+    // Line 2:     fn is_full(self) -> bool { return self.count > 9; }
+    // Line 3:     fn add(self) { if self.is_full() { return; } self.count = self.count + 1; }
+    // Line 4: }
+    // Line 5: fn use_log(l: Log*) -> int { l.add(); return l.count; }
+    const char *uri = "file:///tmp/test_member_hover.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_member_hover.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"struct Log { count: int; "
+                 "}\\nimpl Log {\\n    fn is_full(self) -> bool { return self.count > 9; }\\n    fn "
+                 "add(self) { if self.is_full() { return; } self.count = self.count + 1; }\\n}\\nfn "
+                 "use_log(l: Log*) -> int { l.add(); return l.count; }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 946, 0, 14, "field count: i32");
+    expect_hover_in(uri, 947, 2, 45, "field count: i32");
+    expect_hover_in(uri, 948, 3, 28, "fn is_full(self) -> bool");
+    expect_hover_in(uri, 949, 5, 32, "fn add(self)");
+    expect_hover_in(uri, 950, 5, 49, "field count: i32");
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 951, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_member_hover.zc\"}, "
+                 "\"position\": {\"line\": 3, \"character\": 28}}}");
+    char *resp = wait_for_response(951);
+    if (!resp || !strstr(resp, "\"start\":{\"line\":2,\"character\":7}"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition on `self.is_full()` leads to the method");
+    }
+    free(resp);
+    printf("PASS: test_member_hover\n");
+}
+
 static void test_primitive_hover(void)
 {
     printf("Running test_primitive_hover...\n");
@@ -3204,6 +3241,7 @@ int main()
     test_deleted_declarations();
     test_uri_with_spaces();
     test_primitive_hover();
+    test_member_hover();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");

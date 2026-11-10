@@ -45,6 +45,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - Implicit `std` imports report the module path.
   - An integer constant is checked against the range of its target: `take(20)` for a `u8` no longer warns, and `let big: u8 = 300;` does.
   - An error inside an f-string interpolation points at the expression and prints its line.
+  - A MISRA diagnostic about a struct field points at the field.
   - MISRA Rule 2.4 does not flag an enum the program uses; `assert` and `test` blocks are reported under Rule 21.6 instead of C that does not compile.
 - `#line` is emitted when the file changes on the same line, and again when a newline was written since the last one; a `for` loop restores the lexer after its lookahead.
 - The C is written in binary mode on Windows.
@@ -64,6 +65,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - `initialize` gives the compiler's version as the server's, instead of 1.0.0.
   - Completion no longer offers the constructs the language removed: `repeat`, `unless`, `guard`, `do`, `async`, `await` and `autofree`.
   - Completion and signature help read what each file declares now: a function, type or method that was deleted is no longer offered. They offer generic structs and functions and traits too, and the std modules that a `test` block imports by itself (std/test.zc) are indexed, so go to definition reaches them.
+  - Hover and go to definition work on the fields and methods reached through `.` (`self.count`, `self.is_full()`, `list.push(x)`), and on a field's declaration.
 - `zc-format` no longer needs the language server: it is built with `ZC_LSP=0` too.
 - REPL: Backspace and Escape work in reverse search.
 

@@ -325,6 +325,7 @@ static ASTNode *copy_fields_replacing(ParserContext *ctx, ASTNode *fields, const
         return NULL;
     }
     ASTNode *n = ast_create(NODE_FIELD);
+    n->token = fields->token; // Declared in the template.
     n->field.name = xstrdup(fields->field.name);
 
     // Replace formal types (Deep Copy)

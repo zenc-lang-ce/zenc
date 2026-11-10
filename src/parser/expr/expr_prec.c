@@ -140,6 +140,17 @@ static ASTNode *new_member_node(ParserContext *ctx, ASTNode *target, Token field
     if (sname)
     {
         ASTNode *def = find_struct_def(ctx, sname);
+        // The field it reads, for the language server: where it is declared.
+        for (ASTNode *f = def && def->kind == NODE_STRUCT ? def->strct.fields : NULL; f;
+             f = f->next)
+        {
+            if (f->kind == NODE_FIELD && f->field.name &&
+                strcmp(f->field.name, node->member.field) == 0)
+            {
+                node->definition_token = f->token;
+                break;
+            }
+        }
         if (def && def->kind == NODE_STRUCT && def->strct.is_opaque)
         {
             if (!def->strct.defined_in_file ||
@@ -950,6 +961,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 keep_method_owner(ctx, callee, resolved_target_type, resolved_trait,
                                   lhs->member.field);
                 call->call.callee = callee;
+                // For the language server: the method, where the call writes its name.
+                call->call.member_token = lhs->token;
+                call->definition_token = resolved_sig->decl_token;
             }
             else
             {
@@ -1460,6 +1474,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                     if (sig)
                     {
+                        node->definition_token = sig->decl_token;
                         // It is a method! Create a Function Type Info to carry the return
                         // type
                         Type *ft = type_new(TYPE_FUNCTION);
