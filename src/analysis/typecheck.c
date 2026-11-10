@@ -759,6 +759,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         break;
     case NODE_EXPECT:
     case NODE_ASSERT:
+        misra_check_assertion(tc->pctx, node->token);
         // Check assert/expect condition
         {
             int old_stmt_ctx = tc->is_stmt_context;
@@ -786,6 +787,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         break;
     case NODE_TEST:
     {
+        misra_check_test(tc->pctx, node->token);
         MoveState *prev_move_state = tc->pctx->move_state;
         tc->pctx->move_state = move_state_create(NULL);
 

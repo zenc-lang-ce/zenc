@@ -1450,6 +1450,24 @@ void misra_check_fstring(struct ParserContext *ctx, Token tok)
     }
 }
 
+void misra_check_assertion(struct ParserContext *ctx, Token tok)
+{
+    if (ctx->config->misra_mode)
+    {
+        zerror_at(tok, "MISRA Rule 21.6: an assertion reports its failure with <stdio.h> "
+                       "(fprintf)");
+    }
+}
+
+void misra_check_test(struct ParserContext *ctx, Token tok)
+{
+    if (ctx->config->misra_mode)
+    {
+        zerror_at(tok, "MISRA Rule 21.6: a test block reports its failures with <stdio.h> "
+                       "(fprintf)");
+    }
+}
+
 void misra_check_file_dereference(struct ParserContext *ctx, struct Type *type, Token tok)
 {
     if (!ctx->config->misra_mode || !type)
