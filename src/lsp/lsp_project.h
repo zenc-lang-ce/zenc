@@ -30,6 +30,9 @@ typedef struct ProjectFile
     int generic_impl_count;
     ASTNode **generic_functions;
     int generic_function_count;
+    /// The type names its last parse read in it that name no type of the program, newest
+    /// first. A C header may still declare them.
+    TypeUsage *unknown_types;
     struct ProjectFile *next;
 } ProjectFile;
 

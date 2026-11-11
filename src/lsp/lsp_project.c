@@ -697,6 +697,28 @@ static void index_parsed_file(ProjectFile *pf, ASTNode *root, ParseMarks before)
     }
 }
 
+// The type names the last parse, whose marks are `before`, read in `pf` and that name no type
+// of the program.
+static TypeUsage *unknown_types_of(ProjectFile *pf, ParseMarks before)
+{
+    TypeUsage *unknown = NULL;
+    TypeUsage **tail = &unknown;
+    for (TypeUsage *use = g_project->ctx->pending_type_validations; use && use != before.usages;
+         use = use->next)
+    {
+        if (use->location.file && strcmp(use->location.file, pf->path) == 0 &&
+            !is_known_type_name(g_project->ctx, use->name))
+        {
+            TypeUsage *copy = xmalloc(sizeof(TypeUsage));
+            *copy = *use;
+            copy->next = NULL;
+            *tail = copy;
+            tail = &copy->next;
+        }
+    }
+    return unknown;
+}
+
 // The modules the last parse read that are no file of the project, such as the standard library
 // outside the workspace: their definitions are what `Vec` and `Vec<int>::new` go to. The
 // server's context parses a module once, so each is indexed from the import that read it.
@@ -792,14 +814,16 @@ void lsp_project_update_file(const char *uri, const char *src)
     g_project->ctx->compiler->warning_count = 0;
 
     // The parser lists every type name it reads (newest first), to validate them when it is done.
-    // The server has no use for that validation, which reports nothing here: it indexes the names
-    // this parse read, and drops them with the parse.
+    // The server indexes the names this parse read, keeps those of this file that name no type
+    // (the caller may warn about them), and drops the list with the parse.
     ParseMarks before = parse_marks();
     ASTNode *root = parse_program(g_project->ctx, &l);
+    pf->unknown_types = NULL;
     if (root)
     {
         pf->ast = root;
         index_parsed_file(pf, root, before);
+        pf->unknown_types = unknown_types_of(pf, before);
         index_imported_modules(root->kind == NODE_ROOT ? root->root.children : root, before, 0);
         index_implicit_imports(before);
     }

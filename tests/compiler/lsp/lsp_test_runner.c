@@ -1702,6 +1702,49 @@ static void test_c_header_symbols(void)
     printf("PASS: test_c_header_symbols (alias and header name)\n");
 }
 
+// The diagnostics a type name that names nothing gets: a warning, unless a C header the
+// document includes declares it.
+static void test_unknown_type_warning(void)
+{
+    printf("Running test_unknown_type_warning...\n");
+    write_c_header_fixtures();
+    open_document(C_TEST_DIR "/unknown_types.zc", "//> include: " C_TEST_DIR "/include\n"
+                                                  "include <fake.h>\n"
+                                                  "struct Known { x: int; }\n"
+                                                  "struct Pak { a: Knwn; b: FakePoint; c: Known; }\n");
+    char *diagnostics = NULL;
+    for (int i = 0; i < 20 && !diagnostics; i++)
+    {
+        char *message = read_message();
+        if (!message)
+        {
+            break;
+        }
+        if (strstr(message, "publishDiagnostics") && strstr(message, "unknown_types.zc"))
+        {
+            diagnostics = message;
+        }
+        else
+        {
+            free(message);
+        }
+    }
+    if (!diagnostics)
+    {
+        fail("No diagnostics for unknown_types.zc");
+    }
+    if (!strstr(diagnostics, "Unknown type 'Knwn'") || !strstr(diagnostics, "Did you mean 'Known'"))
+    {
+        fail("A type name that names nothing must warn, with the closest name");
+    }
+    if (strstr(diagnostics, "'FakePoint'") || strstr(diagnostics, "Unknown type 'Known'"))
+    {
+        fail("A type of the program or of an included C header must not warn");
+    }
+    free(diagnostics);
+    printf("PASS: test_unknown_type_warning\n");
+}
+
 static void test_c_header_reexports(void)
 {
     printf("Running test_c_header_reexports...\n");
@@ -3415,6 +3458,7 @@ int main()
     test_variant_constructor_from_other_file();
     test_did_close();
     test_c_header_symbols();
+    test_unknown_type_warning();
     test_c_header_reexports();
     test_c_header_completion();
     test_signature_as_written();
