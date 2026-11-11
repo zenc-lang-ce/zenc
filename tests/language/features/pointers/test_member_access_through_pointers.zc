@@ -1,6 +1,8 @@
 // language/features/pointers: `.` reaches a field or a method through every level
 // of pointer, as `.` on a `P*` does. With `pp: P**`, `pp.value` used to emit
 // `pp->value`, which is not C, and `pp.get()` passed the `P**` as the `P*` self.
+// In a generic, the extra level can come from the type parameter: `x: T*` with
+// `T = P*`.
 
 struct Inner {
     n: int;
@@ -35,6 +37,24 @@ impl Holder<T> {
 
 fn value_of(pp: P**) -> int {
     return pp.value;
+}
+
+struct Ref<T> {
+    ptr: T*;
+}
+
+impl Ref<T> {
+    fn read(self) -> int {
+        return self.ptr.value;
+    }
+}
+
+fn field_through<T>(x: T*) -> int {
+    return x.value;
+}
+
+fn method_through<T>(x: T*) -> int {
+    return x.get();
 }
 
 test "fields through a pointer to a pointer" {
@@ -91,4 +111,23 @@ test "an alias of a pointer and an f-string" {
     expect_eq(pp.value, 6, "pp.value should read the field through an alias of P*");
     expect_eq(pp.get(), 6, "pp.get() should take *pp as self through an alias of P*");
     expect(strcmp(s, "6|6") == 0, "an f-string should read the field and call the method");
+}
+
+test "a pointer level that comes from a type parameter" {
+    // Arrange
+    let b = P { value: 8, inner: Inner { n: 0 } };
+    let p = &b;
+    let pp = &p;
+    let r = Ref<P*> { ptr: pp };
+
+    // Act
+    let field = field_through<P*>(pp);
+    let method = method_through<P*>(pp);
+
+    // Assert
+    expect_eq(field, 8, "x.value should read the field when x is a T* with T = P*");
+    expect_eq(method, 8, "x.get() should take *x as self when x is a T* with T = P*");
+    expect_eq(r.ptr.value, 8, "a T* field with T = P* should reach the field");
+    expect_eq(r.ptr.get(), 8, "a T* field with T = P* should reach the method");
+    expect_eq(r.read(), 8, "a method of Ref<P*> should reach the field through self.ptr");
 }
