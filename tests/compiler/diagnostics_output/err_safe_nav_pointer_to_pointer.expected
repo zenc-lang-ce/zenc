@@ -1,0 +1,23 @@
+   Compiling tests/compiler/diagnostics_output/err_safe_nav_pointer_to_pointer.zc...
+error: '?.' on a pointer to a pointer is not supported
+  --> tests/compiler/diagnostics_output/err_safe_nav_pointer_to_pointer.zc:20:18
+   |
+20 |     let _x = pp?.value;
+   |                  ^ here
+   |
+   = help: Dereference it first: `(*p)?.field` tests the pointer `p` points to
+error: '?.' on a pointer to a pointer is not supported
+  --> tests/compiler/diagnostics_output/err_safe_nav_pointer_to_pointer.zc:21:19
+   |
+21 |     let _y = ppp?.value;
+   |                   ^ here
+   |
+   = help: Dereference it first: `(*p)?.field` tests the pointer `p` points to
+error: '?.' on a pointer to a pointer is not supported
+  --> tests/compiler/diagnostics_output/err_safe_nav_pointer_to_pointer.zc:22:18
+   |
+22 |     let _z = ap?.value;
+   |                  ^ here
+   |
+   = help: Dereference it first: `(*p)?.field` tests the pointer `p` points to
+[exit 1]

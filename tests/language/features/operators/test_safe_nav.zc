@@ -15,3 +15,20 @@ test "safe navigation null" {
     let x = ptr?.x;
     assert(x == 0, "safe nav null returns default");
 }
+
+test "safe navigation through a dereferenced pointer to a pointer" {
+    // Arrange
+    let p = Point { x: 10, y: 20 };
+    let ptr = &p;
+    let pp = &ptr;
+    let null_ptr: Point* = NULL;
+    let null_pp = &null_ptr;
+
+    // Act
+    let x = (*pp)?.x;
+    let missing = (*null_pp)?.x;
+
+    // Assert
+    assert(x == 10, "(*pp)?.x should read the field the pointer points to");
+    assert(missing == 0, "(*pp)?.x should give the default when *pp is null");
+}

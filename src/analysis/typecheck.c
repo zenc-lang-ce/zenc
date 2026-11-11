@@ -681,6 +681,21 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             {
                 node->member.target = deref_to_one_pointer(node->member.target);
             }
+            else
+            {
+                // Which level `?.` would test is not decided, and the C emitted for it is not
+                // valid. Reported in a build too, which would otherwise fail in the C compiler.
+                Type *t = get_inner_type(node->member.target->type_info);
+                Type *pointee = t && t->kind == TYPE_POINTER ? get_inner_type(t->inner) : NULL;
+                if (pointee && pointee->kind == TYPE_POINTER)
+                {
+                    const char *hints[] = {
+                        "Dereference it first: `(*p)?.field` tests the pointer `p` points to",
+                        NULL};
+                    tc_ctrl_flow_error(tc, node->token,
+                                       "'?.' on a pointer to a pointer is not supported", hints);
+                }
+            }
             Type *target_type = get_inner_type(node->member.target->type_info);
             Type *tuple = tuple_of(node->member.target->type_info);
             Type *element = tuple ? tuple_element_type(tuple, node->member.field) : NULL;
