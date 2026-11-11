@@ -2000,6 +2000,31 @@ static void test_variant_hover(void)
     printf("PASS: test_variant_hover\n");
 }
 
+static void test_generic_function_hover(void)
+{
+    printf("Running test_generic_function_hover...\n");
+    // A generic function is a template, not a node of the file's AST: its name, its parameters,
+    // what its body declares and its calls have hover all the same.
+    // Line 0: fn pop_count<T>(n: T) -> int {
+    // Line 1:     let count = 0;
+    // Line 2:     return count + n;
+    // Line 3: }
+    // Line 4: fn use_it() -> int { return pop_count<int>(5); }
+    const char *uri = "file:///tmp/test_generic_function_hover.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_generic_function_hover.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"fn pop_count<T>(n: T) -> "
+                 "int {\\n    let count = 0;\\n    return count + n;\\n}\\nfn use_it() -> int { "
+                 "return pop_count<int>(5); }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 962, 0, 4, "fn pop_count<T>(n: T) -> int");
+    expect_hover_in(uri, 963, 0, 16, "n: T");
+    expect_hover_in(uri, 964, 2, 12, "let count: int");
+    expect_hover_in(uri, 965, 2, 20, "n: T");
+    expect_hover_in(uri, 966, 4, 29, "fn pop_count<T>(n: T) -> int");
+    printf("PASS: test_generic_function_hover\n");
+}
+
 static void test_primitive_hover(void)
 {
     printf("Running test_primitive_hover...\n");
@@ -3353,6 +3378,7 @@ int main()
     test_deleted_declarations();
     test_uri_with_spaces();
     test_primitive_hover();
+    test_generic_function_hover();
     test_variant_hover();
     test_loop_variable_hover();
     test_member_hover();

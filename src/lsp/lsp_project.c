@@ -661,6 +661,7 @@ static void index_parsed_file(ProjectFile *pf, ASTNode *root, ParseMarks before)
         if (fn && fn->token.file && strcmp(fn->token.file, pf->path) == 0)
         {
             pf->generic_functions[pf->generic_function_count++] = fn;
+            lsp_build_index(g_project->ctx, pf->index, fn, pf->source);
         }
     }
 
