@@ -206,8 +206,9 @@ static void test_initialize()
     {
         fail("Init response missing capabilities");
     }
-    // The server's version is the compiler's (`v0.5.1-...`), not a number of its own.
-    if (!strstr(resp, "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\":\"v"))
+    // The server's version is the compiler's (ZEN_VERSION, the same for both builds), not a
+    // number of its own. Without tags, as in a shallow clone, it does not start with `v`.
+    if (!strstr(resp, "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\":\"" ZEN_VERSION "\""))
     {
         printf("Initialize response: %s\n", resp);
         fail("Init response must give the compiler's version");
