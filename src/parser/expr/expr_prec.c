@@ -889,6 +889,11 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         {
                             ASTNode *obj = lhs->member.target;
 
+                            // The call is built here, before checking: with `pp: P**`, the
+                            // receiver is `*pp`, as the target of a member access is.
+                            obj = deref_to_one_pointer(obj);
+                            lt = obj->type_info;
+
                             // Handle Reference/Pointer adjustment based on signature
                             if (sig->total_args > 0 && sig->arg_types[0] &&
                                 sig->arg_types[0]->kind == TYPE_POINTER)
