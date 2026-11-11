@@ -180,12 +180,13 @@ endfunction()
 zc_add_program(zc ${DRIVER_SRCS})
 
 # Standalone tools: `zc lsp|repl|doc|format` launch them, so they ship next to zc.
-set(ZC_TOOLS zc-doc)
+set(ZC_TOOLS zc-doc zc-format)
 zc_add_program(zc-doc ${ZEN_SRCS} src/tools/main_doc.c)
+zc_add_program(zc-format ${ZEN_SRCS} src/tools/main_format.c)
 if(NOT ZC_NO_LSP)
-    zc_add_program(zc-lsp ${LSP_SRCS} src/tools/main_lsp.c)
-    zc_add_program(zc-format ${LSP_SRCS} src/tools/main_format.c)
-    list(APPEND ZC_TOOLS zc-lsp zc-format)
+    # The language server formats with zc-format's formatter (src/zen).
+    zc_add_program(zc-lsp ${LSP_SRCS} ${ZEN_SRCS} src/tools/main_lsp.c)
+    list(APPEND ZC_TOOLS zc-lsp)
 endif()
 if(NOT ZC_NO_REPL)
     zc_add_program(zc-repl ${REPL_SRCS} src/tools/main_repl.c)

@@ -52,8 +52,7 @@ ASTNode *lsp_find_local_decl(ASTNode *func, const char *name)
 // Every loop statement, where break and continue make sense.
 static int is_loop(NodeType kind)
 {
-    return kind == NODE_WHILE || kind == NODE_FOR || kind == NODE_FOR_RANGE || kind == NODE_LOOP ||
-           kind == NODE_LOOP;
+    return kind == NODE_WHILE || kind == NODE_FOR || kind == NODE_FOR_RANGE || kind == NODE_LOOP;
 }
 
 static int has_loop_before(ASTNode *node, int line)

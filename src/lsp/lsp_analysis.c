@@ -4,7 +4,8 @@
 #include "../ast/primitives.h"
 #include "../lexer/keywords.h"
 #include "../utils/utils.h"
-#include "lsp_project.h" // Includes lsp_index.h, parser.h
+#include "lsp_project.h"
+#include "lsp_analysis.h" // Includes lsp_index.h, parser.h
 #include "lsp_c_headers.h"
 #include "lsp_locals.h"
 #include "json_rpc.h"
@@ -179,11 +180,10 @@ void lsp_check_file(const char *uri, const char *json_src)
         cJSON_AddItemToObject(diag, "range", range);
         cJSON_AddNumberToObject(diag, "severity", d->severity);
         cJSON_AddStringToObject(diag, "message", d->message);
+        // The DiagnosticID, as the JSON output of the command line gives it.
         if (d->id != DIAG_NONE)
         {
-            char code_str[32];
-            snprintf(code_str, sizeof(code_str), "W%d", d->id);
-            cJSON_AddStringToObject(diag, "code", code_str);
+            cJSON_AddNumberToObject(diag, "code", d->id);
         }
 
         cJSON_AddItemToArray(diag_array, diag);
@@ -1875,78 +1875,4 @@ cJSON *lsp_rename(const char *uri, int line, int col, const char *new_name)
 
     cJSON_AddItemToObject(result, "changes", changes);
     return result;
-}
-
-cJSON *lsp_code_action(const char *uri, cJSON *diagnostics)
-{
-    cJSON *actions = cJSON_CreateArray();
-
-    int diag_count = cJSON_GetArraySize(diagnostics);
-    for (int i = 0; i < diag_count; i++)
-    {
-        cJSON *diag = cJSON_GetArrayItem(diagnostics, i);
-        cJSON *code = cJSON_GetObjectItem(diag, "code");
-        if (!code || !code->valuestring)
-        {
-            continue;
-        }
-
-        cJSON *range = cJSON_GetObjectItem(diag, "range");
-        if (!range)
-        {
-            continue;
-        }
-
-        // Note: The code string is "W" + DiagnosticID enum value.
-        // We'll check for the specific ones we care about.
-        // For robustness, we check the message too or use a lookup.
-        cJSON *msg = cJSON_GetObjectItem(diag, "message");
-        int is_var = (msg && strstr(msg->valuestring, "'var' is deprecated"));
-        int is_const = (msg && strstr(msg->valuestring, "'const' for declarations is deprecated"));
-
-        if (is_var)
-        {
-            cJSON *action = cJSON_CreateObject();
-            cJSON_AddStringToObject(action, "title", "Replace 'var' with 'let'");
-            cJSON_AddStringToObject(action, "kind", "quickfix");
-
-            cJSON *edit = cJSON_CreateObject();
-            cJSON *changes = cJSON_CreateObject();
-            cJSON *edits = cJSON_CreateArray();
-
-            cJSON *text_edit = cJSON_CreateObject();
-            cJSON_AddItemToObject(text_edit, "range", cJSON_Duplicate(range, 1));
-            cJSON_AddStringToObject(text_edit, "newText", "let");
-            cJSON_AddItemToArray(edits, text_edit);
-
-            cJSON_AddItemToObject(changes, uri, edits);
-            cJSON_AddItemToObject(edit, "changes", changes);
-            cJSON_AddItemToObject(action, "edit", edit);
-
-            cJSON_AddItemToArray(actions, action);
-        }
-        else if (is_const)
-        {
-            cJSON *action = cJSON_CreateObject();
-            cJSON_AddStringToObject(action, "title", "Replace 'const' with 'def'");
-            cJSON_AddStringToObject(action, "kind", "quickfix");
-
-            cJSON *edit = cJSON_CreateObject();
-            cJSON *changes = cJSON_CreateObject();
-            cJSON *edits = cJSON_CreateArray();
-
-            cJSON *text_edit = cJSON_CreateObject();
-            cJSON_AddItemToObject(text_edit, "range", cJSON_Duplicate(range, 1));
-            cJSON_AddStringToObject(text_edit, "newText", "def");
-            cJSON_AddItemToArray(edits, text_edit);
-
-            cJSON_AddItemToObject(changes, uri, edits);
-            cJSON_AddItemToObject(edit, "changes", changes);
-            cJSON_AddItemToObject(action, "edit", edit);
-
-            cJSON_AddItemToArray(actions, action);
-        }
-    }
-
-    return actions;
 }

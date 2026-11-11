@@ -2,13 +2,13 @@
 #include "json_rpc.h"
 #include "../utils/cJSON.h"
 #include "lsp_project.h"
-#include "lsp_formatter.h"
+#include "lsp_semantic.h"
+#include "lsp_analysis.h"
+#include "../zen/zen_format.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-
-// Prototype
 
 // The client shows work done progress (`window.workDoneProgress`), read at initialize.
 static int g_work_done_progress = 0;
@@ -183,12 +183,12 @@ static cJSON *initialize(const cJSON *params)
 
     const char *result_text =
         "{"
-        "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\": \"1.0.0\"},"
+        "\"serverInfo\":{\"name\":\"ZenC LS\"},"
         "\"capabilities\":{\"textDocumentSync\":{\"openClose\":true,\"change\":1},"
         "\"definitionProvider\":true,\"declarationProvider\":true,\"hoverProvider\":true,"
         "\"referencesProvider\":true,\"documentSymbolProvider\":true,"
         "\"workspaceSymbolProvider\":true,"
-        "\"renameProvider\":true,\"codeActionProvider\":true,"
+        "\"renameProvider\":true,"
         "\"documentFormattingProvider\":true,"
         "\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\"]},"
         "\"completionProvider\":{"
@@ -197,6 +197,7 @@ static cJSON *initialize(const cJSON *params)
         "}}";
 
     cJSON *result = cJSON_Parse(result_text);
+    cJSON_AddStringToObject(cJSON_GetObjectItem(result, "serverInfo"), "version", ZEN_VERSION);
     cJSON *semantic_tokens =
         cJSON_GetObjectItem(cJSON_GetObjectItem(result, "capabilities"), "semanticTokensProvider");
     cJSON_AddItemToObject(semantic_tokens, "legend", lsp_semantic_tokens_legend());
@@ -208,7 +209,7 @@ static cJSON *initialize(const cJSON *params)
 static cJSON *formatting_edits(const char *uri)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
-    char *formatted = pf && pf->source ? lsp_format_source(pf->source) : NULL;
+    char *formatted = pf && pf->source ? zen_format_source(pf->source) : NULL;
     if (!formatted)
     {
         return NULL;
@@ -341,12 +342,6 @@ void lsp_handle_message(const char *json_str)
     else if (strcmp(method, "textDocument/signatureHelp") == 0)
     {
         result = uri ? lsp_signature_help(uri, line, col) : NULL;
-    }
-    else if (strcmp(method, "textDocument/codeAction") == 0)
-    {
-        cJSON *diagnostics =
-            cJSON_GetObjectItem(cJSON_GetObjectItem(params, "context"), "diagnostics");
-        result = uri && diagnostics ? lsp_code_action(uri, diagnostics) : NULL;
     }
     else if (strcmp(method, "textDocument/semanticTokens/full") == 0)
     {

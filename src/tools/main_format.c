@@ -3,7 +3,7 @@
 // prints the formatted source to stdout.
 #include "tool_common.h"
 #include "../compiler.h"
-#include "../lsp/lsp_formatter.h"
+#include "../zen/zen_format.h"
 #include "../arena.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
         src[len] = 0;
     }
 
-    char *formatted = lsp_format_source(src);
+    char *formatted = zen_format_source(src);
     if (!formatted)
     {
         fprintf(stderr, "error: formatting failed\n");

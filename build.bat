@@ -60,7 +60,7 @@ rem once into obj\ and listed in the response file of its group, as the Makefile
 rem the LSP, REPL and doc generator sources only go into their standalone tools, and the
 rem driver only into zc. Response files keep the link commands short.
 if not exist obj mkdir obj
-for %%g in (base common driver lsp repl zen) do type nul > obj\%%g.rsp
+for %%g in (base common driver lsp repl zen none) do type nul > obj\%%g.rsp
 
 echo Building Zen C (%ZEN_VERSION%)...
 for /f "usebackq delims=" %%i in ("src-sources.txt") do (
@@ -90,15 +90,16 @@ if errorlevel 1 (
 echo Build success! zc.exe created.
 
 rem Standalone tools: `zc lsp|repl|doc|format` launch them, so they ship next to zc.exe.
-rem Each entry is the tool, the group of its own sources and its main.
-for %%t in ("zc-lsp lsp main_lsp" "zc-format lsp main_format" "zc-repl repl main_repl" "zc-doc zen main_doc") do (
-    for /f "tokens=1-3" %%a in (%%t) do (
+rem Each entry is the tool, the group of its own sources, its main and one more group, if any
+rem (`none` is empty): the language server formats with zc-format's formatter (src/zen).
+for %%t in ("zc-lsp lsp main_lsp zen" "zc-format zen main_format none" "zc-repl repl main_repl none" "zc-doc zen main_doc none") do (
+    for /f "tokens=1-4" %%a in (%%t) do (
         %CC% %CFLAGS% -c src/tools/%%c.c -o obj\%%c.o
         if errorlevel 1 (
             echo Build failed for %%a.
             exit /b 1
         )
-        %CC% %CFLAGS% @obj/base.rsp @obj/common.rsp @obj/%%b.rsp obj/%%c.o -o %%a.exe %LIBS%
+        %CC% %CFLAGS% @obj/base.rsp @obj/common.rsp @obj/%%b.rsp @obj/%%d.rsp obj/%%c.o -o %%a.exe %LIBS%
         if errorlevel 1 (
             echo Build failed for %%a.
             exit /b 1

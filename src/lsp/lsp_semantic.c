@@ -3,6 +3,7 @@
 #include "../ast/primitives.h"
 #include "../lexer/keywords.h"
 #include "lsp_project.h"
+#include "lsp_semantic.h"
 #include "../utils/cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
