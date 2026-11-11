@@ -130,7 +130,7 @@ const char *field_c_type(ParserContext *ctx, ASTNode *field)
 }
 
 // Helper to emit C declaration (handle arrays, function pointers correctly)
-static void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name)
+void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name)
 {
     char *bracket = (char *)strchr(type_str, '[');
     char *generic = (char *)strchr(type_str, '<');
