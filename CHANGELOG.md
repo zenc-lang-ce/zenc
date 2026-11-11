@@ -53,6 +53,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - Hover and go to definition work on type names, inside f-string interpolations, and on both parts of a path: the type and the function of `Vec<int>::new()`.
   - Go to definition reaches the standard library from a workspace that does not contain it.
   - A definition in another file is looked up in that file, not at the same line of the open one.
+  - Go to definition, hover, references and rename follow the declaration a name resolves to, not every declaration with that name: renaming a local or a parameter edits only its own uses, and a type name leads to the type its file declares.
 - REPL: Backspace and Escape work in reverse search.
 
 ### Added

@@ -594,7 +594,7 @@ static void index_parsed_file(ProjectFile *pf, ASTNode *root, TypeUsage *usages_
         // The names the file imports were read too, in their own files.
         if (use->location.file && strcmp(use->location.file, pf->path) == 0)
         {
-            lsp_index_add_type_ref(pf->index, use->location, use->name);
+            lsp_index_add_type_ref(pf->index, g_project->ctx, use->location, use->name);
         }
     }
 }
@@ -704,77 +704,32 @@ void lsp_project_update_file(const char *uri, const char *src)
     g_project->ctx->current_filename = saved_filename;
 }
 
-DefinitionResult lsp_project_find_definition(const char *name)
+LSPRange *lsp_project_definition(ProjectFile *pf, LSPRange *r, ProjectFile **def_file)
 {
-    DefinitionResult res = {0};
-    if (!g_project)
+    ProjectFile *owner = pf;
+    const char *file = r->symbol.definition.file;
+    if (r->kind == RANGE_REFERENCE && file && pf->path && strcmp(file, pf->path) != 0)
     {
-        return res;
+        owner = lsp_project_get_file_by_path(file);
     }
-
-    ProjectFile *pf = g_project->files;
-    while (pf)
+    if (def_file)
     {
-        if (pf->index)
-        {
-            LSPRange *r = pf->index->head;
-            while (r)
-            {
-                if (r->kind == RANGE_DEFINITION && r->node)
-                {
-                    char *found_name = NULL;
-                    if (r->node->kind == NODE_FUNCTION)
-                    {
-                        found_name = r->node->func.name;
-                    }
-                    else if (r->node->kind == NODE_VAR_DECL)
-                    {
-                        found_name = r->node->var_decl.name;
-                    }
-                    else if (r->node->kind == NODE_CONST)
-                    {
-                        found_name = r->node->var_decl.name;
-                    }
-                    else if (r->node->kind == NODE_STRUCT)
-                    {
-                        found_name = r->node->strct.name;
-                    }
-                    else if (r->node->kind == NODE_ENUM)
-                    {
-                        found_name = r->node->enm.name;
-                    }
-                    else if (r->node->kind == NODE_ENUM_VARIANT)
-                    {
-                        found_name = r->node->variant.name;
-                    }
-                    else if (r->node->kind == NODE_TRAIT)
-                    {
-                        found_name = r->node->trait.name;
-                    }
-                    else if (r->node->kind == NODE_TYPE_ALIAS)
-                    {
-                        found_name = r->node->type_alias.alias;
-                    }
-
-                    if (found_name && strcmp(found_name, name) == 0)
-                    {
-                        res.uri = pf->uri;
-                        res.range = r;
-                        return res;
-                    }
-                }
-                r = r->next;
-            }
-        }
-        pf = pf->next;
+        *def_file = owner;
     }
-
-    return res;
+    if (r->kind == RANGE_DEFINITION)
+    {
+        return r;
+    }
+    if (!owner || !owner->index)
+    {
+        return NULL;
+    }
+    LSPRange *def =
+        lsp_find_at(owner->index, r->symbol.definition.line - 1, r->symbol.definition.col - 1);
+    return (def && def->kind == RANGE_DEFINITION) ? def : NULL;
 }
 
-// Find all references to a symbol name project-wide
-
-ReferenceResult *lsp_project_find_references(const char *name)
+ReferenceResult *lsp_project_find_references(Token definition)
 {
     if (!g_project)
     {
@@ -783,86 +738,32 @@ ReferenceResult *lsp_project_find_references(const char *name)
     ReferenceResult *head = NULL;
     ReferenceResult *tail = NULL;
 
-    ProjectFile *pf = g_project->files;
-    while (pf)
+    for (ProjectFile *pf = g_project->files; pf; pf = pf->next)
     {
         // A module outside the workspace is not the program's: rename must not edit it.
-        if (pf->index && !pf->is_external)
+        if (!pf->index || pf->is_external)
         {
-            LSPRange *r = pf->index->head;
-            while (r)
-            {
-                // We want REFERENCES that match the name
-                // Or DEFINITIONS that match the name (include decl)
-                char *scan_name = NULL;
-
-                if (r->node)
-                {
-                    if (r->node->kind == NODE_FUNCTION)
-                    {
-                        scan_name = r->node->func.name;
-                    }
-                    else if (r->node->kind == NODE_VAR_DECL)
-                    {
-                        scan_name = r->node->var_decl.name;
-                    }
-                    else if (r->node->kind == NODE_CONST)
-                    {
-                        scan_name = r->node->var_decl.name;
-                    }
-                    else if (r->node->kind == NODE_STRUCT)
-                    {
-                        scan_name = r->node->strct.name;
-                    }
-                    else if (r->node->kind == NODE_ENUM)
-                    {
-                        scan_name = r->node->enm.name;
-                    }
-                    else if (r->node->kind == NODE_ENUM_VARIANT)
-                    {
-                        scan_name = r->node->variant.name;
-                    }
-                    else if (r->node->kind == NODE_TRAIT)
-                    {
-                        scan_name = r->node->trait.name;
-                    }
-                    else if (r->node->kind == NODE_TYPE_ALIAS)
-                    {
-                        scan_name = r->node->type_alias.alias;
-                    }
-                    else if (r->node->kind == NODE_EXPR_VAR)
-                    {
-                        scan_name = r->node->var_ref.name;
-                    }
-                    else if (r->node->kind == NODE_EXPR_CALL && r->node->call.callee &&
-                             r->node->call.callee->kind == NODE_EXPR_VAR)
-                    {
-                        scan_name = r->node->call.callee->var_ref.name;
-                    }
-                }
-
-                if (scan_name && strcmp(scan_name, name) == 0)
-                {
-                    ReferenceResult *new_res = calloc(1, sizeof(ReferenceResult));
-                    new_res->uri = pf->uri;
-                    new_res->range = r;
-
-                    if (!head)
-                    {
-                        head = new_res;
-                        tail = new_res;
-                    }
-                    else
-                    {
-                        tail->next = new_res;
-                        tail = new_res;
-                    }
-                }
-
-                r = r->next;
-            }
+            continue;
         }
-        pf = pf->next;
+        for (LSPRange *r = pf->index->head; r; r = r->next)
+        {
+            if (!lsp_range_names(r, definition))
+            {
+                continue;
+            }
+            ReferenceResult *found = calloc(1, sizeof(ReferenceResult));
+            found->uri = pf->uri;
+            found->range = r;
+            if (!head)
+            {
+                head = found;
+            }
+            else
+            {
+                tail->next = found;
+            }
+            tail = found;
+        }
     }
     return head;
 }

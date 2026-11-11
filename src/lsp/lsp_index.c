@@ -66,18 +66,28 @@ static int lsp_index_is_written(const LSPIndex *idx, Token t)
     return at + t.len <= idx->source_len && strncmp(idx->source + at, t.start, t.len) == 0;
 }
 
-void lsp_index_add_def(LSPIndex *idx, Token t, const char *hover, ASTNode *node)
+// A range over the token `t`, with the name written there.
+static LSPRange *lsp_range_at(Token t, RangeType kind)
+{
+    LSPRange *r = calloc(1, sizeof(LSPRange));
+    r->kind = kind;
+    r->start_line = t.line - 1;
+    r->start_col = t.col - 1;
+    r->end_line = t.line - 1;
+    r->end_col = (int)(t.col) - 1 + (int)(t.len);
+    r->symbol.name = token_strdup(t);
+    return r;
+}
+
+void lsp_index_add_def(LSPIndex *idx, Token t, LSPSymbolKind kind, const char *hover, ASTNode *node)
 {
     if (!lsp_index_is_written(idx, t))
     {
         return;
     }
-    LSPRange *r = calloc(1, sizeof(LSPRange));
-    r->kind = RANGE_DEFINITION;
-    r->start_line = t.line - 1;
-    r->start_col = t.col - 1;
-    r->end_line = t.line - 1;
-    r->end_col = (int)(t.col) - 1 + (int)(t.len);
+    LSPRange *r = lsp_range_at(t, RANGE_DEFINITION);
+    r->symbol.kind = kind;
+    r->symbol.definition = t;
     if (hover)
     {
         r->hover_text = xstrdup(hover);
@@ -112,22 +122,54 @@ void lsp_index_add_ref(LSPIndex *idx, Token t, Token def_t, ASTNode *node)
     {
         return;
     }
-    LSPRange *r = calloc(1, sizeof(LSPRange));
-    r->kind = RANGE_REFERENCE;
-    r->start_line = t.line - 1;
-    r->start_col = t.col - 1;
-    r->end_line = t.line - 1;
-    r->end_col = (int)(t.col) - 1 + (int)(t.len);
-
-    r->def_line = def_t.line - 1;
-    r->def_col = def_t.col - 1;
-    r->def_file = def_t.file;
+    LSPRange *r = lsp_range_at(t, RANGE_REFERENCE);
+    r->symbol.definition = def_t;
     r->node = node;
 
     lsp_index_add(idx, r);
 }
 
-void lsp_index_add_type_ref(LSPIndex *idx, Token t, const char *name)
+// The name token of the declaration that `ctx` registered for the type `name` used in `file`;
+// TOKEN_UNKNOWN if there is none. The server parses the whole workspace with one context, so other
+// files' types of that name are registered too: a file's own declaration is the one it names.
+static Token type_declaration(ParserContext *ctx, const char *name, const char *file)
+{
+    Token found[3] = {TOKEN_UNKNOWN, TOKEN_UNKNOWN, TOKEN_UNKNOWN};
+    ZenSymbol *sym = ctx->global_scope ? symbol_lookup_local(ctx->global_scope, name) : NULL;
+    if (sym && (sym->kind == SYM_STRUCT || sym->kind == SYM_ENUM || sym->kind == SYM_ALIAS))
+    {
+        found[0] = sym->decl_token;
+    }
+    // A generic struct or enum is a template, not a symbol; nor is a trait.
+    GenericTemplate *template = find_generic_template(ctx, name);
+    if (template && template->struct_node)
+    {
+        found[1] = template->struct_node->token;
+    }
+    ASTNode *trait = find_trait_def(ctx, name);
+    if (trait)
+    {
+        found[2] = trait->token;
+    }
+
+    for (int i = 0; i < 3; i++)
+    {
+        if (found[i].file && file && strcmp(found[i].file, file) == 0)
+        {
+            return found[i];
+        }
+    }
+    for (int i = 0; i < 3; i++)
+    {
+        if (found[i].line > 0)
+        {
+            return found[i];
+        }
+    }
+    return TOKEN_UNKNOWN;
+}
+
+void lsp_index_add_type_ref(LSPIndex *idx, ParserContext *ctx, Token t, const char *name)
 {
     // The token is where the name is written: a name that is qualified (`m::Box`), mangled or
     // renamed by an import is not that text, and its range would be a wrong one.
@@ -136,32 +178,7 @@ void lsp_index_add_type_ref(LSPIndex *idx, Token t, const char *name)
     {
         return;
     }
-    // One node per name: a file may name the same type many times.
-    ASTNode *named = idx->type_names;
-    while (named && strcmp(named->var_ref.name, name) != 0)
-    {
-        named = named->next;
-    }
-    if (!named)
-    {
-        named = ast_create(NODE_EXPR_VAR);
-        named->token = t;
-        named->var_ref.name = xstrdup(name);
-        named->next = idx->type_names;
-        idx->type_names = named;
-    }
-
-    LSPRange *r = calloc(1, sizeof(LSPRange));
-    r->kind = RANGE_REFERENCE;
-    r->start_line = t.line - 1;
-    r->start_col = t.col - 1;
-    r->end_line = t.line - 1;
-    r->end_col = (int)(t.col) - 1 + (int)(t.len);
-    r->def_line = -1;
-    r->def_col = -1;
-    r->node = named;
-
-    lsp_index_add(idx, r);
+    lsp_index_add_ref(idx, t, type_declaration(ctx, name, t.file), NULL);
 }
 
 LSPRange *lsp_find_at(LSPIndex *idx, int line, int col)
@@ -190,6 +207,13 @@ LSPRange *lsp_find_at(LSPIndex *idx, int line, int col)
         curr = curr->next;
     }
     return best;
+}
+
+int lsp_range_names(const LSPRange *r, Token definition)
+{
+    Token own = r->symbol.definition;
+    return own.line > 0 && own.line == definition.line && own.col == definition.col && own.file &&
+           definition.file && strcmp(own.file, definition.file) == 0;
 }
 
 // The declaration as written, from the name up to the body: the parsed types are in their C
@@ -277,9 +301,7 @@ int lsp_function_signature(Token name, char *out, size_t size)
     return 1;
 }
 
-// The parameters of a function or a lambda, `self` included, are definitions of their own. They
-// have no node: rename and references read a definition's name from its node, and the owner's
-// would stand for each of its parameters.
+// The parameters of a function or a lambda, `self` included: they are no nodes of their own.
 static void lsp_index_add_params(ParserContext *ctx, LSPIndex *idx, int count, char **names,
                                  Type **types, Token *tokens)
 {
@@ -298,7 +320,9 @@ static void lsp_index_add_params(ParserContext *ctx, LSPIndex *idx, int count, c
         {
             snprintf(hover, sizeof(hover), "%s", names[i]);
         }
-        lsp_index_add_def(idx, tokens[i], hover, NULL);
+        LSPSymbolKind kind =
+            strcmp(names[i], "self") == 0 ? LSP_SYMBOL_RECEIVER : LSP_SYMBOL_PARAMETER;
+        lsp_index_add_def(idx, tokens[i], kind, hover, NULL);
     }
 }
 
@@ -325,7 +349,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
                                       : "void";
                 snprintf(hover, sizeof(hover), "fn %s(...) -> %s", name, ret);
             }
-            lsp_index_add_def(idx, node->token, hover, node);
+            lsp_index_add_def(idx, node->token, LSP_SYMBOL_FUNCTION, hover, node);
             lsp_index_add_params(ctx, idx, node->func.count, node->func.param_names,
                                  node->func.arg_types, node->func.param_tokens);
         }
@@ -340,14 +364,14 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->var_decl.name ? node->var_decl.name : "unknown";
             snprintf(hover, sizeof(hover), "let %s", name);
-            lsp_index_add_def(idx, node->token, hover, node);
+            lsp_index_add_def(idx, node->token, LSP_SYMBOL_VARIABLE, hover, node);
         }
         else if (node->kind == NODE_CONST)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->var_decl.name ? node->var_decl.name : "unknown";
             snprintf(hover, sizeof(hover), "def %s", name);
-            lsp_index_add_def(idx, node->token, hover, node);
+            lsp_index_add_def(idx, node->token, LSP_SYMBOL_CONSTANT, hover, node);
         }
         else if (node->kind == NODE_STRUCT)
         {
@@ -355,7 +379,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             const char *name = node->strct.name ? node->strct.name : "unknown";
             snprintf(hover, sizeof(hover), "%sstruct %s", node->strct.is_opaque ? "opaque " : "",
                      name);
-            lsp_index_add_def(idx, node->token, hover, node);
+            lsp_index_add_def(idx, node->token, LSP_SYMBOL_STRUCT, hover, node);
 
             ASTNode *field = node->strct.fields;
             while (field)
@@ -366,7 +390,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
                     const char *fname = field->field.name ? field->field.name : "unknown";
                     const char *ftype = zen_c_type_spelling(ctx, field->type_info);
                     snprintf(fh, sizeof(fh), "field %s: %s", fname, ftype);
-                    lsp_index_add_def(idx, field->token, fh, field);
+                    lsp_index_add_def(idx, field->token, LSP_SYMBOL_FIELD, fh, field);
                 }
                 field = field->next;
             }
@@ -376,7 +400,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->enm.name ? node->enm.name : "unknown";
             snprintf(hover, sizeof(hover), "enum %s", name);
-            lsp_index_add_def(idx, node->token, hover, node);
+            lsp_index_add_def(idx, node->token, LSP_SYMBOL_ENUM, hover, node);
 
             ASTNode *variant = node->enm.variants;
             while (variant)
@@ -386,7 +410,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
                     char vh[MAX_SHORT_MSG_LEN];
                     const char *vname = variant->variant.name ? variant->variant.name : "unknown";
                     snprintf(vh, sizeof(vh), "variant %s", vname);
-                    lsp_index_add_def(idx, variant->token, vh, variant);
+                    lsp_index_add_def(idx, variant->token, LSP_SYMBOL_VARIANT, vh, variant);
                 }
                 variant = variant->next;
             }
@@ -398,14 +422,14 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             const char *orig =
                 node->type_info ? zen_c_type_spelling(ctx, node->type_info) : "unknown";
             snprintf(hover, sizeof(hover), "alias %s = %s", alias, orig);
-            lsp_index_add_def(idx, node->token, hover, node);
+            lsp_index_add_def(idx, node->token, LSP_SYMBOL_ALIAS, hover, node);
         }
         else if (node->kind == NODE_TRAIT)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->trait.name ? node->trait.name : "unknown";
             snprintf(hover, sizeof(hover), "trait %s", name);
-            lsp_index_add_def(idx, node->token, hover, node);
+            lsp_index_add_def(idx, node->token, LSP_SYMBOL_TRAIT, hover, node);
         }
         else if (node->kind == NODE_PLUGIN)
         {
@@ -425,26 +449,27 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
         else if (node->kind == NODE_EXPR_STRUCT_INIT)
         {
             // `Box { v: 1 }`: its token is where the type's name is written.
-            lsp_index_add_type_ref(idx, node->token, node->struct_init.struct_name);
+            lsp_index_add_type_ref(idx, ctx, node->token, node->struct_init.struct_name);
         }
         else if (node->kind == NODE_EXPR_VAR && node->var_ref.variant.owner &&
                  node->var_ref.variant.owner->name)
         {
             // `Mode::On`: its token is where the enum's name is written.
-            lsp_index_add_type_ref(idx, node->token, node->var_ref.variant.owner->name);
+            lsp_index_add_type_ref(idx, ctx, node->token, node->var_ref.variant.owner->name);
         }
         else if (node->kind == NODE_IMPL && node->impl.target)
         {
             // `impl Point`: the type's name, where the header writes it.
-            lsp_index_add_type_ref(idx, node->impl.target_token, node->impl.target->name);
+            lsp_index_add_type_ref(idx, ctx, node->impl.target_token, node->impl.target->name);
         }
         else if (node->kind == NODE_IMPL_TRAIT)
         {
             // `impl Show for Point`: the trait's name and the type's.
-            lsp_index_add_type_ref(idx, node->impl_trait.trait_token, node->impl_trait.trait_name);
+            lsp_index_add_type_ref(idx, ctx, node->impl_trait.trait_token,
+                                   node->impl_trait.trait_name);
             if (node->impl_trait.target)
             {
-                lsp_index_add_type_ref(idx, node->impl_trait.target_token,
+                lsp_index_add_type_ref(idx, ctx, node->impl_trait.target_token,
                                        node->impl_trait.target->name);
             }
         }

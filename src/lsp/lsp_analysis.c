@@ -221,30 +221,6 @@ void lsp_check_file(const char *uri, const char *json_src)
     }
 }
 
-static char *get_symbol_name(LSPRange *r);
-
-// The definition the reference `r` of `pf` points to, in the file that declares it: a position
-// names a definition only in its own file (the `new` of another file's generic impl is not the
-// one at the same line here). Its file goes to *def_file.
-static LSPRange *reference_definition(ProjectFile *pf, LSPRange *r, ProjectFile **def_file)
-{
-    ProjectFile *owner = pf;
-    if (r->def_file && pf->path && strcmp(r->def_file, pf->path) != 0)
-    {
-        owner = lsp_project_get_file_by_path(r->def_file);
-    }
-    if (def_file)
-    {
-        *def_file = owner;
-    }
-    if (!owner || !owner->index || r->def_line < 0)
-    {
-        return NULL;
-    }
-    LSPRange *def = lsp_find_at(owner->index, r->def_line, r->def_col);
-    return (def && def->kind == RANGE_DEFINITION) ? def : NULL;
-}
-
 void lsp_goto_definition(const char *uri, int line, int col, const cJSON *id)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
@@ -281,76 +257,16 @@ void lsp_goto_definition(const char *uri, int line, int col, const cJSON *id)
         }
     }
 
-    if (r)
+    ProjectFile *def_file = NULL;
+    LSPRange *def = r ? lsp_project_definition(pf, r, &def_file) : NULL;
+    if (def)
     {
-        if (r->kind == RANGE_DEFINITION)
-        {
-            target_start_line = r->start_line;
-            target_start_col = r->start_col;
-            target_end_line = r->end_line;
-            target_end_col = r->end_col;
-            found = 1;
-        }
-        else if (r->kind == RANGE_REFERENCE)
-        {
-            char *name = get_symbol_name(r);
-            if (name)
-            {
-                DefinitionResult def = lsp_project_find_definition(name);
-                if (def.uri && def.range)
-                {
-                    target_uri = def.uri;
-                    target_start_line = def.range->start_line;
-                    target_start_col = def.range->start_col;
-                    target_end_line = def.range->end_line;
-                    target_end_col = def.range->end_col;
-                    found = 1;
-                }
-            }
-
-            if (!found && r->def_line >= 0)
-            {
-                ProjectFile *def_file = NULL;
-                LSPRange *def = reference_definition(pf, r, &def_file);
-                if (def)
-                {
-                    target_uri = def_file->uri;
-                    target_start_line = r->def_line;
-                    target_start_col = r->def_col;
-                    target_end_line = r->def_line;
-                    target_end_col = r->def_col;
-                    found = 1;
-                }
-            }
-        }
-    }
-
-    if (!found && r && r->node)
-    {
-        char *name = NULL;
-        if (r->node->kind == NODE_EXPR_VAR)
-        {
-            name = r->node->var_ref.name;
-        }
-        else if (r->node->kind == NODE_EXPR_CALL && r->node->call.callee &&
-                 r->node->call.callee->kind == NODE_EXPR_VAR)
-        {
-            name = r->node->call.callee->var_ref.name;
-        }
-
-        if (name)
-        {
-            DefinitionResult def = lsp_project_find_definition(name);
-            if (def.uri && def.range)
-            {
-                target_uri = def.uri;
-                target_start_line = def.range->start_line;
-                target_start_col = def.range->start_col;
-                target_end_line = def.range->end_line;
-                target_end_col = def.range->end_col;
-                found = 1;
-            }
-        }
+        target_uri = def_file->uri;
+        target_start_line = def->start_line;
+        target_start_col = def->start_col;
+        target_end_line = def->end_line;
+        target_end_col = def->end_col;
+        found = 1;
     }
 
     if (!found && c_origin_kind == C_HEADER_NONE && c_symbol_count == 0 && pf->source)
@@ -551,52 +467,6 @@ static char *get_word_at(const char *src, int line, int col)
     return word;
 }
 
-static char *get_symbol_name(LSPRange *r)
-{
-    if (!r || !r->node)
-    {
-        return NULL;
-    }
-    if (r->node->kind == NODE_FUNCTION)
-    {
-        return r->node->func.name;
-    }
-    if (r->node->kind == NODE_VAR_DECL || r->node->kind == NODE_CONST)
-    {
-        return r->node->var_decl.name;
-    }
-    if (r->node->kind == NODE_STRUCT)
-    {
-        return r->node->strct.name;
-    }
-    if (r->node->kind == NODE_ENUM)
-    {
-        return r->node->enm.name;
-    }
-    if (r->node->kind == NODE_ENUM_VARIANT)
-    {
-        return r->node->variant.name;
-    }
-    if (r->node->kind == NODE_TRAIT)
-    {
-        return r->node->trait.name;
-    }
-    if (r->node->kind == NODE_TYPE_ALIAS)
-    {
-        return r->node->type_alias.alias;
-    }
-    if (r->node->kind == NODE_EXPR_VAR)
-    {
-        return r->node->var_ref.name;
-    }
-    if (r->node->kind == NODE_EXPR_CALL && r->node->call.callee &&
-        r->node->call.callee->kind == NODE_EXPR_VAR)
-    {
-        return r->node->call.callee->var_ref.name;
-    }
-    return NULL;
-}
-
 void lsp_hover(const char *uri, int line, int col, const cJSON *id)
 {
     (void)uri;
@@ -642,33 +512,10 @@ void lsp_hover(const char *uri, int line, int col, const cJSON *id)
 
     if (r)
     {
-        if (r->kind == RANGE_DEFINITION)
+        LSPRange *def = lsp_project_definition(pf, r, NULL);
+        if (def)
         {
-            text = r->hover_text;
-        }
-        else if (r->kind == RANGE_REFERENCE)
-        {
-            if (r->def_line >= 0)
-            {
-                LSPRange *def = reference_definition(pf, r, NULL);
-                if (def)
-                {
-                    text = def->hover_text;
-                }
-            }
-
-            if (!text)
-            {
-                char *name = get_symbol_name(r);
-                if (name)
-                {
-                    DefinitionResult def = lsp_project_find_definition(name);
-                    if (def.range)
-                    {
-                        text = def.range->hover_text;
-                    }
-                }
-            }
+            text = def->hover_text;
         }
 
         // Plugin-Specific Hover Support
@@ -1022,7 +869,7 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
         LSPRange *r = pf->index->head;
         while (r)
         {
-            if (r->kind == RANGE_DEFINITION && r->node && r->node->kind == NODE_FUNCTION)
+            if (r->kind == RANGE_DEFINITION && r->symbol.kind == LSP_SYMBOL_FUNCTION && r->node)
             {
                 if (r->start_line <= line && r->start_line > best_line)
                 {
@@ -1934,61 +1781,26 @@ void lsp_references(const char *uri, int line, int col, const cJSON *id)
     if (pf && pf->index)
     {
         LSPRange *r = lsp_find_at(pf->index, line, col);
-        if (r && r->node)
+        if (r && r->symbol.name)
         {
-            char *name = NULL;
-            if (r->node->kind == NODE_FUNCTION)
+            ReferenceResult *refs = lsp_project_find_references(r->symbol.definition);
+            for (ReferenceResult *curr = refs; curr; curr = curr->next)
             {
-                name = r->node->func.name;
-            }
-            else if (r->node->kind == NODE_VAR_DECL)
-            {
-                name = r->node->var_decl.name;
-            }
-            else if (r->node->kind == NODE_CONST)
-            {
-                name = r->node->var_decl.name;
-            }
-            else if (r->node->kind == NODE_STRUCT)
-            {
-                name = r->node->strct.name;
-            }
-            else if (r->node->kind == NODE_EXPR_VAR)
-            {
-                name = r->node->var_ref.name;
-            }
-            else if (r->node->kind == NODE_EXPR_CALL && r->node->call.callee &&
-                     r->node->call.callee->kind == NODE_EXPR_VAR)
-            {
-                name = r->node->call.callee->var_ref.name;
-            }
+                cJSON *item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "uri", curr->uri);
+                cJSON *range = cJSON_CreateObject();
+                cJSON *start = cJSON_CreateObject();
+                cJSON_AddNumberToObject(start, "line", curr->range->start_line);
+                cJSON_AddNumberToObject(start, "character", curr->range->start_col);
 
-            if (name)
-            {
-                ReferenceResult *refs = lsp_project_find_references(name);
-                ReferenceResult *curr = refs;
-                while (curr)
-                {
-                    cJSON *item = cJSON_CreateObject();
-                    cJSON_AddStringToObject(item, "uri", curr->uri);
-                    cJSON *range = cJSON_CreateObject();
-                    cJSON *start = cJSON_CreateObject();
-                    cJSON_AddNumberToObject(start, "line", curr->range->start_line);
-                    cJSON_AddNumberToObject(start, "character", curr->range->start_col);
+                cJSON *end = cJSON_CreateObject();
+                cJSON_AddNumberToObject(end, "line", curr->range->end_line);
+                cJSON_AddNumberToObject(end, "character", curr->range->end_col);
 
-                    cJSON *end = cJSON_CreateObject();
-                    cJSON_AddNumberToObject(end, "line", curr->range->end_line);
-                    cJSON_AddNumberToObject(end, "character", curr->range->end_col);
-
-                    cJSON_AddItemToObject(range, "start", start);
-                    cJSON_AddItemToObject(range, "end", end);
-                    cJSON_AddItemToObject(item, "range", range);
-                    cJSON_AddItemToArray(items, item);
-
-                    ReferenceResult *next = curr->next;
-                    zfree(curr);
-                    curr = next;
-                }
+                cJSON_AddItemToObject(range, "start", start);
+                cJSON_AddItemToObject(range, "end", end);
+                cJSON_AddItemToObject(item, "range", range);
+                cJSON_AddItemToArray(items, item);
             }
         }
     }
@@ -2184,25 +1996,13 @@ void lsp_signature_help(const char *uri, int line, int col, const cJSON *id)
     send_json_response(root);
 }
 
-static LSPRange *get_symbol_range_at(ProjectFile *pf, int line, int col)
+// Whether renaming a symbol of this kind edits every place that names it. The index has no uses
+// of fields and variants, nor of traits and aliases outside type names; `self` is the receiver
+// by its name (see parse_and_convert_args), and with another one the method has none.
+static int is_renamable(LSPSymbolKind kind)
 {
-    if (!pf || !pf->index)
-    {
-        return NULL;
-    }
-    LSPRange *r = pf->index->head;
-    while (r)
-    {
-        int over_start = (line > r->start_line) || (line == r->start_line && col >= r->start_col);
-        int under_end = (line < r->end_line) || (line == r->end_line && col <= r->end_col);
-
-        if (over_start && under_end && r->node)
-        {
-            return r;
-        }
-        r = r->next;
-    }
-    return NULL;
+    return kind == LSP_SYMBOL_FUNCTION || kind == LSP_SYMBOL_VARIABLE ||
+           kind == LSP_SYMBOL_CONSTANT || kind == LSP_SYMBOL_PARAMETER || kind == LSP_SYMBOL_STRUCT;
 }
 
 void lsp_rename(const char *uri, int line, int col, const char *new_name, const cJSON *id)
@@ -2210,51 +2010,19 @@ void lsp_rename(const char *uri, int line, int col, const char *new_name, const 
     ProjectFile *pf = lsp_project_get_file(uri);
     cJSON *root = lsp_response_new(id);
 
-    LSPRange *r = get_symbol_range_at(pf, line, col);
-    if (!r || !r->node)
+    // The symbol is renamed where its program declares it: not in a module from outside the
+    // workspace, which rename does not edit.
+    LSPRange *r = pf && pf->index ? lsp_find_at(pf->index, line, col) : NULL;
+    ProjectFile *def_file = NULL;
+    LSPRange *def = r ? lsp_project_definition(pf, r, &def_file) : NULL;
+    if (!def || !def->symbol.name || !is_renamable(def->symbol.kind) || def_file->is_external)
     {
         cJSON_AddNullToObject(root, "result");
         send_json_response(root);
         return;
     }
 
-    char *name = NULL;
-    if (r->node->kind == NODE_FUNCTION)
-    {
-        name = r->node->func.name;
-    }
-    else if (r->node->kind == NODE_VAR_DECL)
-    {
-        name = r->node->var_decl.name;
-    }
-    else if (r->node->kind == NODE_CONST)
-    {
-        name = r->node->var_decl.name;
-    }
-    else if (r->node->kind == NODE_STRUCT)
-    {
-        name = r->node->strct.name;
-    }
-    else if (r->node->kind == NODE_EXPR_VAR)
-    {
-        name = r->node->var_ref.name;
-    }
-    else if (r->node->kind == NODE_EXPR_CALL && r->node->call.callee &&
-             r->node->call.callee->kind == NODE_EXPR_VAR)
-    {
-        name = r->node->call.callee->var_ref.name;
-    }
-
-    // `self` is the receiver by its name (see parse_and_convert_args): with another one the
-    // method has no receiver and does not parse.
-    if (!name || strcmp(name, "self") == 0)
-    {
-        cJSON_AddNullToObject(root, "result");
-        send_json_response(root);
-        return;
-    }
-
-    ReferenceResult *refs = lsp_project_find_references(name);
+    ReferenceResult *refs = lsp_project_find_references(def->symbol.definition);
 
     if (!refs)
     {
@@ -2267,8 +2035,14 @@ void lsp_rename(const char *uri, int line, int col, const char *new_name, const 
     cJSON *changes = cJSON_CreateObject();
 
     ReferenceResult *cur = refs;
-    while (cur)
+    for (; cur; cur = cur->next)
     {
+        // An edit replaces the text of the range: a use written with another name (a name
+        // that an import gives it) is not that text.
+        if (strcmp(cur->range->symbol.name, def->symbol.name) != 0)
+        {
+            continue;
+        }
         cJSON *edits = cJSON_GetObjectItem(changes, cur->uri);
         if (!edits)
         {
@@ -2292,10 +2066,6 @@ void lsp_rename(const char *uri, int line, int col, const char *new_name, const 
         cJSON_AddStringToObject(edit, "newText", new_name);
 
         cJSON_AddItemToArray(edits, edit);
-
-        ReferenceResult *next = cur->next;
-        zfree(cur);
-        cur = next;
     }
 
     cJSON_AddItemToObject(result, "changes", changes);

@@ -76,14 +76,10 @@ size_t lsp_project_built_total(void);
 // arena taken after `base` is invalid afterwards.
 void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler);
 
-// Find definition globally
-typedef struct
-{
-    char *uri;
-    LSPRange *range;
-} DefinitionResult;
-
-DefinitionResult lsp_project_find_definition(const char *name);
+// The definition of the symbol that `r`, a range of `pf`, names: `r` itself if it is a definition.
+// NULL when the file that declares it has no definition there (a declaration not in the index,
+// such as one the parser generates). The file goes to *def_file, if given.
+LSPRange *lsp_project_definition(ProjectFile *pf, LSPRange *r, ProjectFile **def_file);
 
 typedef struct ReferenceResult
 {
@@ -92,7 +88,9 @@ typedef struct ReferenceResult
     struct ReferenceResult *next;
 } ReferenceResult;
 
-ReferenceResult *lsp_project_find_references(const char *name);
+// The ranges of the workspace's files that name the symbol declared at `definition` (see
+// lsp_range_names): its declaration and its uses.
+ReferenceResult *lsp_project_find_references(Token definition);
 
 // Semantic Tokens
 char *lsp_semantic_tokens_full(const char *uri);
