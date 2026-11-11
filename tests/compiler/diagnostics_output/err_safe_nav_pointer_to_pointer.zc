@@ -1,0 +1,24 @@
+// ARGS: build
+// SPDX-License-Identifier: MIT
+// `?.` on a pointer to a pointer is reported at the `?.` access, in a build too, instead of
+// emitting C that the C compiler rejects: through a `P**`, a `P***`, and a pointer to an
+// alias of `P*`. `?.` on a `P*` is accepted.
+
+struct P {
+    value: int;
+}
+
+alias PRef = P*;
+
+fn main() {
+    let b = P { value: 7 };
+    let p = &b;
+    let pp = &p;
+    let ppp = &pp;
+    let a: PRef = &b;
+    let ap = &a;
+    let _x = pp?.value;
+    let _y = ppp?.value;
+    let _z = ap?.value;
+    let _ok = p?.value;
+}
