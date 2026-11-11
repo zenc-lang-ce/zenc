@@ -1907,6 +1907,35 @@ static int completion_kind(int id, const char *path, int line, int character, co
     return kind;
 }
 
+static void test_qualified_member_completion(void)
+{
+    printf("Running test_qualified_member_completion...\n");
+    // The members after `.` are those of the type the value has, `const` and pointers aside.
+    // Line 0: struct Inner { depth: int; }
+    // Line 1: struct Pak { size: int; inner: Inner; }
+    // Line 2: impl Pak { fn total(self) -> int { return self.size; } }
+    // Line 3: fn use_pak(p: Pak) {
+    // Line 4:     let a: const Pak = p;
+    // Line 5:     let b: const Pak* = &a;
+    // Line 6:     a.size;
+    // Line 7:     b.size;
+    // Line 8:     a.inner.depth;
+    // Line 9: }
+    const char *path = "/tmp/test_qualified_member_completion.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_qualified_member_completion.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"struct Inner { depth: int; "
+                 "}\\nstruct Pak { size: int; inner: Inner; }\\nimpl Pak { fn total(self) -> int { "
+                 "return self.size; } }\\nfn use_pak(p: Pak) {\\n    let a: const Pak = p;\\n    "
+                 "let b: const Pak* = &a;\\n    a.size;\\n    b.size;\\n    a.inner.depth;\\n}\\n\"}}}");
+    usleep(100000);
+    expect_completion(978, path, 6, 6, "size", 5);    // Field
+    expect_completion(979, path, 6, 6, "total", 2);   // Method
+    expect_completion(980, path, 7, 6, "size", 5);
+    expect_completion(981, path, 8, 12, "depth", 5);
+    printf("PASS: test_qualified_member_completion\n");
+}
+
 static void test_member_hover(void)
 {
     printf("Running test_member_hover...\n");
@@ -3430,6 +3459,7 @@ int main()
     test_variant_hover();
     test_loop_variable_hover();
     test_member_hover();
+    test_qualified_member_completion();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
