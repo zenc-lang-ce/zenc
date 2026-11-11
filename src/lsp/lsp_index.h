@@ -80,6 +80,6 @@ int lsp_function_signature(Token name, char *out, size_t size);
  * text of its own (`@derive`, `comptime`) has tokens with the file's name but not its positions:
  * the ranges of a token that is not written at its position in `source` are left out.
  */
-void lsp_build_index(LSPIndex *idx, ASTNode *root, const char *source);
+void lsp_build_index(ParserContext *ctx, LSPIndex *idx, ASTNode *root, const char *source);
 
 #endif

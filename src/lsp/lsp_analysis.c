@@ -1249,8 +1249,9 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                     cJSON *item = cJSON_CreateObject();
                                     cJSON_AddStringToObject(item, "label", field->field.name);
                                     cJSON_AddNumberToObject(item, "kind", 5); // Field
-                                    cJSON_AddStringToObject(item, "detail",
-                                                            type_to_zen_c_string(field->type_info));
+                                    cJSON_AddStringToObject(
+                                        item, "detail",
+                                        zen_c_type_spelling(g_project->ctx, field->type_info));
                                     cJSON_AddItemToArray(items, item);
                                     field = field->next;
                                 }

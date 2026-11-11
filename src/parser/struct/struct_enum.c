@@ -183,8 +183,10 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     }
 
     // Auto-prefix enum name if in module context
+    char *written_name = NULL;
     if (ctx->imports.current_module_prefix && !gp)
     { // Don't prefix generic templates
+        written_name = module_written_name(ctx, ename);
         char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, ename);
         zfree(ename);
         ename = prefixed_name;
@@ -193,6 +195,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     ASTNode *node = ast_create(NODE_ENUM);
     node->token = n;
     node->enm.name = ename;
+    node->enm.written_name = written_name;
     node->link_name = definition_link_name(ctx, link_name, ename);
     node->type_info = type_new_enum(ename);
 

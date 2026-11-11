@@ -282,9 +282,11 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     }
 
     // Auto-prefix struct name if in module context
+    char *written_name = NULL;
     if (ctx->imports.current_module_prefix && gp_count == 0 && !is_extern &&
         !is_extern_symbol(ctx, name))
     { // Don't prefix generic templates
+        written_name = module_written_name(ctx, name);
         char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name);
         zfree(name);
         name = prefixed_name;
@@ -334,6 +336,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     node->doc_comment = pending_doc; // struct-level /// doc (captured on entry)
 
     node->strct.name = name;
+    node->strct.written_name = written_name;
 
     // Initialize Type Info so we can track traits (like Drop)
     node->type_info = type_new(TYPE_STRUCT);

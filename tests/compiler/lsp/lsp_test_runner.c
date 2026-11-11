@@ -480,6 +480,35 @@ static void test_hover_type_names(void)
     printf("PASS: test_hover_type_names\n");
 }
 
+static void test_hover_module_type_names(void)
+{
+    printf("Running test_hover_module_type_names...\n");
+    int fd = open("/tmp/_hover_geo.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0)
+    {
+        fail("Could not write /tmp/_hover_geo.zc");
+    }
+    const char *module = "struct Knot { x: int; }\nenum Phase { Low, High }\n";
+    write(fd, module, strlen(module));
+    close(fd);
+
+    // Line 0: import "./_hover_geo.zc" as geo;
+    // Line 1: fn take(k: geo::Knot, p: geo::Phase) -> int { return 0; }
+    const char *uri = "file:///tmp/test_hover_module_types.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_hover_module_types.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"import \\\"./_hover_geo.zc\\\" as geo;\\nfn take(k: geo::Knot, p: "
+                 "geo::Phase) -> int { return 0; }\\n\"}}}");
+    usleep(100000);
+
+    // A struct and an enum of a module, as the importer writes them, not by their C names
+    // (`_hover_geo__Knot`, `_hover_geo__Phase`).
+    expect_hover_in(uri, 341, 1, 8, "```zc\\nk: geo::Knot\\n```");
+    expect_hover_in(uri, 342, 1, 22, "```zc\\np: geo::Phase\\n```");
+    printf("PASS: test_hover_module_type_names\n");
+}
+
 static void test_type_name_lookup(void)
 {
     printf("Running test_type_name_lookup...\n");
@@ -2526,6 +2555,7 @@ int main()
     test_hover_parameters();
     test_hover_beside_generated_code();
     test_hover_type_names();
+    test_hover_module_type_names();
     test_type_name_lookup();
     test_completion();
     test_struct_completion();

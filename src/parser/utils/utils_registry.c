@@ -653,6 +653,54 @@ Module *find_module(ParserContext *ctx, const char *alias)
     return mod_ptr ? *mod_ptr : NULL;
 }
 
+char *module_written_name(ParserContext *ctx, const char *name)
+{
+    const char *alias = ctx->imports.current_module_alias;
+    if (!alias)
+    {
+        // Imported one by one: by the name the import gives it (`GeoVec` of
+        // `import { Vector as GeoVec }`), registered before the module is parsed.
+        zmap_iter_SelMap it = zmap_iter_init(SelMap, &ctx->imports.selective_imports);
+        const char *local_name;
+        SelectiveImport *imported;
+        while (zmap_iter_next(&it, &local_name, &imported))
+        {
+            if (ctx->imports.current_module_prefix && imported->source_module &&
+                strcmp(imported->source_module, ctx->imports.current_module_prefix) == 0 &&
+                strcmp(imported->symbol, name) == 0)
+            {
+                return xstrdup(local_name);
+            }
+        }
+        return xstrdup(name);
+    }
+    size_t size = strlen(alias) + strlen(name) + 3;
+    char *written = xmalloc(size);
+    snprintf(written, size, "%s::%s", alias, name);
+    return written;
+}
+
+// The name programs write for the struct or enum `name`, kept when its C name got a module
+// prefix; NULL for one written as it is named.
+static const char *written_type_name(void *context, const char *name)
+{
+    ASTNode *def = find_struct_def((ParserContext *)context, name);
+    if (def && def->kind == NODE_STRUCT)
+    {
+        return def->strct.written_name;
+    }
+    if (def && def->kind == NODE_ENUM)
+    {
+        return def->enm.written_name;
+    }
+    return NULL;
+}
+
+char *zen_c_type_spelling(ParserContext *ctx, Type *t)
+{
+    return type_to_zen_c_string_with(t, written_type_name, ctx);
+}
+
 void register_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
                                const char *source_module)
 {

@@ -907,7 +907,7 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
             // type of the expression; one that does not fit changes its value.
             if (!integer_constant_fits(constant, resolved_target))
             {
-                char *t_str = type_to_zen_c_string(target);
+                char *t_str = zen_c_type_spelling(tc->pctx, target);
                 char msg[MAX_SHORT_MSG_LEN];
                 snprintf(msg, sizeof(msg), "Integer constant %lld does not fit in '%s' (%d-bit)",
                          constant, t_str, target_width);
@@ -920,8 +920,8 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
             // Warn on narrowing conversions in non-MISRA mode
             if (target_width > 0 && value_width > 0 && target_width < value_width)
             {
-                char *t_str = type_to_zen_c_string(target);
-                char *v_str = type_to_zen_c_string(value);
+                char *t_str = zen_c_type_spelling(tc->pctx, target);
+                char *v_str = zen_c_type_spelling(tc->pctx, value);
                 char msg[MAX_SHORT_MSG_LEN];
                 snprintf(msg, sizeof(msg),
                          "Implicit narrowing conversion from '%s' (%d-bit) to '%s' (%d-bit)", v_str,
@@ -1031,8 +1031,8 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     }
 
     // Type mismatch - report error
-    char *t_str = type_to_zen_c_string(target);
-    char *v_str = type_to_zen_c_string(value);
+    char *t_str = zen_c_type_spelling(tc->pctx, target);
+    char *v_str = zen_c_type_spelling(tc->pctx, value);
 
     char msg[MAX_ERROR_MSG_LEN];
     snprintf(msg, sizeof(msg), "Type mismatch: expected '%s', but found '%s'", t_str, v_str);

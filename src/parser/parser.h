@@ -295,6 +295,8 @@ typedef struct ModuleState
     zmap_ModMap modules;           ///< Map: alias → Module*.
     zmap_SelMap selective_imports; ///< Map: symbol → SelectiveImport*.
     char *current_module_prefix;   ///< Prefix for current module (namespacing).
+    char *current_module_alias;    ///< Alias the current module is imported with (`math` of
+                                   ///< `import "m.zc" as math`); NULL for a selective import.
     zmap_FileSet imported_files;   ///< Set: imported file paths (key=value).
     zmap_FileSet
         currently_parsing; ///< Set: files whose import is in progress (for cycle detection).
@@ -1016,6 +1018,16 @@ int check_impl(ParserContext *ctx, const char *trait_name, const char *type_name
 Instantiation *find_instantiation(ParserContext *ctx, const char *name);
 int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b);
 Module *find_module(ParserContext *ctx, const char *alias);
+/**
+ * @brief How programs write `name`, declared in the module being parsed: `math::Vector` when
+ * the module is imported with an alias, `Vector` when its names are imported one by one.
+ */
+char *module_written_name(ParserContext *ctx, const char *name);
+/**
+ * @brief A type as the program writes it (type_to_zen_c_string_with), with a struct or enum of
+ * a module written as its importer writes it: `math::Vector`, not `_math__Vector`.
+ */
+char *zen_c_type_spelling(ParserContext *ctx, Type *t);
 SelectiveImport *find_selective_import(ParserContext *ctx, const char *name);
 void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base);
 void re_export_propagated(ParserContext *ctx, const char *alias, const char *parent_prefix,
