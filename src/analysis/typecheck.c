@@ -53,10 +53,10 @@ static void return_target(ASTNode *from, const char **name, Type **type)
     {
         Type *fn = get_inner_type(from->type_info);
         *type = (fn && fn->kind == TYPE_FUNCTION) ? fn->inner : NULL;
-        *name = *type ? type_to_string(*type) : NULL;
+        *name = *type ? type_to_zen_c_string(*type) : NULL;
         return;
     }
-    *name = type_to_string(from->func.ret_type_info);
+    *name = type_to_zen_c_string(from->func.ret_type_info);
     *type = from->func.ret_type_info;
 }
 

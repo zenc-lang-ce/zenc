@@ -1,0 +1,13 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// A type is shown as the program writes it, also inside another one: `Box<Box<f64>>`, not
+// the C name of the instance (`Box__Box__double`).
+
+struct Box<T> {
+    v: T;
+}
+
+fn main() {
+    let b = Box<Box<f64>>{ v: Box<f64>{ v: 1.0 } };
+    let _n: int = b;
+}

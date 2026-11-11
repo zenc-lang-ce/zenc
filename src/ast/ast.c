@@ -1038,7 +1038,15 @@ int type_eq(Type *a, Type *b)
     return 1;
 }
 
-static char *type_spelling(Type *t, int c_names);
+// How a type is spelled.
+typedef enum
+{
+    SPELLING_READABLE, // type_to_string: primitives by their Zen C name, instances by C name.
+    SPELLING_C,        // type_mangle_spelling: as the C names built from the type spell it.
+    SPELLING_ZEN_C,    // type_to_zen_c_string: as the program writes it, for people.
+} TypeSpelling;
+
+static char *type_spelling(Type *t, TypeSpelling spelling);
 
 // The name of the C struct a tuple is: `Tuple__` and its elements' names, as `(int, bool*)`
 // gives `Tuple__int__boolPtr`.
@@ -1048,7 +1056,7 @@ static char *tuple_struct_name(Type *t)
     char **elements = xmalloc(sizeof(char *) * (size_t)(t->count > 0 ? t->count : 1));
     for (int i = 0; i < t->count; i++)
     {
-        elements[i] = type_spelling(t->args[i], 1);
+        elements[i] = type_spelling(t->args[i], SPELLING_C);
         length += strlen(elements[i]) + 2;
     }
     char *signature = xmalloc(length + 1);
@@ -1071,17 +1079,38 @@ static char *tuple_struct_name(Type *t)
     return name;
 }
 
-static char *type_spelling_impl(Type *t, int c_names);
+static char *type_spelling_impl(Type *t, TypeSpelling spelling);
 
-// A type as type_to_string spells it, or, with `c_names`, as the C names built from it spell
-// it (type_mangle_spelling).
-static char *type_spelling(Type *t, int c_names)
+// The types of a list (a generic's arguments, a tuple's elements) as `a, b`.
+static char *type_spelling_list(Type **types, int count, TypeSpelling spelling)
+{
+    char **parts = xmalloc(sizeof(char *) * (size_t)(count > 0 ? count : 1));
+    size_t size = 1;
+    for (int i = 0; i < count; i++)
+    {
+        parts[i] = type_spelling(types[i], spelling);
+        size += strlen(parts[i]) + 2;
+    }
+    char *out = xmalloc(size);
+    out[0] = 0;
+    for (int i = 0; i < count; i++)
+    {
+        if (i > 0)
+        {
+            strcat(out, ", ");
+        }
+        strcat(out, parts[i]);
+    }
+    return out;
+}
+
+static char *type_spelling(Type *t, TypeSpelling spelling)
 {
     if (!t)
     {
         return xstrdup("void");
     }
-    char *res = type_spelling_impl(t, c_names);
+    char *res = type_spelling_impl(t, spelling);
     if (t->is_const)
     {
         char *final = xmalloc(strlen(res) + 7);
@@ -1094,15 +1123,20 @@ static char *type_spelling(Type *t, int c_names)
 
 char *type_to_string(Type *t)
 {
-    return type_spelling(t, 0);
+    return type_spelling(t, SPELLING_READABLE);
 }
 
 char *type_mangle_spelling(Type *t)
 {
-    return type_spelling(t, 1);
+    return type_spelling(t, SPELLING_C);
 }
 
-static char *type_spelling_impl(Type *t, int c_names)
+char *type_to_zen_c_string(Type *t)
+{
+    return type_spelling(t, SPELLING_ZEN_C);
+}
+
+static char *type_spelling_impl(Type *t, TypeSpelling spelling)
 {
     if (!t)
     {
@@ -1111,7 +1145,7 @@ static char *type_spelling_impl(Type *t, int c_names)
 
     // People read a fixed-width primitive by the name the program writes (`i32`); a C name
     // spells it as C does (`Vec__int32_t`).
-    const char *zen_name = c_names ? NULL : primitive_zen_name(t->kind);
+    const char *zen_name = spelling == SPELLING_C ? NULL : primitive_zen_name(t->kind);
     if (zen_name)
     {
         return xstrdup(zen_name);
@@ -1187,7 +1221,7 @@ static char *type_spelling_impl(Type *t, int c_names)
 
     case TYPE_INT:
         // `int` is `i32`: its C names are i32's (`Vec__int32_t`), so both make one instance.
-        return xstrdup(c_names ? "int32_t" : "int");
+        return xstrdup(spelling == SPELLING_C ? "int32_t" : "int");
     case TYPE_FLOAT:
         return xstrdup("float");
     case TYPE_BITINT:
@@ -1209,7 +1243,7 @@ static char *type_spelling_impl(Type *t, int c_names)
         {
             return xstrdup(t->name);
         }
-        char *inner = type_spelling(t->inner, c_names);
+        char *inner = type_spelling(t->inner, spelling);
         char *res = xmalloc(strlen(inner) + 20);
         sprintf(res, "%sx%d", inner, t->array_size); /* safe */
         zfree(inner);
@@ -1218,7 +1252,7 @@ static char *type_spelling_impl(Type *t, int c_names)
 
     case TYPE_POINTER:
     {
-        char *inner = type_spelling(t->inner, c_names);
+        char *inner = type_spelling(t->inner, spelling);
         if (t->is_restrict)
         {
             char *res = xmalloc(strlen(inner) + 16);
@@ -1251,7 +1285,7 @@ static char *type_spelling_impl(Type *t, int c_names)
             base = base->inner;
         }
 
-        char *inner = type_spelling(base, c_names);
+        char *inner = type_spelling(base, spelling);
         size_t total_len = strlen(inner) + 1;
         for (int i = 0; i < dims_count; i++)
         {
@@ -1281,7 +1315,7 @@ static char *type_spelling_impl(Type *t, int c_names)
         if (t->is_raw)
         {
             // fn*(Args)->Ret
-            char *ret = type_spelling(t->inner, c_names);
+            char *ret = type_spelling(t->inner, spelling);
             char *res = xmalloc(strlen(ret) + 64);
             snprintf(res, strlen(ret) + 64, "fn*(");
 
@@ -1294,7 +1328,7 @@ static char *type_spelling_impl(Type *t, int c_names)
                     zfree(res);
                     res = tmp;
                 }
-                char *arg = type_spelling(t->args[i], c_names);
+                char *arg = type_spelling(t->args[i], spelling);
                 char *tmp = xmalloc(strlen(res) + strlen(arg) + 1);
                 sprintf(tmp, "%s%s", res, arg); /* safe */
                 zfree(res);
@@ -1317,7 +1351,7 @@ static char *type_spelling_impl(Type *t, int c_names)
         }
 
         // fn(Args) -> Ret
-        char *ret = type_spelling(t->inner, c_names);
+        char *ret = type_spelling(t->inner, spelling);
         char *res = xmalloc(strlen(ret) + 64);
         snprintf(res, strlen(ret) + 64, "fn(");
 
@@ -1330,7 +1364,7 @@ static char *type_spelling_impl(Type *t, int c_names)
                 zfree(res);
                 res = tmp;
             }
-            char *arg = type_spelling(t->args[i], c_names);
+            char *arg = type_spelling(t->args[i], spelling);
             char *tmp = xmalloc(strlen(res) + strlen(arg) + 1);
             sprintf(tmp, "%s%s", res, arg); /* safe */
             zfree(res);
@@ -1349,19 +1383,34 @@ static char *type_spelling_impl(Type *t, int c_names)
     case TYPE_ENUM:
     case TYPE_GENERIC:
     {
-        // An instance of a generic is named after its template and its arguments.
+        // An instance of a generic is named after its template and its arguments: as the
+        // program writes it (`Vec<Vec<f64>>`), or by the C name of the instance.
         if (t->count > 0 && t->args && t->name)
         {
+            if (spelling == SPELLING_ZEN_C)
+            {
+                char *args = type_spelling_list(t->args, t->count, spelling);
+                char *res = xmalloc(strlen(t->name) + strlen(args) + 3);
+                sprintf(res, "%s<%s>", t->name, args); /* safe */
+                return res;
+            }
             char **args = xmalloc((size_t)t->count * sizeof(char *));
             for (int i = 0; i < t->count; i++)
             {
-                args[i] = type_spelling(t->args[i], 1);
+                args[i] = type_spelling(t->args[i], SPELLING_C);
             }
             return mangle_generic_name(t->name, args, t->count);
         }
         return xstrdup(t->name);
     }
     case TYPE_TUPLE:
+        if (spelling == SPELLING_ZEN_C)
+        {
+            char *elements = type_spelling_list(t->args, t->count, spelling);
+            char *res = xmalloc(strlen(elements) + 3);
+            sprintf(res, "(%s)", elements); /* safe */
+            return res;
+        }
         return tuple_struct_name(t);
     case TYPE_ALIAS:
         // The name the program uses: a @link_name only shows in C (type_to_c_string).

@@ -212,13 +212,13 @@ static int cmd_show(ReplState *state, const char *args)
             printf("  fn %s(", n->func.name);
             for (int i = 0; i < n->func.count; i++)
             {
-                char *t = n->func.arg_types ? type_to_string(n->func.arg_types[i]) : NULL;
+                char *t = n->func.arg_types ? type_to_zen_c_string(n->func.arg_types[i]) : NULL;
                 printf("%s%s: %s", i ? ", " : "",
                        n->func.param_names && n->func.param_names[i] ? n->func.param_names[i] : "_",
                        t ? t : "?");
             }
             printf(") -> %s\n",
-                   n->func.ret_type_info ? type_to_string(n->func.ret_type_info) : "void");
+                   n->func.ret_type_info ? type_to_zen_c_string(n->func.ret_type_info) : "void");
             found = 1;
             break;
         }
@@ -229,12 +229,13 @@ static int cmd_show(ReplState *state, const char *args)
             {
                 if (field->kind == NODE_FIELD)
                 {
-                    printf("    %s: %s;\n", field->field.name, type_to_string(field->type_info));
+                    printf("    %s: %s;\n", field->field.name,
+                           type_to_zen_c_string(field->type_info));
                 }
                 else if (field->kind == NODE_VAR_DECL)
                 {
                     printf("    %s: %s;\n", field->var_decl.name,
-                           field->type_info ? type_to_string(field->type_info) : "?");
+                           field->type_info ? type_to_zen_c_string(field->type_info) : "?");
                 }
             }
             printf("  }\n");

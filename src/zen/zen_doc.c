@@ -168,7 +168,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
                 }
                 if (node->func.arg_types && node->func.arg_types[i])
                 {
-                    char *tstr = type_to_string(node->func.arg_types[i]);
+                    char *tstr = type_to_zen_c_string(node->func.arg_types[i]);
                     printf("%s", tstr);
                     zfree(tstr);
                 }
@@ -184,7 +184,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
             printf(")");
             if (node->func.ret_type_info)
             {
-                char *rstr = type_to_string(node->func.ret_type_info);
+                char *rstr = type_to_zen_c_string(node->func.ret_type_info);
                 printf(" -> %s", rstr);
                 zfree(rstr);
             }
@@ -207,7 +207,8 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
             {
                 if (field->kind == NODE_FIELD)
                 {
-                    printf("    %s: %s,\n", field->field.name, type_to_string(field->type_info));
+                    printf("    %s: %s,\n", field->field.name,
+                           type_to_zen_c_string(field->type_info));
                 }
                 field = field->next;
             }
@@ -271,7 +272,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
                 print_markdown_doc(node->doc_comment);
             }
             printf("```zc\nconst %s: %s;\n```\n", display_name,
-                   node->type_info ? type_to_string(node->type_info) : "?");
+                   node->type_info ? type_to_zen_c_string(node->type_info) : "?");
             break;
         }
 
@@ -284,7 +285,7 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
                 print_markdown_doc(node->doc_comment);
             }
             printf("```zc\nalias %s = %s;\n```\n", display_name,
-                   node->type_info ? type_to_string(node->type_info) : "?");
+                   node->type_info ? type_to_zen_c_string(node->type_info) : "?");
             break;
         }
 

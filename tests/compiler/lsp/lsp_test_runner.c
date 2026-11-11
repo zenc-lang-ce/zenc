@@ -460,6 +460,26 @@ static void test_hover_beside_generated_code(void)
     printf("PASS: test_hover_beside_generated_code\n");
 }
 
+static void test_hover_type_names(void)
+{
+    printf("Running test_hover_type_names...\n");
+    // Line 0: struct Holder<T> { v: T; }
+    // Line 1: fn take(b: Holder<Holder<f64>>, t: (int, bool)) -> int { return 0; }
+    const char *uri = "file:///tmp/test_hover_type_names.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_hover_type_names.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Holder<T> { v: T; }\\nfn take(b: Holder<Holder<f64>>, t: (int, bool)) -> int "
+                 "{ return 0; }\\n\"}}}");
+    usleep(100000);
+
+    // As the program writes them, not by the C name of the instance (`Holder__Holder__double`) or
+    // of the tuple (`Tuple__int32_t__bool`).
+    expect_hover_in(uri, 331, 1, 8, "```zc\\nb: Holder<Holder<f64>>\\n```");
+    expect_hover_in(uri, 332, 1, 32, "```zc\\nt: (i32, bool)\\n```");
+    printf("PASS: test_hover_type_names\n");
+}
+
 static void test_type_name_lookup(void)
 {
     printf("Running test_type_name_lookup...\n");
@@ -2505,6 +2525,7 @@ int main()
     test_fstring_interpolation_lookup();
     test_hover_parameters();
     test_hover_beside_generated_code();
+    test_hover_type_names();
     test_type_name_lookup();
     test_completion();
     test_struct_completion();

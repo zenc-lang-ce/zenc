@@ -1250,7 +1250,7 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
                                     cJSON_AddStringToObject(item, "label", field->field.name);
                                     cJSON_AddNumberToObject(item, "kind", 5); // Field
                                     cJSON_AddStringToObject(item, "detail",
-                                                            type_to_string(field->type_info));
+                                                            type_to_zen_c_string(field->type_info));
                                     cJSON_AddItemToArray(items, item);
                                     field = field->next;
                                 }
