@@ -1699,6 +1699,24 @@ Type *get_inner_type(Type *t)
     return t;
 }
 
+ASTNode *deref_to_one_pointer(ASTNode *expr)
+{
+    Type *t = get_inner_type(expr->type_info);
+    Type *pointee = t && t->kind == TYPE_POINTER ? get_inner_type(t->inner) : NULL;
+    while (pointee && pointee->kind == TYPE_POINTER)
+    {
+        ASTNode *deref = ast_create(NODE_EXPR_UNARY);
+        deref->unary.op = xstrdup("*");
+        deref->unary.operand = expr;
+        deref->type_info = t->inner;
+        deref->token = expr->token;
+        expr = deref;
+        t = pointee;
+        pointee = get_inner_type(t->inner);
+    }
+    return expr;
+}
+
 // Type inference — resolve an expression node to its C type string.
 // (Moved from codegen_utils.c this is part of core, not codegen)
 

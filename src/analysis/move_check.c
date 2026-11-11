@@ -75,7 +75,16 @@ char *get_node_path(ASTNode *node, int depth, ParserContext *ctx)
     }
     else if (node->kind == NODE_EXPR_MEMBER)
     {
-        char *target_path = get_node_path(node->member.target, depth + 1, ctx);
+        // `(*pp).items` is the place `pp.items` is: `.` reaches the field through every
+        // pointer, and checking turns the target `pp` of `pp.items` into `*pp`
+        // (deref_to_one_pointer).
+        ASTNode *target = node->member.target;
+        while (target && target->kind == NODE_EXPR_UNARY && target->unary.op &&
+               strcmp(target->unary.op, "*") == 0)
+        {
+            target = target->unary.operand;
+        }
+        char *target_path = get_node_path(target, depth + 1, ctx);
         if (target_path)
         {
             char buffer[MAX_ERROR_MSG_LEN];

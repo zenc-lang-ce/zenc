@@ -1,0 +1,23 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// `.` reaches a field or a method through every level of pointer: the target of
+// `pp.value`, with `pp: P**`, is checked as `*pp`, also through an alias of `P*`.
+struct P { value: int; }
+
+impl P {
+    fn get(self) -> int {
+        return self.value;
+    }
+}
+
+alias PRef = P*;
+
+fn main() {
+    let b = P { value: 1 };
+    let p = &b;
+    let pp = &p;
+    let ppp = &pp;
+    pp.value += 2;
+    let a: PRef = &b;
+    let ap = &a;
+    puts(f"{pp.value} {ppp.value} {pp.get()} {ap.value} {ap.get()}");
+}

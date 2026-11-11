@@ -902,6 +902,13 @@ char *infer_type(struct ParserContext *ctx, struct ASTNode *node);
 char *get_field_type_str(struct ParserContext *ctx, const char *struct_name,
                          const char *field_name);
 Type *get_inner_type(Type *t);
+/**
+ * @brief `expr` dereferenced down to one level of pointer: `pp`, a `P**`, becomes `*pp`, a `P*`.
+ * `.` reaches a field or a method through every level of pointer, as the field and method
+ * lookup do (resolve_struct_name_from_type). Returns `expr` itself when it is not a pointer to
+ * a pointer.
+ */
+ASTNode *deref_to_one_pointer(ASTNode *expr);
 
 typedef struct TraitReg
 {

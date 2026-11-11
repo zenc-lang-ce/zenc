@@ -676,6 +676,11 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         }
         if (node->member.target && node->member.target->type_info)
         {
+            // Not for `?.` (is_pointer_access 2), which tests its target for null.
+            if (node->member.is_pointer_access != 2)
+            {
+                node->member.target = deref_to_one_pointer(node->member.target);
+            }
             Type *target_type = get_inner_type(node->member.target->type_info);
             Type *tuple = tuple_of(node->member.target->type_info);
             Type *element = tuple ? tuple_element_type(tuple, node->member.field) : NULL;

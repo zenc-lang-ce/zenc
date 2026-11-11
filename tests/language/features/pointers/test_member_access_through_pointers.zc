@@ -21,6 +21,8 @@ impl P {
     }
 }
 
+alias PRef = P*;
+
 struct Holder<T> {
     item: T;
 }
@@ -74,4 +76,19 @@ test "methods through a pointer to a pointer" {
     expect_eq(pp.get(), 2, "pp.get() should pass *pp as self");
     expect_eq(ppp.get(), 2, "ppp.get() should pass **ppp as self");
     expect_eq(hpp.peek(), 3, "a method of a generic struct should take *hpp as self");
+}
+
+test "an alias of a pointer and an f-string" {
+    // Arrange
+    let b = P { value: 6, inner: Inner { n: 0 } };
+    let p: PRef = &b;
+    let pp = &p;
+
+    // Act
+    let s = f"{pp.value}|{pp.get()}";
+
+    // Assert
+    expect_eq(pp.value, 6, "pp.value should read the field through an alias of P*");
+    expect_eq(pp.get(), 6, "pp.get() should take *pp as self through an alias of P*");
+    expect(strcmp(s, "6|6") == 0, "an f-string should read the field and call the method");
 }
