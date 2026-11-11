@@ -47,6 +47,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - An error inside an f-string interpolation points at the expression and prints its line.
   - A MISRA diagnostic about a struct field points at the field.
   - A diagnostic about a field of a struct literal (a type mismatch, a pointer that escapes, a MISRA rule) points at that field, not at the name of the struct.
+  - "Use of moved value" says where the value was moved (`'data' was moved at line 21, column 30`), or that a loop moved it on an earlier iteration.
   - MISRA Rule 2.4 does not flag an enum the program uses; `assert` and `test` blocks are reported under Rule 21.6 instead of C that does not compile.
 - `#line` is emitted when the file changes on the same line, and again when a newline was written since the last one; a `for` loop restores the lexer after its lookahead.
 - The C is written in binary mode on Windows.
