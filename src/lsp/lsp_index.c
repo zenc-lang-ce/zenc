@@ -427,6 +427,21 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             // `Mode::On`: its token is where the enum's name is written.
             lsp_index_add_type_ref(idx, node->token, node->var_ref.variant.owner->name);
         }
+        else if (node->kind == NODE_IMPL && node->impl.target)
+        {
+            // `impl Point`: the type's name, where the header writes it.
+            lsp_index_add_type_ref(idx, node->impl.target_token, node->impl.target->name);
+        }
+        else if (node->kind == NODE_IMPL_TRAIT)
+        {
+            // `impl Show for Point`: the trait's name and the type's.
+            lsp_index_add_type_ref(idx, node->impl_trait.trait_token, node->impl_trait.trait_name);
+            if (node->impl_trait.target)
+            {
+                lsp_index_add_type_ref(idx, node->impl_trait.target_token,
+                                       node->impl_trait.target->name);
+            }
+        }
 
         // Walk every child list. Trait methods are prototypes, kept out of the index.
         if (node->kind != NODE_TRAIT)

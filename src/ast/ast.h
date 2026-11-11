@@ -570,14 +570,17 @@ struct ASTNode
 
         struct
         {
-            Type *target; // the type the methods belong to; type_impl_name gives their prefix
+            Type *target;       // the type the methods belong to; type_impl_name gives their prefix
+            Token target_token; // Where the target's name is written (`Point` of `impl Point`).
             ASTNode *methods;
         } impl;
 
         struct
         {
             char *trait_name;
-            Type *target; // the type the methods belong to; type_impl_name gives their prefix
+            Type *target;       // the type the methods belong to; type_impl_name gives their prefix
+            Token trait_token;  // Where the trait's name is written (`Show` of `impl Show for`).
+            Token target_token; // Where the target's name is written.
             ASTNode *methods;
         } impl_trait;
 

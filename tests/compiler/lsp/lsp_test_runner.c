@@ -556,6 +556,41 @@ static void test_type_name_lookup(void)
     printf("PASS: test_type_name_lookup\n");
 }
 
+static void test_impl_header_lookup(void)
+{
+    printf("Running test_impl_header_lookup...\n");
+    // Line 0: struct Box { v: int; }
+    // Line 1: trait Show { fn show(self) -> int; }
+    // Line 2: impl Box { fn get(self) -> int { return self.v; } }
+    // Line 3: impl Show for Box { fn show(self) -> int { return self.v; } }
+    const char *uri = "file:///tmp/test_impl_header.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_impl_header.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Box { v: int; }\\ntrait Show { fn show(self) -> int; }\\n"
+                 "impl Box { fn get(self) -> int { return self.v; } }\\n"
+                 "impl Show for Box { fn show(self) -> int { return self.v; } }\\n\"}}}");
+    usleep(100000);
+
+    // The type of `impl Box`, and the trait and the type of `impl Show for Box`.
+    expect_hover_in(uri, 421, 2, 6, "struct Box");
+    expect_hover_in(uri, 422, 3, 6, "trait Show");
+    expect_hover_in(uri, 423, 3, 15, "struct Box");
+
+    // Go to definition leads to the trait's declaration.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 424, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_impl_header.zc\"}, "
+                 "\"position\": {\"line\": 3, \"character\": 6}}}");
+    char *resp = wait_for_response(424);
+    if (!resp || !strstr(resp, "\"line\":1") || !strstr(resp, "test_impl_header.zc"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition on the trait of an impl must lead to the trait's declaration");
+    }
+    free(resp);
+    printf("PASS: test_impl_header_lookup\n");
+}
+
 static void test_definition_partial_code()
 {
     printf("Running test_definition_partial_code...\n");
@@ -2557,6 +2592,7 @@ int main()
     test_hover_type_names();
     test_hover_module_type_names();
     test_type_name_lookup();
+    test_impl_header_lookup();
     test_completion();
     test_struct_completion();
     test_diagnostics();
