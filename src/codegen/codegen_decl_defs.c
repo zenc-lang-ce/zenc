@@ -98,20 +98,13 @@ void emit_includes_and_aliases(ParserContext *ctx, ASTNode *node, VisitedModules
 }
 
 // Emit type aliases (after struct defs so the aliased types exist)
-// `typedef <type> <alias>;`. A function pointer type (`int (*)(int)`) takes the alias name
-// inside it.
+// `typedef <type> <alias>;`, with the alias where a declaration puts its name: inside a function
+// pointer type (`int (*)(int)`), and before the brackets of an array (`int32_t Row[3]`).
 static void emit_alias_typedef(ParserContext *ctx, Type *type, const char *alias)
 {
-    const char *c_type = c_type_spelling(ctx, type);
-    const char *ptr = strstr(c_type, "(*)");
-    if (ptr)
-    {
-        EMIT(ctx, "typedef %.*s (*%s)%s;\n", (int)(ptr - c_type), c_type, alias, ptr + 3);
-    }
-    else
-    {
-        EMIT(ctx, "typedef %s %s;\n", c_type, alias);
-    }
+    EMIT(ctx, "typedef ");
+    emit_c_decl(ctx, c_type_spelling(ctx, type), alias);
+    EMIT(ctx, ";\n");
 }
 
 static void emit_type_aliases_internal(ParserContext *ctx, ASTNode *node, VisitedModules **visited,

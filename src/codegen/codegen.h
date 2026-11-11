@@ -77,6 +77,11 @@ int emit_legacy_variant_name(ParserContext *ctx, const char *name);
 
 void emit_var_decl_type(ParserContext *ctx, const char *type_str, const char *var_name);
 /**
+ * @brief Writes `type name` as a C declaration: the name goes inside a function pointer's
+ * `(*)` and before an array's brackets (`int32_t name[3]`), not after the whole type.
+ */
+void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name);
+/**
  * @brief The type of a struct field spelled in C: from its Type (a @link_name struct by its C
  *        name), or from its text when the compiler made the field without one.
  */
