@@ -1921,6 +1921,54 @@ static void test_c_header_completion(void)
     printf("PASS: test_c_header_completion\n");
 }
 
+// The kind of the completion item `label` at (line, character) of `path`, or -1 if there is none.
+static int completion_kind(int id, const char *path, int line, int character, const char *label)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    int kind = -1;
+    for (int i = 0; i < cJSON_GetArraySize(items) && kind < 0; i++)
+    {
+        cJSON *item = cJSON_GetArrayItem(items, i);
+        cJSON *item_label = cJSON_GetObjectItem(item, "label");
+        if (cJSON_IsString(item_label) && strcmp(item_label->valuestring, label) == 0)
+        {
+            kind = cJSON_GetObjectItem(item, "kind")->valueint;
+        }
+    }
+    cJSON_Delete(response);
+    return kind;
+}
+
+static void test_keyword_completion(void)
+{
+    printf("Running test_keyword_completion...\n");
+    const char *path = C_TEST_DIR "/keywords.zc";
+    // Line 0: (top level)
+    // Line 2:     (in the body of main)
+    open_document(path, "\nfn main() {\n    \n}\n");
+    // Kinds: 3 function, 14 keyword; -1 not offered.
+    const struct
+    {
+        int line;
+        const char *label;
+        int kind;
+    } cases[] = {{2, "match", 14}, {2, "malloc", 3}, {2, "module", -1}, {2, "import", -1},
+                 {0, "import", 14}, {0, "if", -1}, {0, "malloc", -1}};
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++)
+    {
+        int kind = completion_kind(870 + (int)c, path, cases[c].line, cases[c].line ? 4 : 0,
+                                   cases[c].label);
+        if (kind != cases[c].kind)
+        {
+            printf("Completion of %s on line %d: kind %d, expected %d\n", cases[c].label,
+                   cases[c].line, kind, cases[c].kind);
+            fail("Completion offers the language's keywords where they start a construct");
+        }
+    }
+    printf("PASS: test_keyword_completion\n");
+}
+
 static void test_local_completion(void)
 {
     printf("Running test_local_completion...\n");
@@ -2541,6 +2589,35 @@ static void test_semantic_tokens_whole_file(void)
     printf("PASS: test_semantic_tokens_whole_file\n");
 }
 
+static void test_semantic_keywords(void)
+{
+    printf("Running test_semantic_keywords...\n");
+    // The keywords are the language's: `for` is one, `println` is a function of std/io.
+    // Line 0: fn main() {
+    // Line 1:     for i in 0..2 { println("x"); }
+    // Line 2: }
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_keywords.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"fn main() {\\n    for i in 0..2 { println(\\\"x\\\"); }\\n}\\n\"}}}");
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 54, \"method\": \"textDocument/semanticTokens/full\", "
+        "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_keywords.zc\"}}}");
+    char *resp = wait_for_response(54);
+    cJSON *json = resp ? cJSON_Parse(resp) : NULL;
+    cJSON *data = cJSON_GetObjectItem(cJSON_GetObjectItem(json, "result"), "data");
+    // Type 3 is keyword.
+    if (!has_token_at(data, 1, 4, 3) || !has_token_at(data, 1, 10, 3) ||
+        has_token_at(data, 1, 20, 3))
+    {
+        printf("Semantic tokens: %s\n", resp ? resp : "(no response)");
+        fail("`for` and `in` are keywords and `println` is not");
+    }
+    cJSON_Delete(json);
+    free(resp);
+    printf("PASS: test_semantic_keywords\n");
+}
+
 static void test_semantic_token_modifiers(void)
 {
     printf("Running test_semantic_token_modifiers...\n");
@@ -3084,6 +3161,7 @@ int main()
     test_semantic_tokens();
     test_semantic_tokens_skip_text();
     test_semantic_token_modifiers();
+    test_semantic_keywords();
     test_semantic_tokens_whole_file();
     test_definition();
     test_declaration();
@@ -3112,6 +3190,7 @@ int main()
     test_signature_as_written();
     test_member_completion();
     test_local_completion();
+    test_keyword_completion();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");

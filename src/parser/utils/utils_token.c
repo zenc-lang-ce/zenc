@@ -6,6 +6,7 @@
 #include "utils/utils.h"
 #include "constants.h"
 #include "ast/primitives.h"
+#include "lexer/keywords.h"
 #include <ctype.h>
 #include "analysis/const_fold.h"
 #include <stdlib.h>
@@ -413,48 +414,18 @@ const char *normalize_type_name(const char *name)
 
 int is_reserved_keyword(Token t)
 {
-    switch (t.kind)
+    // A keyword with a token of its own is that token whatever its text, `TOK_DEF` for `def`.
+    int count = 0;
+    const ZenKeyword *keywords = zen_keywords(&count);
+    for (int i = 0; t.kind != TOK_IDENT && i < count; i++)
     {
-    case TOK_TEST:
-    case TOK_ASSERT:
-    case TOK_SIZEOF:
-    case TOK_DEF:
-    case TOK_DEFER:
-    case TOK_USE:
-    case TOK_TRAIT:
-    case TOK_IMPL:
-    case TOK_AND:
-    case TOK_OR:
-    case TOK_FOR:
-    case TOK_COMPTIME:
-    case TOK_UNION:
-    case TOK_ASM:
-    case TOK_VOLATILE:
-    case TOK_ALIAS:
-    case TOK_OPAQUE:
-        return 1;
-    default:
-        break;
-    }
-
-    if (t.kind == TOK_IDENT)
-    {
-        static const char *pseudo_keywords[] = {
-            "let",      "static", "const",  "return", "if",    "else",   "while", "break",
-            "continue", "loop",   "repeat", "unless", "guard", "launch", "do",    "goto",
-            "plugin",   "fn",     "struct", "enum",   "self",  NULL};
-
-        for (int i = 0; pseudo_keywords[i] != NULL; i++)
+        if (keywords[i].kind == t.kind)
         {
-            if (t.len == strlen(pseudo_keywords[i]) &&
-                strncmp(t.start, pseudo_keywords[i], t.len) == 0)
-            {
-                return 1;
-            }
+            return keywords[i].is_reserved;
         }
     }
-
-    return 0;
+    const ZenKeyword *keyword = t.kind == TOK_IDENT ? zen_keyword_find(t.start, t.len) : NULL;
+    return keyword && keyword->kind == TOK_IDENT && keyword->is_reserved;
 }
 
 void check_reserved_keyword(Token t)

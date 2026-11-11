@@ -86,6 +86,7 @@ src/utils/c_headers.c
 src/utils/c_header_cache.c
 src/diagnostics/diagnostics.c
 src/lexer/token.c
+src/lexer/keywords.c
 src/analysis/typecheck.c
 src/analysis/typecheck_utils.c
 src/analysis/typecheck_expr.c
