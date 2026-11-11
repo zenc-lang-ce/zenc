@@ -346,39 +346,28 @@ void check_path_validity(TypeChecker *tc, const char *path, Token t)
         snprintf(msg, 255, "Use of moved value '%s'", path);
 
         // Where it was moved: the use alone does not say which line to change.
-        char moved_at[MAX_ERROR_MSG_LEN];
         Token m = entry->moved_at;
-        if (m.line <= 0)
-        {
-            moved_at[0] = 0;
-        }
-        else if (m.line == t.line && m.col == t.col)
-        {
-            // The use moves it too, on the iteration before: `take(v)` in a loop.
-            snprintf(moved_at, sizeof(moved_at),
-                     "'%s' was moved here in an earlier iteration of the loop", path);
-        }
-        else if (m.file && t.file && strcmp(m.file, t.file) != 0)
-        {
-            snprintf(moved_at, sizeof(moved_at), "'%s' was moved at %s:%d:%d", path, m.file, m.line,
-                     m.col);
-        }
-        else
-        {
-            snprintf(moved_at, sizeof(moved_at), "'%s' was moved at line %d, column %d", path,
-                     m.line, m.col);
-        }
+        int known = m.line > 0;
+        // The use moves it too, on the iteration before: `take(v)` in a loop.
+        int same_place = known && m.line == t.line && m.col == t.col &&
+                         (!m.file || !t.file || strcmp(m.file, t.file) == 0);
+        char moved_here[MAX_ERROR_MSG_LEN];
+        snprintf(moved_here, sizeof(moved_here),
+                 same_place ? "'%s' was moved here in an earlier iteration of the loop"
+                            : "'%s' was moved here",
+                 path);
+        DiagnosticNote note = {m, moved_here};
 
         const char *hints[4];
         int hint_count = 0;
-        if (moved_at[0])
+        if (same_place)
         {
-            hints[hint_count++] = moved_at;
+            hints[hint_count++] = moved_here;
         }
         hints[hint_count++] = "This type owns resources and cannot be implicitly copied";
         hints[hint_count++] = "Consider using a reference ('&') to borrow the value instead";
         hints[hint_count] = NULL;
-        tc_move_error_with_hints(tc, t, msg, hints);
+        tc_move_error_with_hints(tc, t, msg, hints, known && !same_place ? &note : NULL);
     }
 }
 

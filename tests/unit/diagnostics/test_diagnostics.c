@@ -71,7 +71,7 @@ UTEST(diag_render_text, error_with_position_and_hints)
     t.col = 9;
     t.file = "demo.zc";
     const char *hints[] = {"first hint", "second hint", NULL};
-    ZenDiagnostic d = {1, 1, DIAG_NONE, t, "Something went wrong", hints};
+    ZenDiagnostic d = {1, 1, DIAG_NONE, t, "Something went wrong", hints, NULL};
 
     char out[1024];
     render_text(&d, out, sizeof(out));
@@ -87,12 +87,49 @@ UTEST(diag_render_text, error_with_position_and_hints)
                  out);
 }
 
+UTEST(diag_render_text, error_with_a_note)
+{
+    const char *source = "take(v);\nuse(v);\n";
+    Token use = {0};
+    use.start = source + 13; // the 'v' in line 2
+    use.len = 1;
+    use.line = 2;
+    use.col = 5;
+    use.file = "demo.zc";
+    Token moved = use;
+    moved.start = source + 5; // the 'v' in line 1
+    moved.line = 1;
+    moved.col = 6;
+    moved.file = "other.zc";
+    const char *hints[] = {"a hint", NULL};
+    DiagnosticNote note = {moved, "'v' was moved here"};
+    ZenDiagnostic d = {1, 0, DIAG_NONE, use, "Use of moved value 'v'", hints, &note};
+
+    char out[1024];
+    render_text(&d, out, sizeof(out));
+
+    ASSERT_STREQ("error: Use of moved value 'v'\n"
+                 "  --> demo.zc:2:5\n"
+                 "   |\n"
+                 "2  | use(v);\n"
+                 "   |     ^ here\n"
+                 "   |\n"
+                 "note: 'v' was moved here\n"
+                 "  --> other.zc:1:6\n"
+                 "   |\n"
+                 "1  | take(v);\n"
+                 "   |      ^ here\n"
+                 "   |\n"
+                 "   = help: a hint\n",
+                 out);
+}
+
 UTEST(diag_render_text, warning_without_position)
 {
     Token t = {0};
     t.file = "demo.zc";
     const char *hints[] = {"a note", NULL};
-    ZenDiagnostic d = {0, 0, DIAG_NONE, t, "Something looks odd", hints};
+    ZenDiagnostic d = {0, 0, DIAG_NONE, t, "Something looks odd", hints, NULL};
 
     char out[1024];
     render_text(&d, out, sizeof(out));
@@ -148,7 +185,7 @@ UTEST(diag_render_json, error_with_hints)
     t.col = 9;
     t.file = "demo.zc";
     const char *hints[] = {"first hint", "second hint", NULL};
-    ZenDiagnostic d = {1, 1, DIAG_NONE, t, "Something went wrong", hints};
+    ZenDiagnostic d = {1, 1, DIAG_NONE, t, "Something went wrong", hints, NULL};
 
     char out[1024];
     render_json(&d, out, sizeof(out));
@@ -159,13 +196,35 @@ UTEST(diag_render_json, error_with_hints)
                  out);
 }
 
+UTEST(diag_render_json, error_with_a_note)
+{
+    Token use = {0};
+    use.line = 2;
+    use.col = 5;
+    use.file = "demo.zc";
+    Token moved = use;
+    moved.line = 1;
+    moved.file = "other.zc";
+    DiagnosticNote note = {moved, "'v' was moved here"};
+    ZenDiagnostic d = {1, 0, DIAG_NONE, use, "Use of moved value 'v'", NULL, &note};
+
+    char out[1024];
+    render_json(&d, out, sizeof(out));
+
+    ASSERT_STREQ("{\"file\":\"demo.zc\",\"line\":2,\"col\":5,\"level\":\"error\","
+                 "\"message\":\"Use of moved value 'v'\","
+                 "\"note\":{\"file\":\"other.zc\",\"line\":1,\"col\":5,"
+                 "\"message\":\"'v' was moved here\"}}\n",
+                 out);
+}
+
 UTEST(diag_render_json, warning_with_a_code)
 {
     Token t = {0};
     t.line = 4;
     t.col = 1;
     t.file = "demo.zc";
-    ZenDiagnostic d = {0, 0, DIAG_UNUSED_VAR, t, "Unused variable 'x'", NULL};
+    ZenDiagnostic d = {0, 0, DIAG_UNUSED_VAR, t, "Unused variable 'x'", NULL, NULL};
 
     char out[1024];
     render_json(&d, out, sizeof(out));

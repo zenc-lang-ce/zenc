@@ -16,7 +16,7 @@ int check_match_binding_move(TypeChecker *tc, ASTNode *rvalue)
     }
     const char *hints[] = {"The matched value keeps ownership of its payload and drops it",
                            "Use the binding in place, or bind it with 'ref' to borrow it", NULL};
-    tc_move_error_with_hints(tc, rvalue->token, "Cannot move out of a match binding", hints);
+    tc_move_error_with_hints(tc, rvalue->token, "Cannot move out of a match binding", hints, NULL);
     return 1;
 }
 
@@ -46,7 +46,7 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
                                "Consider borrowing value via references or implementing Copy",
                                NULL};
         tc_move_error_with_hints(tc, rvalue->token, "Cannot move out of a borrowed reference",
-                                 hints);
+                                 hints, NULL);
     }
     else if (rvalue->kind == NODE_EXPR_MEMBER)
     {
@@ -56,8 +56,8 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
     else if (rvalue->kind == NODE_EXPR_INDEX)
     {
         const char *hints[] = {"Cannot move an element out of an array or slice.", NULL};
-        tc_move_error_with_hints(tc, rvalue->token, "Cannot move out of an index expression",
-                                 hints);
+        tc_move_error_with_hints(tc, rvalue->token, "Cannot move out of an index expression", hints,
+                                 NULL);
     }
 }
 

@@ -80,7 +80,8 @@ void tc_warning(TypeChecker *tc, Token t, const char *msg);
 int tc_file_in_std(TypeChecker *tc, const char *file);
 void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
 void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
-void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
+void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints,
+                              const DiagnosticNote *note);
 
 // Exported helpers for modularization
 int tc_expr_has_side_effects(ASTNode *node);

@@ -416,13 +416,14 @@ void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *c
     zerror_with_hints(t, msg, hints);
 }
 
-void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
+void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints,
+                              const DiagnosticNote *note)
 {
     if (tc_in_std(tc, t))
     {
         return;
     }
-    zerror_with_hints(t, msg, hints);
+    zerror_with_note(t, msg, hints, note);
 }
 
 // tc_check_misra_10_4 moved to misra_check_binary_op_essential_types in misra.c
