@@ -712,76 +712,188 @@ static int offered_by_name(Token t, const char *name)
     return t.len == strlen(name) && strncmp(t.start, name, t.len) == 0;
 }
 
+// The name a top-level declaration of the project is offered and found by, as it is written; NULL
+// for a node that declares no global name, or whose name is not written (a module's, `m__f`).
+static const char *declared_name(ASTNode *node)
+{
+    const char *name = node->kind == NODE_FUNCTION ? node->func.name
+                       : node->kind == NODE_STRUCT ? node->strct.name
+                       : node->kind == NODE_ENUM   ? node->enm.name
+                       : node->kind == NODE_TRAIT  ? node->trait.name
+                       : node->kind == NODE_VAR_DECL || node->kind == NODE_CONST
+                           ? node->var_decl.name
+                           : NULL;
+    return name && offered_by_name(node->token, name) ? name : NULL;
+}
+
+// Calls `visit` with each declaration of the project that is not inside another one, as the
+// files' last parse left them: the top level of each file's AST, and its generic functions, which
+// are templates and no nodes of the AST. Stops at the first node for which `visit` returns
+// nonzero, and returns it; NULL when it visits them all.
+static ASTNode *visit_declarations(int (*visit)(ASTNode *node, void *data), void *data)
+{
+    for (ProjectFile *pf = g_project->files; pf; pf = pf->next)
+    {
+        for (ASTNode *node = lsp_project_top_level(pf); node; node = node->next)
+        {
+            if (visit(node, data))
+            {
+                return node;
+            }
+        }
+        for (int i = 0; i < pf->generic_function_count; i++)
+        {
+            if (visit(pf->generic_functions[i], data))
+            {
+                return pf->generic_functions[i];
+            }
+        }
+    }
+    return NULL;
+}
+
+typedef struct
+{
+    const char *name;
+    NodeType kind;
+} DeclarationQuery;
+
+static int is_declaration_of(ASTNode *node, void *data)
+{
+    const DeclarationQuery *query = data;
+    const char *declared = node->kind == query->kind ? declared_name(node) : NULL;
+    return declared && strcmp(declared, query->name) == 0;
+}
+
+// The declaration of the project named `name` of the kind `kind` (see visit_declarations); NULL if
+// none.
+static ASTNode *find_declaration(const char *name, NodeType kind)
+{
+    DeclarationQuery query = {name, kind};
+    return visit_declarations(is_declaration_of, &query);
+}
+
+// Adds the completion item of a declaration (see visit_declarations) to the array `data`, under
+// its written name.
+static int add_declaration_completion(ASTNode *node, void *data)
+{
+    cJSON *items = data;
+    const char *name = declared_name(node);
+    if (!name || has_completion(items, name))
+    {
+        return 0;
+    }
+    cJSON *item = cJSON_CreateObject();
+    cJSON_AddStringToObject(item, "label", name);
+    if (node->kind == NODE_FUNCTION)
+    {
+        cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_FUNCTION);
+        cJSON_AddStringToObject(item, "sortText", "070");
+        // The signature as written, as the hover shows it
+        char detail[MAX_SHORT_MSG_LEN * 4];
+        if (lsp_function_signature(node->token, detail, sizeof(detail)))
+        {
+            cJSON_AddStringToObject(item, "detail", detail);
+        }
+        // Snippet to jump inside parens
+        char snippet[MAX_VAR_NAME_LEN];
+        snprintf(snippet, sizeof(snippet), "%s(%s)", name, node->func.count > 0 ? "$1" : "");
+        cJSON_AddStringToObject(item, "insertText", snippet);
+        cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
+    }
+    else if (node->kind == NODE_TRAIT)
+    {
+        cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_INTERFACE);
+        cJSON_AddStringToObject(item, "sortText", "060");
+    }
+    else if (node->kind == NODE_STRUCT || node->kind == NODE_ENUM)
+    {
+        cJSON_AddNumberToObject(
+            item, "kind", node->kind == NODE_ENUM ? LSP_COMPLETION_ENUM : LSP_COMPLETION_STRUCT);
+        cJSON_AddStringToObject(item, "sortText", "060");
+    }
+    else
+    {
+        cJSON_AddNumberToObject(item, "kind",
+                                node->kind == NODE_CONST ? LSP_COMPLETION_CONSTANT
+                                                         : LSP_COMPLETION_VARIABLE);
+        cJSON_AddStringToObject(item, "sortText", "050"); // Globals in middle
+    }
+    cJSON_AddItemToArray(items, item);
+    return 0;
+}
+
+// Adds the methods of `impl` that take `self` when `with_self`, the other ones otherwise, if it is
+// an impl of `type_name`: the same type, or the template of the instance `inst` when the impl is
+// a template. Returns how many were added.
+static int add_impl_methods(cJSON *items, ASTNode *impl, const char *type_name,
+                            const Instantiation *inst, int is_template, int with_self)
+{
+    size_t base_len = strcspn(type_name, "<");
+    const char *target = impl->kind == NODE_IMPL         ? type_impl_name(impl->impl.target)
+                         : impl->kind == NODE_IMPL_TRAIT ? type_impl_name(impl->impl_trait.target)
+                                                         : NULL;
+    size_t target_len = target ? strlen(target) : 0;
+    int same = target && target_len == base_len && strncmp(target, type_name, base_len) == 0;
+    int instance = target && is_template && inst && strcmp(inst->template_name, target) == 0;
+    if (!same && !instance)
+    {
+        return 0;
+    }
+    int added = 0;
+    ASTNode *method = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
+    for (; method; method = method->next)
+    {
+        int takes_self = method->kind == NODE_FUNCTION && method->func.count > 0 &&
+                         method->func.param_names && method->func.param_names[0] &&
+                         strcmp(method->func.param_names[0], "self") == 0;
+        if (method->kind != NODE_FUNCTION || takes_self != with_self || !method->token.start)
+        {
+            continue;
+        }
+        // The declaration's name token: `func.name` is the C name (`Point__len2`).
+        char *name = token_strdup(method->token);
+        // A trait can repeat a name.
+        if (has_completion(items, name))
+        {
+            continue;
+        }
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "label", name);
+        cJSON_AddNumberToObject(item, "kind",
+                                with_self ? LSP_COMPLETION_METHOD : LSP_COMPLETION_FUNCTION);
+        char detail[MAX_SHORT_MSG_LEN];
+        snprintf(detail, sizeof(detail), "fn %s::%s", target, name);
+        cJSON_AddStringToObject(item, "detail", detail);
+        char snippet[MAX_VAR_NAME_LEN];
+        snprintf(snippet, sizeof(snippet), "%s(%s)", name,
+                 method->func.count > with_self ? "$1" : "");
+        cJSON_AddStringToObject(item, "insertText", snippet);
+        cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
+        cJSON_AddItemToArray(items, item);
+        added++;
+    }
+    return added;
+}
+
 // Adds the functions of the impl blocks of `type_name` under the name they are called by: the
 // methods that take `self` when `with_self`, the other ones otherwise. A generic, written
 // (`Vec<int>`) or instantiated (`Vec__int32_t`), takes those of its template (`impl Vec<T>`).
-// Returns how many were added.
+// The impls are those of the files of the project as their last parse left them, so a method
+// that was deleted is not offered. Returns how many were added.
 static int add_impl_completions(cJSON *items, const char *type_name, int with_self)
 {
-    size_t base_len = strcspn(type_name, "<");
-    Instantiation *inst = find_instantiation(g_project->ctx, type_name);
+    const Instantiation *inst = find_instantiation(g_project->ctx, type_name);
     int added = 0;
-    StructRef *ref = g_project->ctx->parsed_impls_list;
-    GenericImplTemplate *tmpl = g_project->ctx->impl_templates;
-    while (ref || tmpl)
+    for (ProjectFile *pf = g_project->files; pf; pf = pf->next)
     {
-        int from_template = !ref;
-        ASTNode *impl = ref ? ref->node : tmpl->impl_node;
-        if (ref)
+        for (ASTNode *node = lsp_project_top_level(pf); node; node = node->next)
         {
-            ref = ref->next;
+            added += add_impl_methods(items, node, type_name, inst, 0, with_self);
         }
-        else
+        for (int i = 0; i < pf->generic_impl_count; i++)
         {
-            tmpl = tmpl->next;
-        }
-        if (!impl)
-        {
-            continue;
-        }
-        const char *target = impl->kind == NODE_IMPL ? type_impl_name(impl->impl.target)
-                             : impl->kind == NODE_IMPL_TRAIT
-                                 ? type_impl_name(impl->impl_trait.target)
-                                 : NULL;
-        size_t target_len = target ? strlen(target) : 0;
-        int same = target && target_len == base_len && strncmp(target, type_name, base_len) == 0;
-        int instance = target && from_template && inst && strcmp(inst->template_name, target) == 0;
-        if (!same && !instance)
-        {
-            continue;
-        }
-        ASTNode *method = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
-        while (method)
-        {
-            int takes_self = method->kind == NODE_FUNCTION && method->func.count > 0 &&
-                             method->func.param_names && method->func.param_names[0] &&
-                             strcmp(method->func.param_names[0], "self") == 0;
-            if (method->kind == NODE_FUNCTION && takes_self == with_self && method->token.start)
-            {
-                // The declaration's name token: `func.name` is the C name (`Point__len2`).
-                char *name = token_strdup(method->token);
-                // The same impl block can be listed more than once, and a trait can repeat a name.
-                if (has_completion(items, name))
-                {
-                    method = method->next;
-                    continue;
-                }
-                cJSON *item = cJSON_CreateObject();
-                cJSON_AddStringToObject(item, "label", name);
-                cJSON_AddNumberToObject(
-                    item, "kind", with_self ? LSP_COMPLETION_METHOD : LSP_COMPLETION_FUNCTION);
-                char detail[MAX_SHORT_MSG_LEN];
-                snprintf(detail, sizeof(detail), "fn %s::%s", target, name);
-                cJSON_AddStringToObject(item, "detail", detail);
-                char snippet[MAX_VAR_NAME_LEN];
-                snprintf(snippet, sizeof(snippet), "%s(%s)", name,
-                         method->func.count > with_self ? "$1" : "");
-                cJSON_AddStringToObject(item, "insertText", snippet);
-                cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
-                cJSON_AddItemToArray(items, item);
-                added++;
-            }
-            method = method->next;
+            added += add_impl_methods(items, pf->generic_impls[i], type_name, inst, 1, with_self);
         }
     }
     return added;
@@ -1023,18 +1135,14 @@ cJSON *lsp_completion(const char *uri, int line, int col)
 
                 if (is_scoped && part_count == 1 && g_project->ctx)
                 {
-                    EnumVariantReg *ev = g_project->ctx->enum_variants;
-                    while (ev)
+                    ASTNode *enm = find_declaration(parts[0], NODE_ENUM);
+                    for (ASTNode *v = enm ? enm->enm.variants : NULL; v; v = v->next)
                     {
-                        if (strcmp(ev->enum_name, parts[0]) == 0)
-                        {
-                            cJSON *item = cJSON_CreateObject();
-                            cJSON_AddStringToObject(item, "label", ev->variant_name);
-                            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_ENUM_MEMBER);
-                            cJSON_AddStringToObject(item, "detail", "enum variant");
-                            cJSON_AddItemToArray(items, item);
-                        }
-                        ev = ev->next;
+                        cJSON *item = cJSON_CreateObject();
+                        cJSON_AddStringToObject(item, "label", v->variant.name);
+                        cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_ENUM_MEMBER);
+                        cJSON_AddStringToObject(item, "detail", "enum variant");
+                        cJSON_AddItemToArray(items, item);
                     }
                     add_impl_completions(items, parts[0], 0);
                 }
@@ -1242,70 +1350,9 @@ cJSON *lsp_completion(const char *uri, int line, int col)
             cJSON_AddItemToArray(items, item);
         }
 
-        StructRef *g = g_project->ctx->parsed_globals_list;
-        while (g)
-        {
-            if (g->node)
-            {
-                cJSON *item = cJSON_CreateObject();
-                char *name = g->node->var_decl.name;
-                cJSON_AddStringToObject(item, "label", name);
-                cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_CONSTANT);
-                cJSON_AddStringToObject(item, "sortText", "050"); // Globals in middle
-                cJSON_AddItemToArray(items, item);
-            }
-            g = g->next;
-        }
-
-        // Methods, instances and module members complete after `.` and `::`.
-        StructDef *s = g_project->ctx->struct_defs;
-        for (; s; s = s->next)
-        {
-            if (!offered_by_name(s->node ? s->node->token : TOKEN_UNKNOWN, s->name))
-            {
-                continue;
-            }
-            cJSON *item = cJSON_CreateObject();
-            cJSON_AddStringToObject(item, "label", s->name);
-            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_STRUCT);
-            cJSON_AddStringToObject(item, "sortText", "060");
-            cJSON_AddItemToArray(items, item);
-        }
-
-        FuncSig *f = g_project->ctx->func_registry;
-        for (; f; f = f->next)
-        {
-            if (!offered_by_name(f->decl_token, f->name))
-            {
-                continue;
-            }
-            cJSON *item = cJSON_CreateObject();
-            cJSON_AddStringToObject(item, "label", f->name);
-            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_FUNCTION);
-            cJSON_AddStringToObject(item, "sortText", "070");
-
-            // The signature as written, as the hover shows it
-            char detail[MAX_SHORT_MSG_LEN * 4];
-            if (lsp_function_signature(f->decl_token, detail, sizeof(detail)))
-            {
-                cJSON_AddStringToObject(item, "detail", detail);
-            }
-
-            // Snippet to jump inside parens
-            char snippet[MAX_VAR_NAME_LEN];
-            if (f->total_args > 0)
-            {
-                snprintf(snippet, sizeof(snippet), "%s($1)", f->name);
-            }
-            else
-            {
-                snprintf(snippet, sizeof(snippet), "%s()", f->name);
-            }
-            cJSON_AddStringToObject(item, "insertText", snippet);
-            cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
-
-            cJSON_AddItemToArray(items, item);
-        }
+        // The declarations of the files of the project, as their last parse left them: a
+        // declaration that was deleted is not offered.
+        visit_declarations(add_declaration_completion, items);
 
         if (target_func)
         {
@@ -1464,14 +1511,7 @@ cJSON *lsp_document_symbol(const char *uri)
     }
 
     cJSON *items = cJSON_CreateArray();
-    ASTNode *node = pf->ast;
-
-    // Unwrap ROOT node if present
-    if (node && node->kind == NODE_ROOT)
-    {
-        node = node->root.children;
-    }
-
+    ASTNode *node = lsp_project_top_level(pf);
     while (node)
     {
         cJSON *s = ast_to_symbol(node);
@@ -1544,11 +1584,7 @@ cJSON *lsp_workspace_symbol(const char *query)
          pf = pf->next)
     {
         // The symbols of the workspace, not of the modules it imports from outside it.
-        ASTNode *node = pf->is_external ? NULL : pf->ast;
-        if (node && node->kind == NODE_ROOT)
-        {
-            node = node->root.children;
-        }
+        ASTNode *node = pf->is_external ? NULL : lsp_project_top_level(pf);
         for (; node && count < MAX_WORKSPACE_SYMBOLS; node = node->next)
         {
             LspSymbolKind kind = LSP_SYMBOL_VARIABLE;
@@ -1759,43 +1795,34 @@ cJSON *lsp_signature_help(const char *uri, int line, int col)
                 char func_name[MAX_FUNC_NAME_LEN];
                 strncpy(func_name, ident_start, (size_t)(len));
                 func_name[len] = 0;
-                // Lookup
-                FuncSig *fn = g_project->ctx->func_registry;
-                while (fn)
+                // The function as the files of the project declare it now.
+                ASTNode *fn = find_declaration(func_name, NODE_FUNCTION);
+                // The signature as written, as the hover shows it
+                char label[MAX_SHORT_MSG_LEN * 4];
+                if (fn && lsp_function_signature(fn->token, label, sizeof(label)))
                 {
-                    if (strcmp(fn->name, func_name) == 0)
+                    result = cJSON_CreateObject();
+                    cJSON *sigs = cJSON_CreateArray();
+                    cJSON *sig = cJSON_CreateObject();
+                    cJSON_AddStringToObject(sig, "label", label);
+                    cJSON_AddItemToObject(sig, "parameters", signature_parameters(label));
+                    cJSON_AddItemToArray(sigs, sig);
+
+                    cJSON_AddItemToObject(result, "signatures", sigs);
+
+                    // Calculate Active Parameter
+                    int active = 0;
+                    char *active_p = ptr - 1;
+                    while (active_p > p)
                     {
-                        // The signature as written, as the hover shows it
-                        char label[MAX_SHORT_MSG_LEN * 4];
-                        if (!lsp_function_signature(fn->decl_token, label, sizeof(label)))
+                        if (*active_p == ',')
                         {
-                            break;
+                            active++;
                         }
-                        result = cJSON_CreateObject();
-                        cJSON *sigs = cJSON_CreateArray();
-                        cJSON *sig = cJSON_CreateObject();
-                        cJSON_AddStringToObject(sig, "label", label);
-                        cJSON_AddItemToObject(sig, "parameters", signature_parameters(label));
-                        cJSON_AddItemToArray(sigs, sig);
-
-                        cJSON_AddItemToObject(result, "signatures", sigs);
-
-                        // Calculate Active Parameter
-                        int active = 0;
-                        char *active_p = ptr - 1;
-                        while (active_p > p)
-                        {
-                            if (*active_p == ',')
-                            {
-                                active++;
-                            }
-                            active_p--;
-                        }
-                        cJSON_AddNumberToObject(result, "activeSignature", 0);
-                        cJSON_AddNumberToObject(result, "activeParameter", active);
-                        break;
+                        active_p--;
                     }
-                    fn = fn->next;
+                    cJSON_AddNumberToObject(result, "activeSignature", 0);
+                    cJSON_AddNumberToObject(result, "activeParameter", active);
                 }
             }
             break;

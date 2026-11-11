@@ -24,6 +24,12 @@ typedef struct ProjectFile
     /// 1 for a module only imported from outside the workspace (the standard library): go to
     /// definition and hover reach it, references, rename and workspace symbols leave it out.
     int is_external;
+    /// The generic impls (`impl Vec<T>`) and functions (`fn id<T>`) its last parse declared:
+    /// templates, not nodes of `ast`.
+    ASTNode **generic_impls;
+    int generic_impl_count;
+    ASTNode **generic_functions;
+    int generic_function_count;
     struct ProjectFile *next;
 } ProjectFile;
 
@@ -60,6 +66,10 @@ char *lsp_uri_to_path(const char *uri);
 
 // The file:// URI of a path, percent-encoded, as a client expects it. In the arena.
 char *lsp_path_to_uri(const char *path);
+
+// The first declaration of `pf` at the top level of its file, the rest linked by `next`; NULL when
+// it has no AST. Declarations a parse made outside the AST, such as generic impls, are not there.
+ASTNode *lsp_project_top_level(const ProjectFile *pf);
 
 // Find a file in the project by its URI, however the client encodes it.
 ProjectFile *lsp_project_get_file(const char *uri);
