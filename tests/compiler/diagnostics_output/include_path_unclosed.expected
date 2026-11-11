@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/include_path_unclosed.zc...
+error: Unclosed include path, expected '>'
+  --> tests/compiler/diagnostics_output/include_path_unclosed.zc:2:9
+   |
+2  | include <stdio.h
+   |         ^ here
+   |
+[exit 1]

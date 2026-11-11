@@ -671,6 +671,38 @@ static void test_impl_header_lookup(void)
     printf("PASS: test_impl_header_lookup\n");
 }
 
+static void test_unclosed_include_keeps_server_alive(void)
+{
+    printf("Running test_unclosed_include_keeps_server_alive...\n");
+    // `include <stdio.h` without its `>`, as the line is while it is being typed, used to read
+    // every token of the file into a 256 byte buffer: the server died. The file needs more
+    // than 256 characters of tokens after the `<`.
+    char request[2048];
+    int used = snprintf(request, sizeof(request),
+                        "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                        "{\"textDocument\": {\"uri\": \"file:///tmp/test_unclosed_include.zc\", "
+                        "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"include <stdio.h\\n");
+    for (int i = 0; i < 24; i++)
+    {
+        used += snprintf(request + used, sizeof(request) - (size_t)used, "let value_%02d = %d;\\n",
+                         i, i);
+    }
+    snprintf(request + used, sizeof(request) - (size_t)used, "\"}}}");
+    send_request(request);
+    usleep(100000);
+
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 601, \"method\": \"textDocument/hover\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_unclosed_include.zc\"}, "
+                 "\"position\": {\"line\": 2, \"character\": 5}}}");
+    char *resp = wait_for_response(601);
+    if (!resp)
+    {
+        fail("The server must still answer after a document with an unclosed include path");
+    }
+    free(resp);
+    printf("PASS: test_unclosed_include_keeps_server_alive\n");
+}
+
 static void test_generic_impls_keep_server_alive(void)
 {
     printf("Running test_generic_impls_keep_server_alive...\n");
@@ -2703,6 +2735,7 @@ int main()
     test_initialize();
     test_hover();
     test_hover_signature();
+    test_unclosed_include_keeps_server_alive();
     test_fstring_interpolation_lookup();
     test_hover_parameters();
     test_hover_beside_generated_code();

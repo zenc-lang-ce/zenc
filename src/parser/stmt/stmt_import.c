@@ -113,20 +113,31 @@ ASTNode *parse_include(ParserContext *ctx, Lexer *l)
     {
         is_system = 1;
         char buf[MAX_SHORT_MSG_LEN];
+        size_t used = 0;
         buf[0] = 0;
         while (1)
         {
-            Token i = lexer_next(l);
-            if (i.kind == TOK_EOF)
+            // The path is written on one line: a `>` that is missing (`include <std`, while it is
+            // being typed) must not swallow the rest of the file into the path.
+            Token i = lexer_peek(l);
+            if (i.kind == TOK_EOF || i.line != t.line)
             {
-                zpanic_at(i, "Unexpected EOF in include path, expected '>'");
+                zpanic_at(t, "Unclosed include path, expected '>'");
                 break;
             }
+            lexer_next(l);
             if (i.kind == TOK_RANGLE)
             {
                 break;
             }
-            strncat(buf, i.start, i.len);
+            if (i.len >= sizeof(buf) - used)
+            {
+                zpanic_at(t, "Include path is too long");
+                break;
+            }
+            memcpy(buf + used, i.start, i.len);
+            used += i.len;
+            buf[used] = 0;
         }
         path = xstrdup(buf);
 
