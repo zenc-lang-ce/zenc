@@ -223,6 +223,28 @@ void lsp_check_file(const char *uri, const char *json_src)
 
 static char *get_symbol_name(LSPRange *r);
 
+// The definition the reference `r` of `pf` points to, in the file that declares it: a position
+// names a definition only in its own file (the `new` of another file's generic impl is not the
+// one at the same line here). Its file goes to *def_file.
+static LSPRange *reference_definition(ProjectFile *pf, LSPRange *r, ProjectFile **def_file)
+{
+    ProjectFile *owner = pf;
+    if (r->def_file && pf->path && strcmp(r->def_file, pf->path) != 0)
+    {
+        owner = lsp_project_get_file_by_path(r->def_file);
+    }
+    if (def_file)
+    {
+        *def_file = owner;
+    }
+    if (!owner || !owner->index || r->def_line < 0)
+    {
+        return NULL;
+    }
+    LSPRange *def = lsp_find_at(owner->index, r->def_line, r->def_col);
+    return (def && def->kind == RANGE_DEFINITION) ? def : NULL;
+}
+
 void lsp_goto_definition(const char *uri, int line, int col, const cJSON *id)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
@@ -288,9 +310,11 @@ void lsp_goto_definition(const char *uri, int line, int col, const cJSON *id)
 
             if (!found && r->def_line >= 0)
             {
-                LSPRange *def = lsp_find_at(idx, r->def_line, r->def_col);
-                if (def && def->kind == RANGE_DEFINITION)
+                ProjectFile *def_file = NULL;
+                LSPRange *def = reference_definition(pf, r, &def_file);
+                if (def)
                 {
+                    target_uri = def_file->uri;
                     target_start_line = r->def_line;
                     target_start_col = r->def_col;
                     target_end_line = r->def_line;
@@ -626,8 +650,8 @@ void lsp_hover(const char *uri, int line, int col, const cJSON *id)
         {
             if (r->def_line >= 0)
             {
-                LSPRange *def = lsp_find_at(idx, r->def_line, r->def_col);
-                if (def && def->kind == RANGE_DEFINITION)
+                LSPRange *def = reference_definition(pf, r, NULL);
+                if (def)
                 {
                     text = def->hover_text;
                 }
@@ -1846,7 +1870,8 @@ void lsp_workspace_symbol(const char *query, const cJSON *id)
     for (ProjectFile *pf = g_project ? g_project->files : NULL; pf && count < MAX_WORKSPACE_SYMBOLS;
          pf = pf->next)
     {
-        ASTNode *node = pf->ast;
+        // The symbols of the workspace, not of the modules it imports from outside it.
+        ASTNode *node = pf->is_external ? NULL : pf->ast;
         if (node && node->kind == NODE_ROOT)
         {
             node = node->root.children;

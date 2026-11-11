@@ -20,6 +20,9 @@ typedef struct ProjectFile
     char *source;    ///< Cached source content (in-memory).
     ASTNode *ast;    ///< Cached AST for semantic analysis.
     LSPIndex *index; ///< File-specific symbol index.
+    /// 1 for a module only imported from outside the workspace (the standard library): go to
+    /// definition and hover reach it, references, rename and workspace symbols leave it out.
+    int is_external;
     struct ProjectFile *next;
 } ProjectFile;
 
@@ -51,6 +54,9 @@ void lsp_project_index_workspace(void);
 
 // Find a file in the project
 ProjectFile *lsp_project_get_file(const char *uri);
+
+// Find a file in the project by its path, as tokens name it (Token.file); NULL if not there.
+ProjectFile *lsp_project_get_file_by_path(const char *path);
 
 // Update a file (re-parse and re-index)
 void lsp_project_update_file(const char *uri, const char *src);

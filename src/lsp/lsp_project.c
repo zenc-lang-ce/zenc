@@ -438,8 +438,10 @@ static void scan_file(const char *path)
     char uri[MAX_PATH_LEN + 16];
     snprintf(uri, sizeof(uri), "file://%s", path);
 
-    // Deduplicate indexing
-    if (lsp_project_get_file(uri))
+    // Deduplicate indexing. A file an import indexed first (index_imported_modules) is indexed
+    // again here, as a file of the workspace.
+    ProjectFile *known = lsp_project_get_file(uri);
+    if (known && !known->is_external)
     {
         return;
     }
@@ -530,6 +532,22 @@ ProjectFile *lsp_project_get_file(const char *uri)
     return NULL;
 }
 
+ProjectFile *lsp_project_get_file_by_path(const char *path)
+{
+    if (!g_project || !path)
+    {
+        return NULL;
+    }
+    for (ProjectFile *curr = g_project->files; curr; curr = curr->next)
+    {
+        if (curr->path && strcmp(curr->path, path) == 0)
+        {
+            return curr;
+        }
+    }
+    return NULL;
+}
+
 static ProjectFile *add_project_file(const char *uri)
 {
     ProjectFile *f = xcalloc(1, sizeof(ProjectFile));
@@ -549,6 +567,65 @@ static ProjectFile *add_project_file(const char *uri)
     return f;
 }
 
+// The index of `pf`, a file the last parse read from `root`: its nodes, the generic impls the parse
+// registered for it and the type names it read there. Both lists are newest first, down to
+// what was there before the parse.
+static void index_parsed_file(ProjectFile *pf, ASTNode *root, TypeUsage *usages_before,
+                              GenericImplTemplate *templates_before)
+{
+    pf->index = lsp_index_new();
+    lsp_build_index(g_project->ctx, pf->index, root, pf->source);
+
+    // A generic impl (`impl Vec<T>`) is a template, not a node of the file's AST: its
+    // methods are what `Vec<int>::new` goes to.
+    for (GenericImplTemplate *it = g_project->ctx->impl_templates; it && it != templates_before;
+         it = it->next)
+    {
+        ASTNode *impl = it->impl_node;
+        if (impl && impl->token.file && strcmp(impl->token.file, pf->path) == 0)
+        {
+            lsp_build_index(g_project->ctx, pf->index, impl, pf->source);
+        }
+    }
+
+    for (TypeUsage *use = g_project->ctx->pending_type_validations; use && use != usages_before;
+         use = use->next)
+    {
+        // The names the file imports were read too, in their own files.
+        if (use->location.file && strcmp(use->location.file, pf->path) == 0)
+        {
+            lsp_index_add_type_ref(pf->index, use->location, use->name);
+        }
+    }
+}
+
+// The modules the last parse read that are no file of the project, such as the standard library
+// outside the workspace: their definitions are what `Vec` and `Vec<int>::new` go to. The
+// server's context parses a module once, so each is indexed from the import that read it.
+static void index_imported_modules(ASTNode *nodes, TypeUsage *usages_before,
+                                   GenericImplTemplate *templates_before, int depth)
+{
+    for (ASTNode *n = nodes; n && depth < 32; n = n->next)
+    {
+        const char *path = n->kind == NODE_IMPORT ? n->import_stmt.path : NULL;
+        if (!path || !n->import_stmt.module_root || lsp_project_get_file_by_path(path))
+        {
+            continue;
+        }
+        size_t size = strlen(path) + sizeof("file://");
+        char *uri = xmalloc(size);
+        snprintf(uri, size, "file://%s", path);
+        ProjectFile *module = add_project_file(uri);
+        module->is_external = 1;
+        module->ast = n->import_stmt.module_root;
+        // The text it was parsed from, so code the parser generates in it stays out of the index.
+        module->source = load_file(path, NULL, g_project->ctx->config);
+        index_parsed_file(module, n->import_stmt.module_root, usages_before, templates_before);
+        index_imported_modules(n->import_stmt.module_root, usages_before, templates_before,
+                               depth + 1);
+    }
+}
+
 void lsp_project_update_file(const char *uri, const char *src)
 {
     if (!g_project)
@@ -561,6 +638,8 @@ void lsp_project_update_file(const char *uri, const char *src)
     {
         pf = add_project_file(uri);
     }
+    // Opened or in the workspace: a file of the project, even if an import read it first.
+    pf->is_external = 0;
 
     // Use the plain path for internal compiler state.
     // This allows z_resolve_path and is_file_imported to work correctly.
@@ -607,22 +686,14 @@ void lsp_project_update_file(const char *uri, const char *src)
     // The server has no use for that validation, which reports nothing here: it indexes the names
     // this parse read, and drops them with the parse.
     TypeUsage *usages_before = g_project->ctx->pending_type_validations;
+    GenericImplTemplate *templates_before = g_project->ctx->impl_templates;
     ASTNode *root = parse_program(g_project->ctx, &l);
     if (root)
     {
         pf->ast = root;
-        pf->index = lsp_index_new();
-        lsp_build_index(g_project->ctx, pf->index, root, pf->source);
-
-        for (TypeUsage *use = g_project->ctx->pending_type_validations; use && use != usages_before;
-             use = use->next)
-        {
-            // The names the file imports were read too, in their own files.
-            if (use->location.file && strcmp(use->location.file, pf->path) == 0)
-            {
-                lsp_index_add_type_ref(pf->index, use->location, use->name);
-            }
-        }
+        index_parsed_file(pf, root, usages_before, templates_before);
+        index_imported_modules(root->kind == NODE_ROOT ? root->root.children : root, usages_before,
+                               templates_before, 0);
     }
     else
     {
@@ -715,7 +786,8 @@ ReferenceResult *lsp_project_find_references(const char *name)
     ProjectFile *pf = g_project->files;
     while (pf)
     {
-        if (pf->index)
+        // A module outside the workspace is not the program's: rename must not edit it.
+        if (pf->index && !pf->is_external)
         {
             LSPRange *r = pf->index->head;
             while (r)
