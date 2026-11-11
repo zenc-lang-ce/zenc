@@ -1,0 +1,40 @@
+   Compiling tests/compiler/diagnostics_output/err_use_after_move.zc...
+error: Use of moved value 'v'
+  --> tests/compiler/diagnostics_output/err_use_after_move.zc:16:21
+   |
+16 |     return n + (int)v.length();
+   |                     ^ here
+   |
+   = help: 'v' was moved at line 15, column 18
+   = help: This type owns resources and cannot be implicitly copied
+   = help: Consider using a reference ('&') to borrow the value instead
+error: Use of moved value 'data'
+  --> tests/compiler/diagnostics_output/err_use_after_move.zc:22:26
+   |
+22 |     return h.size + (int)data.length();
+   |                          ^ here
+   |
+   = help: 'data' was moved at line 21, column 30
+   = help: This type owns resources and cannot be implicitly copied
+   = help: Consider using a reference ('&') to borrow the value instead
+error: Use of moved value 'v'
+  --> tests/compiler/diagnostics_output/err_use_after_move.zc:30:17
+   |
+30 |     return (int)v.length();
+   |                 ^ here
+   |
+   = help: 'v' was moved at line 28, column 18
+   = help: This type owns resources and cannot be implicitly copied
+   = help: Consider using a reference ('&') to borrow the value instead
+error: Use of moved value 'v'
+  --> tests/compiler/diagnostics_output/err_use_after_move.zc:36:14
+   |
+36 |         take(v);
+   |              ^ here
+   |
+   = help: 'v' was moved here in an earlier iteration of the loop
+   = help: This type owns resources and cannot be implicitly copied
+   = help: Consider using a reference ('&') to borrow the value instead
+     error: semantic analysis found 4 errors
+       Check failed with 4 errors
+[exit 1]
