@@ -23,20 +23,20 @@ typedef enum
  */
 typedef enum
 {
-    LSP_SYMBOL_NONE, ///< A reference, whose kind is its definition's, or a range of no symbol.
-    LSP_SYMBOL_FUNCTION,
-    LSP_SYMBOL_VARIABLE,
-    LSP_SYMBOL_CONSTANT,
-    LSP_SYMBOL_PARAMETER,
-    LSP_SYMBOL_RECEIVER, ///< `self`: the receiver of a method is that name (see
-                         ///< parse_and_convert_args).
-    LSP_SYMBOL_STRUCT,
-    LSP_SYMBOL_FIELD,
-    LSP_SYMBOL_ENUM,
-    LSP_SYMBOL_VARIANT,
-    LSP_SYMBOL_ALIAS,
-    LSP_SYMBOL_TRAIT
-} LSPSymbolKind;
+    DECLARATION_NONE, ///< A reference, whose kind is its definition's, or a range of no symbol.
+    DECLARATION_FUNCTION,
+    DECLARATION_VARIABLE,
+    DECLARATION_CONSTANT,
+    DECLARATION_PARAMETER,
+    DECLARATION_RECEIVER, ///< `self`: the receiver of a method is that name (see
+                          ///< parse_and_convert_args).
+    DECLARATION_STRUCT,
+    DECLARATION_FIELD,
+    DECLARATION_ENUM,
+    DECLARATION_VARIANT,
+    DECLARATION_ALIAS,
+    DECLARATION_TRAIT
+} DeclarationKind;
 
 /**
  * @brief The symbol a range names.
@@ -47,8 +47,8 @@ typedef enum
  */
 typedef struct LSPSymbol
 {
-    char *name;         ///< The name as the source writes it at the range.
-    LSPSymbolKind kind; ///< What it declares, on a definition.
+    char *name;           ///< The name as the source writes it at the range.
+    DeclarationKind kind; ///< What it declares, on a definition.
     /// The name token of the declaration (its file, 1-based line and column, length): the range's
     /// own token on a definition.
     Token definition;
@@ -88,7 +88,7 @@ typedef struct LSPIndex
 // API.
 LSPIndex *lsp_index_new(void);
 void lsp_index_free(LSPIndex *idx);
-void lsp_index_add_def(LSPIndex *idx, Token t, LSPSymbolKind kind, const char *hover,
+void lsp_index_add_def(LSPIndex *idx, Token t, DeclarationKind kind, const char *hover,
                        ASTNode *node);
 void lsp_index_add_def_range(LSPIndex *idx, Token start, Token end, const char *hover,
                              ASTNode *node);

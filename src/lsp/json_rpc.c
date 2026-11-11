@@ -249,15 +249,14 @@ static cJSON *initialize(const cJSON *params)
         "\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\"]},"
         "\"completionProvider\":{"
         "\"triggerCharacters\":[\".\"]},"
-        "\"semanticTokensProvider\":{\"legend\":{\"tokenTypes\":[\"variable\",\"function\","
-        "\"struct\",\"keyword\",\"string\",\"number\",\"comment\",\"type\",\"enum\",\"member\","
-        "\"operator\",\"parameter\",\"macro\",\"typeParameter\"],\"tokenModifiers\":["
-        "\"declaration\",\"definition\",\"readonly\","
-        "\"static\",\"deprecated\",\"abstract\",\"async\",\"modification\",\"documentation\","
-        "\"defaultLibrary\"]},\"full\":true}"
+        "\"semanticTokensProvider\":{\"full\":true}"
         "}}";
 
-    return cJSON_Parse(result_text);
+    cJSON *result = cJSON_Parse(result_text);
+    cJSON *semantic_tokens =
+        cJSON_GetObjectItem(cJSON_GetObjectItem(result, "capabilities"), "semanticTokensProvider");
+    cJSON_AddItemToObject(semantic_tokens, "legend", lsp_semantic_tokens_legend());
+    return result;
 }
 
 // The result of textDocument/formatting: one edit that replaces the whole document with its

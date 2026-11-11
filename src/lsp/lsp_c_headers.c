@@ -1157,6 +1157,30 @@ static void symbol_documentation(const CHeaderFile *header, const CHeaderSymbol 
     }
 }
 
+// The completion kind of a C declaration of that kind.
+static LspCompletionItemKind completion_kind(CSymbolKind kind)
+{
+    switch (kind)
+    {
+    case C_SYMBOL_FUNCTION:
+        return LSP_COMPLETION_FUNCTION;
+    case C_SYMBOL_VARIABLE:
+        return LSP_COMPLETION_VARIABLE;
+    case C_SYMBOL_ENUM:
+        return LSP_COMPLETION_ENUM;
+    case C_SYMBOL_ENUM_MEMBER:
+        return LSP_COMPLETION_ENUM_MEMBER;
+    case C_SYMBOL_CONSTANT:
+        return LSP_COMPLETION_CONSTANT;
+    case C_SYMBOL_STRUCT:
+        return LSP_COMPLETION_STRUCT;
+    case C_SYMBOL_TYPE:
+        return LSP_COMPLETION_TYPE_PARAMETER;
+    default:
+        return LSP_COMPLETION_VARIABLE;
+    }
+}
+
 // Completion items for the declarations of `path` matching `typed`, then those of the headers
 // it includes with quotes: `#include "x.h"` belongs to the same library, while `<x.h>` brings
 // in the system or other libraries.
@@ -1191,7 +1215,7 @@ static void add_completion_items(const char *path, const char *typed, const CSea
 
         cJSON *item = cJSON_CreateObject();
         cJSON_AddStringToObject(item, "label", entry->name);
-        cJSON_AddNumberToObject(item, "kind", entry->kind);
+        cJSON_AddNumberToObject(item, "kind", completion_kind(entry->kind));
         cJSON_AddStringToObject(item, "detail", detail);
         if (doc[0])
         {
@@ -1666,7 +1690,7 @@ int lsp_c_headers_add_fields(const char *document_path, const char *source, cons
     {
         cJSON *item = cJSON_CreateObject();
         cJSON_AddStringToObject(item, "label", list->fields[i].name);
-        cJSON_AddNumberToObject(item, "kind", 5); // Field
+        cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_FIELD);
         cJSON_AddStringToObject(item, "detail", list->fields[i].type);
         cJSON_AddItemToArray(items, item);
     }

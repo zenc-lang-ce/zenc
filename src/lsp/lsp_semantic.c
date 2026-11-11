@@ -7,21 +7,62 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Legend indices
-#define TOKEN_TYPE_VARIABLE 0
-#define TOKEN_TYPE_FUNCTION 1
-#define TOKEN_TYPE_STRUCT 2
-#define TOKEN_TYPE_KEYWORD 3
-#define TOKEN_TYPE_STRING 4
-#define TOKEN_TYPE_NUMBER 5
-#define TOKEN_TYPE_COMMENT 6
-#define TOKEN_TYPE_TYPE 7
-#define TOKEN_TYPE_ENUM 8
-#define TOKEN_TYPE_MEMBER 9
-#define TOKEN_TYPE_OPERATOR 10
-#define TOKEN_TYPE_PARAMETER 11
-#define TOKEN_TYPE_MACRO 12
-#define TOKEN_TYPE_TYPE_PARAMETER 13
+// The legend that initialize gives the client: a token's type is its index in
+// SEMANTIC_TOKEN_TYPES, and each of its modifiers a bit by its index in SEMANTIC_TOKEN_MODIFIERS.
+typedef enum
+{
+    TOKEN_TYPE_VARIABLE,
+    TOKEN_TYPE_FUNCTION,
+    TOKEN_TYPE_STRUCT,
+    TOKEN_TYPE_KEYWORD,
+    TOKEN_TYPE_STRING,
+    TOKEN_TYPE_NUMBER,
+    TOKEN_TYPE_COMMENT,
+    TOKEN_TYPE_TYPE,
+    TOKEN_TYPE_ENUM,
+    TOKEN_TYPE_MEMBER,
+    TOKEN_TYPE_OPERATOR,
+    TOKEN_TYPE_PARAMETER,
+    TOKEN_TYPE_MACRO,
+    TOKEN_TYPE_TYPE_PARAMETER,
+    TOKEN_TYPE_COUNT
+} SemanticTokenType;
+
+static const char *const SEMANTIC_TOKEN_TYPES[TOKEN_TYPE_COUNT] = {
+    "variable", "function", "struct", "keyword",  "string",    "number", "comment",
+    "type",     "enum",     "member", "operator", "parameter", "macro",  "typeParameter"};
+
+typedef enum
+{
+    TOKEN_MODIFIER_DECLARATION,
+    TOKEN_MODIFIER_DEFINITION,
+    TOKEN_MODIFIER_READONLY,
+    TOKEN_MODIFIER_STATIC,
+    TOKEN_MODIFIER_DEPRECATED,
+    TOKEN_MODIFIER_ABSTRACT,
+    TOKEN_MODIFIER_ASYNC,
+    TOKEN_MODIFIER_MODIFICATION,
+    TOKEN_MODIFIER_DOCUMENTATION,
+    TOKEN_MODIFIER_DEFAULT_LIBRARY,
+    TOKEN_MODIFIER_COUNT
+} SemanticTokenModifier;
+
+static const char *const SEMANTIC_TOKEN_MODIFIERS[TOKEN_MODIFIER_COUNT] = {
+    "declaration", "definition", "readonly",     "static",        "deprecated",
+    "abstract",    "async",      "modification", "documentation", "defaultLibrary"};
+
+// The bit of a modifier in a token's set of modifiers.
+#define MODIFIER_BIT(modifier) (1 << (modifier))
+
+cJSON *lsp_semantic_tokens_legend(void)
+{
+    cJSON *legend = cJSON_CreateObject();
+    cJSON_AddItemToObject(legend, "tokenTypes",
+                          cJSON_CreateStringArray(SEMANTIC_TOKEN_TYPES, TOKEN_TYPE_COUNT));
+    cJSON_AddItemToObject(legend, "tokenModifiers",
+                          cJSON_CreateStringArray(SEMANTIC_TOKEN_MODIFIERS, TOKEN_MODIFIER_COUNT));
+    return legend;
+}
 
 typedef struct
 {
@@ -172,7 +213,7 @@ static void traverse_node(TokenBuilder *b, ASTNode *node, int depth)
         if (node->token.kind != TOK_EOF)
         {
             builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_FUNCTION, 1);
+                         TOKEN_TYPE_FUNCTION, MODIFIER_BIT(TOKEN_MODIFIER_DECLARATION));
         }
         // Parameters
         for (int i = 0; i < node->func.count; i++)
@@ -231,7 +272,7 @@ static void traverse_node(TokenBuilder *b, ASTNode *node, int depth)
         if (node->token.kind != TOK_EOF)
         {
             builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_VARIABLE, 2);
+                         TOKEN_TYPE_VARIABLE, MODIFIER_BIT(TOKEN_MODIFIER_READONLY));
         }
         traverse_node(b, node->var_decl.init_expr, depth + 1);
         break;

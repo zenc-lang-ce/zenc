@@ -44,16 +44,16 @@ typedef struct CSearchDirList
     int capacity;
 } CSearchDirList;
 
-// LSP CompletionItemKind of each kind of C declaration.
+// What a C declaration declares. A macro with a value is a constant.
 typedef enum
 {
-    C_SYMBOL_FUNCTION = 3,
-    C_SYMBOL_VARIABLE = 6,
-    C_SYMBOL_ENUM = 13,
-    C_SYMBOL_ENUM_MEMBER = 20,
-    C_SYMBOL_CONSTANT = 21,
-    C_SYMBOL_STRUCT = 22,
-    C_SYMBOL_TYPE = 25
+    C_SYMBOL_FUNCTION,
+    C_SYMBOL_VARIABLE,
+    C_SYMBOL_ENUM,
+    C_SYMBOL_ENUM_MEMBER,
+    C_SYMBOL_CONSTANT,
+    C_SYMBOL_STRUCT,
+    C_SYMBOL_TYPE
 } CSymbolKind;
 
 /// The keyword a tag is written with in C (`struct tag`), or none for any other name.
@@ -70,7 +70,7 @@ typedef struct
     CHeaderSymbol symbol;
     char *name;
     int is_forward;   ///< `struct X;` without a body.
-    CSymbolKind kind; ///< LSP CompletionItemKind.
+    CSymbolKind kind; ///< What it declares.
     CTagKind tag;     ///< For a struct, union or enum tag: its keyword.
     char *c_type;     ///< For a function, its return type; for a variable, its type; for a
                       ///< typedef of neither a function nor an array, the type it names (C text);

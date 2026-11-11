@@ -79,7 +79,8 @@ static LSPRange *lsp_range_at(Token t, RangeType kind)
     return r;
 }
 
-void lsp_index_add_def(LSPIndex *idx, Token t, LSPSymbolKind kind, const char *hover, ASTNode *node)
+void lsp_index_add_def(LSPIndex *idx, Token t, DeclarationKind kind, const char *hover,
+                       ASTNode *node)
 {
     if (!lsp_index_is_written(idx, t))
     {
@@ -320,8 +321,8 @@ static void lsp_index_add_params(ParserContext *ctx, LSPIndex *idx, int count, c
         {
             snprintf(hover, sizeof(hover), "%s", names[i]);
         }
-        LSPSymbolKind kind =
-            strcmp(names[i], "self") == 0 ? LSP_SYMBOL_RECEIVER : LSP_SYMBOL_PARAMETER;
+        DeclarationKind kind =
+            strcmp(names[i], "self") == 0 ? DECLARATION_RECEIVER : DECLARATION_PARAMETER;
         lsp_index_add_def(idx, tokens[i], kind, hover, NULL);
     }
 }
@@ -349,7 +350,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
                                       : "void";
                 snprintf(hover, sizeof(hover), "fn %s(...) -> %s", name, ret);
             }
-            lsp_index_add_def(idx, node->token, LSP_SYMBOL_FUNCTION, hover, node);
+            lsp_index_add_def(idx, node->token, DECLARATION_FUNCTION, hover, node);
             lsp_index_add_params(ctx, idx, node->func.count, node->func.param_names,
                                  node->func.arg_types, node->func.param_tokens);
         }
@@ -364,14 +365,14 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->var_decl.name ? node->var_decl.name : "unknown";
             snprintf(hover, sizeof(hover), "let %s", name);
-            lsp_index_add_def(idx, node->token, LSP_SYMBOL_VARIABLE, hover, node);
+            lsp_index_add_def(idx, node->token, DECLARATION_VARIABLE, hover, node);
         }
         else if (node->kind == NODE_CONST)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->var_decl.name ? node->var_decl.name : "unknown";
             snprintf(hover, sizeof(hover), "def %s", name);
-            lsp_index_add_def(idx, node->token, LSP_SYMBOL_CONSTANT, hover, node);
+            lsp_index_add_def(idx, node->token, DECLARATION_CONSTANT, hover, node);
         }
         else if (node->kind == NODE_STRUCT)
         {
@@ -379,7 +380,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             const char *name = node->strct.name ? node->strct.name : "unknown";
             snprintf(hover, sizeof(hover), "%sstruct %s", node->strct.is_opaque ? "opaque " : "",
                      name);
-            lsp_index_add_def(idx, node->token, LSP_SYMBOL_STRUCT, hover, node);
+            lsp_index_add_def(idx, node->token, DECLARATION_STRUCT, hover, node);
 
             ASTNode *field = node->strct.fields;
             while (field)
@@ -390,7 +391,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
                     const char *fname = field->field.name ? field->field.name : "unknown";
                     const char *ftype = zen_c_type_spelling(ctx, field->type_info);
                     snprintf(fh, sizeof(fh), "field %s: %s", fname, ftype);
-                    lsp_index_add_def(idx, field->token, LSP_SYMBOL_FIELD, fh, field);
+                    lsp_index_add_def(idx, field->token, DECLARATION_FIELD, fh, field);
                 }
                 field = field->next;
             }
@@ -400,7 +401,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->enm.name ? node->enm.name : "unknown";
             snprintf(hover, sizeof(hover), "enum %s", name);
-            lsp_index_add_def(idx, node->token, LSP_SYMBOL_ENUM, hover, node);
+            lsp_index_add_def(idx, node->token, DECLARATION_ENUM, hover, node);
 
             ASTNode *variant = node->enm.variants;
             while (variant)
@@ -410,7 +411,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
                     char vh[MAX_SHORT_MSG_LEN];
                     const char *vname = variant->variant.name ? variant->variant.name : "unknown";
                     snprintf(vh, sizeof(vh), "variant %s", vname);
-                    lsp_index_add_def(idx, variant->token, LSP_SYMBOL_VARIANT, vh, variant);
+                    lsp_index_add_def(idx, variant->token, DECLARATION_VARIANT, vh, variant);
                 }
                 variant = variant->next;
             }
@@ -422,14 +423,14 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             const char *orig =
                 node->type_info ? zen_c_type_spelling(ctx, node->type_info) : "unknown";
             snprintf(hover, sizeof(hover), "alias %s = %s", alias, orig);
-            lsp_index_add_def(idx, node->token, LSP_SYMBOL_ALIAS, hover, node);
+            lsp_index_add_def(idx, node->token, DECLARATION_ALIAS, hover, node);
         }
         else if (node->kind == NODE_TRAIT)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->trait.name ? node->trait.name : "unknown";
             snprintf(hover, sizeof(hover), "trait %s", name);
-            lsp_index_add_def(idx, node->token, LSP_SYMBOL_TRAIT, hover, node);
+            lsp_index_add_def(idx, node->token, DECLARATION_TRAIT, hover, node);
         }
         else if (node->kind == NODE_PLUGIN)
         {

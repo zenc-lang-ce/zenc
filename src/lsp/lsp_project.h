@@ -8,6 +8,7 @@
 
 #include "parser.h"
 #include "lsp_index.h"
+#include "lsp_protocol.h"
 struct cJSON;
 
 /**
@@ -92,17 +93,10 @@ typedef struct ReferenceResult
 // lsp_range_names): its declaration and its uses.
 ReferenceResult *lsp_project_find_references(Token definition);
 
-// Semantic Tokens: the result of textDocument/semanticTokens/full.
+// Semantic Tokens: the result of textDocument/semanticTokens/full, and the legend its numbers
+// stand for, which initialize gives the client.
 struct cJSON *lsp_semantic_tokens_full(const char *uri);
-
-/** Severity of a published diagnostic, as the LSP specification numbers it. */
-typedef enum
-{
-    LSP_SEVERITY_ERROR = 1,
-    LSP_SEVERITY_WARNING = 2,
-    LSP_SEVERITY_INFORMATION = 3,
-    LSP_SEVERITY_HINT = 4
-} LspDiagnosticSeverity;
+struct cJSON *lsp_semantic_tokens_legend(void);
 
 // LSP analysis functions (declared here for cross-file visibility)
 void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d);

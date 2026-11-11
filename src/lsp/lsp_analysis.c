@@ -796,7 +796,8 @@ static int add_impl_completions(cJSON *items, const char *type_name, int with_se
                 }
                 cJSON *item = cJSON_CreateObject();
                 cJSON_AddStringToObject(item, "label", name);
-                cJSON_AddNumberToObject(item, "kind", with_self ? 2 : 3); // Method or Function
+                cJSON_AddNumberToObject(
+                    item, "kind", with_self ? LSP_COMPLETION_METHOD : LSP_COMPLETION_FUNCTION);
                 char detail[MAX_SHORT_MSG_LEN];
                 snprintf(detail, sizeof(detail), "fn %s::%s", target, name);
                 cJSON_AddStringToObject(item, "detail", detail);
@@ -804,7 +805,7 @@ static int add_impl_completions(cJSON *items, const char *type_name, int with_se
                 snprintf(snippet, sizeof(snippet), "%s(%s)", name,
                          method->func.count > with_self ? "$1" : "");
                 cJSON_AddStringToObject(item, "insertText", snippet);
-                cJSON_AddNumberToObject(item, "insertTextFormat", 2);
+                cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
                 cJSON_AddItemToArray(items, item);
                 added++;
             }
@@ -838,7 +839,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
         LSPRange *r = pf->index->head;
         while (r)
         {
-            if (r->kind == RANGE_DEFINITION && r->symbol.kind == LSP_SYMBOL_FUNCTION && r->node)
+            if (r->kind == RANGE_DEFINITION && r->symbol.kind == DECLARATION_FUNCTION && r->node)
             {
                 if (r->start_line <= line && r->start_line > best_line)
                 {
@@ -968,7 +969,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                         {
                             cJSON *item = cJSON_CreateObject();
                             cJSON_AddStringToObject(item, "label", ev->variant_name);
-                            cJSON_AddNumberToObject(item, "kind", 20); // EnumMember
+                            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_ENUM_MEMBER);
                             cJSON_AddStringToObject(item, "detail", "enum variant");
                             cJSON_AddItemToArray(items, item);
                         }
@@ -1088,7 +1089,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                                 {
                                     cJSON *item = cJSON_CreateObject();
                                     cJSON_AddStringToObject(item, "label", field->field.name);
-                                    cJSON_AddNumberToObject(item, "kind", 5); // Field
+                                    cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_FIELD);
                                     cJSON_AddStringToObject(
                                         item, "detail",
                                         zen_c_type_spelling(g_project->ctx, field->type_info));
@@ -1103,7 +1104,8 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                                 {
                                     cJSON *item = cJSON_CreateObject();
                                     cJSON_AddStringToObject(item, "label", variant->variant.name);
-                                    cJSON_AddNumberToObject(item, "kind", 12); // EnumMember
+                                    cJSON_AddNumberToObject(item, "kind",
+                                                            LSP_COMPLETION_ENUM_MEMBER);
                                     cJSON_AddItemToArray(items, item);
                                     variant = variant->next;
                                 }
@@ -1188,10 +1190,10 @@ cJSON *lsp_completion(const char *uri, int line, int col)
 
             cJSON *item = cJSON_CreateObject();
             cJSON_AddStringToObject(item, "label", keywords[i].label);
-            cJSON_AddNumberToObject(item, "kind", 14); // Keyword
+            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_KEYWORD);
             cJSON_AddStringToObject(item, "insertText", keywords[i].snippet);
-            cJSON_AddNumberToObject(item, "insertTextFormat", 2); // Snippet
-            cJSON_AddStringToObject(item, "sortText", "001");     // Keywords highest priority
+            cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
+            cJSON_AddStringToObject(item, "sortText", "001"); // Keywords highest priority
             cJSON_AddItemToArray(items, item);
         }
 
@@ -1206,7 +1208,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
             }
             cJSON *item = cJSON_CreateObject();
             cJSON_AddStringToObject(item, "label", types[i].zen_name);
-            cJSON_AddNumberToObject(item, "kind", 14);
+            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_KEYWORD);
             cJSON_AddStringToObject(item, "sortText", "008");
             cJSON_AddItemToArray(items, item);
         }
@@ -1303,7 +1305,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
 
             cJSON *item = cJSON_CreateObject();
             cJSON_AddStringToObject(item, "label", plain_keywords[i]);
-            cJSON_AddNumberToObject(item, "kind", 14);
+            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_KEYWORD);
             cJSON_AddStringToObject(item, "sortText", "008");
             cJSON_AddItemToArray(items, item);
         }
@@ -1316,7 +1318,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                 cJSON *item = cJSON_CreateObject();
                 char *name = g->node->var_decl.name;
                 cJSON_AddStringToObject(item, "label", name);
-                cJSON_AddNumberToObject(item, "kind", 21);
+                cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_CONSTANT);
                 cJSON_AddStringToObject(item, "sortText", "050"); // Globals in middle
                 cJSON_AddItemToArray(items, item);
             }
@@ -1333,7 +1335,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
             }
             cJSON *item = cJSON_CreateObject();
             cJSON_AddStringToObject(item, "label", s->name);
-            cJSON_AddNumberToObject(item, "kind", 22);
+            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_STRUCT);
             cJSON_AddStringToObject(item, "sortText", "060");
             cJSON_AddItemToArray(items, item);
         }
@@ -1347,7 +1349,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
             }
             cJSON *item = cJSON_CreateObject();
             cJSON_AddStringToObject(item, "label", f->name);
-            cJSON_AddNumberToObject(item, "kind", 3); // Function
+            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_FUNCTION);
             cJSON_AddStringToObject(item, "sortText", "070");
 
             // The signature as written, as the hover shows it
@@ -1368,7 +1370,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                 snprintf(snippet, sizeof(snippet), "%s()", f->name);
             }
             cJSON_AddStringToObject(item, "insertText", snippet);
-            cJSON_AddNumberToObject(item, "insertTextFormat", 2); // Snippet
+            cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
 
             cJSON_AddItemToArray(items, item);
         }
@@ -1381,7 +1383,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                 {
                     cJSON *item = cJSON_CreateObject();
                     cJSON_AddStringToObject(item, "label", target_func->func.param_names[i]);
-                    cJSON_AddNumberToObject(item, "kind", 6);
+                    cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_VARIABLE);
                     cJSON_AddStringToObject(item, "detail", "argument");
                     cJSON_AddStringToObject(item, "sortText", "001"); // Arg priority
                     cJSON_AddItemToArray(items, item);
@@ -1409,9 +1411,9 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                     {
                         cJSON *item = cJSON_CreateObject();
                         cJSON_AddStringToObject(item, "label", curr->var_decl.name);
-                        cJSON_AddNumberToObject(
-                            item, "kind",
-                            curr->kind == NODE_CONST ? 21 : 6);           // Constant or Variable
+                        cJSON_AddNumberToObject(item, "kind",
+                                                curr->kind == NODE_CONST ? LSP_COMPLETION_CONSTANT
+                                                                         : LSP_COMPLETION_VARIABLE);
                         cJSON_AddStringToObject(item, "sortText", "002"); // Local priority
                         cJSON_AddItemToArray(items, item);
                     }
@@ -1502,36 +1504,36 @@ cJSON *lsp_completion(const char *uri, int line, int col)
 }
 
 // Name and LSP SymbolKind of a declaration, or NULL when the node is not one.
-static const char *declaration_name(ASTNode *node, int *kind)
+static const char *declaration_name(ASTNode *node, LspSymbolKind *kind)
 {
     if (node->kind == NODE_FUNCTION)
     {
-        *kind = 12;
+        *kind = LSP_SYMBOL_FUNCTION;
         return node->func.name;
     }
     if (node->kind == NODE_STRUCT)
     {
-        *kind = 23;
+        *kind = LSP_SYMBOL_STRUCT;
         return node->strct.name;
     }
     if (node->kind == NODE_VAR_DECL)
     {
-        *kind = 13;
+        *kind = LSP_SYMBOL_VARIABLE;
         return node->var_decl.name;
     }
     if (node->kind == NODE_CONST)
     {
-        *kind = 14;
+        *kind = LSP_SYMBOL_CONSTANT;
         return node->var_decl.name;
     }
     if (node->kind == NODE_ENUM)
     {
-        *kind = 10;
+        *kind = LSP_SYMBOL_ENUM;
         return node->enm.name;
     }
     if (node->kind == NODE_FIELD)
     {
-        *kind = 8;
+        *kind = LSP_SYMBOL_FIELD;
         return node->field.name;
     }
     return NULL;
@@ -1543,7 +1545,7 @@ static cJSON *ast_to_symbol(ASTNode *node)
     {
         return NULL;
     }
-    int kind = 0;
+    LspSymbolKind kind = LSP_SYMBOL_VARIABLE;
     const char *name = declaration_name(node, &kind);
     if (!name)
     {
@@ -1641,8 +1643,8 @@ static int matches_query(const char *name, const char *query)
     return 1;
 }
 
-static void add_workspace_symbol(cJSON *items, const char *name, int kind, const char *uri,
-                                 Token token, const char *container)
+static void add_workspace_symbol(cJSON *items, const char *name, LspSymbolKind kind,
+                                 const char *uri, Token token, const char *container)
 {
     int line = token.line > 0 ? token.line - 1 : 0;
     int col = token.col > 0 ? token.col - 1 : 0;
@@ -1687,12 +1689,12 @@ cJSON *lsp_workspace_symbol(const char *query)
         }
         for (; node && count < MAX_WORKSPACE_SYMBOLS; node = node->next)
         {
-            int kind = 0;
+            LspSymbolKind kind = LSP_SYMBOL_VARIABLE;
             const char *name = declaration_name(node, &kind);
             if (!name && node->kind == NODE_TRAIT)
             {
                 name = node->trait.name;
-                kind = 11;
+                kind = LSP_SYMBOL_INTERFACE;
             }
             if (name && matches_query(name, query))
             {
@@ -1723,7 +1725,8 @@ cJSON *lsp_workspace_symbol(const char *query)
                 const char *short_name = method->func.method_name;
                 if (matches_query(short_name, query))
                 {
-                    add_workspace_symbol(items, short_name, 6, pf->uri, method->token, container);
+                    add_workspace_symbol(items, short_name, LSP_SYMBOL_METHOD, pf->uri,
+                                         method->token, container);
                     count++;
                 }
             }
@@ -1944,10 +1947,11 @@ cJSON *lsp_signature_help(const char *uri, int line, int col)
 // Whether renaming a symbol of this kind edits every place that names it. The index has no uses
 // of fields and variants, nor of traits and aliases outside type names; `self` is the receiver
 // by its name (see parse_and_convert_args), and with another one the method has none.
-static int is_renamable(LSPSymbolKind kind)
+static int is_renamable(DeclarationKind kind)
 {
-    return kind == LSP_SYMBOL_FUNCTION || kind == LSP_SYMBOL_VARIABLE ||
-           kind == LSP_SYMBOL_CONSTANT || kind == LSP_SYMBOL_PARAMETER || kind == LSP_SYMBOL_STRUCT;
+    return kind == DECLARATION_FUNCTION || kind == DECLARATION_VARIABLE ||
+           kind == DECLARATION_CONSTANT || kind == DECLARATION_PARAMETER ||
+           kind == DECLARATION_STRUCT;
 }
 
 cJSON *lsp_rename(const char *uri, int line, int col, const char *new_name)
