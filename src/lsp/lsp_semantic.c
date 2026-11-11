@@ -71,6 +71,7 @@ typedef struct
     int length;
     int token_type;
     int token_modifiers;
+    int order; ///< How many were pushed before it: of two at one position, the first is kept.
 } SemanticToken;
 
 typedef struct
@@ -110,6 +111,7 @@ static void builder_push(TokenBuilder *b, int line, int col, int length, int typ
     t->length = length;
     t->token_type = type;
     t->token_modifiers = modifiers;
+    t->order = b->count - 1;
 }
 
 static void builder_free(TokenBuilder *b)
@@ -126,7 +128,11 @@ static int compare_tokens(const void *a, const void *b)
     {
         return ta->line - tb->line;
     }
-    return ta->col - tb->col;
+    if (ta->col != tb->col)
+    {
+        return ta->col - tb->col;
+    }
+    return ta->order - tb->order;
 }
 
 // Keyword check: reuse parser's is_reserved_keyword() + primitives table.
@@ -199,225 +205,101 @@ static void emit_keywords(TokenBuilder *b, const char *source, const char *path)
     }
 }
 
-// AST Traversal
-static void traverse_node(TokenBuilder *b, ASTNode *node, int depth)
+// The type of the token that a node's own token gets, and its modifiers; -1 for a node whose
+// token is not one (a statement, an operator).
+static int node_token_type(const ASTNode *node, int *modifiers)
 {
-    if (!node || depth > 32)
-    {
-        return;
-    }
-
+    *modifiers = 0;
     switch (node->kind)
     {
     case NODE_FUNCTION:
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_FUNCTION, MODIFIER_BIT(TOKEN_MODIFIER_DECLARATION));
-        }
-        // Parameters
-        for (int i = 0; i < node->func.count; i++)
-        {
-            Attribute *attr = node->func.attributes;
-            while (attr)
-            {
-                attr = attr->next;
-            }
-        }
-        traverse_node(b, node->func.body, depth + 1);
-        break;
-
-    case NODE_VAR_DECL:
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_VARIABLE, 0);
-        }
-        traverse_node(b, node->var_decl.init_expr, depth + 1);
-        break;
-
-    case NODE_BLOCK:
-    {
-        ASTNode *stmt = node->block.statements;
-        while (stmt)
-        {
-            traverse_node(b, stmt, depth + 1);
-            stmt = stmt->next;
-        }
-        break;
-    }
-
-    case NODE_RETURN:
-        traverse_node(b, node->ret.value, depth + 1);
-        break;
-
-    case NODE_EXPR_BINARY:
-        traverse_node(b, node->binary.left, depth + 1);
-        traverse_node(b, node->binary.right, depth + 1);
-        break;
-
-    case NODE_EXPR_CALL:
-        traverse_node(b, node->call.callee, depth + 1);
-        {
-            ASTNode *arg = node->call.args;
-            while (arg)
-            {
-                traverse_node(b, arg, depth + 1);
-                arg = arg->next;
-            }
-        }
-        break;
-
+        *modifiers = MODIFIER_BIT(TOKEN_MODIFIER_DECLARATION);
+        return TOKEN_TYPE_FUNCTION;
     case NODE_CONST:
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_VARIABLE, MODIFIER_BIT(TOKEN_MODIFIER_READONLY));
-        }
-        traverse_node(b, node->var_decl.init_expr, depth + 1);
-        break;
-
-    case NODE_TYPE_ALIAS:
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_TYPE, 0);
-        }
-        break;
-
+        *modifiers = MODIFIER_BIT(TOKEN_MODIFIER_READONLY);
+        return TOKEN_TYPE_VARIABLE;
+    case NODE_VAR_DECL:
     case NODE_EXPR_VAR:
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_VARIABLE, 0);
-        }
-        break;
-
+        return TOKEN_TYPE_VARIABLE;
+    case NODE_TYPE_ALIAS:
+        return TOKEN_TYPE_TYPE;
     case NODE_STRUCT:
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_STRUCT, 0);
-        }
-        traverse_node(b, node->strct.fields, depth + 1);
-        break;
-
-    case NODE_FIELD:
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_MEMBER, 0);
-        }
-        break;
-
-    case NODE_EXPR_MEMBER:
-        traverse_node(b, node->member.target, depth + 1);
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_MEMBER, 0);
-        }
-        break;
-
-    case NODE_EXPR_LITERAL:
-        if (node->token.kind != TOK_EOF)
-        {
-            if (node->literal.kind == LITERAL_STRING)
-            {
-                builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                             TOKEN_TYPE_STRING, 0);
-            }
-            else if (node->literal.kind == LITERAL_INT || node->literal.kind == LITERAL_FLOAT)
-            {
-                builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                             TOKEN_TYPE_NUMBER, 0);
-            }
-            else if (node->literal.kind == LITERAL_CHAR)
-            {
-                builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                             TOKEN_TYPE_STRING, 0);
-            }
-        }
-        break;
-
     case NODE_TRAIT:
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_STRUCT, 0);
-        }
-        traverse_node(b, node->trait.methods, depth + 1);
-        break;
-
     case NODE_IMPL:
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_STRUCT, 0);
-        }
-        traverse_node(b, node->impl.methods, depth + 1);
-        break;
-
     case NODE_IMPL_TRAIT:
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_STRUCT, 0);
-        }
-        traverse_node(b, node->impl_trait.methods, depth + 1);
-        break;
-
+        return TOKEN_TYPE_STRUCT;
+    case NODE_FIELD:
+    case NODE_EXPR_MEMBER:
+        return TOKEN_TYPE_MEMBER;
     case NODE_ENUM:
-        if (node->token.kind != TOK_EOF)
-        {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_ENUM, 0);
-        }
-        traverse_node(b, node->enm.variants, depth + 1);
-        break;
-
     case NODE_ENUM_VARIANT:
-        if (node->token.kind != TOK_EOF)
+        return TOKEN_TYPE_ENUM;
+    case NODE_EXPR_LITERAL:
+        if (node->literal.kind == LITERAL_STRING || node->literal.kind == LITERAL_CHAR)
         {
-            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len),
-                         TOKEN_TYPE_ENUM, 0);
+            return TOKEN_TYPE_STRING;
         }
-        if (node->variant.payload)
+        if (node->literal.kind == LITERAL_INT || node->literal.kind == LITERAL_FLOAT)
         {
-            // If we had a way to traverse types with tokens...
+            return TOKEN_TYPE_NUMBER;
         }
-        break;
-
-    case NODE_DESTRUCT_VAR:
-        traverse_node(b, node->destruct.init_expr, depth + 1);
-        traverse_node(b, node->destruct.else_block, depth + 1);
-        break;
-
-    case NODE_MATCH_CASE:
-        traverse_node(b, node->match_case.guard, depth + 1);
-        traverse_node(b, node->match_case.body, depth + 1);
-        break;
-
-    case NODE_LAMBDA:
-        traverse_node(b, node->lambda.body, depth + 1);
-        break;
-
-    case NODE_FOR_RANGE:
-        traverse_node(b, node->for_range.start, depth + 1);
-        traverse_node(b, node->for_range.end, depth + 1);
-        traverse_node(b, node->for_range.body, depth + 1);
-        break;
-
+        return -1;
     default:
-        if (node->kind == NODE_ROOT)
+        return -1;
+    }
+}
+
+// Whether a token of the source can have a semantic token of this type. A node that the parser
+// generates may carry a token that is not its own (the `{` of the body of a `for ... in`), and a
+// `def` folded into a literal keeps its name.
+static int token_fits(int type, Token t)
+{
+    switch (type)
+    {
+    case TOKEN_TYPE_NUMBER:
+        return t.kind == TOK_INT || t.kind == TOK_FLOAT;
+    case TOKEN_TYPE_STRING:
+        return t.kind == TOK_STRING || t.kind == TOK_FSTRING || t.kind == TOK_RAW_STRING ||
+               t.kind == TOK_CHAR;
+    case TOKEN_TYPE_MEMBER:
+        // A field of a tuple is its index: `pair.0`.
+        return t.kind == TOK_IDENT || t.kind == TOK_INT;
+    default:
+        return t.kind == TOK_IDENT;
+    }
+}
+
+// The tokens of the nodes of the list starting at `node`, and of their children. Only where the
+// token is written in the file of `idx`: not in the code the parser generates (`@derive`).
+static void traverse_node(TokenBuilder *b, const LSPIndex *idx, ASTNode *node, int depth)
+{
+    if (depth > 32)
+    {
+        return;
+    }
+    for (; node; node = node->next)
+    {
+        int modifiers = 0;
+        int type = node_token_type(node, &modifiers);
+        if (type >= 0 && token_fits(type, node->token) && lsp_index_is_written(idx, node->token))
         {
-            traverse_node(b, node->root.children, depth + 1);
+            builder_push(b, node->token.line - 1, node->token.col - 1, (int)(node->token.len), type,
+                         modifiers);
         }
-        else if (node->next)
+
+        ASTChildren children = ast_children(node);
+        for (int i = 0; i < children.count; i++)
         {
-            // Fallback to next
+            traverse_node(b, idx, *children.slots[i], depth + 1);
         }
-        break;
+        // The expressions of an f-string are not children (ast_children() leaves them out).
+        if (node->kind == NODE_EXPR_FSTRING)
+        {
+            for (ASTNode *part = node->fstring.parts; part; part = part->next)
+            {
+                traverse_node(b, idx, part->fstring_part.expr, depth + 1);
+            }
+        }
     }
 }
 
@@ -426,7 +308,7 @@ cJSON *lsp_semantic_tokens_full(const char *uri)
     cJSON *root_json = cJSON_CreateObject();
     cJSON *data = cJSON_AddArrayToObject(root_json, "data");
     ProjectFile *pf = lsp_project_get_file(uri);
-    if (!pf || !pf->ast)
+    if (!pf || !pf->ast || !pf->index)
     {
         return root_json;
     }
@@ -437,12 +319,7 @@ cJSON *lsp_semantic_tokens_full(const char *uri)
     // Emit keyword tokens from source (keywords not captured by AST traversal)
     emit_keywords(&b, pf->source, pf->path);
 
-    ASTNode *root = pf->ast;
-    while (root)
-    {
-        traverse_node(&b, root, 0);
-        root = root->next;
-    }
+    traverse_node(&b, pf->index, pf->ast, 0);
 
     qsort(b.tokens, (size_t)(b.count), sizeof(SemanticToken), compare_tokens);
 

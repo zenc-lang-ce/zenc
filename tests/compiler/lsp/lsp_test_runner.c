@@ -1921,6 +1921,49 @@ static void test_c_header_completion(void)
     printf("PASS: test_c_header_completion\n");
 }
 
+static void test_local_completion(void)
+{
+    printf("Running test_local_completion...\n");
+    const char *path = C_TEST_DIR "/locals.zc";
+    // A `let` in the body of a `for ... in` or of a `match` arm is offered there.
+    open_document(path, "fn walk(n: int) {\n"
+                        "    for i in 0..2 {\n"
+                        "        let step = i;\n"
+                        "        st\n"
+                        "    }\n"
+                        "    match n {\n"
+                        "        1 => { let chosen = n; ch }\n"
+                        "        _ => {}\n"
+                        "    }\n"
+                        "}\n");
+    const struct
+    {
+        int line;
+        int character;
+        const char *label;
+    } cases[] = {{3, 10, "step"}, {6, 33, "chosen"}};
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++)
+    {
+        cJSON *response = position_request(860 + (int)c, "textDocument/completion", path,
+                                           cases[c].line, cases[c].character);
+        cJSON *items = cJSON_GetObjectItem(response, "result");
+        int found = 0;
+        for (int i = 0; i < cJSON_GetArraySize(items); i++)
+        {
+            cJSON *label = cJSON_GetObjectItem(cJSON_GetArrayItem(items, i), "label");
+            found |= cJSON_IsString(label) && strcmp(label->valuestring, cases[c].label) == 0;
+        }
+        if (!found)
+        {
+            printf("Completion at %d:%d without the local %s\n", cases[c].line,
+                   cases[c].character, cases[c].label);
+            fail("Completion offers the locals of every kind of body");
+        }
+        cJSON_Delete(response);
+    }
+    printf("PASS: test_local_completion\n");
+}
+
 static void test_member_completion(void)
 {
     printf("Running test_member_completion...\n");
@@ -2449,6 +2492,53 @@ static int has_token_at(cJSON *data, int line, int col, int type)
         }
     }
     return 0;
+}
+
+static void test_semantic_tokens_whole_file(void)
+{
+    printf("Running test_semantic_tokens_whole_file...\n");
+    // Every declaration of the file, every method of an impl, and what is inside the bodies of
+    // `if`, `while` and `for`.
+    // Line 0: struct Pair { a: int; b: int; }
+    // Line 1: impl Pair { fn left() -> int { return 1; } fn right() -> int { return 2; } }
+    // Line 2: fn first() -> int { return 1; }
+    // Line 3: fn second(m: int) -> int {
+    // Line 4:     let total = 0;
+    // Line 5:     if total == 0 { let inside = 2; }
+    // Line 6:     while total < 3 { total = total + 1; }
+    // Line 7:     for i in 0..2 { let looped = i; }
+    // Line 8:     return total;
+    // Line 9: }
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_whole.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Pair { a: int; b: int; }\\nimpl Pair { fn left() -> int { return 1; } fn "
+                 "right() -> int { return 2; } }\\nfn first() -> int { return 1; }\\n"
+                 "fn second(m: int) -> int {\\n"
+                 "    let total = 0;\\n    if total == 0 { let inside = 2; }\\n"
+                 "    while total < 3 { total = total + 1; }\\n"
+                 "    for i in 0..2 { let looped = i; }\\n    return total;\\n}\\n\"}}}");
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 53, \"method\": \"textDocument/semanticTokens/full\", "
+        "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_whole.zc\"}}}");
+    char *resp = wait_for_response(53);
+    cJSON *json = resp ? cJSON_Parse(resp) : NULL;
+    cJSON *data = cJSON_GetObjectItem(cJSON_GetObjectItem(json, "result"), "data");
+    // Types: 0 variable, 1 function, 5 number.
+    const int expected[][3] = {{1, 15, 1}, {1, 46, 1}, {2, 3, 1},  {3, 3, 1},
+                               {5, 24, 0}, {5, 16, 5}, {6, 10, 0}, {7, 24, 0}};
+    for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++)
+    {
+        if (!has_token_at(data, expected[i][0], expected[i][1], expected[i][2]))
+        {
+            printf("No token of type %d at %d:%d: %s\n", expected[i][2], expected[i][0],
+                   expected[i][1], resp ? resp : "(no response)");
+            fail("Semantic tokens cover the whole file");
+        }
+    }
+    cJSON_Delete(json);
+    free(resp);
+    printf("PASS: test_semantic_tokens_whole_file\n");
 }
 
 static void test_semantic_token_modifiers(void)
@@ -2994,6 +3084,7 @@ int main()
     test_semantic_tokens();
     test_semantic_tokens_skip_text();
     test_semantic_token_modifiers();
+    test_semantic_tokens_whole_file();
     test_definition();
     test_declaration();
     test_references();
@@ -3020,6 +3111,7 @@ int main()
     test_c_header_completion();
     test_signature_as_written();
     test_member_completion();
+    test_local_completion();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");

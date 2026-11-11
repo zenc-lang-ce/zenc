@@ -101,6 +101,13 @@ void lsp_index_add_type_ref(LSPIndex *idx, ParserContext *ctx, Token t, const ch
 LSPRange *lsp_find_at(LSPIndex *idx, int line, int col);
 
 /**
+ * @brief Whether the text of `t` is in the file of `idx` at the token's line and column. The code
+ * that the parser generates from a text of its own (`@derive`, `comptime`) is not: its positions
+ * count from the start of that text.
+ */
+int lsp_index_is_written(const LSPIndex *idx, Token t);
+
+/**
  * @brief Whether `r` names the symbol declared at `definition`: it is that definition or a
  * reference to it.
  */

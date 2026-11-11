@@ -815,6 +815,17 @@ static int add_impl_completions(cJSON *items, const char *type_name, int with_se
     return added;
 }
 
+// Adds the completion item of a local, `decl`, to the array `data`.
+static void add_local_completion(ASTNode *decl, void *data)
+{
+    cJSON *item = cJSON_CreateObject();
+    cJSON_AddStringToObject(item, "label", decl->var_decl.name);
+    cJSON_AddNumberToObject(
+        item, "kind", decl->kind == NODE_CONST ? LSP_COMPLETION_CONSTANT : LSP_COMPLETION_VARIABLE);
+    cJSON_AddStringToObject(item, "sortText", "002"); // Local priority
+    cJSON_AddItemToArray((cJSON *)data, item);
+}
+
 cJSON *lsp_completion(const char *uri, int line, int col)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
@@ -1389,77 +1400,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                     cJSON_AddItemToArray(items, item);
                 }
             }
-            ASTNode *queue[1024];
-            int q_head = 0;
-            int q_tail = 0;
-            if (target_func->func.body)
-            {
-                queue[q_tail++] = target_func->func.body;
-            }
-
-            while (q_head < q_tail && q_tail < 1024)
-            {
-                ASTNode *curr = queue[q_head++];
-                if (!curr)
-                {
-                    continue;
-                }
-
-                if (curr->kind == NODE_VAR_DECL || curr->kind == NODE_CONST)
-                {
-                    if (curr->token.line > 0 && (curr->token.line - 1) <= line)
-                    {
-                        cJSON *item = cJSON_CreateObject();
-                        cJSON_AddStringToObject(item, "label", curr->var_decl.name);
-                        cJSON_AddNumberToObject(item, "kind",
-                                                curr->kind == NODE_CONST ? LSP_COMPLETION_CONSTANT
-                                                                         : LSP_COMPLETION_VARIABLE);
-                        cJSON_AddStringToObject(item, "sortText", "002"); // Local priority
-                        cJSON_AddItemToArray(items, item);
-                    }
-                }
-                else if (curr->kind == NODE_BLOCK)
-                {
-                    ASTNode *stmt = curr->block.statements;
-                    while (stmt)
-                    {
-                        if (q_tail < 1024)
-                        {
-                            queue[q_tail++] = stmt;
-                        }
-                        stmt = stmt->next;
-                    }
-                }
-                else if (curr->kind == NODE_IF)
-                {
-                    if (curr->if_stmt.then_body && q_tail < 1024)
-                    {
-                        queue[q_tail++] = curr->if_stmt.then_body;
-                    }
-                    if (curr->if_stmt.else_body && q_tail < 1024)
-                    {
-                        queue[q_tail++] = curr->if_stmt.else_body;
-                    }
-                }
-                else if (curr->kind == NODE_WHILE)
-                {
-                    if (curr->while_stmt.body && q_tail < 1024)
-                    {
-                        queue[q_tail++] = curr->while_stmt.body;
-                    }
-                }
-                else if (curr->kind == NODE_FOR)
-                {
-                    if (curr->for_stmt.init && q_tail < 1024)
-                    {
-                        queue[q_tail++] = curr->for_stmt.init;
-                    }
-                    if (curr->for_stmt.body && q_tail < 1024)
-                    {
-                        queue[q_tail++] = curr->for_stmt.body;
-                    }
-                }
-            }
+            lsp_for_each_local(target_func, line, add_local_completion, items);
         }
     }
 
