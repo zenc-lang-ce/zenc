@@ -2219,7 +2219,9 @@ void lsp_rename(const char *uri, int line, int col, const char *new_name, const 
         name = r->node->call.callee->var_ref.name;
     }
 
-    if (!name)
+    // `self` is the receiver by its name (see parse_and_convert_args): with another one the
+    // method has no receiver and does not parse.
+    if (!name || strcmp(name, "self") == 0)
     {
         cJSON_AddNullToObject(root, "result");
         send_json_response(root);

@@ -18,6 +18,8 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
     lambda->lambda.default_capture_mode = default_capture_mode;
     lambda->lambda.param_names = xmalloc(sizeof(char *));
     lambda->lambda.param_names[0] = param_name;
+    lambda->lambda.param_tokens = xmalloc(sizeof(Token));
+    lambda->lambda.param_tokens[0] = param;
     lambda->lambda.count = 1;
 
     // Create Type Info: unknown -> unknown
@@ -100,12 +102,15 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
                                   int count, int default_capture_mode)
 {
     char **param_names = xmalloc(sizeof(char *) * (size_t)(count));
+    Token *param_tokens = xmalloc(sizeof(Token) * (size_t)(count));
     for (int i = 0; i < count; i++)
     {
         param_names[i] = token_strdup(params[i]);
+        param_tokens[i] = params[i];
     }
     ASTNode *lambda = ast_create(NODE_LAMBDA);
     lambda->lambda.param_names = param_names;
+    lambda->lambda.param_tokens = param_tokens;
     lambda->lambda.count = count;
     lambda->lambda.default_capture_mode = default_capture_mode;
 

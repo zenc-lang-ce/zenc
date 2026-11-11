@@ -8,7 +8,7 @@
 static LSPIndex *index_source(const char *src)
 {
     LSPIndex *index = lsp_index_new();
-    lsp_build_index(index, parse_source(src));
+    lsp_build_index(index, parse_source(src), src);
     return index;
 }
 

@@ -974,8 +974,8 @@ ASTNode *parse_test(ParserContext *ctx, Lexer *l);
 ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export);
 ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_export);
 int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_values, int *count,
-                           Type ***arg_types, char ***param_names, int *is_varargs,
-                           char ***ctype_overrides);
+                           Type ***arg_types, char ***param_names, Token **param_tokens,
+                           int *is_varargs, char ***ctype_overrides);
 Type *parse_type_formal(ParserContext *ctx, Lexer *l);
 Type *type_from_string_helper(ParserContext *ctx, const char *c);
 Type *type_from_name(ParserContext *ctx, const char *name);

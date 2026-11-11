@@ -94,7 +94,7 @@ static void check_default_names_no_parameter(ASTNode *def, const char *param, ch
 }
 
 int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_values_out,
-                           int *count_out, Type ***types_out, char ***names_out,
+                           int *count_out, Type ***types_out, char ***names_out, Token **tokens_out,
                            int *is_varargs_out, char ***ctype_overrides_out)
 {
     Token t = lexer_next(l);
@@ -109,6 +109,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
     ASTNode **default_values = xcalloc((size_t)(max_args), sizeof(ASTNode *));
     Type **types = xcalloc((size_t)(max_args), sizeof(Type *));
     char **names = xcalloc((size_t)(max_args), sizeof(char *));
+    Token *tokens = xcalloc((size_t)(max_args), sizeof(Token));
     char **ctype_overrides = xcalloc((size_t)(max_args), sizeof(char *));
 
     // Initial 16 entries already zeroed by xcalloc
@@ -131,6 +132,8 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                 memset(types + max_args, 0, sizeof(Type *) * (size_t)(new_max - max_args));
                 names = xrealloc(names, sizeof(char *) * (size_t)(new_max));
                 memset(names + max_args, 0, sizeof(char *) * (size_t)(new_max - max_args));
+                tokens = xrealloc(tokens, sizeof(Token) * (size_t)(new_max));
+                memset(tokens + max_args, 0, sizeof(Token) * (size_t)(new_max - max_args));
                 ctype_overrides = xrealloc(ctype_overrides, sizeof(char *) * (size_t)(new_max));
                 memset(ctype_overrides + max_args, 0,
                        sizeof(char *) * (size_t)(new_max - max_args));
@@ -186,6 +189,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
             if (is_token(param_tok, "self"))
             {
                 names[count] = xstrdup("self");
+                tokens[count] = param_tok;
                 if (ctx->current_impl_target)
                 {
                     // self is a pointer to the impl's type, in the signature and the body.
@@ -193,7 +197,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                     st->is_const = is_const_param;
                     Type *ptr = type_new_ptr(st);
 
-                    add_symbol(ctx, "self", ptr, 0);
+                    add_symbol_with_token(ctx, "self", ptr, param_tok, 0);
                     types[count] = ptr;
                 }
                 else
@@ -201,7 +205,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                     Type *void_type = type_new(TYPE_VOID);
                     void_type->is_const = is_const_param;
                     types[count] = type_new_ptr(void_type);
-                    add_symbol(ctx, "self", types[count], 0);
+                    add_symbol_with_token(ctx, "self", types[count], param_tok, 0);
                 }
                 ctype_overrides[count] = ctype_override;
                 count++;
@@ -216,6 +220,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                 check_identifier(param_tok);
                 char *name = token_strdup(param_tok);
                 names[count] = name; // Store name
+                tokens[count] = param_tok;
                 if (lexer_next(l).kind != TOK_COLON)
                 {
                     zpanic_at(lexer_peek(l), "Expected ':'");
@@ -279,6 +284,10 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
     *count_out = count;
     *types_out = types;
     *names_out = names;
+    if (tokens_out)
+    {
+        *tokens_out = tokens;
+    }
     if (ctype_overrides_out)
     {
         *ctype_overrides_out = ctype_overrides;

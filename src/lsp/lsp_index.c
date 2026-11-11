@@ -46,9 +46,29 @@ static void lsp_index_add(LSPIndex *idx, LSPRange *r)
     }
 }
 
+// Whether the token's text is in the file at the token's line and column. The code that the
+// parser generates from a text of its own is not: its positions count from the start of that text.
+static int lsp_index_is_written(const LSPIndex *idx, Token t)
+{
+    if (t.line <= 0 || t.col <= 0 || !t.start)
+    {
+        return 0;
+    }
+    if (!idx->source)
+    {
+        return 1;
+    }
+    if (t.line > idx->line_count)
+    {
+        return 0;
+    }
+    size_t at = idx->line_starts[t.line - 1] + (size_t)(t.col - 1);
+    return at + t.len <= idx->source_len && strncmp(idx->source + at, t.start, t.len) == 0;
+}
+
 void lsp_index_add_def(LSPIndex *idx, Token t, const char *hover, ASTNode *node)
 {
-    if (t.line <= 0)
+    if (!lsp_index_is_written(idx, t))
     {
         return;
     }
@@ -88,7 +108,7 @@ static void lsp_index_add_plugin(LSPIndex *idx, ASTNode *node)
 
 void lsp_index_add_ref(LSPIndex *idx, Token t, Token def_t, ASTNode *node)
 {
-    if (t.line <= 0 || def_t.line <= 0)
+    if (!lsp_index_is_written(idx, t) || def_t.line <= 0)
     {
         return;
     }
@@ -110,7 +130,7 @@ void lsp_index_add_type_ref(LSPIndex *idx, Token t, const char *name)
 {
     // The token is where the name is written: a name that is qualified (`m::Box`), mangled or
     // renamed by an import is not that text, and its range would be a wrong one.
-    if (t.line <= 0 || !name || !t.start || strlen(name) != t.len ||
+    if (!lsp_index_is_written(idx, t) || !name || strlen(name) != t.len ||
         strncmp(t.start, name, t.len) != 0)
     {
         return;
@@ -256,6 +276,31 @@ int lsp_function_signature(Token name, char *out, size_t size)
     return 1;
 }
 
+// The parameters of a function or a lambda, `self` included, are definitions of their own. They
+// have no node: rename and references read a definition's name from its node, and the owner's
+// would stand for each of its parameters.
+static void lsp_index_add_params(LSPIndex *idx, int count, char **names, Type **types,
+                                 Token *tokens)
+{
+    for (int i = 0; names && tokens && i < count; i++)
+    {
+        if (!names[i])
+        {
+            continue;
+        }
+        char hover[MAX_SHORT_MSG_LEN];
+        if (types && types[i] && types[i]->kind != TYPE_UNKNOWN)
+        {
+            snprintf(hover, sizeof(hover), "%s: %s", names[i], type_to_string(types[i]));
+        }
+        else
+        {
+            snprintf(hover, sizeof(hover), "%s", names[i]);
+        }
+        lsp_index_add_def(idx, tokens[i], hover, NULL);
+    }
+}
+
 // Walker.
 
 static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
@@ -279,6 +324,14 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
                 snprintf(hover, sizeof(hover), "fn %s(...) -> %s", name, ret);
             }
             lsp_index_add_def(idx, node->token, hover, node);
+            lsp_index_add_params(idx, node->func.count, node->func.param_names,
+                                 node->func.arg_types, node->func.param_tokens);
+        }
+        else if (node->kind == NODE_LAMBDA)
+        {
+            lsp_index_add_params(idx, node->lambda.count, node->lambda.param_names,
+                                 node->type_info ? node->type_info->args : NULL,
+                                 node->lambda.param_tokens);
         }
         else if (node->kind == NODE_VAR_DECL)
         {
@@ -397,7 +450,27 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
     }
 }
 
-void lsp_build_index(LSPIndex *idx, ASTNode *root)
+void lsp_build_index(LSPIndex *idx, ASTNode *root, const char *source)
 {
+    idx->source = source;
+    if (source)
+    {
+        idx->source_len = strlen(source);
+        idx->line_count = 1;
+        for (const char *p = source; *p; p++)
+        {
+            idx->line_count += *p == '\n';
+        }
+        idx->line_starts = xmalloc(sizeof(size_t) * (size_t)(idx->line_count));
+        int line = 0;
+        idx->line_starts[line++] = 0;
+        for (size_t i = 0; i < idx->source_len; i++)
+        {
+            if (source[i] == '\n')
+            {
+                idx->line_starts[line++] = i + 1;
+            }
+        }
+    }
     lsp_walk_node(idx, root, 0);
 }

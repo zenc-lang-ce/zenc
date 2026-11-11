@@ -123,7 +123,7 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
         int is_varargs = 0;
         // The parameters belong to the signature, as a function's: not to the enclosing scope.
         enter_scope(ctx);
-        parse_and_convert_args(ctx, l, &default_values, &count, &arg_types, &param_names,
+        parse_and_convert_args(ctx, l, &default_values, &count, &arg_types, &param_names, NULL,
                                &is_varargs, NULL);
         exit_scope(ctx);
 
