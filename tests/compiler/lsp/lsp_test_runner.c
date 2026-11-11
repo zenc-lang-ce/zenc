@@ -1972,6 +1972,34 @@ static void test_loop_variable_hover(void)
     printf("PASS: test_loop_variable_hover\n");
 }
 
+static void test_variant_hover(void)
+{
+    printf("Running test_variant_hover...\n");
+    // A variant, where it is declared, built (with and without a payload) and matched, with and
+    // without its enum's name.
+    // Line 0: enum Value { Hour(int), Nothing }
+    // Line 1: fn make() -> Value { return Value::Hour(3); }
+    // Line 2: fn none() -> Value { return Value::Nothing; }
+    // Line 3: fn kind(v: Value) -> int {
+    // Line 4:     match v { Value::Hour(h) => { return h; }, Nothing => { return 0; } }
+    // Line 5: }
+    const char *uri = "file:///tmp/test_variant_hover.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_variant_hover.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"enum Value { Hour(int), "
+                 "Nothing }\\nfn make() -> Value { return Value::Hour(3); }\\nfn none() -> Value { "
+                 "return Value::Nothing; }\\nfn kind(v: Value) -> int {\\n    match v { "
+                 "Value::Hour(h) => { return h; }, Nothing => { return 0; } }\\n}\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 956, 0, 14, "Value::Hour(i32)");
+    expect_hover_in(uri, 957, 1, 37, "Value::Hour(i32)");
+    expect_hover_in(uri, 958, 2, 37, "Value::Nothing");
+    expect_hover_in(uri, 959, 4, 22, "Value::Hour(i32)");
+    expect_hover_in(uri, 960, 4, 15, "enum Value");
+    expect_hover_in(uri, 961, 4, 47, "Value::Nothing");
+    printf("PASS: test_variant_hover\n");
+}
+
 static void test_primitive_hover(void)
 {
     printf("Running test_primitive_hover...\n");
@@ -3325,6 +3353,7 @@ int main()
     test_deleted_declarations();
     test_uri_with_spaces();
     test_primitive_hover();
+    test_variant_hover();
     test_loop_variable_hover();
     test_member_hover();
     test_c_struct_field_completion();

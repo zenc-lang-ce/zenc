@@ -67,6 +67,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - Completion and signature help read what each file declares now: a function, type or method that was deleted is no longer offered. They offer generic structs and functions and traits too, and the std modules that a `test` block imports by itself (std/test.zc) are indexed, so go to definition reaches them.
   - Hover and go to definition work on the fields and methods reached through `.` (`self.count`, `self.is_full()`, `list.push(x)`), and on a field's declaration.
   - The variable of a `for` has hover and go to definition, with the type of the elements it walks (`for entry in list`, `for i, x in v`, `for i in 0..n`), and the hover of a `let` gives its type.
+  - Enum variants have hover and go to definition where they are declared, built (`Value::Hour(3)`, `Value::Nothing`) and matched (`Value::Hour(h) =>`, `Hour(h) =>`, `Some(x) =>` on an Option); the hover gives the enum and the payload: `Value::Hour(i32)`.
 - `zc-format` no longer needs the language server: it is built with `ZC_LSP=0` too.
 - REPL: Backspace and Escape work in reverse search.
 

@@ -347,6 +347,73 @@ static void add_variable_def(ParserContext *ctx, LSPIndex *idx, Token t, const c
     lsp_index_add_def(idx, t, kind, hover, node);
 }
 
+// The enum named `name` as `ctx` registered it: a declared one, an instance, or a template.
+static ASTNode *enum_named(ParserContext *ctx, const char *name)
+{
+    ASTNode *def = name ? find_struct_def(ctx, name) : NULL;
+    if (def && def->kind == NODE_ENUM)
+    {
+        return def;
+    }
+    GenericTemplate *template = name ? find_generic_template(ctx, name) : NULL;
+    return template && template->struct_node && template->struct_node->kind == NODE_ENUM
+               ? template->struct_node
+               : NULL;
+}
+
+// The references of the patterns of a `match` on a value of type `subject`: the enum of
+// `Color::Red` where it is written, and the variant, of that enum or of the subject's.
+static void add_pattern_refs(LSPIndex *idx, ParserContext *ctx, ASTNode *match, Type *subject)
+{
+    while (subject && subject->kind == TYPE_POINTER)
+    {
+        subject = subject->inner;
+    }
+    ASTNode *subject_enum = subject && (subject->kind == TYPE_ENUM || subject->kind == TYPE_STRUCT)
+                                ? enum_named(ctx, type_def_name(subject))
+                                : NULL;
+    for (ASTNode *c = match->match_stmt.cases; c; c = c->next)
+    {
+        if (c->kind != NODE_MATCH_CASE)
+        {
+            continue;
+        }
+        for (MatchPattern *p = c->match_case.patterns; p; p = p->next)
+        {
+            if (p->kind != PATTERN_NAME)
+            {
+                continue;
+            }
+            ASTNode *enm = subject_enum;
+            if (p->scope_token.line > 0)
+            {
+                char *scope = token_strdup(p->scope_token);
+                lsp_index_add_type_ref(idx, ctx, p->scope_token, scope);
+                enm = enum_named(ctx, scope);
+            }
+            ASTNode *v = enm ? enm->enm.variants : NULL;
+            while (v && !(v->variant.name && strcmp(v->variant.name, p->name.name) == 0))
+            {
+                v = v->next;
+            }
+            if (v)
+            {
+                lsp_index_add_ref(idx, p->name_token, v->token, NULL);
+            }
+            else if (!enm && subject && subject->kind == TYPE_STRUCT && p->scope_token.line <= 0)
+            {
+                // `Some(x)` on an Option: the struct's method of that name.
+                FuncSig *method = find_func(
+                    ctx, mangle_method_symbol(type_def_name(subject), NULL, p->name.name));
+                if (method)
+                {
+                    lsp_index_add_ref(idx, p->name_token, method->decl_token, NULL);
+                }
+            }
+        }
+    }
+}
+
 // Walker.
 
 static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int depth)
@@ -427,9 +494,24 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             {
                 if (variant->kind == NODE_ENUM_VARIANT)
                 {
+                    // `Shape::Rect(f32, f32)`, as a program writes the variant.
                     char vh[MAX_SHORT_MSG_LEN];
                     const char *vname = variant->variant.name ? variant->variant.name : "unknown";
-                    snprintf(vh, sizeof(vh), "variant %s", vname);
+                    Type *payload = variant->variant.payload;
+                    if (!payload)
+                    {
+                        snprintf(vh, sizeof(vh), "%s::%s", name, vname);
+                    }
+                    else if (payload->kind == TYPE_TUPLE)
+                    {
+                        snprintf(vh, sizeof(vh), "%s::%s%s", name, vname,
+                                 zen_c_type_spelling(ctx, payload));
+                    }
+                    else
+                    {
+                        snprintf(vh, sizeof(vh), "%s::%s(%s)", name, vname,
+                                 zen_c_type_spelling(ctx, payload));
+                    }
                     lsp_index_add_def(idx, variant->token, DECLARATION_VARIANT, vh, variant);
                 }
                 variant = variant->next;
@@ -460,22 +542,28 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
         if (node->definition_token.line > 0)
         {
             // A call through a path (`Id::of(1)`) refers to its function where the path writes
-            // it; the path's start is the type's name.
+            // it, and `Mode::On` to its variant; the path's start is the type's name.
             Token at = (node->kind == NODE_EXPR_CALL && node->call.member_token.line > 0)
                            ? node->call.member_token
+                       : (node->kind == NODE_EXPR_VAR && node->var_ref.variant.token.line > 0)
+                           ? node->var_ref.variant.token
                            : node->token;
             lsp_index_add_ref(idx, at, node->definition_token, node);
         }
-        else if (node->kind == NODE_EXPR_STRUCT_INIT)
+        if (node->kind == NODE_MATCH && node->match_stmt.expr)
         {
-            // `Box { v: 1 }`: its token is where the type's name is written.
-            lsp_index_add_type_ref(idx, ctx, node->token, node->struct_init.struct_name);
+            add_pattern_refs(idx, ctx, node, node->match_stmt.expr->type_info);
         }
-        else if (node->kind == NODE_EXPR_VAR && node->var_ref.variant.owner &&
-                 node->var_ref.variant.owner->name)
+        if (node->kind == NODE_EXPR_VAR && node->var_ref.variant.owner &&
+            node->var_ref.variant.owner->name)
         {
             // `Mode::On`: its token is where the enum's name is written.
             lsp_index_add_type_ref(idx, ctx, node->token, node->var_ref.variant.owner->name);
+        }
+        if (node->kind == NODE_EXPR_STRUCT_INIT)
+        {
+            // `Box { v: 1 }`: its token is where the type's name is written.
+            lsp_index_add_type_ref(idx, ctx, node->token, node->struct_init.struct_name);
         }
         else if (node->kind == NODE_IMPL && node->impl.target)
         {

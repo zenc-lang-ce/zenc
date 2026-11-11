@@ -92,6 +92,8 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
             Token p = lexer_next(l);
             char *written_scope = NULL;
             char *written_name = token_strdup(p);
+            Token name_token = p;
+            Token scope_token = TOKEN_UNKNOWN;
 
             while (1)
             {
@@ -113,6 +115,8 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                         written_scope = written_name;
                     }
                     written_name = token_strdup(suffix);
+                    scope_token = name_token;
+                    name_token = suffix;
                 }
                 else if (pk.kind == TOK_LANGLE)
                 {
@@ -172,6 +176,8 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 alternative->kind = PATTERN_NAME;
                 alternative->name.scope = written_scope;
                 alternative->name.name = written_name;
+                alternative->name_token = name_token;
+                alternative->scope_token = scope_token;
             }
             else
             {

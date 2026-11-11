@@ -576,6 +576,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                     if (strcmp(v->variant.name, method_name) == 0)
                                     {
                                         is_variant = 1;
+                                        member_declaration = v->token;
                                         break;
                                     }
                                     v = v->next;
@@ -589,6 +590,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 {
                                     variant.owner = def->type_info;
                                     variant.member = xstrdup(method_name);
+                                    variant.token = suffix;
                                     zfree(acc);
                                     acc = v_mangled;
                                     tmp = acc;
@@ -670,6 +672,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                     if (strcmp(v->variant.name, method_name) == 0)
                                     {
                                         is_variant = 1;
+                                        member_declaration = v->token;
                                         break;
                                     }
                                 }
@@ -678,6 +681,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             {
                                 variant.owner = path_type ? path_type : type_from_name(ctx, acc);
                                 variant.member = xstrdup(method_name);
+                                variant.token = suffix;
                                 tmp = mangle_variant_symbol(acc, method_name);
                             }
                             else if (tpl_def)
@@ -1545,6 +1549,11 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     sym->is_used = 1;
                     node->definition_token = sym->decl_token;
+                }
+                else if (variant.member)
+                {
+                    // `Color::Red`: no symbol, the variant itself.
+                    node->definition_token = member_declaration;
                 }
 
                 node->var_ref.suggestion =

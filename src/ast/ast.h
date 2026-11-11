@@ -230,6 +230,7 @@ typedef struct TypeMember
 {
     Type *owner;  ///< The type the member belongs to: `Color`, `Option<int>`.
     char *member; ///< `Red`, `Some`.
+    Token token;  ///< Where the member is written, for the language server; zeroed if nowhere.
 } TypeMember;
 
 /**
@@ -257,6 +258,9 @@ typedef struct MatchPattern
 {
     PatternKind kind;
     QualifiedName name; ///< PATTERN_NAME: the name, as written.
+    Token name_token;   ///< PATTERN_NAME: where the name is written, for the language server.
+    Token scope_token;  ///< PATTERN_NAME: where the last part of its scope is (`Color` of
+                        ///< `Color::Red`).
     char *literal;      ///< PATTERN_LITERAL: the literal, as written.
     char *range_start;  ///< PATTERN_RANGE: the start, as written.
     char *range_end;    ///< PATTERN_RANGE: the end, as written.

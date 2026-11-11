@@ -346,6 +346,8 @@ static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char 
         MatchPattern *copy = xcalloc(1, sizeof(MatchPattern));
         copy->kind = src->kind;
         copy->is_inclusive = src->is_inclusive;
+        copy->name_token = src->name_token;
+        copy->scope_token = src->scope_token;
         if (src->name.scope)
         {
             copy->name.scope = rename_template(src->name.scope, os, ns);
