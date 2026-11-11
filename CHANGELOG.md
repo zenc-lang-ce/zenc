@@ -47,6 +47,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - An error inside an f-string interpolation points at the expression and prints its line.
   - A MISRA diagnostic about a struct field points at the field.
   - A diagnostic about a field of a struct literal (a type mismatch, a pointer that escapes, a MISRA rule) points at that field, not at the name of the struct.
+  - "Use of moved value" says where the value was moved (`'data' was moved at line 21, column 30`), or that a loop moved it on an earlier iteration.
   - MISRA Rule 2.4 does not flag an enum the program uses; `assert` and `test` blocks are reported under Rule 21.6 instead of C that does not compile.
 - `#line` is emitted when the file changes on the same line, and again when a newline was written since the last one; a `for` loop restores the lexer after its lookahead.
 - The C is written in binary mode on Windows.
@@ -72,6 +73,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - Generic functions (`fn f<T>`) are indexed: their name, parameters and body have hover and go to definition, and so have their calls (`f<int>(1)`, `f(1)`).
   - The field names of a struct literal (`Point { x: 1, y: 2 }`, `Box<int> { val: 3 }`) have hover and go to definition.
   - Generic parameters (`T` of `struct Box<T>`, `impl<T>`, `fn max<T>`, a trait or an enum) have hover and go to definition: each `T` leads to the declaration in scope where it is written.
+  - Completion after `.` reads the members of the type the value has, whatever qualifies it: `h.` on a `let h: const Header` or a `const Header*`, a field of a C header through a pointer (`font.recs.`), and the methods of an `impl int` on an `int`.
   - A type name that names no type (`origin: Pont`) is warned about, as `zc build` does, with the closest name as a suggestion. The types that the C headers of the file declare are not warned about.
 - `zc-format` no longer needs the language server: it is built with `ZC_LSP=0` too.
 - REPL: Backspace and Escape work in reverse search.

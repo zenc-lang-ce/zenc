@@ -125,27 +125,26 @@ static void mark_moved_in_state(MoveState *state, const char *path, Token t)
     state->entries = new_entry;
 }
 
-MoveStatus get_move_status(MoveState *state, const char *path)
+// The entry of `path` in `state` or in the states it is nested in; NULL when there is none.
+static MoveEntry *find_move_entry(MoveState *state, const char *path)
 {
-    if (!path)
+    for (MoveState *s = path ? state : NULL; s; s = s->parent)
     {
-        return MOVE_STATE_VALID;
-    }
-    MoveState *s = state;
-    while (s)
-    {
-        MoveEntry *e = s->entries;
-        while (e)
+        for (MoveEntry *e = s->entries; e; e = e->next)
         {
             if (strcmp(e->symbol_name, path) == 0)
             {
-                return e->status;
+                return e;
             }
-            e = e->next;
         }
-        s = s->parent;
     }
-    return MOVE_STATE_VALID;
+    return NULL;
+}
+
+MoveStatus get_move_status(MoveState *state, const char *path)
+{
+    MoveEntry *e = find_move_entry(state, path);
+    return e ? e->status : MOVE_STATE_VALID;
 }
 
 void move_state_merge(MoveState *target, MoveState *a, MoveState *b)
@@ -322,12 +321,8 @@ void check_path_validity(TypeChecker *tc, const char *path, Token t)
 
     // Check Flow-Sensitive State
     ParserContext *ctx = tc->pctx;
-    MoveStatus status = MOVE_STATE_VALID;
-
-    if (ctx && ctx->move_state)
-    {
-        status = get_move_status(ctx->move_state, path);
-    }
+    MoveEntry *entry = ctx && ctx->move_state ? find_move_entry(ctx->move_state, path) : NULL;
+    MoveStatus status = entry ? entry->status : MOVE_STATE_VALID;
 
     if (status == MOVE_STATE_MOVED || status == MOVE_STATE_MAYBE_MOVED)
     {
@@ -350,9 +345,39 @@ void check_path_validity(TypeChecker *tc, const char *path, Token t)
         char msg[MAX_ERROR_MSG_LEN];
         snprintf(msg, 255, "Use of moved value '%s'", path);
 
-        const char *hints[] = {"This type owns resources and cannot be implicitly copied",
-                               "Consider using a reference ('&') to borrow the value instead",
-                               NULL};
+        // Where it was moved: the use alone does not say which line to change.
+        char moved_at[MAX_ERROR_MSG_LEN];
+        Token m = entry->moved_at;
+        if (m.line <= 0)
+        {
+            moved_at[0] = 0;
+        }
+        else if (m.line == t.line && m.col == t.col)
+        {
+            // The use moves it too, on the iteration before: `take(v)` in a loop.
+            snprintf(moved_at, sizeof(moved_at),
+                     "'%s' was moved here in an earlier iteration of the loop", path);
+        }
+        else if (m.file && t.file && strcmp(m.file, t.file) != 0)
+        {
+            snprintf(moved_at, sizeof(moved_at), "'%s' was moved at %s:%d:%d", path, m.file, m.line,
+                     m.col);
+        }
+        else
+        {
+            snprintf(moved_at, sizeof(moved_at), "'%s' was moved at line %d, column %d", path,
+                     m.line, m.col);
+        }
+
+        const char *hints[4];
+        int hint_count = 0;
+        if (moved_at[0])
+        {
+            hints[hint_count++] = moved_at;
+        }
+        hints[hint_count++] = "This type owns resources and cannot be implicitly copied";
+        hints[hint_count++] = "Consider using a reference ('&') to borrow the value instead";
+        hints[hint_count] = NULL;
         tc_move_error_with_hints(tc, t, msg, hints);
     }
 }
