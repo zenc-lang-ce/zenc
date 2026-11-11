@@ -170,6 +170,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
 
         char *enum_idx_name = NULL;
         Token val_tok = {0};
+        Token index_tok = {0}; // `i` of `for i, x in ...`.
         if (lexer_peek(l).kind == TOK_COMMA)
         {
             lexer_next(l);
@@ -177,6 +178,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
             enum_idx_name = xmalloc(var.len + 1);
             strncpy(enum_idx_name, var.start, var.len);
             enum_idx_name[var.len] = 0;
+            index_tok = var;
             var = val_tok;
         }
 
@@ -209,6 +211,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     n->for_range.var_name = xmalloc(var.len + 1);
                     strncpy(n->for_range.var_name, var.start, var.len);
                     n->for_range.var_name[var.len] = 0;
+                    n->for_range.var_token = var;
                     n->for_range.start = start_expr;
                     n->for_range.end = end_expr;
                     n->for_range.is_inclusive = is_inclusive;
@@ -242,10 +245,10 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     }
 
                     enter_scope(ctx);
-                    add_symbol(ctx, n->for_range.var_name, type_new(TYPE_INT), 0);
+                    add_symbol_with_token(ctx, n->for_range.var_name, type_new(TYPE_INT), var, 0);
                     if (enum_idx_name)
                     {
-                        add_symbol(ctx, enum_idx_name, type_new(TYPE_INT), 0);
+                        add_symbol_with_token(ctx, enum_idx_name, type_new(TYPE_INT), index_tok, 0);
                     }
 
                     ASTNode *user_body = NULL;
@@ -277,7 +280,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                         idx_decl->var_decl.init_expr = zero_lit;
 
                         ASTNode *idx_bind = ast_create(NODE_VAR_DECL);
-                        idx_bind->token = tk;
+                        idx_bind->token = index_tok;
                         idx_bind->var_decl.name = enum_idx_name;
                         idx_bind->type_info = type_new(TYPE_INT);
                         idx_bind->var_decl.type_info = idx_bind->type_info;
@@ -510,7 +513,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 APPEND_STMT(if_break);
 
                 ASTNode *user_var_decl = ast_create(NODE_VAR_DECL);
-                user_var_decl->token = tk;
+                user_var_decl->token = var;
                 user_var_decl->var_decl.name = var_name;
                 user_var_decl->type_info = elem_type;
                 user_var_decl->var_decl.type_info = elem_type;
@@ -533,7 +536,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 if (enum_idx_name)
                 {
                     ASTNode *idx_bind = ast_create(NODE_VAR_DECL);
-                    idx_bind->token = tk;
+                    idx_bind->token = index_tok;
                     idx_bind->var_decl.name = enum_idx_name;
                     idx_bind->type_info = type_new(TYPE_INT);
                     idx_bind->var_decl.type_info = idx_bind->type_info;
@@ -546,10 +549,10 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 APPEND_STMT(user_var_decl);
 
                 enter_scope(ctx);
-                add_symbol(ctx, var_name, elem_type, 0);
+                add_symbol_with_token(ctx, var_name, elem_type, var, 0);
                 if (enum_idx_name)
                 {
-                    add_symbol(ctx, enum_idx_name, type_new(TYPE_INT), 0);
+                    add_symbol_with_token(ctx, enum_idx_name, type_new(TYPE_INT), index_tok, 0);
                 }
 
                 ASTNode *stmt = parse_statement(ctx, l);

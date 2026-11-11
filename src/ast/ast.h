@@ -407,6 +407,7 @@ struct ASTNode
         struct
         {
             char *var_name;
+            Token var_token; ///< Where the loop variable is written: its declaration.
             ASTNode *start;
             ASTNode *end;
             char *step;
