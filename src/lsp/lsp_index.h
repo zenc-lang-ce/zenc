@@ -35,7 +35,8 @@ typedef enum
     DECLARATION_ENUM,
     DECLARATION_VARIANT,
     DECLARATION_ALIAS,
-    DECLARATION_TRAIT
+    DECLARATION_TRAIT,
+    DECLARATION_TYPE_PARAMETER ///< `T` of `fn max<T>`.
 } DeclarationKind;
 
 /**

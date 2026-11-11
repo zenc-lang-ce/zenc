@@ -43,6 +43,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             check_identifier(g);
             gps = realloc(gps, sizeof(char *) * (size_t)(gp_count + 1));
             gps[gp_count++] = token_strdup(g);
+            register_generic(ctx, g);
 
             Token next = lexer_peek(l);
             if (next.kind == TOK_EOF)
@@ -64,11 +65,6 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
                 zpanic_at(next, "Expected ',' or '>' in generic parameter list");
                 return NULL;
             }
-        }
-
-        for (int i = 0; i < gp_count; i++)
-        {
-            register_generic(ctx, gps[i]);
         }
     }
 

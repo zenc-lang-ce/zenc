@@ -320,6 +320,26 @@ static inline void module_state_init(ModuleState *ms)
 }
 
 /**
+ * @brief A generic parameter in scope (`T` of `fn max<T>`).
+ */
+typedef struct
+{
+    char *name;
+    Token token; ///< Where it is declared, for the language server.
+} GenericParameter;
+
+/**
+ * @brief A generic parameter written in a type, for the language server: the declaration
+ *        itself too, where `at` is `declaration`.
+ */
+typedef struct GenericParameterUse
+{
+    Token at;
+    Token declaration;
+    struct GenericParameterUse *next;
+} GenericParameterUse;
+
+/**
  * @brief A function body whose parsing is postponed until all declarations are known.
  */
 typedef struct PendingBody
@@ -330,7 +350,7 @@ typedef struct PendingBody
     Scope *scope;            ///< Scope holding the parameters.
     int in_method_with_self; ///< `.field` shorthand allowed in this body.
     int is_template;         ///< The body of a generic template: parsed before the concrete ones.
-    char **generics;         ///< The generic parameters in scope at the declaration (`T`, `U`).
+    GenericParameter *generics; ///< The generic parameters in scope at the declaration (`T`, `U`).
     int generic_count;
     struct PendingBody *next;
 } PendingBody;
@@ -370,12 +390,13 @@ struct ParserContext
 
 // Generics
 #define MAX_KNOWN_GENERICS 1024
-    char
-        *known_generics[MAX_KNOWN_GENERICS]; ///< Stack of currently active generic type parameters.
-    int known_generics_count;                ///< Count of active generic parameters.
-    GenericTemplate *templates;              ///< Struct generic templates.
-    GenericFuncTemplate *func_templates;     ///< Function generic templates.
-    GenericImplTemplate *impl_templates;     ///< Implementation block templates.
+    GenericParameter
+        known_generics[MAX_KNOWN_GENERICS]; ///< Stack of currently active generic type parameters.
+    int known_generics_count;               ///< Count of active generic parameters.
+    GenericParameterUse *generic_parameter_uses; ///< Every one read, newest first.
+    GenericTemplate *templates;                  ///< Struct generic templates.
+    GenericFuncTemplate *func_templates;         ///< Function generic templates.
+    GenericImplTemplate *impl_templates;         ///< Implementation block templates.
 
     // Instantiations
     Instantiation *instantiations;                  ///< Cache of instantiated generic types.
@@ -838,9 +859,14 @@ GenericFuncTemplate *find_func_template(ParserContext *ctx, const char *name);
 
 // Generic/template helpers
 /**
- * @brief Registers a known generic type parameter.
+ * @brief Registers a known generic type parameter, declared at `name`.
  */
-void register_generic(ParserContext *ctx, char *name);
+void register_generic(ParserContext *ctx, Token name);
+
+/**
+ * @brief Records `t`, a known generic parameter written in a type, for the language server.
+ */
+void record_generic_parameter_use(ParserContext *ctx, Token t);
 
 /**
  * @brief Checks if a name is a known generic parameter.

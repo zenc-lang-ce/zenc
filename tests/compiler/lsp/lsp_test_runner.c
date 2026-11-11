@@ -2044,6 +2044,33 @@ static void test_literal_field_hover(void)
     printf("PASS: test_literal_field_hover\n");
 }
 
+static void test_generic_parameter_hover(void)
+{
+    printf("Running test_generic_parameter_hover...\n");
+    // A generic parameter is declared by its struct, impl or function: each `T` is the one in
+    // scope where it is written.
+    // Line 0: struct Box<T> { val: T; }
+    // Line 1: impl<T> Box<T> { fn get(self) -> T { return self.val; } }
+    // Line 2: fn first<U>(a: U, b: U) -> U { return a; }
+    const char *path = "/tmp/test_generic_parameter_hover.zc";
+    const char *uri = "file:///tmp/test_generic_parameter_hover.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_generic_parameter_hover.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"struct Box<T> { val: T; "
+                 "}\\nimpl<T> Box<T> { fn get(self) -> T { return self.val; } }\\nfn first<U>(a: "
+                 "U, b: U) -> U { return a; }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 970, 0, 11, "type parameter T");
+    expect_hover_in(uri, 971, 0, 21, "type parameter T");
+    expect_hover_in(uri, 972, 1, 12, "type parameter T");
+    expect_hover_in(uri, 973, 1, 33, "type parameter T");
+    expect_hover_in(uri, 974, 2, 27, "type parameter U");
+    expect_definition(975, "T of the impl", path, 1, 33, "test_generic_parameter_hover.zc", 1);
+    expect_definition(976, "T of the struct", path, 0, 21, "test_generic_parameter_hover.zc", 0);
+    expect_definition(977, "U", path, 2, 15, "test_generic_parameter_hover.zc", 2);
+    printf("PASS: test_generic_parameter_hover\n");
+}
+
 static void test_primitive_hover(void)
 {
     printf("Running test_primitive_hover...\n");
@@ -3398,6 +3425,7 @@ int main()
     test_uri_with_spaces();
     test_primitive_hover();
     test_literal_field_hover();
+    test_generic_parameter_hover();
     test_generic_function_hover();
     test_variant_hover();
     test_loop_variable_hover();

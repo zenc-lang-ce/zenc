@@ -30,7 +30,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
         check_identifier(g);
         gp = token_strdup(g);
         lexer_next(l); // eat >
-        register_generic(ctx, gp);
+        register_generic(ctx, g);
     }
 
     lexer_next(l);

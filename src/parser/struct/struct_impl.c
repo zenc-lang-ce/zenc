@@ -137,7 +137,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             zpanic_at(lexer_peek(l), "Expected >");
             return NULL;
         }
-        register_generic(ctx, gen_param);
+        register_generic(ctx, gt);
     }
 
     Token t1 = lexer_next(l);
@@ -162,13 +162,13 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             zpanic_at(lexer_peek(l), "Expected >");
             return NULL;
         }
-        register_generic(ctx, gen_param);
+        register_generic(ctx, gt);
     }
     else if (gen_param && lexer_peek(l).kind == TOK_LANGLE)
     {
         // impl<T> Struct<T> syntax: skip redundant <T> on struct name
-        lexer_next(l); // eat <
-        lexer_next(l); // eat T
+        lexer_next(l);                                    // eat <
+        record_generic_parameter_use(ctx, lexer_next(l)); // eat T
         if (lexer_next(l).kind != TOK_RANGLE)
         {
             zpanic_at(lexer_peek(l), "Expected >");
@@ -195,7 +195,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
                 zpanic_at(lexer_peek(l), "Expected > in impl struct generic");
                 return NULL;
             }
-            register_generic(ctx, target_gen_param);
+            register_generic(ctx, gt);
         }
         Type *target = impl_target(ctx, name2);
         name2 = type_impl_name(target);

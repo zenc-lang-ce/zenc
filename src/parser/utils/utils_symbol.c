@@ -211,28 +211,56 @@ GenericFuncTemplate *find_func_template(ParserContext *ctx, const char *name)
     return NULL;
 }
 
-void register_generic(ParserContext *ctx, char *name)
+static GenericParameter *find_known_generic(ParserContext *ctx, const char *name, size_t len)
 {
     for (int i = 0; i < ctx->known_generics_count; i++)
     {
-        if (strcmp(ctx->known_generics[i], name) == 0)
+        const char *known = ctx->known_generics[i].name;
+        if (strncmp(known, name, len) == 0 && known[len] == 0)
         {
-            return;
+            return &ctx->known_generics[i];
         }
     }
-    ctx->known_generics[ctx->known_generics_count++] = xstrdup(name);
+    return NULL;
+}
+
+static void add_generic_parameter_use(ParserContext *ctx, Token at, Token declaration)
+{
+    if (ctx->is_speculative)
+    {
+        return;
+    }
+    GenericParameterUse *use = xmalloc(sizeof(GenericParameterUse));
+    use->at = at;
+    use->declaration = declaration;
+    use->next = ctx->generic_parameter_uses;
+    ctx->generic_parameter_uses = use;
+}
+
+void register_generic(ParserContext *ctx, Token name)
+{
+    if (find_known_generic(ctx, name.start, name.len))
+    {
+        return;
+    }
+    GenericParameter *param = &ctx->known_generics[ctx->known_generics_count++];
+    param->name = token_strdup(name);
+    param->token = name;
+    add_generic_parameter_use(ctx, name, name);
+}
+
+void record_generic_parameter_use(ParserContext *ctx, Token t)
+{
+    GenericParameter *param = find_known_generic(ctx, t.start, t.len);
+    if (param)
+    {
+        add_generic_parameter_use(ctx, t, param->token);
+    }
 }
 
 int is_known_generic(ParserContext *ctx, char *name)
 {
-    for (int i = 0; i < ctx->known_generics_count; i++)
-    {
-        if (strcmp(ctx->known_generics[i], name) == 0)
-        {
-            return 1;
-        }
-    }
-    return 0;
+    return find_known_generic(ctx, name, strlen(name)) != NULL;
 }
 
 int type_is_generic_dependent(ParserContext *ctx, Type *t)

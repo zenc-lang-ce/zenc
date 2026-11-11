@@ -48,6 +48,7 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
             strncpy(generic_params[generic_count], p.start, p.len);
             generic_params[generic_count][p.len] = 0;
             generic_count++;
+            register_generic(ctx, p);
 
             Token sep = lexer_peek(l);
             if (sep.kind == TOK_EOF)
@@ -70,14 +71,6 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
                 zpanic_at(sep, "Expected , or > in generic params");
                 return NULL;
             }
-        }
-    }
-
-    if (generic_count > 0)
-    {
-        for (int i = 0; i < generic_count; i++)
-        {
-            register_generic(ctx, generic_params[i]);
         }
     }
 
