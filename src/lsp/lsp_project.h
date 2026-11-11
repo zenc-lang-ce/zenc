@@ -92,8 +92,8 @@ typedef struct ReferenceResult
 // lsp_range_names): its declaration and its uses.
 ReferenceResult *lsp_project_find_references(Token definition);
 
-// Semantic Tokens
-char *lsp_semantic_tokens_full(const char *uri);
+// Semantic Tokens: the result of textDocument/semanticTokens/full.
+struct cJSON *lsp_semantic_tokens_full(const char *uri);
 
 /** Severity of a published diagnostic, as the LSP specification numbers it. */
 typedef enum
@@ -108,14 +108,17 @@ typedef enum
 void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d);
 void lsp_check_file(const char *uri, const char *src);
 void lsp_close_file(const char *uri);
-void lsp_goto_definition(const char *uri, int line, int col, const struct cJSON *id);
-void lsp_hover(const char *uri, int line, int col, const struct cJSON *id);
-void lsp_completion(const char *uri, int line, int col, const struct cJSON *id);
-void lsp_document_symbol(const char *uri, const struct cJSON *id);
-void lsp_workspace_symbol(const char *query, const struct cJSON *id);
-void lsp_references(const char *uri, int line, int col, const struct cJSON *id);
-void lsp_signature_help(const char *uri, int line, int col, const struct cJSON *id);
-void lsp_rename(const char *uri, int line, int col, const char *new_name, const struct cJSON *id);
-void lsp_code_action(const char *uri, struct cJSON *diagnostics, const struct cJSON *id);
+
+// The handlers of the requests: each returns the `result` of its response, which
+// lsp_handle_message sends. NULL answers `null`.
+struct cJSON *lsp_goto_definition(const char *uri, int line, int col);
+struct cJSON *lsp_hover(const char *uri, int line, int col);
+struct cJSON *lsp_completion(const char *uri, int line, int col);
+struct cJSON *lsp_document_symbol(const char *uri);
+struct cJSON *lsp_workspace_symbol(const char *query);
+struct cJSON *lsp_references(const char *uri, int line, int col);
+struct cJSON *lsp_signature_help(const char *uri, int line, int col);
+struct cJSON *lsp_rename(const char *uri, int line, int col, const char *new_name);
+struct cJSON *lsp_code_action(const char *uri, struct cJSON *diagnostics);
 
 #endif

@@ -40,19 +40,6 @@ typedef enum
     CTX_ASSIGNMENT
 } LSPContext;
 
-// Helper to send JSON response
-static void send_json_response(cJSON *root)
-{
-    char *str = cJSON_PrintUnformatted(root);
-    if (str)
-    {
-        fprintf(stdout, "Content-Length: %zu\r\n\r\n%s", strlen(str), str);
-        fflush(stdout);
-        zfree(str);
-    }
-    cJSON_Delete(root);
-}
-
 // Appends a diagnostic to `data`, a DiagnosticList.
 static void diagnostic_list_add(void *data, Token t, int severity, const char *msg, int diag_id)
 {
@@ -122,7 +109,7 @@ void lsp_close_file(const char *uri)
     cJSON_AddStringToObject(params, "uri", uri);
     cJSON_AddItemToObject(params, "diagnostics", cJSON_CreateArray());
     cJSON_AddItemToObject(root, "params", params);
-    send_json_response(root);
+    lsp_send_message(root);
 }
 
 void lsp_check_file(const char *uri, const char *json_src)
@@ -209,7 +196,7 @@ void lsp_check_file(const char *uri, const char *json_src)
     cJSON_AddItemToObject(params, "diagnostics", diag_array);
     cJSON_AddItemToObject(root, "params", params);
 
-    send_json_response(root);
+    lsp_send_message(root);
 
     Diagnostic *cur = diagnostics.head;
     while (cur)
@@ -221,14 +208,14 @@ void lsp_check_file(const char *uri, const char *json_src)
     }
 }
 
-void lsp_goto_definition(const char *uri, int line, int col, const cJSON *id)
+cJSON *lsp_goto_definition(const char *uri, int line, int col)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
     LSPIndex *idx = pf ? pf->index : NULL;
 
     if (!idx)
     {
-        return;
+        return NULL;
     }
 
     LSPRange *r = lsp_find_at(idx, line, col);
@@ -278,42 +265,35 @@ void lsp_goto_definition(const char *uri, int line, int col, const cJSON *id)
             ? lsp_c_headers_origin_location(&c_origin, c_origin_kind, g_lsp_definition_link_support)
             : NULL;
 
-    cJSON *root = lsp_response_new(id);
-
     if (c_location)
     {
-        cJSON_AddItemToObject(root, "result", c_location);
+        return c_location;
     }
-    else if (c_symbol_count > 0)
+    if (c_symbol_count > 0)
     {
-        cJSON_AddItemToObject(root, "result", lsp_c_headers_locations(c_symbols, c_symbol_count));
+        return lsp_c_headers_locations(c_symbols, c_symbol_count);
     }
-    else if (found)
+    if (!found)
     {
-        cJSON *result = cJSON_CreateObject();
-        cJSON_AddStringToObject(result, "uri", target_uri);
-
-        cJSON *range = cJSON_CreateObject();
-        cJSON *start = cJSON_CreateObject();
-        cJSON_AddNumberToObject(start, "line", target_start_line);
-        cJSON_AddNumberToObject(start, "character", target_start_col);
-
-        cJSON *end = cJSON_CreateObject();
-        cJSON_AddNumberToObject(end, "line", target_end_line);
-        cJSON_AddNumberToObject(end, "character", target_end_col);
-
-        cJSON_AddItemToObject(range, "start", start);
-        cJSON_AddItemToObject(range, "end", end);
-        cJSON_AddItemToObject(result, "range", range);
-
-        cJSON_AddItemToObject(root, "result", result);
-    }
-    else
-    {
-        cJSON_AddNullToObject(root, "result");
+        return NULL;
     }
 
-    send_json_response(root);
+    cJSON *result = cJSON_CreateObject();
+    cJSON_AddStringToObject(result, "uri", target_uri);
+
+    cJSON *range = cJSON_CreateObject();
+    cJSON *start = cJSON_CreateObject();
+    cJSON_AddNumberToObject(start, "line", target_start_line);
+    cJSON_AddNumberToObject(start, "character", target_start_col);
+
+    cJSON *end = cJSON_CreateObject();
+    cJSON_AddNumberToObject(end, "line", target_end_line);
+    cJSON_AddNumberToObject(end, "character", target_end_col);
+
+    cJSON_AddItemToObject(range, "start", start);
+    cJSON_AddItemToObject(range, "end", end);
+    cJSON_AddItemToObject(result, "range", range);
+    return result;
 }
 
 static const char *get_primitive_doc(const char *word)
@@ -467,15 +447,14 @@ static char *get_word_at(const char *src, int line, int col)
     return word;
 }
 
-void lsp_hover(const char *uri, int line, int col, const cJSON *id)
+cJSON *lsp_hover(const char *uri, int line, int col)
 {
-    (void)uri;
     ProjectFile *pf = lsp_project_get_file(uri);
     LSPIndex *idx = pf ? pf->index : NULL;
 
     if (!idx)
     {
-        return;
+        return NULL;
     }
 
     LSPRange *r = lsp_find_at(idx, line, col);
@@ -581,11 +560,10 @@ void lsp_hover(const char *uri, int line, int col, const cJSON *id)
         }
     }
 
-    cJSON *root = lsp_response_new(id);
-
+    cJSON *result = NULL;
     if (text)
     {
-        cJSON *result = cJSON_CreateObject();
+        result = cJSON_CreateObject();
         cJSON *contents = cJSON_CreateObject();
         cJSON_AddStringToObject(contents, "kind", "markdown");
 
@@ -609,16 +587,11 @@ void lsp_hover(const char *uri, int line, int col, const cJSON *id)
             cJSON_AddItemToObject(result, "range", c_hover_range);
             c_hover_range = NULL;
         }
-        cJSON_AddItemToObject(root, "result", result);
-    }
-    else
-    {
-        cJSON_AddNullToObject(root, "result");
     }
 
-    send_json_response(root);
     libc_free(c_hover);
     cJSON_Delete(c_hover_range);
+    return result;
 }
 
 // Helper to resolve type of local var or arg
@@ -841,23 +814,19 @@ static int add_impl_completions(cJSON *items, const char *type_name, int with_se
     return added;
 }
 
-void lsp_completion(const char *uri, int line, int col, const cJSON *id)
+cJSON *lsp_completion(const char *uri, int line, int col)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
     if (!g_project || !g_project->ctx || !pf)
     {
-        return;
+        return NULL;
     }
-
-    cJSON *root = lsp_response_new(id);
 
     // After the alias of a C header (`rl::`), the declarations of that header.
     cJSON *c_items = pf->source ? lsp_c_headers_completion(pf->path, pf->source, line, col) : NULL;
     if (c_items)
     {
-        cJSON_AddItemToObject(root, "result", c_items);
-        send_json_response(root);
-        return;
+        return c_items;
     }
 
     cJSON *items = cJSON_CreateArray();
@@ -1529,8 +1498,7 @@ void lsp_completion(const char *uri, int line, int col, const cJSON *id)
         }
     }
 
-    cJSON_AddItemToObject(root, "result", items);
-    send_json_response(root);
+    return items;
 }
 
 // Name and LSP SymbolKind of a declaration, or NULL when the node is not one.
@@ -1623,16 +1591,12 @@ static cJSON *ast_to_symbol(ASTNode *node)
     return item;
 }
 
-void lsp_document_symbol(const char *uri, const cJSON *id)
+cJSON *lsp_document_symbol(const char *uri)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
-    cJSON *root = lsp_response_new(id);
-
     if (!pf || !pf->ast)
     {
-        cJSON_AddNullToObject(root, "result");
-        send_json_response(root);
-        return;
+        return NULL;
     }
 
     cJSON *items = cJSON_CreateArray();
@@ -1654,8 +1618,7 @@ void lsp_document_symbol(const char *uri, const cJSON *id)
         node = node->next; // Top level siblings
     }
 
-    cJSON_AddItemToObject(root, "result", items);
-    send_json_response(root);
+    return items;
 }
 
 // `query` matches `name` when its characters appear in it in order, ignoring case. The
@@ -1708,9 +1671,8 @@ static void add_workspace_symbol(cJSON *items, const char *name, int kind, const
 
 #define MAX_WORKSPACE_SYMBOLS 500
 
-void lsp_workspace_symbol(const char *query, const cJSON *id)
+cJSON *lsp_workspace_symbol(const char *query)
 {
-    cJSON *root = lsp_response_new(id);
     cJSON *items = cJSON_CreateArray();
     int count = 0;
 
@@ -1768,14 +1730,12 @@ void lsp_workspace_symbol(const char *query, const cJSON *id)
         }
     }
 
-    cJSON_AddItemToObject(root, "result", items);
-    send_json_response(root);
+    return items;
 }
 
-void lsp_references(const char *uri, int line, int col, const cJSON *id)
+cJSON *lsp_references(const char *uri, int line, int col)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
-    cJSON *root = lsp_response_new(id);
     cJSON *items = cJSON_CreateArray();
 
     if (pf && pf->index)
@@ -1805,8 +1765,7 @@ void lsp_references(const char *uri, int line, int col, const cJSON *id)
         }
     }
 
-    cJSON_AddItemToObject(root, "result", items);
-    send_json_response(root);
+    return items;
 }
 
 // The parameters of a signature as written, split at the commas of its parentheses only: a
@@ -1873,16 +1832,12 @@ static cJSON *signature_parameters(const char *signature)
     return params;
 }
 
-void lsp_signature_help(const char *uri, int line, int col, const cJSON *id)
+cJSON *lsp_signature_help(const char *uri, int line, int col)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
-    cJSON *root = lsp_response_new(id);
-
     if (!g_project || !g_project->ctx || !pf || !pf->source)
     {
-        cJSON_AddNullToObject(root, "result");
-        send_json_response(root);
-        return;
+        return NULL;
     }
 
     // ... [Scan backwards logic same as before] ...
@@ -1903,12 +1858,10 @@ void lsp_signature_help(const char *uri, int line, int col, const cJSON *id)
 
     if (ptr > pf->source + strlen(pf->source))
     {
-        cJSON_AddNullToObject(root, "result");
-        send_json_response(root);
-        return;
+        return NULL;
     }
 
-    int found = 0;
+    cJSON *result = NULL;
     char *p = ptr - 1;
     while (p >= pf->source)
     {
@@ -1953,7 +1906,7 @@ void lsp_signature_help(const char *uri, int line, int col, const cJSON *id)
                         {
                             break;
                         }
-                        cJSON *result = cJSON_CreateObject();
+                        result = cJSON_CreateObject();
                         cJSON *sigs = cJSON_CreateArray();
                         cJSON *sig = cJSON_CreateObject();
                         cJSON_AddStringToObject(sig, "label", label);
@@ -1975,9 +1928,6 @@ void lsp_signature_help(const char *uri, int line, int col, const cJSON *id)
                         }
                         cJSON_AddNumberToObject(result, "activeSignature", 0);
                         cJSON_AddNumberToObject(result, "activeParameter", active);
-
-                        cJSON_AddItemToObject(root, "result", result);
-                        found = 1;
                         break;
                     }
                     fn = fn->next;
@@ -1988,12 +1938,7 @@ void lsp_signature_help(const char *uri, int line, int col, const cJSON *id)
         p--;
     }
 
-    if (!found)
-    {
-        cJSON_AddNullToObject(root, "result");
-    }
-
-    send_json_response(root);
+    return result;
 }
 
 // Whether renaming a symbol of this kind edits every place that names it. The index has no uses
@@ -2005,10 +1950,9 @@ static int is_renamable(LSPSymbolKind kind)
            kind == LSP_SYMBOL_CONSTANT || kind == LSP_SYMBOL_PARAMETER || kind == LSP_SYMBOL_STRUCT;
 }
 
-void lsp_rename(const char *uri, int line, int col, const char *new_name, const cJSON *id)
+cJSON *lsp_rename(const char *uri, int line, int col, const char *new_name)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
-    cJSON *root = lsp_response_new(id);
 
     // The symbol is renamed where its program declares it: not in a module from outside the
     // workspace, which rename does not edit.
@@ -2017,18 +1961,13 @@ void lsp_rename(const char *uri, int line, int col, const char *new_name, const 
     LSPRange *def = r ? lsp_project_definition(pf, r, &def_file) : NULL;
     if (!def || !def->symbol.name || !is_renamable(def->symbol.kind) || def_file->is_external)
     {
-        cJSON_AddNullToObject(root, "result");
-        send_json_response(root);
-        return;
+        return NULL;
     }
 
     ReferenceResult *refs = lsp_project_find_references(def->symbol.definition);
-
     if (!refs)
     {
-        cJSON_AddNullToObject(root, "result");
-        send_json_response(root);
-        return;
+        return NULL;
     }
 
     cJSON *result = cJSON_CreateObject();
@@ -2069,11 +2008,10 @@ void lsp_rename(const char *uri, int line, int col, const char *new_name, const 
     }
 
     cJSON_AddItemToObject(result, "changes", changes);
-    cJSON_AddItemToObject(root, "result", result);
-    send_json_response(root);
+    return result;
 }
 
-void lsp_code_action(const char *uri, cJSON *diagnostics, const cJSON *id)
+cJSON *lsp_code_action(const char *uri, cJSON *diagnostics)
 {
     cJSON *actions = cJSON_CreateArray();
 
@@ -2144,12 +2082,5 @@ void lsp_code_action(const char *uri, cJSON *diagnostics, const cJSON *id)
         }
     }
 
-    cJSON *res_json = lsp_response_new(id);
-    cJSON_AddItemToObject(res_json, "result", actions);
-
-    char *str = cJSON_PrintUnformatted(res_json);
-    fprintf(stdout, "Content-Length: %zu\r\n\r\n%s", strlen(str), str);
-    fflush(stdout);
-    zfree(str);
-    cJSON_Delete(res_json);
+    return actions;
 }

@@ -380,12 +380,14 @@ static void traverse_node(TokenBuilder *b, ASTNode *node, int depth)
     }
 }
 
-char *lsp_semantic_tokens_full(const char *uri)
+cJSON *lsp_semantic_tokens_full(const char *uri)
 {
+    cJSON *root_json = cJSON_CreateObject();
+    cJSON *data = cJSON_AddArrayToObject(root_json, "data");
     ProjectFile *pf = lsp_project_get_file(uri);
     if (!pf || !pf->ast)
     {
-        return xstrdup("{\"data\":[]}");
+        return root_json;
     }
 
     TokenBuilder b;
@@ -402,9 +404,6 @@ char *lsp_semantic_tokens_full(const char *uri)
     }
 
     qsort(b.tokens, (size_t)(b.count), sizeof(SemanticToken), compare_tokens);
-
-    cJSON *root_json = cJSON_CreateObject();
-    cJSON *data = cJSON_CreateArray();
 
     int prev_line = 0;
     int prev_col = 0;
@@ -431,11 +430,6 @@ char *lsp_semantic_tokens_full(const char *uri)
         prev_col = t.col;
     }
 
-    cJSON_AddItemToObject(root_json, "data", data);
-
-    char *json_str = cJSON_PrintUnformatted(root_json);
-    cJSON_Delete(root_json);
     builder_free(&b);
-
-    return json_str;
+    return root_json;
 }
