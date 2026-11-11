@@ -184,6 +184,37 @@ else
     check "-g passes -g to the C compiler" 0
 fi
 
+# --- zc-doc ------------------------------------------------------------------
+
+# A declaration of a module is titled as its importer writes it (`geo::Vector`), its code
+# block keeps the name it declares (`struct Vector`), and a name with `__` stays whole.
+ZC_DOC="${ZC_DOC:-$(dirname "$ZC")/zc-doc}"
+if [ -x "$ZC_DOC" ]; then
+    printf 'struct Vector { x: int; }\nfn helper() -> int { return 1; }\n' > "$workdir/_doc_geo.zc"
+    printf 'import "./_doc_geo.zc" as geo;\nfn split__name() -> int { return 0; }\nfn main() { }\n' \
+        > "$workdir/doc.zc"
+    out=$("$ZC_DOC" "$workdir/doc.zc" 2>/dev/null)
+    if echo "$out" | grep -qF '## struct `geo::Vector`' && echo "$out" | grep -qF 'struct Vector {' &&
+        echo "$out" | grep -qF '## function `geo::helper`' &&
+        echo "$out" | grep -qF 'fn helper() -> i32;' &&
+        echo "$out" | grep -qF '## function `split__name`'; then
+        check "zc-doc writes names as the program does" 1
+    else
+        check "zc-doc writes names as the program does" 0
+    fi
+
+    # A method's signature has its parameters, and the receiver as the program writes it.
+    printf 'struct P { x: int; }\nimpl P {\n    fn len(self) -> int { return self.x; }\n    fn %s\n}\nfn main() { }\n' \
+        'scaled(const self, k: int) -> int { return self.x * k; }' > "$workdir/doc_methods.zc"
+    out=$("$ZC_DOC" "$workdir/doc_methods.zc" 2>/dev/null)
+    if echo "$out" | grep -qF 'fn len(self) -> i32;' &&
+        echo "$out" | grep -qF 'fn scaled(const self, k: i32) -> i32;'; then
+        check "zc-doc writes a method's signature" 1
+    else
+        check "zc-doc writes a method's signature" 0
+    fi
+fi
+
 # --- Program output ----------------------------------------------------------
 
 # Runs a program and compares its exact standard output (stdin from $3).

@@ -330,6 +330,8 @@ struct ASTNode
             Type *impl_target;    // Type of the enclosing impl block (NULL for free function)
             char *method_name;    // Name written in the impl or trait (`get` of `Point__get`);
                                   // NULL for a free function
+            char *written_name;   // As programs write it when `name` has a module prefix:
+                                  // `geo::helper` for `_geo__helper`
             const char *filename; // Source file that declares the function
         } func;
 
