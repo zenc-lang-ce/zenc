@@ -16,6 +16,9 @@
 ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_export)
 {
     lexer_next(l);
+    // `register_generic` skips a name that is already a generic parameter: what the enum
+    // registers is undone by restoring the count, not by subtracting what it declared.
+    int generics_before = ctx->known_generics_count;
     Token n = lexer_next(l);
     check_identifier(n);
 
@@ -206,7 +209,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     if (gp)
     {
         node->enm.is_template = 1;
-        ctx->known_generics_count--;
+        ctx->known_generics_count = generics_before;
         register_template(ctx, node->enm.name, node);
     }
 

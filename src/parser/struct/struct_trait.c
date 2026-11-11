@@ -26,7 +26,9 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
     strncpy(name, n.start, n.len);
     name[n.len] = 0;
 
-    // Generics <T>
+    // Generics <T>. `register_generic` skips a name that is already a generic parameter: what
+    // the trait registers is undone by restoring the count, not by subtracting what it declared.
+    int generics_before = ctx->known_generics_count;
     char **generic_params = NULL;
     int generic_count = 0;
     if (lexer_peek(l).kind == TOK_LANGLE)
@@ -180,10 +182,7 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
     n_node->trait.generic_params = generic_params;
     n_node->trait.generic_param_count = generic_count;
 
-    if (generic_count > 0)
-    {
-        ctx->known_generics_count -= generic_count;
-    }
+    ctx->known_generics_count = generics_before;
 
     register_trait(name);
     add_to_global_list(ctx, n_node); // Track for codegen (VTable emission)
