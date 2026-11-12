@@ -624,7 +624,19 @@ typedef struct TypeUsage
 void register_type_usage(ParserContext *ctx, const char *name, Token t);
 
 /**
- * @brief Validates types.
+ * @brief Whether `name`, read where a type goes, names one: a struct, enum, alias, trait,
+ * primitive, extern symbol, selective import or a C type of the whitelist.
+ */
+int is_known_type_name(ParserContext *ctx, const char *name);
+
+/**
+ * @brief Warns that the type `use` names is unknown, with the closest known name as a hint.
+ */
+void warn_unknown_type(ParserContext *ctx, const TypeUsage *use);
+
+/**
+ * @brief Warns about every type name the parse read that names no type. Always returns 1:
+ * the C compiler decides whether the name is an external C type.
  */
 int validate_types(ParserContext *ctx);
 

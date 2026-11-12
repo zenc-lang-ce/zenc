@@ -114,6 +114,22 @@ void lsp_close_file(const char *uri)
     lsp_send_message(root);
 }
 
+// Warns about the type names of `pf` that name no type of the program nor of the C headers
+// the document includes or imports. `zc build` warns about them too, and also about the types
+// of those headers, which it does not read.
+static void warn_unknown_types(ProjectFile *pf)
+{
+    for (TypeUsage *use = pf->unknown_types; use; use = use->next)
+    {
+        const CHeaderSymbol *declaration;
+        if (lsp_c_headers_find_at(pf->path, pf->source, use->location.line - 1,
+                                  use->location.col - 1, &declaration, 1, NULL) == 0)
+        {
+            warn_unknown_type(g_project->ctx, use);
+        }
+    }
+}
+
 void lsp_check_file(const char *uri, const char *json_src)
 {
     if (!g_project)
@@ -146,6 +162,11 @@ void lsp_check_file(const char *uri, const char *json_src)
 
     // Update and Parse
     lsp_project_update_file(uri, json_src);
+    ProjectFile *pf = lsp_project_get_file(uri);
+    if (pf)
+    {
+        warn_unknown_types(pf);
+    }
 
     // Restore
     lsp_compiler()->diag_consumer_data = old_consumer_data;
