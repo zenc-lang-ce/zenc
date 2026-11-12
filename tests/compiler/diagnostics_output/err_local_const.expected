@@ -1,0 +1,10 @@
+   Compiling tests/compiler/diagnostics_output/err_local_const.zc...
+error: 'const' cannot start a variable declaration
+  --> tests/compiler/diagnostics_output/err_local_const.zc:6:5
+   |
+6  |     const x = 5;
+   |     ^ here
+   |
+   = help: For a compile-time constant use `def NAME = value;`
+   = help: For a read-only variable use `let NAME: const Type = value;`
+[exit 1]

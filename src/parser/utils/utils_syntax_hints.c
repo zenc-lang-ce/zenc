@@ -27,6 +27,13 @@ void report_toplevel_const(Lexer *l, Token t)
     lexer_next(l); // fault-tolerant (LSP): resync on the next declaration
 }
 
+void report_local_const(Token t)
+{
+    const char *hints[] = {"For a compile-time constant use `def NAME = value;`",
+                           "For a read-only variable use `let NAME: const Type = value;`", NULL};
+    zpanic_with_hints(t, "'const' cannot start a variable declaration", hints);
+}
+
 // `extern enum Name;`, `extern const NAME;`...: no such declarations exist.
 // Before v0.5.0 the missing ';' was skipped, so the keyword was taken as the
 // C name and the real name was ignored.
