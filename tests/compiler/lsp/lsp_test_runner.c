@@ -206,8 +206,9 @@ static void test_initialize()
     {
         fail("Init response missing capabilities");
     }
-    // The server's version is the compiler's (`v0.5.1-...`), not a number of its own.
-    if (!strstr(resp, "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\":\"v"))
+    // The server's version is the compiler's (ZEN_VERSION, the same for both builds), not a
+    // number of its own. Without tags, as in a shallow clone, it does not start with `v`.
+    if (!strstr(resp, "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\":\"" ZEN_VERSION "\""))
     {
         printf("Initialize response: %s\n", resp);
         fail("Init response must give the compiler's version");
@@ -962,10 +963,6 @@ static void test_every_request_answered(void)
     printf("Running test_every_request_answered...\n");
     // On a file the server does not know, and with parameters missing: the client waits for
     // an answer to each request, so each gets one.
-    const char *at_position = "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"%s\", \"params\": "
-                              "{\"textDocument\": {\"uri\": \"file:///tmp/never_opened.zc\"}, "
-                              "\"position\": {\"line\": 0, \"character\": 0}, "
-                              "\"newName\": \"other\", \"context\": {\"diagnostics\": []}}}";
     const char *methods[] = {"textDocument/definition",
                              "textDocument/declaration",
                              "textDocument/hover",
@@ -980,7 +977,12 @@ static void test_every_request_answered(void)
     for (size_t i = 0; i < sizeof(methods) / sizeof(methods[0]); i++, id++)
     {
         char request[512];
-        snprintf(request, sizeof(request), at_position, id, methods[i]);
+        snprintf(request, sizeof(request),
+                 "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"%s\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/never_opened.zc\"}, "
+                 "\"position\": {\"line\": 0, \"character\": 0}, "
+                 "\"newName\": \"other\", \"context\": {\"diagnostics\": []}}}",
+                 id, methods[i]);
         if (!send_and_wait_for_response(request, id))
         {
             printf("No answer to %s on a file the server does not know\n", methods[i]);
@@ -1702,6 +1704,49 @@ static void test_c_header_symbols(void)
     printf("PASS: test_c_header_symbols (alias and header name)\n");
 }
 
+// The diagnostics a type name that names nothing gets: a warning, unless a C header the
+// document includes declares it.
+static void test_unknown_type_warning(void)
+{
+    printf("Running test_unknown_type_warning...\n");
+    write_c_header_fixtures();
+    open_document(C_TEST_DIR "/unknown_types.zc", "//> include: " C_TEST_DIR "/include\n"
+                                                  "include <fake.h>\n"
+                                                  "struct Known { x: int; }\n"
+                                                  "struct Pak { a: Knwn; b: FakePoint; c: Known; }\n");
+    char *diagnostics = NULL;
+    for (int i = 0; i < 20 && !diagnostics; i++)
+    {
+        char *message = read_message();
+        if (!message)
+        {
+            break;
+        }
+        if (strstr(message, "publishDiagnostics") && strstr(message, "unknown_types.zc"))
+        {
+            diagnostics = message;
+        }
+        else
+        {
+            free(message);
+        }
+    }
+    if (!diagnostics)
+    {
+        fail("No diagnostics for unknown_types.zc");
+    }
+    if (!strstr(diagnostics, "Unknown type 'Knwn'") || !strstr(diagnostics, "Did you mean 'Known'"))
+    {
+        fail("A type name that names nothing must warn, with the closest name");
+    }
+    if (strstr(diagnostics, "'FakePoint'") || strstr(diagnostics, "Unknown type 'Known'"))
+    {
+        fail("A type of the program or of an included C header must not warn");
+    }
+    free(diagnostics);
+    printf("PASS: test_unknown_type_warning\n");
+}
+
 static void test_c_header_reexports(void)
 {
     printf("Running test_c_header_reexports...\n");
@@ -1905,6 +1950,35 @@ static int completion_kind(int id, const char *path, int line, int character, co
     }
     cJSON_Delete(response);
     return kind;
+}
+
+static void test_qualified_member_completion(void)
+{
+    printf("Running test_qualified_member_completion...\n");
+    // The members after `.` are those of the type the value has, `const` and pointers aside.
+    // Line 0: struct Inner { depth: int; }
+    // Line 1: struct Pak { size: int; inner: Inner; }
+    // Line 2: impl Pak { fn total(self) -> int { return self.size; } }
+    // Line 3: fn use_pak(p: Pak) {
+    // Line 4:     let a: const Pak = p;
+    // Line 5:     let b: const Pak* = &a;
+    // Line 6:     a.size;
+    // Line 7:     b.size;
+    // Line 8:     a.inner.depth;
+    // Line 9: }
+    const char *path = "/tmp/test_qualified_member_completion.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_qualified_member_completion.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"struct Inner { depth: int; "
+                 "}\\nstruct Pak { size: int; inner: Inner; }\\nimpl Pak { fn total(self) -> int { "
+                 "return self.size; } }\\nfn use_pak(p: Pak) {\\n    let a: const Pak = p;\\n    "
+                 "let b: const Pak* = &a;\\n    a.size;\\n    b.size;\\n    a.inner.depth;\\n}\\n\"}}}");
+    usleep(100000);
+    expect_completion(978, path, 6, 6, "size", 5);    // Field
+    expect_completion(979, path, 6, 6, "total", 2);   // Method
+    expect_completion(980, path, 7, 6, "size", 5);
+    expect_completion(981, path, 8, 12, "depth", 5);
+    printf("PASS: test_qualified_member_completion\n");
 }
 
 static void test_member_hover(void)
@@ -3415,6 +3489,7 @@ int main()
     test_variant_constructor_from_other_file();
     test_did_close();
     test_c_header_symbols();
+    test_unknown_type_warning();
     test_c_header_reexports();
     test_c_header_completion();
     test_signature_as_written();
@@ -3430,6 +3505,7 @@ int main()
     test_variant_hover();
     test_loop_variable_hover();
     test_member_hover();
+    test_qualified_member_completion();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");

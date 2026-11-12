@@ -114,6 +114,22 @@ void lsp_close_file(const char *uri)
     lsp_send_message(root);
 }
 
+// Warns about the type names of `pf` that name no type of the program nor of the C headers
+// the document includes or imports. `zc build` warns about them too, and also about the types
+// of those headers, which it does not read.
+static void warn_unknown_types(ProjectFile *pf)
+{
+    for (TypeUsage *use = pf->unknown_types; use; use = use->next)
+    {
+        const CHeaderSymbol *declaration;
+        if (lsp_c_headers_find_at(pf->path, pf->source, use->location.line - 1,
+                                  use->location.col - 1, &declaration, 1, NULL) == 0)
+        {
+            warn_unknown_type(g_project->ctx, use);
+        }
+    }
+}
+
 void lsp_check_file(const char *uri, const char *json_src)
 {
     if (!g_project)
@@ -146,6 +162,11 @@ void lsp_check_file(const char *uri, const char *json_src)
 
     // Update and Parse
     lsp_project_update_file(uri, json_src);
+    ProjectFile *pf = lsp_project_get_file(uri);
+    if (pf)
+    {
+        warn_unknown_types(pf);
+    }
 
     // Restore
     lsp_compiler()->diag_consumer_data = old_consumer_data;
@@ -876,6 +897,66 @@ static int add_impl_methods(cJSON *items, ASTNode *impl, const char *type_name,
     return added;
 }
 
+// What a `.` on a value of type `t` reaches: `t` through its pointers (`p.x` on a `Pak*`).
+static Type *member_owner(Type *t)
+{
+    while (t && t->kind == TYPE_POINTER && t->inner)
+    {
+        t = t->inner;
+    }
+    return t;
+}
+
+// The struct or enum whose members follow a `.` on a value of type `t`, whatever qualifies it
+// (`const Pak*`). A struct the program does not declare is one of a C header: its name goes to
+// `c_struct`, which is left empty otherwise, and there is no definition.
+static ASTNode *member_definition(Type *t, char *c_struct, size_t size)
+{
+    c_struct[0] = 0;
+    int is_pointer = 0;
+    char *allocated = NULL;
+    char *name = resolve_struct_name_from_type(g_project->ctx, t, &is_pointer, &allocated);
+    ASTNode *def = name ? find_struct_def(g_project->ctx, name) : NULL;
+    if (name && !def && member_owner(t)->kind == TYPE_STRUCT)
+    {
+        snprintf(c_struct, size, "%s", name);
+    }
+    return def;
+}
+
+// The name of the struct that `c_type`, the type of a field as a C header writes it
+// (`struct Font *`, `const Texture2D`), has; empty for a type that is no struct.
+static void c_struct_name(const char *c_type, char *out, size_t size)
+{
+    const char *p = c_type;
+    for (;;)
+    {
+        while (*p == ' ')
+        {
+            p++;
+        }
+        if (strncmp(p, "const ", 6) == 0)
+        {
+            p += 6;
+        }
+        else if (strncmp(p, "struct ", 7) == 0)
+        {
+            p += 7;
+        }
+        else
+        {
+            break;
+        }
+    }
+    size_t n = 0;
+    while ((isalnum((unsigned char)p[n]) || p[n] == '_') && n + 1 < size)
+    {
+        out[n] = p[n];
+        n++;
+    }
+    out[n] = 0;
+}
+
 // Adds the functions of the impl blocks of `type_name` under the name they are called by: the
 // methods that take `self` when `with_self`, the other ones otherwise. A generic, written
 // (`Vec<int>`) or instantiated (`Vec__int32_t`), takes those of its template (`impl Vec<T>`).
@@ -1150,139 +1231,96 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                 if (!is_scoped && part_count > 0)
                 {
                     char *base_name = parts[0];
-                    Type *resolved_type = resolve_local_type(target_func, base_name);
-                    char *type_name = NULL;
-
-                    if (resolved_type)
-                    {
-                        type_name = type_to_string(resolved_type);
-                    }
-                    else
+                    // The type of the base as the parser declared it.
+                    Type *type = resolve_local_type(target_func, base_name);
+                    if (!type)
                     {
                         ASTNode *decl = lsp_find_local_decl(target_func, base_name);
                         if (decl && decl->kind == NODE_VAR_DECL && decl->type_info)
                         {
-                            type_name = type_to_string(decl->type_info);
+                            type = decl->type_info;
                         }
                         else
                         {
                             ZenSymbol *sym = find_symbol_in_all(g_project->ctx, base_name);
-                            if (sym)
-                            {
-                                if (sym->type_info)
-                                {
-                                    type_name = type_to_string(sym->type_info);
-                                }
-                            }
+                            type = sym ? sym->type_info : NULL;
                         }
                     }
 
-                    // Now traverse properties
-                    for (int p = 1; p < part_count && type_name; p++)
+                    // A struct of a C header is no type of the program: it goes by its name.
+                    char c_struct[MAX_VAR_NAME_LEN] = "";
+                    for (int p = 1; p < part_count && (type || c_struct[0]); p++)
                     {
-                        char clean_name[MAX_VAR_NAME_LEN];
-                        char *src = type_name;
-                        if (strncmp(src, "struct ", 7) == 0)
+                        if (type)
                         {
-                            src += 7;
-                        }
-                        char *dst = clean_name;
-                        while (*src && *src != '*' && *src != '<' && *src != '[')
-                        {
-                            *dst++ = *src++;
-                        }
-                        *dst = 0;
-
-                        ASTNode *struct_node = find_struct_def(g_project->ctx, clean_name);
-                        int found_field = 0;
-                        if (struct_node && struct_node->kind == NODE_STRUCT)
-                        {
-                            ASTNode *field = struct_node->strct.fields;
-                            while (field)
+                            ASTNode *def = member_definition(type, c_struct, sizeof(c_struct));
+                            type = NULL;
+                            for (ASTNode *field =
+                                     def && def->kind == NODE_STRUCT ? def->strct.fields : NULL;
+                                 field; field = field->next)
                             {
                                 if (strcmp(field->field.name, parts[p]) == 0)
                                 {
-                                    zfree(type_name);
-                                    type_name = type_to_string(field->type_info);
-                                    found_field = 1;
+                                    type = field->type_info;
                                     break;
                                 }
-                                field = field->next;
+                            }
+                            if (!c_struct[0])
+                            {
+                                continue;
                             }
                         }
                         char c_type[MAX_SHORT_MSG_LEN];
-                        if (!found_field && !struct_node &&
-                            lsp_c_headers_field_type(pf->path, pf->source, clean_name, parts[p],
-                                                     c_type, sizeof(c_type)))
+                        if (!lsp_c_headers_field_type(pf->path, pf->source, c_struct, parts[p],
+                                                      c_type, sizeof(c_type)))
                         {
-                            // A field of a struct from a C header.
-                            zfree(type_name);
-                            type_name = xstrdup(c_type);
-                            found_field = 1;
+                            c_struct[0] = 0;
+                            break;
                         }
-                        if (!found_field)
-                        {
-                            zfree(type_name);
-                            type_name = NULL;
-                        }
+                        c_struct_name(c_type, c_struct, sizeof(c_struct));
                     }
 
-                    if (type_name)
+                    if (type)
                     {
-                        char clean_name[MAX_VAR_NAME_LEN];
-                        char *src = type_name;
-                        if (strncmp(src, "struct ", 7) == 0)
+                        ASTNode *def = member_definition(type, c_struct, sizeof(c_struct));
+                        if (def && def->kind == NODE_STRUCT)
                         {
-                            src += 7;
-                        }
-
-                        char *dst = clean_name;
-                        while (*src && *src != '*' && *src != '<' && *src != '[')
-                        {
-                            *dst++ = *src++;
-                        }
-                        *dst = 0;
-
-                        ASTNode *struct_node = find_struct_def(g_project->ctx, clean_name);
-                        if (!struct_node)
-                        {
-                            // A struct from a C header: its fields as the header declares them.
-                            lsp_c_headers_add_fields(pf->path, pf->source, clean_name, items);
-                        }
-                        else
-                        {
-                            if (struct_node->kind == NODE_STRUCT)
+                            for (ASTNode *field = def->strct.fields; field; field = field->next)
                             {
-                                ASTNode *field = struct_node->strct.fields;
-                                while (field)
-                                {
-                                    cJSON *item = cJSON_CreateObject();
-                                    cJSON_AddStringToObject(item, "label", field->field.name);
-                                    cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_FIELD);
-                                    cJSON_AddStringToObject(
-                                        item, "detail",
-                                        zen_c_type_spelling(g_project->ctx, field->type_info));
-                                    cJSON_AddItemToArray(items, item);
-                                    field = field->next;
-                                }
-                            }
-                            else if (struct_node->kind == NODE_ENUM)
-                            {
-                                ASTNode *variant = struct_node->enm.variants;
-                                while (variant)
-                                {
-                                    cJSON *item = cJSON_CreateObject();
-                                    cJSON_AddStringToObject(item, "label", variant->variant.name);
-                                    cJSON_AddNumberToObject(item, "kind",
-                                                            LSP_COMPLETION_ENUM_MEMBER);
-                                    cJSON_AddItemToArray(items, item);
-                                    variant = variant->next;
-                                }
+                                cJSON *item = cJSON_CreateObject();
+                                cJSON_AddStringToObject(item, "label", field->field.name);
+                                cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_FIELD);
+                                cJSON_AddStringToObject(
+                                    item, "detail",
+                                    zen_c_type_spelling(g_project->ctx, field->type_info));
+                                cJSON_AddItemToArray(items, item);
                             }
                         }
-
-                        add_impl_completions(items, clean_name, 1);
-                        zfree(type_name);
+                        else if (def && def->kind == NODE_ENUM)
+                        {
+                            for (ASTNode *variant = def->enm.variants; variant;
+                                 variant = variant->next)
+                            {
+                                cJSON *item = cJSON_CreateObject();
+                                cJSON_AddStringToObject(item, "label", variant->variant.name);
+                                cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_ENUM_MEMBER);
+                                cJSON_AddItemToArray(items, item);
+                            }
+                        }
+                        if (!c_struct[0])
+                        {
+                            char *impl_name = type_impl_name(member_owner(type));
+                            if (impl_name)
+                            {
+                                add_impl_completions(items, impl_name, 1);
+                            }
+                        }
+                    }
+                    if (c_struct[0])
+                    {
+                        // A struct from a C header: its fields as the header declares them.
+                        lsp_c_headers_add_fields(pf->path, pf->source, c_struct, items);
+                        add_impl_completions(items, c_struct, 1);
                     }
                 }
                 zfree(copy);

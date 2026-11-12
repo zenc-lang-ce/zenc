@@ -23,68 +23,55 @@ void register_type_usage(ParserContext *ctx, const char *name, Token t)
     ctx->pending_type_validations = u;
 }
 
+int is_known_type_name(ParserContext *ctx, const char *name)
+{
+    if (find_struct_def(ctx, name) || find_type_alias(ctx, name) ||
+        find_selective_import(ctx, name) || is_extern_symbol(ctx, name) || is_trait(name) ||
+        find_primitive_kind(name) != TYPE_UNKNOWN)
+    {
+        return 1;
+    }
+    for (char **listed = ctx->config->c_type_whitelist; listed && *listed; listed++)
+    {
+        if (strcmp(name, *listed) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void warn_unknown_type(ParserContext *ctx, const TypeUsage *use)
+{
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "Unknown type '%s' (assuming external C struct)", use->name);
+    const char *hint = get_closest_type_hint(ctx, use->name);
+    if (hint)
+    {
+        char help[MAX_MANGLED_NAME_LEN];
+        snprintf(help, sizeof(help), "Did you mean '%s'?", hint);
+        zwarn_with_suggestion(use->location, msg, help);
+    }
+    else
+    {
+        zwarn_at(use->location, "%s", msg);
+    }
+}
+
 int validate_types(ParserContext *ctx)
 {
-    int errors = 0;
-    TypeUsage *u = ctx->pending_type_validations;
-    while (u)
+    if (ctx->config->mode_doc)
     {
-        ASTNode *def = find_struct_def(ctx, u->name);
-        if (!def)
-        {
-            Type *alias = find_type_alias(ctx, u->name);
-            if (!alias)
-            {
-                SelectiveImport *si = find_selective_import(ctx, u->name);
-                if (!si && !is_extern_symbol(ctx, u->name))
-                {
-                    if (!is_trait(u->name) && TYPE_UNKNOWN == find_primitive_kind(u->name))
-                    {
-                        int whitelisted = 0;
-                        if (ctx->config->c_type_whitelist)
-                        {
-                            char **ptr = ctx->config->c_type_whitelist;
-                            while (*ptr)
-                            {
-                                if (strcmp(u->name, *ptr) == 0)
-                                {
-                                    whitelisted = 1;
-                                    break;
-                                }
-                                ptr++;
-                            }
-                        }
-
-                        if (whitelisted)
-                        {
-                            u = u->next;
-                            continue;
-                        }
-
-                        if (!ctx->config->mode_lsp && !ctx->config->mode_doc)
-                        {
-                            char msg[MAX_SHORT_MSG_LEN];
-                            snprintf(msg, sizeof(msg),
-                                     "Unknown type '%s' (assuming external C struct)", u->name);
-                            const char *hint = get_closest_type_hint(ctx, u->name);
-                            if (hint)
-                            {
-                                char help[MAX_MANGLED_NAME_LEN];
-                                snprintf(help, sizeof(help), "Did you mean '%s'?", hint);
-                                zwarn_with_suggestion(u->location, msg, help);
-                            }
-                            else
-                            {
-                                zwarn_at(u->location, "%s", msg);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        u = u->next;
+        return 1;
     }
-    return errors == 0;
+    for (TypeUsage *u = ctx->pending_type_validations; u; u = u->next)
+    {
+        if (!is_known_type_name(ctx, u->name))
+        {
+            warn_unknown_type(ctx, u);
+        }
+    }
+    return 1;
 }
 
 void propagate_vector_inner_types(ParserContext *ctx)
