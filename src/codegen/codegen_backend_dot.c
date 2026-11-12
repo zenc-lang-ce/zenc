@@ -36,9 +36,9 @@ static void dot_escape_label(ParserContext *ctx, const char *s)
         {
             emitter_printf(&ctx->cg.emitter, "\\<");
         }
-        else if (c == '{' || c == '}')
+        else if (c == '{' || c == '}' || c == '|')
         {
-            emitter_printf(&ctx->cg.emitter, "%c", c);
+            emitter_printf(&ctx->cg.emitter, "\\%c", c);
         }
         else if (c >= 32 && c < 127)
         {
@@ -162,14 +162,19 @@ static int dot_emit_node(ParserContext *ctx, ASTNode *node)
         case LITERAL_RAW_STRING:
             if (node->literal.string_val)
             {
-                emitter_printf(&ctx->cg.emitter, "\"");
+                emitter_printf(&ctx->cg.emitter, "\\\"");
                 dot_escape_label(ctx, node->literal.string_val);
-                emitter_printf(&ctx->cg.emitter, "\"");
+                emitter_printf(&ctx->cg.emitter, "\\\"");
             }
             break;
         case LITERAL_CHAR:
-            emitter_printf(&ctx->cg.emitter, "'%c'", (char)node->literal.int_val);
+        {
+            char ch[2] = {(char)node->literal.int_val, '\0'};
+            emitter_printf(&ctx->cg.emitter, "'");
+            dot_escape_label(ctx, ch);
+            emitter_printf(&ctx->cg.emitter, "'");
             break;
+        }
         default:
             break;
         }
@@ -181,7 +186,8 @@ static int dot_emit_node(ParserContext *ctx, ASTNode *node)
         char *tn = type_to_string(node->type_info);
         if (tn)
         {
-            emitter_printf(&ctx->cg.emitter, "|%s", tn);
+            emitter_printf(&ctx->cg.emitter, "|");
+            dot_escape_label(ctx, tn);
             zfree(tn);
         }
     }
