@@ -136,17 +136,35 @@ typedef enum
 } DiagnosticID;
 
 /**
+ * @brief Another place a diagnostic refers to, besides the one where it happened: where
+ * a value was moved, where a name was declared first.
+ */
+typedef struct DiagnosticNote
+{
+    Token token;         ///< The other place.
+    const char *message; ///< What happened there.
+} DiagnosticNote;
+
+/**
  * @brief A diagnostic as data: what a consumer receives to present it.
  */
 typedef struct ZenDiagnostic
 {
-    int is_error;             ///< 1 for an error, 0 for a warning.
-    int fatal;                ///< 1 if the error stops the compilation (zpanic_*).
-    int id;                   ///< DiagnosticID, or DIAG_NONE.
-    Token token;              ///< Where it happened (TOKEN_UNKNOWN if nowhere).
-    const char *message;      ///< The formatted message.
-    const char *const *hints; ///< NULL, or a NULL-terminated array of hints.
+    int is_error;               ///< 1 for an error, 0 for a warning.
+    int fatal;                  ///< 1 if the error stops the compilation (zpanic_*).
+    int id;                     ///< DiagnosticID, or DIAG_NONE.
+    Token token;                ///< Where it happened (TOKEN_UNKNOWN if nowhere).
+    const char *message;        ///< The formatted message.
+    const char *const *hints;   ///< NULL, or a NULL-terminated array of hints.
+    const DiagnosticNote *note; ///< NULL, or another place the diagnostic refers to.
 } ZenDiagnostic;
+
+/**
+ * @brief Non-fatal error with hints (NULL, or a NULL-terminated array) and a note that
+ * points at another place (NULL for none).
+ */
+void zerror_with_note(Token t, const char *msg, const char *const *hints,
+                      const DiagnosticNote *note);
 
 /**
  * @brief Receives every diagnostic that is not silenced. `data` is the pointer

@@ -94,6 +94,12 @@ void diag_render_text(void *data, const ZenDiagnostic *d)
     fprintf(out, "%s" COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", label, d->message);
     diag_print_location(out, d->token);
     diag_print_context(out, d->token, d->is_error ? COLOR_RED : COLOR_YELLOW);
+    if (d->note)
+    {
+        fprintf(out, COLOR_CYAN "note: " COLOR_RESET "%s\n", d->note->message);
+        diag_print_location(out, d->note->token);
+        diag_print_context(out, d->note->token, COLOR_CYAN);
+    }
 
     const char *kind = d->is_error ? "help" : "note";
     const char *const *h = d->hints;
@@ -126,6 +132,14 @@ void diag_render_json(void *data, const ZenDiagnostic *d)
     {
         cJSON_AddStringToObject(root, "suggestion", joined_hints);
     }
+    if (d->note)
+    {
+        cJSON *note = cJSON_AddObjectToObject(root, "note");
+        cJSON_AddStringToObject(note, "file", diag_filename(d->note->token));
+        cJSON_AddNumberToObject(note, "line", d->note->token.line);
+        cJSON_AddNumberToObject(note, "col", d->note->token.col);
+        cJSON_AddStringToObject(note, "message", d->note->message);
+    }
 
     char *json = cJSON_PrintUnformatted(root);
     fprintf(out, "%s\n", json);
@@ -135,9 +149,10 @@ void diag_render_json(void *data, const ZenDiagnostic *d)
 
 // The single path of every diagnostic: silence, count, hand it to the compiler's consumer
 // (or print it as text if there is none) and, for a fatal error, mark had_error when
-// recovering or stop. `hints` is NULL or a NULL-terminated array.
+// recovering or stop. `hints` is NULL or a NULL-terminated array, `note` NULL or another
+// place the diagnostic refers to.
 static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char *msg,
-                      const char *const *hints)
+                      const char *const *hints, const DiagnosticNote *note)
 {
     ParserContext *pctx = d_ctx.parser_ctx;
     if (is_error && pctx && pctx->suppress_errors)
@@ -162,7 +177,7 @@ static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char 
         diag_compiler()->warning_count++;
     }
 
-    ZenDiagnostic d = {is_error, fatal, diag_id, t, msg, hints};
+    ZenDiagnostic d = {is_error, fatal, diag_id, t, msg, hints, note};
 
     ZenCompiler *compiler = diag_compiler();
     if (compiler->diag_consumer)
@@ -212,7 +227,7 @@ void zwarn(const char *fmt, ...)
     va_start(a, fmt);
     vsnprintf(msg, sizeof(msg), fmt, a);
     va_end(a);
-    diag_emit(0, 0, DIAG_NONE, TOKEN_UNKNOWN, msg, NULL);
+    diag_emit(0, 0, DIAG_NONE, TOKEN_UNKNOWN, msg, NULL, NULL);
 }
 
 void zwarn_at_diag(int diag_id, Token t, const char *fmt, ...)
@@ -222,7 +237,7 @@ void zwarn_at_diag(int diag_id, Token t, const char *fmt, ...)
     va_start(a, fmt);
     vsnprintf(msg, sizeof(msg), fmt, a);
     va_end(a);
-    diag_emit(0, 0, diag_id, t, msg, NULL);
+    diag_emit(0, 0, diag_id, t, msg, NULL, NULL);
 }
 
 void zwarn_at(Token t, const char *fmt, ...)
@@ -232,19 +247,19 @@ void zwarn_at(Token t, const char *fmt, ...)
     va_start(a, fmt);
     vsnprintf(msg, sizeof(msg), fmt, a);
     va_end(a);
-    diag_emit(0, 0, DIAG_NONE, t, msg, NULL);
+    diag_emit(0, 0, DIAG_NONE, t, msg, NULL, NULL);
 }
 
 void zwarn_with_suggestion_diag(int diag_id, Token t, const char *msg, const char *suggestion)
 {
     const char *hints[] = {suggestion, NULL};
-    diag_emit(0, 0, diag_id, t, msg, suggestion ? hints : NULL);
+    diag_emit(0, 0, diag_id, t, msg, suggestion ? hints : NULL, NULL);
 }
 
 void zwarn_with_suggestion(Token t, const char *msg, const char *suggestion)
 {
     const char *hints[] = {suggestion, NULL};
-    diag_emit(0, 0, DIAG_NONE, t, msg, suggestion ? hints : NULL);
+    diag_emit(0, 0, DIAG_NONE, t, msg, suggestion ? hints : NULL, NULL);
 }
 
 void zpanic_at(Token t, const char *fmt, ...)
@@ -254,19 +269,19 @@ void zpanic_at(Token t, const char *fmt, ...)
     va_start(a, fmt);
     vsnprintf(msg, sizeof(msg), fmt, a);
     va_end(a);
-    diag_emit(1, 1, DIAG_NONE, t, msg, NULL);
+    diag_emit(1, 1, DIAG_NONE, t, msg, NULL, NULL);
 }
 
 // Enhanced error with suggestion.
 void zpanic_with_suggestion(Token t, const char *msg, const char *suggestion)
 {
     const char *hints[] = {suggestion, NULL};
-    diag_emit(1, 1, DIAG_NONE, t, msg, suggestion ? hints : NULL);
+    diag_emit(1, 1, DIAG_NONE, t, msg, suggestion ? hints : NULL, NULL);
 }
 
 void zpanic_with_hints(Token t, const char *msg, const char *const *hints)
 {
-    diag_emit(1, 1, DIAG_NONE, t, msg, hints);
+    diag_emit(1, 1, DIAG_NONE, t, msg, hints, NULL);
 }
 
 void zerror_at(Token t, const char *fmt, ...)
@@ -276,12 +291,18 @@ void zerror_at(Token t, const char *fmt, ...)
     va_start(a, fmt);
     vsnprintf(msg, sizeof(msg), fmt, a);
     va_end(a);
-    diag_emit(1, 0, DIAG_NONE, t, msg, NULL);
+    diag_emit(1, 0, DIAG_NONE, t, msg, NULL, NULL);
 }
 
 void zerror_with_hints(Token t, const char *msg, const char *const *hints)
 {
-    diag_emit(1, 0, DIAG_NONE, t, msg, hints);
+    diag_emit(1, 0, DIAG_NONE, t, msg, hints, NULL);
+}
+
+void zerror_with_note(Token t, const char *msg, const char *const *hints,
+                      const DiagnosticNote *note)
+{
+    diag_emit(1, 0, DIAG_NONE, t, msg, hints, note);
 }
 
 // Specific error types with helpful messages.

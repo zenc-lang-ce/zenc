@@ -5,7 +5,12 @@ error: Use of moved value 'v'
 16 |     return n + (int)v.length();
    |                     ^ here
    |
-   = help: 'v' was moved at line 15, column 18
+note: 'v' was moved here
+  --> tests/compiler/diagnostics_output/err_use_after_move.zc:15:18
+   |
+15 |     let n = take(v);
+   |                  ^ here
+   |
    = help: This type owns resources and cannot be implicitly copied
    = help: Consider using a reference ('&') to borrow the value instead
 error: Use of moved value 'data'
@@ -14,7 +19,12 @@ error: Use of moved value 'data'
 22 |     return h.size + (int)data.length();
    |                          ^ here
    |
-   = help: 'data' was moved at line 21, column 30
+note: 'data' was moved here
+  --> tests/compiler/diagnostics_output/err_use_after_move.zc:21:30
+   |
+21 |     let h = Header::from_rom(data);
+   |                              ^ here
+   |
    = help: This type owns resources and cannot be implicitly copied
    = help: Consider using a reference ('&') to borrow the value instead
 error: Use of moved value 'v'
@@ -23,7 +33,12 @@ error: Use of moved value 'v'
 30 |     return (int)v.length();
    |                 ^ here
    |
-   = help: 'v' was moved at line 28, column 18
+note: 'v' was moved here
+  --> tests/compiler/diagnostics_output/err_use_after_move.zc:28:18
+   |
+28 |         let _w = v;
+   |                  ^ here
+   |
    = help: This type owns resources and cannot be implicitly copied
    = help: Consider using a reference ('&') to borrow the value instead
 error: Use of moved value 'v'
