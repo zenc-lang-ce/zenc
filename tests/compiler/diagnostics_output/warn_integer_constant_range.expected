@@ -12,10 +12,10 @@ warning: Integer constant -1 does not fit in 'u8' (8-bit)
    |         ^ here
    |
 warning: Integer constant 128 does not fit in 'i8' (8-bit)
-  --> tests/compiler/diagnostics_output/warn_integer_constant_range.zc:26:13
+  --> tests/compiler/diagnostics_output/warn_integer_constant_range.zc:26:31
    |
 26 |     let q = Pixel { level: 0, offset: 128 };
-   |             ^ here
+   |                               ^ here
    |
 warning: Integer constant 100000 does not fit in 'u16' (16-bit)
   --> tests/compiler/diagnostics_output/warn_integer_constant_range.zc:27:25
