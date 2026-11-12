@@ -206,8 +206,9 @@ static void test_initialize()
     {
         fail("Init response missing capabilities");
     }
-    // The server's version is the compiler's (`v0.5.1-...`), not a number of its own.
-    if (!strstr(resp, "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\":\"v"))
+    // The server's version is the compiler's (ZEN_VERSION, the same for both builds), not a
+    // number of its own. Without tags, as in a shallow clone, it does not start with `v`.
+    if (!strstr(resp, "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\":\"" ZEN_VERSION "\""))
     {
         printf("Initialize response: %s\n", resp);
         fail("Init response must give the compiler's version");
@@ -962,10 +963,6 @@ static void test_every_request_answered(void)
     printf("Running test_every_request_answered...\n");
     // On a file the server does not know, and with parameters missing: the client waits for
     // an answer to each request, so each gets one.
-    const char *at_position = "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"%s\", \"params\": "
-                              "{\"textDocument\": {\"uri\": \"file:///tmp/never_opened.zc\"}, "
-                              "\"position\": {\"line\": 0, \"character\": 0}, "
-                              "\"newName\": \"other\", \"context\": {\"diagnostics\": []}}}";
     const char *methods[] = {"textDocument/definition",
                              "textDocument/declaration",
                              "textDocument/hover",
@@ -980,7 +977,12 @@ static void test_every_request_answered(void)
     for (size_t i = 0; i < sizeof(methods) / sizeof(methods[0]); i++, id++)
     {
         char request[512];
-        snprintf(request, sizeof(request), at_position, id, methods[i]);
+        snprintf(request, sizeof(request),
+                 "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"%s\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/never_opened.zc\"}, "
+                 "\"position\": {\"line\": 0, \"character\": 0}, "
+                 "\"newName\": \"other\", \"context\": {\"diagnostics\": []}}}",
+                 id, methods[i]);
         if (!send_and_wait_for_response(request, id))
         {
             printf("No answer to %s on a file the server does not know\n", methods[i]);
