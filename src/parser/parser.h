@@ -520,9 +520,6 @@ struct ParserContext
     // Flow Analysis (Move Semantics)
     struct MoveState *move_state;
 
-    // Registry of traits (encapsulated)
-    TraitReg *registered_traits;
-
     // Extensibility hooks — function pointers for optional modules.
     // When NULL, the corresponding feature is disabled/no-op.
     // Set by driver.c at startup based on configuration.
@@ -1092,6 +1089,11 @@ Type *find_type_alias(ParserContext *ctx, const char *alias);
 Type *parse_type_base(ParserContext *ctx, Lexer *l);
 char *parse_type(ParserContext *ctx, Lexer *l);
 ASTNode *find_trait_def(ParserContext *ctx, const char *name);
+/**
+ * @brief Whether `name` names a trait the program declares (find_trait_def): `Shape`, also written
+ * `struct Shape` or `Shape*`.
+ */
+int is_trait(ParserContext *ctx, const char *name);
 int is_extern_symbol(ParserContext *ctx, const char *name);
 int is_file_imported(ParserContext *ctx, const char *path);
 void mark_file_imported(ParserContext *ctx, const char *path);

@@ -257,7 +257,6 @@ void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
     *g_server_compiler = *base_compiler;
     g_project = NULL;
     curr_func_ret = NULL;
-    clear_registered_traits();
 
     lsp_project_init(root_path);
     libc_free(root_path);

@@ -897,7 +897,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
                         lexer_next(l); // Eat }
 
-                        if (is_trait(acc))
+                        if (is_trait(ctx, acc))
                         {
                             return transform_to_trait_object(ctx, acc, node);
                         }
@@ -1253,7 +1253,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     ASTNode *def = copy_default_value(ctx, sig, i, t);
                     Type *expected = sig->arg_types[i];
-                    if (expected && expected->name && is_trait(type_def_name(expected)))
+                    if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
                     {
                         Type *arg_type = def->type_info
                                              ? def->type_info
@@ -1761,7 +1761,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     ASTNode *target = parse_expr_prec(ctx, l, PREC_UNARY);
 
                     char *cast_type = type_mangle_spelling(cast_type_obj);
-                    if (is_trait(cast_type))
+                    if (is_trait(ctx, cast_type))
                     {
                         return transform_to_trait_object(ctx, cast_type, target);
                     }

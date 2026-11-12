@@ -66,7 +66,7 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
             if (index < sig->total_args)
             {
                 Type *expected = sig->arg_types[index];
-                if (expected && expected->name && is_trait(type_def_name(expected)))
+                if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
                 {
                     ASTNode *cast = transform_to_trait_object(ctx, type_def_name(expected), arg);
                     if (cast != arg)
@@ -1695,7 +1695,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     clean_lhs_type += 6;
                 }
 
-                if (is_trait(clean_lhs_type) && rhs)
+                if (is_trait(ctx, clean_lhs_type) && rhs)
                 {
                     rhs = transform_to_trait_object(ctx, clean_lhs_type, rhs);
                     bin->binary.right = rhs;
