@@ -90,6 +90,12 @@ ProjectFile *lsp_project_get_file_by_path(const char *path);
 // it.
 ASTNode *lsp_project_visible_type(const char *path, const char *name);
 
+// Writes to `out` what an `import` in the file `importer` writes to import the file `target`: the
+// path from `std/` for a file of the standard library (`std/net/http.zc`), the path relative to
+// `importer` otherwise (`../shapes.zc`). Each is checked as the parser resolves an import. Returns
+// 0 when it leads to `target` neither way.
+int lsp_project_import_text(const char *importer, const char *target, char *out, size_t size);
+
 // Update a file (re-parse and re-index)
 void lsp_project_update_file(const char *uri, const char *src);
 
