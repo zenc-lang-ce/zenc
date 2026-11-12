@@ -2062,6 +2062,29 @@ static void test_literal_field_completion(void)
     printf("PASS: test_literal_field_completion\n");
 }
 
+static void test_trait_value_completion(void)
+{
+    printf("Running test_trait_value_completion...\n");
+    // A value of a trait offers the trait's methods after `.`, with `self` and without it. Its
+    // type is a struct named like the trait, which is no struct of a C header.
+    const char *path = "/tmp/test_trait_value_completion.zc";
+    open_document(path, "trait Shape {\n"                            // Line 0
+                        "    fn area(self) -> int;\n"                // Line 1
+                        "    fn sides() -> int;\n"                   // Line 2
+                        "}\n"                                        // Line 3
+                        "fn measure(shape: Shape) -> int {\n"        // Line 4
+                        "    return shape.area() + shape.sides();\n" // Line 5
+                        "}\n");
+    usleep(100000);
+    // Right after the `.` of `shape.area()` and of `shape.sides()`.
+    if (completion_kind(1414, path, 5, 17, "area") != LSP_COMPLETION_METHOD ||
+        completion_kind(1415, path, 5, 32, "sides") != LSP_COMPLETION_METHOD)
+    {
+        fail("A value of a trait completes with the trait's methods");
+    }
+    printf("PASS: test_trait_value_completion\n");
+}
+
 static void test_member_hover(void)
 {
     printf("Running test_member_hover...\n");
@@ -3589,6 +3612,7 @@ int main()
     test_qualified_member_completion();
     test_type_position_completion();
     test_literal_field_completion();
+    test_trait_value_completion();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");

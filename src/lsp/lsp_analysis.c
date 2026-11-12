@@ -849,6 +849,57 @@ static int add_declaration_completion(ASTNode *node, void *data)
 // Adds the methods of `impl` that take `self` when `with_self`, the other ones otherwise, if it is
 // an impl of `type_name`: the same type, or the template of the instance `inst` when the impl is
 // a template. Returns how many were added.
+// Whether `method` takes `self` first.
+static int takes_self(ASTNode *method)
+{
+    return method->func.count > 0 && method->func.param_names && method->func.param_names[0] &&
+           strcmp(method->func.param_names[0], "self") == 0;
+}
+
+// Adds the completion item of `method`, of `owner` (an impl's target or a trait), with `kind`
+// (method or function), unless an item has its name. Returns whether it added it.
+static int add_method_completion(cJSON *items, ASTNode *method, const char *owner, int kind)
+{
+    // The name as written: `func.name` is the C name of an impl's method (`Point__len2`), and a
+    // trait's method has the token of its `fn`.
+    const char *name = method->func.method_name;
+    if (!name)
+    {
+        return 0;
+    }
+    // A trait can repeat a name.
+    if (has_completion(items, name))
+    {
+        return 0;
+    }
+    cJSON *item = cJSON_CreateObject();
+    cJSON_AddStringToObject(item, "label", name);
+    cJSON_AddNumberToObject(item, "kind", kind);
+    char detail[MAX_SHORT_MSG_LEN];
+    snprintf(detail, sizeof(detail), "fn %s::%s", owner, name);
+    cJSON_AddStringToObject(item, "detail", detail);
+    char snippet[MAX_VAR_NAME_LEN];
+    snprintf(snippet, sizeof(snippet), "%s(%s)", name,
+             method->func.count > takes_self(method) ? "$1" : "");
+    cJSON_AddStringToObject(item, "insertText", snippet);
+    cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
+    cJSON_AddItemToArray(items, item);
+    return 1;
+}
+
+// Adds the methods of `trait`: through a value of the trait all of them are called, with `self`
+// or without it.
+static void add_trait_methods(cJSON *items, ASTNode *trait)
+{
+    for (ASTNode *method = trait->trait.methods; method; method = method->next)
+    {
+        if (method->kind == NODE_FUNCTION && method->token.start)
+        {
+            add_method_completion(items, method, trait->trait.name, LSP_COMPLETION_METHOD);
+        }
+    }
+}
+
 static int add_impl_methods(cJSON *items, ASTNode *impl, const char *type_name,
                             const Instantiation *inst, int is_template, int with_self)
 {
@@ -867,34 +918,13 @@ static int add_impl_methods(cJSON *items, ASTNode *impl, const char *type_name,
     ASTNode *method = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
     for (; method; method = method->next)
     {
-        int takes_self = method->kind == NODE_FUNCTION && method->func.count > 0 &&
-                         method->func.param_names && method->func.param_names[0] &&
-                         strcmp(method->func.param_names[0], "self") == 0;
-        if (method->kind != NODE_FUNCTION || takes_self != with_self || !method->token.start)
+        if (method->kind != NODE_FUNCTION || takes_self(method) != with_self ||
+            !method->token.start)
         {
             continue;
         }
-        // The declaration's name token: `func.name` is the C name (`Point__len2`).
-        char *name = token_strdup(method->token);
-        // A trait can repeat a name.
-        if (has_completion(items, name))
-        {
-            continue;
-        }
-        cJSON *item = cJSON_CreateObject();
-        cJSON_AddStringToObject(item, "label", name);
-        cJSON_AddNumberToObject(item, "kind",
-                                with_self ? LSP_COMPLETION_METHOD : LSP_COMPLETION_FUNCTION);
-        char detail[MAX_SHORT_MSG_LEN];
-        snprintf(detail, sizeof(detail), "fn %s::%s", target, name);
-        cJSON_AddStringToObject(item, "detail", detail);
-        char snippet[MAX_VAR_NAME_LEN];
-        snprintf(snippet, sizeof(snippet), "%s(%s)", name,
-                 method->func.count > with_self ? "$1" : "");
-        cJSON_AddStringToObject(item, "insertText", snippet);
-        cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
-        cJSON_AddItemToArray(items, item);
-        added++;
+        added += add_method_completion(items, method, target,
+                                       with_self ? LSP_COMPLETION_METHOD : LSP_COMPLETION_FUNCTION);
     }
     return added;
 }
@@ -1707,8 +1737,15 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                     }
                     if (c_struct[0])
                     {
-                        // A struct from a C header: its fields as the header declares them.
-                        lsp_c_headers_add_fields(pf->path, pf->source, c_struct, items);
+                        // A struct from a C header: its fields as the header declares them. A
+                        // value of a trait (`h: Header`) has the struct type named like the trait:
+                        // a name that no C header of the document declares may be a trait's.
+                        ASTNode *trait = NULL;
+                        if (!lsp_c_headers_add_fields(pf->path, pf->source, c_struct, items) &&
+                            (trait = find_declaration(c_struct, NODE_TRAIT)) != NULL)
+                        {
+                            add_trait_methods(items, trait);
+                        }
                         add_impl_completions(items, c_struct, 1);
                     }
                 }
