@@ -128,11 +128,24 @@ void lsp_index_add_ref(LSPIndex *idx, Token t, Token def_t, ASTNode *node)
     lsp_index_add(idx, r);
 }
 
+static LSPVisibleType g_visible_type = NULL;
+
+void lsp_index_set_visible_type(LSPVisibleType visible_type)
+{
+    g_visible_type = visible_type;
+}
+
 // The name token of the declaration that `ctx` registered for the type `name` used in `file`;
 // TOKEN_UNKNOWN if there is none. The server parses the whole workspace with one context, so other
-// files' types of that name are registered too: a file's own declaration is the one it names.
+// files' types of that name are registered too: the one `file` sees (see LSPVisibleType) is the one
+// it names, and otherwise its own declaration.
 static Token type_declaration(ParserContext *ctx, const char *name, const char *file)
 {
+    ASTNode *visible = g_visible_type && file ? g_visible_type(file, name) : NULL;
+    if (visible)
+    {
+        return visible->token;
+    }
     Token found[3] = {TOKEN_UNKNOWN, TOKEN_UNKNOWN, TOKEN_UNKNOWN};
     ZenSymbol *sym = ctx->global_scope ? symbol_lookup_local(ctx->global_scope, name) : NULL;
     if (sym && (sym->kind == SYM_STRUCT || sym->kind == SYM_ENUM || sym->kind == SYM_ALIAS))

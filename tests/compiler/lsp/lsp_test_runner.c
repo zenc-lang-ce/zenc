@@ -2158,6 +2158,39 @@ static void test_trait_impl_completion(void)
     printf("PASS: test_trait_impl_completion\n");
 }
 
+static void test_type_from_imported_file(void)
+{
+    printf("Running test_type_from_imported_file...\n");
+    // The server parses the whole workspace with one context, so two files that declare a type of
+    // the same name (a struct and a trait) are both registered: a file that names it goes to the
+    // one it imports, in go to definition and in the members after `.`.
+    mkdir(C_TEST_DIR, 0755);
+    open_document(C_TEST_DIR "/visible_record.zc", "struct Header { key: int; value: int; }\n");
+    open_document(C_TEST_DIR "/visible_trait.zc", "trait Header { fn size(self) -> int; }\n");
+    const char *uses_trait = C_TEST_DIR "/visible_uses_trait.zc";
+    open_document(uses_trait, "import \"./visible_trait.zc\";\n" // Line 0
+                              "fn measure(h: Header) -> int {\n" // Line 1
+                              "    return h.size();\n"           // Line 2
+                              "}\n");
+    const char *uses_record = C_TEST_DIR "/visible_uses_record.zc";
+    open_document(uses_record, "import \"./visible_record.zc\";\n" // Line 0
+                               "fn read(h: Header) -> int {\n"     // Line 1
+                               "    return h.key;\n"               // Line 2
+                               "}\n");
+    usleep(100000);
+    expect_definition(1501, "Header of the imported trait", uses_trait, 1, 14, "/visible_trait.zc",
+                      0);
+    expect_definition(1502, "Header of the imported struct", uses_record, 1, 11,
+                      "/visible_record.zc", 0);
+    // Right after the `.` of `h.size()` and of `h.key`.
+    if (completion_kind(1503, uses_trait, 2, 13, "key") != -1 ||
+        completion_kind(1504, uses_record, 2, 13, "key") != LSP_COMPLETION_FIELD)
+    {
+        fail("The members after `.` are those of the type the file imports");
+    }
+    printf("PASS: test_type_from_imported_file\n");
+}
+
 static void test_member_hover(void)
 {
     printf("Running test_member_hover...\n");
@@ -3687,6 +3720,7 @@ int main()
     test_literal_field_completion();
     test_trait_value_completion();
     test_trait_impl_completion();
+    test_type_from_imported_file();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");

@@ -939,16 +939,21 @@ static Type *member_owner(Type *t)
     return t;
 }
 
-// The struct or enum whose members follow a `.` on a value of type `t`, whatever qualifies it
-// (`const Pak*`). A struct the program does not declare is one of a C header: its name goes to
-// `c_struct`, which is left empty otherwise, and there is no definition.
-static ASTNode *member_definition(Type *t, char *c_struct, size_t size)
+// The struct, enum or trait whose members follow a `.` on a value of type `t`, whatever qualifies
+// it (`const Pak*`), in the file `path`: the one that file sees (lsp_project_visible_type), not
+// another of that name elsewhere in the workspace. A value of a trait (`h: Header`) has the struct
+// type named like the trait. A struct the program does not declare is one of a C header: its name
+// goes to `c_struct`, which is left empty otherwise, and there is no definition.
+static ASTNode *member_definition(Type *t, const char *path, char *c_struct, size_t size)
 {
     c_struct[0] = 0;
     int is_pointer = 0;
     char *allocated = NULL;
     char *name = resolve_struct_name_from_type(g_project->ctx, t, &is_pointer, &allocated);
-    ASTNode *def = name ? find_struct_def(g_project->ctx, name) : NULL;
+    ASTNode *visible = name ? lsp_project_visible_type(path, name) : NULL;
+    ASTNode *def = visible && visible->kind != NODE_TYPE_ALIAS ? visible
+                   : name ? find_struct_def(g_project->ctx, name)
+                          : NULL;
     if (name && !def && member_owner(t)->kind == TYPE_STRUCT)
     {
         snprintf(c_struct, size, "%s", name);
@@ -1845,7 +1850,8 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                     {
                         if (type)
                         {
-                            ASTNode *def = member_definition(type, c_struct, sizeof(c_struct));
+                            ASTNode *def =
+                                member_definition(type, pf->path, c_struct, sizeof(c_struct));
                             type = NULL;
                             for (ASTNode *field =
                                      def && def->kind == NODE_STRUCT ? def->strct.fields : NULL;
@@ -1874,7 +1880,8 @@ cJSON *lsp_completion(const char *uri, int line, int col)
 
                     if (type)
                     {
-                        ASTNode *def = member_definition(type, c_struct, sizeof(c_struct));
+                        ASTNode *def =
+                            member_definition(type, pf->path, c_struct, sizeof(c_struct));
                         if (def && def->kind == NODE_STRUCT)
                         {
                             for (ASTNode *field = def->strct.fields; field; field = field->next)
@@ -1899,6 +1906,10 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                                 cJSON_AddItemToArray(items, item);
                             }
                         }
+                        else if (def && def->kind == NODE_TRAIT)
+                        {
+                            add_trait_methods(items, def);
+                        }
                         if (!c_struct[0])
                         {
                             char *impl_name = type_impl_name(member_owner(type));
@@ -1910,15 +1921,8 @@ cJSON *lsp_completion(const char *uri, int line, int col)
                     }
                     if (c_struct[0])
                     {
-                        // A struct from a C header: its fields as the header declares them. A
-                        // value of a trait (`h: Header`) has the struct type named like the trait:
-                        // a name that no C header of the document declares may be a trait's.
-                        ASTNode *trait = NULL;
-                        if (!lsp_c_headers_add_fields(pf->path, pf->source, c_struct, items) &&
-                            (trait = find_declaration(c_struct, NODE_TRAIT)) != NULL)
-                        {
-                            add_trait_methods(items, trait);
-                        }
+                        // A struct from a C header: its fields as the header declares them.
+                        lsp_c_headers_add_fields(pf->path, pf->source, c_struct, items);
                         add_impl_completions(items, c_struct, 1);
                     }
                 }
