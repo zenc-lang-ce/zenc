@@ -2085,6 +2085,79 @@ static void test_trait_value_completion(void)
     printf("PASS: test_trait_value_completion\n");
 }
 
+// The text that the completion item `label` at (line, character) inserts, in `out`; empty when
+// it is not offered.
+static void completion_insert_text(int id, const char *path, int line, int character,
+                                   const char *label, char *out, size_t size)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    out[0] = 0;
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *item = cJSON_GetArrayItem(items, i);
+        cJSON *item_label = cJSON_GetObjectItem(item, "label");
+        cJSON *insert = cJSON_GetObjectItem(item, "insertText");
+        if (cJSON_IsString(item_label) && strcmp(item_label->valuestring, label) == 0 &&
+            cJSON_IsString(insert))
+        {
+            snprintf(out, size, "%s", insert->valuestring);
+        }
+    }
+    cJSON_Delete(response);
+}
+
+static void test_trait_impl_completion(void)
+{
+    printf("Running test_trait_impl_completion...\n");
+    // Where a method of an impl of a trait goes, completion offers the trait's methods that the
+    // impl does not define yet, with the signature written in the trait and an empty body.
+    const char *path = "/tmp/test_trait_impl_completion.zc";
+    const char *head = "trait Shape {\n"                                    // Line 0
+                       "    fn area(self) -> int;\n"                        // Line 1
+                       "    fn sides() -> int;\n"                           // Line 2
+                       "}\n"                                                // Line 3
+                       "struct Square { side: int; }\n"                     // Line 4
+                       "impl Shape for Square {\n"                          // Line 5
+                       "    fn area(self) -> int { return self.side; }\n"; // Line 6
+    char text[1024];
+    snprintf(text, sizeof(text),
+             "%s"
+             "    \n"                                              // Line 7
+             "}\n"                                                 // Line 8
+             "impl Square {\n"                                     // Line 9
+             "    fn half(self) -> int { return self.side / 2; }\n" // Line 10
+             "    \n"                                              // Line 11
+             "}\n",
+             head);
+    open_document(path, text);
+    usleep(100000);
+    char insert[256];
+    completion_insert_text(1416, path, 7, 4, "sides", insert, sizeof(insert));
+    if (strcmp(insert, "fn sides() -> int {\n    $0\n}") != 0)
+    {
+        printf("Inserted: '%s'\n", insert);
+        fail("An impl of a trait completes with the trait's methods it lacks");
+    }
+    // `area` is defined already; an impl of the type alone implements no trait.
+    expect_no_completion(1417, path, 7, 4, "area");
+    expect_no_completion(1418, path, 7, 4, "if");
+    expect_no_completion(1419, path, 11, 4, "sides");
+
+    // After the `fn` of a method being written, which leaves the file without parsing, the
+    // signature goes without its `fn`.
+    snprintf(text, sizeof(text), "%s    fn si\n}\n", head);
+    open_document(path, text);
+    usleep(100000);
+    completion_insert_text(1420, path, 7, 9, "sides", insert, sizeof(insert));
+    if (strcmp(insert, "sides() -> int {\n    $0\n}") != 0)
+    {
+        printf("Inserted: '%s'\n", insert);
+        fail("After `fn`, a method of the trait completes without `fn`");
+    }
+    printf("PASS: test_trait_impl_completion\n");
+}
+
 static void test_member_hover(void)
 {
     printf("Running test_member_hover...\n");
@@ -3613,6 +3686,7 @@ int main()
     test_type_position_completion();
     test_literal_field_completion();
     test_trait_value_completion();
+    test_trait_impl_completion();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");

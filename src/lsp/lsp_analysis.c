@@ -1093,7 +1093,8 @@ static unsigned int keyword_places(LSPContext context)
 // What a bracket open before the cursor encloses, for read_cursor_position.
 typedef enum
 {
-    OPENER_BODY,          // `{` of a block or an impl
+    OPENER_BODY,          // `{` of a block
+    OPENER_IMPL,          // `{` of an impl or a trait
     OPENER_LITERAL,       // `{` after a name: a struct literal (`Point {`) or a block (`if done {`)
     OPENER_FIELDS,        // `{` of a struct or a union
     OPENER_VARIANTS,      // `{` of an enum
@@ -1109,7 +1110,7 @@ typedef enum
 typedef struct
 {
     Opener opener;
-    Token name;         // For a literal, the name before its `{`
+    Token name;         // For a literal, the name before its `{`; for an impl, its `impl`
     const char *inside; // Where what it encloses starts
 } OpenBracket;
 
@@ -1121,7 +1122,7 @@ typedef struct
     int has_enum;
     int has_fn;
     int has_parameters;
-    int has_impl; // `impl` or `trait`
+    Token impl; // The `impl` or `trait` it starts with; TOK_EOF if none
 } DeclarationSoFar;
 
 #define CURSOR_READER_MAX_DEPTH 64
@@ -1133,8 +1134,8 @@ static int is_word(Token t, const char *word)
 
 static int is_brace_opener(Opener opener)
 {
-    return opener == OPENER_BODY || opener == OPENER_LITERAL || opener == OPENER_FIELDS ||
-           opener == OPENER_VARIANTS;
+    return opener == OPENER_BODY || opener == OPENER_IMPL || opener == OPENER_LITERAL ||
+           opener == OPENER_FIELDS || opener == OPENER_VARIANTS;
 }
 
 static int is_paren_opener(Opener opener)
@@ -1206,6 +1207,7 @@ static int read_opener(CursorReader *r, Token t, int type_here, int after_type)
 {
     DeclarationSoFar *declaration = &r->declarations[r->braces];
     Opener opener;
+    Token name = r->before;
     switch (t.kind)
     {
     case TOK_LANGLE:
@@ -1226,17 +1228,21 @@ static int read_opener(CursorReader *r, Token t, int type_here, int after_type)
         break;
     case TOK_LBRACE:
         // After a type (`-> Point {`) or in an impl (`impl Point {`), the name is no literal's.
-        opener = declaration->has_struct ? OPENER_FIELDS
-                 : declaration->has_enum ? OPENER_VARIANTS
-                 : r->before.kind == TOK_IDENT && !after_type && !declaration->has_impl
-                     ? OPENER_LITERAL
-                     : OPENER_BODY;
+        opener = declaration->has_struct                      ? OPENER_FIELDS
+                 : declaration->has_enum                      ? OPENER_VARIANTS
+                 : declaration->impl.kind != TOK_EOF          ? OPENER_IMPL
+                 : r->before.kind == TOK_IDENT && !after_type ? OPENER_LITERAL
+                                                              : OPENER_BODY;
+        if (opener == OPENER_IMPL)
+        {
+            name = declaration->impl;
+        }
         r->declarations[++r->braces] = (DeclarationSoFar){0};
         break;
     default:
         return 0;
     }
-    r->brackets[r->open++] = (OpenBracket){opener, r->before, t.start + t.len};
+    r->brackets[r->open++] = (OpenBracket){opener, name, t.start + t.len};
     return 1;
 }
 
@@ -1300,7 +1306,7 @@ static void read_other(CursorReader *r, Token t, int type_here)
     }
     else if (t.kind == TOK_IMPL || t.kind == TOK_TRAIT)
     {
-        declaration->has_impl = 1;
+        declaration->impl = t;
     }
     else if (is_word(t, "fn"))
     {
@@ -1345,12 +1351,19 @@ typedef struct
     // elsewhere.
     Token literal;
     const char *literal_fields;
+    // In the body of an impl or a trait where a member starts (after its `{`, a `}` or a `;`, or
+    // after a `fn` there): its `impl` or `trait`, where its members start, and whether the `fn`
+    // is written. `impl.kind` is TOK_EOF elsewhere.
+    Token impl;
+    const char *impl_members;
+    int after_fn;
 } CursorPosition;
 
 // Where the word being typed at `offset` of `source` goes. A type goes after the `:` of a `let`, a
 // `def`, a parameter or a field, after the `->` of a function's parameters, on the right of
 // `alias Name =`, in a variant's payload, after `const` in a type, and inside the `<...>` and
-// `[...]` of a type. A field's name goes after the `{` or a `,` of a literal. Reads the tokens
+// `[...]` of a type. A field's name goes after the `{` or a `,` of a literal. A member of an impl
+// goes after its `{`, a `}` or a `;`, and after the `fn` that starts one. Reads the tokens
 // before the word as the lexer gives them, so it works on text that does not parse yet.
 static CursorPosition read_cursor_position(const char *source, size_t offset, const char *path)
 {
@@ -1382,6 +1395,15 @@ static CursorPosition read_cursor_position(const char *source, size_t offset, co
     {
         position.literal = r.brackets[r.open - 1].name;
         position.literal_fields = r.brackets[r.open - 1].inside;
+    }
+    position.after_fn = is_word(r.before, "fn");
+    Token member_start = position.after_fn ? r.before_previous : r.before;
+    if (innermost_opener(&r) == OPENER_IMPL &&
+        (member_start.kind == TOK_LBRACE || member_start.kind == TOK_RBRACE ||
+         member_start.kind == TOK_SEMICOLON))
+    {
+        position.impl = r.brackets[r.open - 1].name;
+        position.impl_members = r.brackets[r.open - 1].inside;
     }
     return position;
 }
@@ -1449,6 +1471,157 @@ static int add_literal_field_completions(cJSON *items, CursorPosition position, 
         cJSON_AddStringToObject(item, "detail",
                                 zen_c_type_spelling(g_project->ctx, field->type_info));
         cJSON_AddStringToObject(item, "insertText", insert);
+        cJSON_AddItemToArray(items, item);
+    }
+    return 1;
+}
+
+// The token after the `<...>` that starts at `t`, a `<`, read from `l`; the `{` or the end of
+// the file where it is left open.
+static Token after_angle_brackets(Lexer *l, Token t)
+{
+    int depth = 0;
+    do
+    {
+        if (t.kind == TOK_LANGLE)
+        {
+            depth++;
+        }
+        else if (t.kind == TOK_RANGLE)
+        {
+            depth--;
+        }
+        else if (t.kind == TOK_OP && t.len == 2 && t.start[0] == '>' && t.start[1] == '>')
+        {
+            depth -= 2;
+        }
+        else if (t.kind == TOK_LBRACE || t.kind == TOK_EOF)
+        {
+            return t;
+        }
+        t = lexer_next(l);
+    } while (depth > 0);
+    return t;
+}
+
+// The name of the trait that the impl starting at `impl` implements, as written in its header
+// (`Show` of `impl<T> Show for Box<T> {`). Returns 0 for an impl of a type (`impl Box {`) and for
+// a trait's declaration.
+static int implemented_trait_name(Token impl, char *out, size_t size, const char *path)
+{
+    if (impl.kind != TOK_IMPL)
+    {
+        return 0;
+    }
+    Lexer l;
+    lexer_init(&l, impl.start + impl.len, g_project->ctx->config, path);
+    Token name = lexer_next(&l);
+    if (name.kind == TOK_LANGLE)
+    {
+        name = after_angle_brackets(&l, name);
+    }
+    Token t = lexer_next(&l);
+    if (t.kind == TOK_LANGLE)
+    {
+        t = after_angle_brackets(&l, t);
+    }
+    if (name.kind != TOK_IDENT || name.len >= size || !is_word(t, "for"))
+    {
+        return 0;
+    }
+    memcpy(out, name.start, name.len);
+    out[name.len] = 0;
+    return 1;
+}
+
+// Whether the members of an impl, from `members` up to its `}`, define a method named `name`. The
+// name being typed at `word` defines none yet.
+static int impl_has_method(const char *members, const char *word, const char *name,
+                           const char *path)
+{
+    Lexer l;
+    lexer_init(&l, members, g_project->ctx->config, path);
+    int depth = 0;
+    Token previous = {0};
+    for (Token t = lexer_next(&l); t.kind != TOK_EOF; t = lexer_next(&l))
+    {
+        if (t.kind == TOK_LPAREN || t.kind == TOK_LBRACE || t.kind == TOK_LBRACKET)
+        {
+            depth++;
+        }
+        else if (t.kind == TOK_RPAREN || t.kind == TOK_RBRACE || t.kind == TOK_RBRACKET)
+        {
+            if (depth-- == 0)
+            {
+                return 0; // The impl's `}`
+            }
+        }
+        else if (depth == 0 && is_word(previous, "fn") && t.start != word && is_word(t, name))
+        {
+            return 1;
+        }
+        previous = t;
+    }
+    return 0;
+}
+
+// Writes `text` to `out` so that a snippet inserts it as it is: `$`, `}` and `\` escaped.
+static void snippet_text(const char *text, char *out, size_t size)
+{
+    size_t used = 0;
+    for (; *text && used + 2 < size; text++)
+    {
+        if (*text == '$' || *text == '}' || *text == '\\')
+        {
+            out[used++] = '\\';
+        }
+        out[used++] = *text;
+    }
+    out[used] = 0;
+}
+
+// Adds the methods of the trait that the impl of `position` implements and that its members do not
+// define yet, inserted with the signature written in the trait and an empty body (without `fn`
+// when it is written already). Returns 0, adding nothing, when the impl is no impl of a trait.
+static int add_trait_member_completions(cJSON *items, CursorPosition position, const char *word,
+                                        const char *path)
+{
+    char name[MAX_VAR_NAME_LEN];
+    ASTNode *trait = implemented_trait_name(position.impl, name, sizeof(name), path)
+                         ? find_declaration(name, NODE_TRAIT)
+                         : NULL;
+    if (!trait)
+    {
+        return 0;
+    }
+    for (ASTNode *method = trait->trait.methods; method; method = method->next)
+    {
+        const char *method_name = method->func.method_name;
+        if (method->kind != NODE_FUNCTION || !method_name || !method->token.start ||
+            has_completion(items, method_name) ||
+            impl_has_method(position.impl_members, word, method_name, path))
+        {
+            continue;
+        }
+        // The token of a trait's method is its `fn`: the signature starts at the name after it.
+        Lexer l;
+        lexer_init(&l, method->token.start + method->token.len, g_project->ctx->config, path);
+        char signature[MAX_SHORT_MSG_LEN * 4];
+        if (!lsp_function_signature(lexer_next(&l), signature, sizeof(signature)))
+        {
+            continue;
+        }
+        char escaped[sizeof(signature) * 2];
+        snippet_text(position.after_fn ? signature + strlen("fn ") : signature, escaped,
+                     sizeof(escaped));
+        char insert[sizeof(escaped) + 16];
+        snprintf(insert, sizeof(insert), "%s {\n    $0\n}", escaped);
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "label", method_name);
+        cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_METHOD);
+        cJSON_AddStringToObject(item, "detail", signature);
+        cJSON_AddStringToObject(item, "insertText", insert);
+        cJSON_AddNumberToObject(item, "insertTextFormat", LSP_INSERT_SNIPPET);
         cJSON_AddItemToArray(items, item);
     }
     return 1;
@@ -1755,7 +1928,8 @@ cJSON *lsp_completion(const char *uri, int line, int col)
     }
 
     // Where a type goes (`size: u`, `-> u`, `alias Word = u`), only the names of types fit; where
-    // a field of a struct literal goes (`Point { x: 1, `), only the fields it does not give yet.
+    // a field of a struct literal goes (`Point { x: 1, `), only the fields it does not give yet;
+    // where a method of an impl of a trait goes, only the trait's methods it does not define yet.
     CursorPosition position = {0};
     const char *word = NULL;
     if (!dot_completed && pf->source)
@@ -1772,6 +1946,11 @@ cJSON *lsp_completion(const char *uri, int line, int col)
              add_literal_field_completions(items, position, word, pf->path))
     {
         // The fields of the literal, and nothing else
+    }
+    else if (position.impl.kind != TOK_EOF &&
+             add_trait_member_completions(items, position, word, pf->path))
+    {
+        // The methods of the trait that the impl does not define yet, and nothing else
     }
     else if (!dot_completed)
     {
