@@ -453,23 +453,36 @@ static void test_hover_parameters(void)
     printf("PASS: test_hover_parameters\n");
 }
 
-// The lines where the ranges of `items` (locations, or the edits of a rename) start, as a string
-// such as "1,2": empty when there are none.
+static int compare_ints(const void *a, const void *b)
+{
+    return *(const int *)a - *(const int *)b;
+}
+
+// The lines where the ranges of `items` (locations, or the edits of a rename) start, in order, as
+// a string such as "1,2": empty when there are none. The server answers in the order of its
+// index, which says nothing.
 static void range_lines(const cJSON *items, char *out, size_t size)
 {
-    size_t used = 0;
-    out[0] = 0;
+    int lines[64];
+    int count = 0;
     const cJSON *item = NULL;
     cJSON_ArrayForEach(item, items)
     {
         const cJSON *range = cJSON_GetObjectItem(item, "range");
         const cJSON *start = range ? cJSON_GetObjectItem(range, "start") : NULL;
         const cJSON *line = start ? cJSON_GetObjectItem(start, "line") : NULL;
-        if (cJSON_IsNumber(line) && used + 16 < size)
+        if (cJSON_IsNumber(line) && count < 64)
         {
-            used += (size_t)snprintf(out + used, size - used, "%s%d", used ? "," : "",
-                                     line->valueint);
+            lines[count++] = line->valueint;
         }
+    }
+    qsort(lines, (size_t)count, sizeof(int), compare_ints);
+
+    size_t used = 0;
+    out[0] = 0;
+    for (int i = 0; i < count && used + 16 < size; i++)
+    {
+        used += (size_t)snprintf(out + used, size - used, "%s%d", used ? "," : "", lines[i]);
     }
 }
 
@@ -546,6 +559,31 @@ static void test_occurrences_by_scope(void)
     }
     free(resp);
     printf("PASS: test_occurrences_by_scope\n");
+}
+
+static void test_enum_rename(void)
+{
+    printf("Running test_enum_rename...\n");
+    // Line 0: enum Mode { On, Off }
+    // Line 1: fn flip(m: Mode) -> Mode {
+    // Line 2:     match m { Mode::On => { return Mode::Off; }, _ => {} }
+    // Line 3:     return Mode::On;
+    // Line 4: }
+    // Line 5: impl Mode { fn on() -> Mode { return Mode::On; } }
+    const char *uri = "file:///tmp/test_enum_rename.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_enum_rename.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"enum Mode { On, Off }\\nfn flip(m: Mode) -> Mode {\\n"
+                 "    match m { Mode::On => { return Mode::Off; }, _ => {} }\\n"
+                 "    return Mode::On;\\n}\\n"
+                 "impl Mode { fn on() -> Mode { return Mode::On; } }\\n\"}}}");
+    usleep(100000);
+
+    // Every place that writes the enum's name, once: its declaration, the types, the patterns,
+    // the variants of expressions and the impl.
+    expect_occurrence_lines(uri, 1701, "rename", 0, 6, "0,1,1,2,2,3,5,5,5");
+    printf("PASS: test_enum_rename\n");
 }
 
 static void test_hover_beside_generated_code(void)
@@ -3914,6 +3952,7 @@ int main()
     test_fstring_interpolation_lookup();
     test_hover_parameters();
     test_occurrences_by_scope();
+    test_enum_rename();
     test_hover_beside_generated_code();
     test_hover_type_names();
     test_hover_module_type_names();

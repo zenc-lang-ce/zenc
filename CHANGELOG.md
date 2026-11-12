@@ -84,6 +84,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - A type that only files the document does not import declare is warned about, as `zc build` warns about it, with the file to import: "Type 'Shape' is declared in \"a/shapes.zc\", which this file does not import". Before there was no warning, since the server parses the whole workspace with one context, which knows that type.
   - Completion of a type that the file does not see adds the import of a file that declares it: one item for each such file, which the item names on its right (`a/shapes.zc`).
   - A type name goes to the declaration the file sees: its own or one of a file it imports. The server parses the whole workspace with one context, so a type of the same name in a file it does not import (`Header` of `std/net/http.zc`) could win: hover, go to definition and the members after `.` showed that one.
+  - Rename works on an enum: it edits its declaration, the types, `impl`, the patterns of `match` and the variants of expressions (`Mode::On`). Before it answered nothing. References no longer list twice the enum of a variant without a payload in an expression.
 - `zc-format` no longer needs the language server: it is built with `ZC_LSP=0` too.
 - REPL: Backspace and Escape work in reverse search.
 

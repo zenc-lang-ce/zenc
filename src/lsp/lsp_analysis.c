@@ -2555,7 +2555,7 @@ static int is_renamable(DeclarationKind kind)
 {
     return kind == DECLARATION_FUNCTION || kind == DECLARATION_VARIABLE ||
            kind == DECLARATION_CONSTANT || kind == DECLARATION_PARAMETER ||
-           kind == DECLARATION_STRUCT;
+           kind == DECLARATION_STRUCT || kind == DECLARATION_ENUM;
 }
 
 cJSON *lsp_rename(const char *uri, int line, int col, const char *new_name)
