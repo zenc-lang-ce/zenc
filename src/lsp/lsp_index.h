@@ -95,6 +95,13 @@ void lsp_index_add_def_range(LSPIndex *idx, Token start, Token end, const char *
                              ASTNode *node);
 void lsp_index_add_ref(LSPIndex *idx, Token t, Token def_t, ASTNode *node);
 /**
+ * @brief The declaration of the type `name` that the file `path` sees (its own or one of a file it
+ * imports); NULL if none. The project knows the imports and gives it to the index with
+ * lsp_index_set_visible_type; without it, a type goes to the one the context registered.
+ */
+typedef ASTNode *(*LSPVisibleType)(const char *path, const char *name);
+void lsp_index_set_visible_type(LSPVisibleType visible_type);
+/**
  * @brief Adds the use of a type name, a reference to the declaration that `ctx` has registered
  * for that name (a struct, an enum, an alias, a trait or a generic template).
  */

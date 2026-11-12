@@ -79,6 +79,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - Completion where a field's name goes in a struct literal (after `Point {` or a `,`) offers the fields of that struct that the literal does not give yet, written as `name: `.
   - Completion after `.` on a value of a trait (`h: Header`) offers the trait's methods. Before it offered nothing, since it looked for the fields of a struct of a C header with that name.
   - Completion where a method goes in an `impl Trait for Type` offers the methods of the trait that the impl does not define yet, and inserts each with the signature written in the trait and an empty body (without `fn` when it is typed already).
+  - A type name goes to the declaration the file sees: its own or one of a file it imports. The server parses the whole workspace with one context, so a type of the same name in a file it does not import (`Header` of `std/net/http.zc`) could win: hover, go to definition and the members after `.` showed that one.
 - `zc-format` no longer needs the language server: it is built with `ZC_LSP=0` too.
 - REPL: Backspace and Escape work in reverse search.
 

@@ -33,6 +33,9 @@ typedef struct ProjectFile
     /// The type names its last parse read in it that name no type of the program, newest
     /// first. A C header may still declare them.
     TypeUsage *unknown_types;
+    /// The files its text imports, resolved as the parser resolves them, in the order written.
+    char **imports;
+    int import_count;
     struct ProjectFile *next;
 } ProjectFile;
 
@@ -79,6 +82,13 @@ ProjectFile *lsp_project_get_file(const char *uri);
 
 // Find a file in the project by its path, as tokens name it (Token.file); NULL if not there.
 ProjectFile *lsp_project_get_file_by_path(const char *path);
+
+// The declaration of the type `name` (a struct, an enum, a trait or an alias, by the name the
+// parser gives it) that the file `path` sees: its own, or one of a file it imports, directly or
+// through another import. The server parses the whole workspace with one context, so a type of
+// that name in a file `path` does not import is not this one. NULL when no file it sees declares
+// it.
+ASTNode *lsp_project_visible_type(const char *path, const char *name);
 
 // Update a file (re-parse and re-index)
 void lsp_project_update_file(const char *uri, const char *src);

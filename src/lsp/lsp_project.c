@@ -76,6 +76,8 @@ void lsp_project_init(const char *root_path)
 
     g_project = xcalloc(1, sizeof(LSPProject));
     g_project->root_path = xstrdup(root_path);
+    // The index finds the types a file names among the ones it imports.
+    lsp_index_set_visible_type(lsp_project_visible_type);
     fprintf(stderr, "zls: project root: %s\n", root_path);
     g_project->use_gitignore = 1;
 
@@ -619,11 +621,183 @@ static ParseMarks parse_marks(void)
     return marks;
 }
 
+// Bumped whenever a file's imports are read again: the visible files kept for a file are stale.
+static unsigned g_imports_generation = 0;
+
+// Reads the files `pf` imports from its text (`import "a.zc"`, `import { f } from "a.zc"`) and
+// resolves them as the parser does. Its AST does not list them all: a file another one imported
+// before leaves no node where it is imported again.
+static void read_imports(ProjectFile *pf)
+{
+    g_imports_generation++;
+    pf->imports = NULL;
+    pf->import_count = 0;
+    if (!pf->source || !pf->path)
+    {
+        return;
+    }
+    int capacity = 0;
+    Lexer l;
+    lexer_init(&l, pf->source, g_project->ctx->config, pf->path);
+    for (Token t = lexer_next(&l); t.kind != TOK_EOF; t = lexer_next(&l))
+    {
+        if (t.kind != TOK_IDENT || t.len != 6 || strncmp(t.start, "import", 6) != 0)
+        {
+            continue;
+        }
+        Token file = lexer_next(&l);
+        while (file.kind != TOK_STRING && file.kind != TOK_SEMICOLON && file.kind != TOK_EOF)
+        {
+            file = lexer_next(&l);
+        }
+        if (file.kind != TOK_STRING || file.len < 2)
+        {
+            continue;
+        }
+        char *written = xmalloc(file.len - 1);
+        memcpy(written, file.start + 1, file.len - 2);
+        written[file.len - 2] = 0;
+        char *resolved = z_resolve_path(written, pf->path, g_project->ctx->config);
+        if (!resolved)
+        {
+            continue;
+        }
+        if (pf->import_count == capacity)
+        {
+            capacity = capacity ? capacity * 2 : 8;
+            pf->imports = xrealloc(pf->imports, (size_t)capacity * sizeof(char *));
+        }
+        pf->imports[pf->import_count++] = resolved;
+    }
+}
+
+#define VISIBLE_FILES_MAX 256
+#define VISIBLE_FILES_MAX_DEPTH 32 // As deep as index_imported_modules follows imports
+
+// The files a file sees: itself first, then what it imports, directly or through another import.
+typedef struct
+{
+    const char *paths[VISIBLE_FILES_MAX];
+    ProjectFile *files[VISIBLE_FILES_MAX]; // NULL for a file the server has not read
+    int count;
+} VisibleFiles;
+
+static int is_visible(const VisibleFiles *visible, const char *path)
+{
+    for (int i = 0; path && i < visible->count; i++)
+    {
+        if (strcmp(visible->paths[i], path) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void collect_visible_files(VisibleFiles *visible, const char *path, int depth)
+{
+    if (is_visible(visible, path) || visible->count == VISIBLE_FILES_MAX ||
+        depth > VISIBLE_FILES_MAX_DEPTH)
+    {
+        return;
+    }
+    ProjectFile *pf = lsp_project_get_file_by_path(path);
+    visible->paths[visible->count] = path;
+    visible->files[visible->count++] = pf;
+    for (int i = 0; pf && i < pf->import_count; i++)
+    {
+        collect_visible_files(visible, pf->imports[i], depth + 1);
+    }
+}
+
+// The files `path` sees. They are kept while the same file asks again (its index asks once per type
+// name it reads) and no file's imports change.
+static const VisibleFiles *visible_files(const char *path)
+{
+    static VisibleFiles visible;
+    static char kept_path[MAX_PATH_LEN];
+    static unsigned kept_generation;
+    if (visible.count && kept_generation == g_imports_generation && strcmp(kept_path, path) == 0)
+    {
+        return &visible;
+    }
+    visible.count = 0;
+    collect_visible_files(&visible, path, 0);
+    snprintf(kept_path, sizeof(kept_path), "%s", path);
+    kept_generation = g_imports_generation;
+    return &visible;
+}
+
+// The name a top-level node declares a type with, as the parser registers it; NULL for no type.
+static const char *declared_type_name(ASTNode *node)
+{
+    switch (node->kind)
+    {
+    case NODE_STRUCT:
+        return node->strct.name;
+    case NODE_ENUM:
+        return node->enm.name;
+    case NODE_TRAIT:
+        return node->trait.name;
+    case NODE_TYPE_ALIAS:
+        return node->type_alias.alias;
+    default:
+        return NULL;
+    }
+}
+
+ASTNode *lsp_project_visible_type(const char *path, const char *name)
+{
+    if (!g_project || !g_project->ctx || !path || !name)
+    {
+        return NULL;
+    }
+    const VisibleFiles *visible = visible_files(path);
+
+    // The context registered one declaration per name and kind: when it is in a file `path` sees,
+    // that is the one. It also finds the types of a file not parsed on its own yet (an import the
+    // parse is still reading), which has no AST.
+    ParserContext *ctx = g_project->ctx;
+    GenericTemplate *template = find_generic_template(ctx, name);
+    ASTNode *registered[] = {find_struct_def(ctx, name), template ? template->struct_node : NULL,
+                             find_trait_def(ctx, name)};
+    int any_registered = find_type_alias_node(ctx, name) != NULL;
+    for (size_t r = 0; r < sizeof(registered) / sizeof(registered[0]); r++)
+    {
+        if (registered[r] && is_visible(visible, registered[r]->token.file))
+        {
+            return registered[r];
+        }
+        any_registered |= registered[r] != NULL;
+    }
+    // A name the program does not declare (a C header's) is in no file's AST.
+    if (!any_registered)
+    {
+        return NULL;
+    }
+    // Another file declares a type of that name too, and the context kept that one.
+    for (int i = 0; i < visible->count; i++)
+    {
+        ProjectFile *pf = visible->files[i];
+        for (ASTNode *node = pf ? lsp_project_top_level(pf) : NULL; node; node = node->next)
+        {
+            const char *declared = declared_type_name(node);
+            if (declared && strcmp(declared, name) == 0)
+            {
+                return node;
+            }
+        }
+    }
+    return NULL;
+}
+
 // The index of `pf`, a file the last parse read from `root`: its nodes, the generic impls the parse
 // registered for it and the type names it read there. Its generic impls and functions are kept
 // too, since they are no nodes of its AST.
 static void index_parsed_file(ProjectFile *pf, ASTNode *root, ParseMarks before)
 {
+    // Before the index: the types its names go to are those of the files it imports.
+    read_imports(pf);
     pf->index = lsp_index_new();
     lsp_build_index(g_project->ctx, pf->index, root, pf->source);
 
