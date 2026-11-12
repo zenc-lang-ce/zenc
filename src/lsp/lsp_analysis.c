@@ -102,6 +102,7 @@ void lsp_close_file(const char *uri)
     {
         lsp_project_update_file(uri, src);
         zfree(src);
+        lsp_project_visit_documents_seeing(uri, lsp_check_file);
     }
 
     // Diagnostics are only computed for open documents, so a closed one's would go stale.

@@ -107,6 +107,11 @@ void lsp_project_track_document(const char *uri, const char *src);
 // Forget a document the client closed: a rebuild reads it from disk again.
 void lsp_project_untrack_document(const char *uri);
 
+// Calls `visit` with the URI and latest text of each open document, other than `uri`, whose file
+// sees the file of `uri`: imports it, directly or through another import.
+void lsp_project_visit_documents_seeing(const char *uri,
+                                        void (*visit)(const char *uri, const char *source));
+
 // Arena usage right after the last full build (workspace indexing or rebuild).
 size_t lsp_project_built_total(void);
 

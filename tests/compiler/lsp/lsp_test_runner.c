@@ -1525,6 +1525,28 @@ static void open_document(const char *path, const char *text)
     cJSON_Delete(message);
 }
 
+// Sends the new text of an open document, as an editor does on every edit, without saving it.
+static void change_document(const char *path, int version, const char *text)
+{
+    char uri[512];
+    snprintf(uri, sizeof(uri), "file://%s", path);
+
+    cJSON *message = cJSON_CreateObject();
+    cJSON_AddStringToObject(message, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(message, "method", "textDocument/didChange");
+    cJSON *params = cJSON_AddObjectToObject(message, "params");
+    cJSON *document = cJSON_AddObjectToObject(params, "textDocument");
+    cJSON_AddStringToObject(document, "uri", uri);
+    cJSON_AddNumberToObject(document, "version", version);
+    cJSON *change = cJSON_CreateObject();
+    cJSON_AddStringToObject(change, "text", text);
+    cJSON_AddItemToArray(cJSON_AddArrayToObject(params, "contentChanges"), change);
+    char *json = cJSON_PrintUnformatted(message);
+    send_request(json);
+    free(json);
+    cJSON_Delete(message);
+}
+
 // Sends a position request and returns the whole response; the caller deletes it.
 static cJSON *position_request(int id, const char *method, const char *path, int line,
                                int character)
@@ -2186,6 +2208,52 @@ static void test_type_from_imported_file(void)
         fail("The members after `.` are those of the type the file imports");
     }
     printf("PASS: test_type_from_imported_file\n");
+}
+
+static void test_importers_follow_an_edit(void)
+{
+    printf("Running test_importers_follow_an_edit...\n");
+    // An open document resolves what it uses with the files it imports, directly or through
+    // another import, as they are now: an edit to one of them, or closing it without saving,
+    // changes what the document finds, though the document itself is not edited.
+    mkdir(C_TEST_DIR, 0755);
+    const char *declares = C_TEST_DIR "/stale_console.zc";
+    const char *on_disk = "struct Console { n: int; }\n"
+                          "impl Console {\n"
+                          "    fn create() -> Console { return Console { n: 0 }; }\n"
+                          "}\n";
+    open_document(declares, on_disk);
+    const char *imports = C_TEST_DIR "/stale_run.zc";
+    open_document(imports, "import \"./stale_console.zc\";\n"    // Line 0
+                           "fn stale_run(c: Console*) -> bool {\n" // Line 1
+                           "    return c.finished();\n"           // Line 2
+                           "}\n");
+    const char *imports_through = C_TEST_DIR "/stale_main.zc";
+    open_document(imports_through, "import \"./stale_run.zc\";\n"          // Line 0
+                                   "fn stale_speed(c: Console*) -> int {\n" // Line 1
+                                   "    return c.speed;\n"                 // Line 2
+                                   "}\n");
+    usleep(100000);
+    expect_definition(1601, "finished before it is declared", imports, 2, 14, NULL, 0);
+    expect_definition(1602, "speed before it is declared", imports_through, 2, 14, NULL, 0);
+
+    change_document(declares, 2,
+                    "struct Console { n: int; speed: int; }\n"                // Line 0
+                    "impl Console {\n"                                        // Line 1
+                    "    fn finished(self) -> bool { return false; }\n"       // Line 2
+                    "    fn create() -> Console { return Console { n: 0, speed: 0 }; }\n"
+                    "}\n");
+    usleep(100000);
+    expect_definition(1603, "finished once declared", imports, 2, 14, "/stale_console.zc", 2);
+    expect_definition(1604, "speed once declared", imports_through, 2, 14, "/stale_console.zc",
+                      0);
+
+    // Closed without saving: the file on disk has no field `speed`.
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didClose\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file://" C_TEST_DIR "/stale_console.zc\"}}}");
+    usleep(100000);
+    expect_definition(1605, "speed after closing unsaved", imports_through, 2, 14, NULL, 0);
+    printf("PASS: test_importers_follow_an_edit\n");
 }
 
 // The first edit of the first code action at (line, character), as "line:col-line:col newText";
@@ -3976,6 +4044,7 @@ int main()
     test_implement_trait_action();
     test_import_type_action();
     test_type_from_imported_file();
+    test_importers_follow_an_edit();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
