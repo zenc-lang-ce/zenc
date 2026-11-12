@@ -1060,31 +1060,41 @@ static unsigned int keyword_places(LSPContext context)
     }
 }
 
-// What a bracket open before the cursor encloses, for at_type_position.
+// What a bracket open before the cursor encloses, for read_cursor_position.
 typedef enum
 {
-    OPENER_BODY,           // `{` of a block, an impl or a struct literal
-    OPENER_FIELDS,         // `{` of a struct or a union
-    OPENER_VARIANTS,       // `{` of an enum
-    OPENER_PARENTHESES,    // `(` of a call or an expression
-    OPENER_PARAMETERS,     // `(` of the parameters of a function or a lambda
-    OPENER_PAYLOAD,        // `(` of the payload of an enum variant
-    OPENER_BRACKETS,       // `[` of an index or an array literal
-    OPENER_TYPE_BRACKETS,  // `[` of a slice type (`[u8]`)
+    OPENER_BODY,          // `{` of a block or an impl
+    OPENER_LITERAL,       // `{` after a name: a struct literal (`Point {`) or a block (`if done {`)
+    OPENER_FIELDS,        // `{` of a struct or a union
+    OPENER_VARIANTS,      // `{` of an enum
+    OPENER_PARENTHESES,   // `(` of a call or an expression
+    OPENER_PARAMETERS,    // `(` of the parameters of a function or a lambda
+    OPENER_PAYLOAD,       // `(` of the payload of an enum variant
+    OPENER_BRACKETS,      // `[` of an index or an array literal
+    OPENER_TYPE_BRACKETS, // `[` of a slice type (`[u8]`)
     OPENER_TYPE_ARGUMENTS, // `<` of the arguments of a generic type (`Vec<`)
 } Opener;
 
+// A bracket open before the cursor.
+typedef struct
+{
+    Opener opener;
+    Token name;         // For a literal, the name before its `{`
+    const char *inside; // Where what it encloses starts
+} OpenBracket;
+
 // What the declaration being read in a brace has had since its `{`, or since the last `;` or `}`
-// in it: the bracket that comes next opens fields, variants or parameters.
+// in it: the bracket that comes next opens fields, variants, parameters or an impl's body.
 typedef struct
 {
     int has_struct;
     int has_enum;
     int has_fn;
     int has_parameters;
+    int has_impl; // `impl` or `trait`
 } DeclarationSoFar;
 
-#define TYPE_POSITION_MAX_DEPTH 64
+#define CURSOR_READER_MAX_DEPTH 64
 
 static int is_word(Token t, const char *word)
 {
@@ -1093,7 +1103,8 @@ static int is_word(Token t, const char *word)
 
 static int is_brace_opener(Opener opener)
 {
-    return opener == OPENER_BODY || opener == OPENER_FIELDS || opener == OPENER_VARIANTS;
+    return opener == OPENER_BODY || opener == OPENER_LITERAL || opener == OPENER_FIELDS ||
+           opener == OPENER_VARIANTS;
 }
 
 static int is_paren_opener(Opener opener)
@@ -1141,27 +1152,27 @@ static Opener paren_opener(Token before, Opener innermost, DeclarationSoFar *dec
     return after_callee ? OPENER_PARENTHESES : OPENER_PARAMETERS;
 }
 
-// The state of at_type_position while it reads the tokens before the cursor.
+// The state of read_cursor_position while it reads the tokens before the cursor.
 typedef struct
 {
-    Opener openers[TYPE_POSITION_MAX_DEPTH];
+    OpenBracket brackets[CURSOR_READER_MAX_DEPTH];
     int open;
-    DeclarationSoFar declarations[TYPE_POSITION_MAX_DEPTH];
+    DeclarationSoFar declarations[CURSOR_READER_MAX_DEPTH];
     int braces;
     Token before_previous;
     Token before;
     Opener closed;        // What the last `)` closed
     int type_next;        // A type can start at the next token
     int previous_is_type; // The previous token is a type's name
-} TypePositionReader;
+} CursorReader;
 
-static Opener innermost_opener(const TypePositionReader *r)
+static Opener innermost_opener(const CursorReader *r)
 {
-    return r->open ? r->openers[r->open - 1] : OPENER_BODY;
+    return r->open ? r->brackets[r->open - 1].opener : OPENER_BODY;
 }
 
 // Reads a `(`, `[`, `{`, or the `<` of a generic type; returns 0 for any other token.
-static int read_opener(TypePositionReader *r, Token t, int type_here, int after_type)
+static int read_opener(CursorReader *r, Token t, int type_here, int after_type)
 {
     DeclarationSoFar *declaration = &r->declarations[r->braces];
     Opener opener;
@@ -1184,21 +1195,24 @@ static int read_opener(TypePositionReader *r, Token t, int type_here, int after_
         r->type_next = opener == OPENER_PAYLOAD;
         break;
     case TOK_LBRACE:
+        // After a type (`-> Point {`) or in an impl (`impl Point {`), the name is no literal's.
         opener = declaration->has_struct ? OPENER_FIELDS
                  : declaration->has_enum ? OPENER_VARIANTS
-                                         : OPENER_BODY;
+                 : r->before.kind == TOK_IDENT && !after_type && !declaration->has_impl
+                     ? OPENER_LITERAL
+                     : OPENER_BODY;
         r->declarations[++r->braces] = (DeclarationSoFar){0};
         break;
     default:
         return 0;
     }
-    r->openers[r->open++] = opener;
+    r->brackets[r->open++] = (OpenBracket){opener, r->before, t.start + t.len};
     return 1;
 }
 
 // Reads a `)`, `]`, `}`, or the `>` (or `>>`) of generic types; returns 0 for any other token.
 // A closer that does not match the innermost bracket is left as it is.
-static int read_closer(TypePositionReader *r, Token t)
+static int read_closer(CursorReader *r, Token t)
 {
     Opener innermost = innermost_opener(r);
     switch (t.kind)
@@ -1228,7 +1242,7 @@ static int read_closer(TypePositionReader *r, Token t)
         return 1;
     case TOK_RBRACE:
         // Brackets left open while typing close with their brace.
-        while (r->open && !is_brace_opener(r->openers[r->open - 1]))
+        while (r->open && !is_brace_opener(r->brackets[r->open - 1].opener))
         {
             r->open--;
         }
@@ -1242,7 +1256,7 @@ static int read_closer(TypePositionReader *r, Token t)
 }
 
 // Reads a token that is no bracket: a word, `:`, `->`, `=`, `,` or `;`.
-static void read_other(TypePositionReader *r, Token t, int type_here)
+static void read_other(CursorReader *r, Token t, int type_here)
 {
     DeclarationSoFar *declaration = &r->declarations[r->braces];
     Opener innermost = innermost_opener(r);
@@ -1253,6 +1267,10 @@ static void read_other(TypePositionReader *r, Token t, int type_here)
     else if (is_word(t, "enum"))
     {
         declaration->has_enum = 1;
+    }
+    else if (t.kind == TOK_IMPL || t.kind == TOK_TRAIT)
+    {
+        declaration->has_impl = 1;
     }
     else if (is_word(t, "fn"))
     {
@@ -1288,22 +1306,34 @@ static void read_other(TypePositionReader *r, Token t, int type_here)
     }
 }
 
-// Whether the word being typed at `offset` of `source` is a type: after the `:` of a `let`, a
+// Where the word being typed goes, as the tokens before it say (see read_cursor_position).
+typedef struct
+{
+    int is_type;
+    // In a struct literal where a field's name goes (after its `{` or a `,`): the name before the
+    // `{`, which may be a struct's, and where its fields start. `literal.kind` is TOK_EOF
+    // elsewhere.
+    Token literal;
+    const char *literal_fields;
+} CursorPosition;
+
+// Where the word being typed at `offset` of `source` goes. A type goes after the `:` of a `let`, a
 // `def`, a parameter or a field, after the `->` of a function's parameters, on the right of
 // `alias Name =`, in a variant's payload, after `const` in a type, and inside the `<...>` and
-// `[...]` of a type. Reads the tokens before it as the lexer gives them, so it works on text that
-// does not parse yet.
-static int at_type_position(const char *source, size_t offset, const char *path)
+// `[...]` of a type. A field's name goes after the `{` or a `,` of a literal. Reads the tokens
+// before the word as the lexer gives them, so it works on text that does not parse yet.
+static CursorPosition read_cursor_position(const char *source, size_t offset, const char *path)
 {
-    TypePositionReader r = {.closed = OPENER_PARENTHESES};
+    CursorPosition position = {0};
+    CursorReader r = {.closed = OPENER_PARENTHESES};
     Lexer l;
     lexer_init(&l, source, g_project->ctx->config, path);
     l.end = source + offset;
     for (Token t = lexer_next(&l); t.kind != TOK_EOF; t = lexer_next(&l))
     {
-        if (r.open == TYPE_POSITION_MAX_DEPTH || r.braces == TYPE_POSITION_MAX_DEPTH - 1)
+        if (r.open == CURSOR_READER_MAX_DEPTH || r.braces == CURSOR_READER_MAX_DEPTH - 1)
         {
-            return 0; // Deeper than any program written by hand: not worth tracking
+            return position; // Deeper than any program written by hand: not worth tracking
         }
         int type_here = r.type_next;
         int after_type = r.previous_is_type;
@@ -1316,7 +1346,82 @@ static int at_type_position(const char *source, size_t offset, const char *path)
         r.before_previous = r.before;
         r.before = t;
     }
-    return r.type_next;
+    position.is_type = r.type_next;
+    if (innermost_opener(&r) == OPENER_LITERAL &&
+        (r.before.kind == TOK_LBRACE || r.before.kind == TOK_COMMA))
+    {
+        position.literal = r.brackets[r.open - 1].name;
+        position.literal_fields = r.brackets[r.open - 1].inside;
+    }
+    return position;
+}
+
+// Whether the fields of a literal, from `fields` up to `end`, give a value to `name`.
+static int literal_has_field(const char *fields, const char *end, const char *name,
+                             const char *path)
+{
+    Lexer l;
+    lexer_init(&l, fields, g_project->ctx->config, path);
+    l.end = end;
+    int depth = 0;
+    Token before = {.kind = TOK_COMMA}; // The literal's `{` reads like a `,`
+    Token previous = {0};
+    for (Token t = lexer_next(&l); t.kind != TOK_EOF; t = lexer_next(&l))
+    {
+        if (t.kind == TOK_LPAREN || t.kind == TOK_LBRACE || t.kind == TOK_LBRACKET)
+        {
+            depth++;
+        }
+        else if (t.kind == TOK_RPAREN || t.kind == TOK_RBRACE || t.kind == TOK_RBRACKET)
+        {
+            depth--;
+        }
+        else if (depth == 0 && t.kind == TOK_COLON && previous.kind == TOK_IDENT &&
+                 before.kind == TOK_COMMA && previous.len == strlen(name) &&
+                 strncmp(previous.start, name, previous.len) == 0)
+        {
+            return 1;
+        }
+        before = previous.kind == TOK_EOF ? before : previous;
+        previous = t;
+    }
+    return 0;
+}
+
+// Adds the fields of the struct named `position.literal` that its literal does not give yet, up to
+// `end`, as `name: `. Returns 0, adding nothing, when the name is no struct's (`if done {`).
+static int add_literal_field_completions(cJSON *items, CursorPosition position, const char *end,
+                                         const char *path)
+{
+    char name[MAX_VAR_NAME_LEN];
+    if (position.literal.len >= sizeof(name))
+    {
+        return 0;
+    }
+    memcpy(name, position.literal.start, position.literal.len);
+    name[position.literal.len] = 0;
+    ASTNode *strct = find_declaration(name, NODE_STRUCT);
+    if (!strct)
+    {
+        return 0;
+    }
+    for (ASTNode *field = strct->strct.fields; field; field = field->next)
+    {
+        if (literal_has_field(position.literal_fields, end, field->field.name, path))
+        {
+            continue;
+        }
+        char insert[MAX_VAR_NAME_LEN + 3];
+        snprintf(insert, sizeof(insert), "%s: ", field->field.name);
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "label", field->field.name);
+        cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_FIELD);
+        cJSON_AddStringToObject(item, "detail",
+                                zen_c_type_spelling(g_project->ctx, field->type_info));
+        cJSON_AddStringToObject(item, "insertText", insert);
+        cJSON_AddItemToArray(items, item);
+    }
+    return 1;
 }
 
 // Adds the names of the primitive types (`u8`, `usize`, `string`...), as primitives.c defines them.
@@ -1612,16 +1717,24 @@ cJSON *lsp_completion(const char *uri, int line, int col)
         }
     }
 
-    // Where a type goes (`size: u`, `-> u`, `alias Word = u`), only the names of types fit.
-    int type_position =
-        !dot_completed && pf->source &&
-        at_type_position(pf->source,
-                         (size_t)(ptr - pf->source) + (size_t)(at < line_len ? at : line_len),
-                         pf->path);
-    if (type_position)
+    // Where a type goes (`size: u`, `-> u`, `alias Word = u`), only the names of types fit; where
+    // a field of a struct literal goes (`Point { x: 1, `), only the fields it does not give yet.
+    CursorPosition position = {0};
+    const char *word = NULL;
+    if (!dot_completed && pf->source)
+    {
+        word = ptr + (at < line_len ? at : line_len);
+        position = read_cursor_position(pf->source, (size_t)(word - pf->source), pf->path);
+    }
+    if (position.is_type)
     {
         add_primitive_completions(items);
         visit_declarations(add_type_declaration_completion, items);
+    }
+    else if (position.literal.kind == TOK_IDENT &&
+             add_literal_field_completions(items, position, word, pf->path))
+    {
+        // The fields of the literal, and nothing else
     }
     else if (!dot_completed)
     {

@@ -2028,6 +2028,40 @@ static void test_type_position_completion(void)
     printf("PASS: test_type_position_completion\n");
 }
 
+static void test_literal_field_completion(void)
+{
+    printf("Running test_literal_field_completion...\n");
+    // Where a field's name goes in a struct literal, completion offers the fields the literal does
+    // not give yet. A block after a name that is no struct (`if done {`) completes as before.
+    // The literal is still being written, so the document does not parse.
+    const char *literal = "/tmp/test_literal_field_completion.zc";
+    open_document(literal, "struct Inner { depth: int; width: int; }\n"         // Line 0
+                           "struct Outer { inner: Inner; size: int; }\n"        // Line 1
+                           "fn make() -> Outer {\n"                             // Line 2
+                           "    return Outer { inner: Inner { depth: 1 }, s\n" // Line 3
+                           "}\n");
+    // A document that parses: the parameters of the function are offered from its AST.
+    const char *block = "/tmp/test_literal_field_completion_block.zc";
+    open_document(block, "struct Inner { depth: int; width: int; }\n" // Line 0
+                         "fn check(done: bool) {\n"                   // Line 1
+                         "    if done {\n"                            // Line 2
+                         "        d\n"                                // Line 3
+                         "    }\n"                                    // Line 4
+                         "}\n");
+    usleep(100000);
+    if (completion_kind(1410, literal, 3, 47, "size") != LSP_COMPLETION_FIELD ||
+        completion_kind(1411, literal, 3, 47, "inner") != -1)
+    {
+        fail("A struct literal completes with the fields it does not give yet");
+    }
+    if (completion_kind(1412, block, 3, 9, "done") != LSP_COMPLETION_VARIABLE ||
+        completion_kind(1413, block, 3, 9, "depth") != -1)
+    {
+        fail("A block after a name that is no struct completes as before");
+    }
+    printf("PASS: test_literal_field_completion\n");
+}
+
 static void test_member_hover(void)
 {
     printf("Running test_member_hover...\n");
@@ -3554,6 +3588,7 @@ int main()
     test_member_hover();
     test_qualified_member_completion();
     test_type_position_completion();
+    test_literal_field_completion();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
