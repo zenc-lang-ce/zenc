@@ -344,14 +344,18 @@ $(OBJ_DIR)/%.o: %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Rebuild the version-printing objects (and thus relink every tool) whenever
+# Rebuild the objects that use ZEN_VERSION (and thus relink every tool) whenever
 # GIT_VERSION changes. The stamp only rewrites when the version differs, so a
-# plain `make` does not recompile anything.
+# plain `make` does not recompile anything. Each source that reads ZEN_VERSION
+# goes in this list: the language server's version and the key of the C header
+# cache come from it too.
 $(OBJ_DIR)/version.stamp: FORCE
 	@$(MKDIR) $(OBJ_DIR)
 	@if [ -f $@ ] && [ "$$(cat $@)" = "$(GIT_VERSION)" ]; then :; else echo "$(GIT_VERSION)" > $@; fi
 
-$(OBJ_DIR)/src/utils/cmd.o $(OBJ_DIR)/src/repl/repl.o: $(OBJ_DIR)/version.stamp
+VERSION_OBJS = $(addprefix $(OBJ_DIR)/src/,utils/cmd.o repl/repl.o lsp/json_rpc.o lsp/lsp_main.o \
+                 parser/utils/utils_c_types.o)
+$(VERSION_OBJS): $(OBJ_DIR)/version.stamp
 
 # APE targets
 $(ZC_ENTRY_O): ape/zc_entry.c
