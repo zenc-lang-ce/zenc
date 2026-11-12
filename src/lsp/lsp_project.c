@@ -746,6 +746,55 @@ static const char *declared_type_name(ASTNode *node)
     }
 }
 
+// Whether `text`, written in an `import` of the file `importer`, leads to the file `target` (a
+// resolved path), as the parser resolves it.
+static int import_leads_to(const char *text, const char *importer, const char *target)
+{
+    char *resolved = z_resolve_path(text, importer, g_project->ctx->config);
+    return resolved && strcmp(resolved, target) == 0;
+}
+
+int lsp_project_import_text(const char *importer, const char *target, char *out, size_t size)
+{
+    if (!g_project || !g_project->ctx || !importer || !target || size == 0)
+    {
+        return 0;
+    }
+    CompilerConfig *cfg = g_project->ctx->config;
+    char *from = z_resolve_path(importer, NULL, cfg);
+    char *to = z_resolve_path(target, NULL, cfg);
+    if (!from || !to)
+    {
+        return 0;
+    }
+    const char *std_dir = z_find_std_dir(to);
+    if (std_dir && import_leads_to(std_dir + 1, importer, to))
+    {
+        snprintf(out, size, "%s", std_dir + 1);
+        return 1;
+    }
+    // The directories both share, then a `../` for each one left of `importer`'s.
+    size_t common = 0;
+    for (size_t i = 0; from[i] && from[i] == to[i]; i++)
+    {
+        if (z_is_path_sep(from[i]))
+        {
+            common = i + 1;
+        }
+    }
+    size_t used = 0;
+    out[0] = 0;
+    for (const char *p = from + common; *p; p++)
+    {
+        if (z_is_path_sep(*p))
+        {
+            str_appendf(out, size, &used, "../");
+        }
+    }
+    str_appendf(out, size, &used, "%s", to + common);
+    return import_leads_to(out, importer, to);
+}
+
 ASTNode *lsp_project_visible_type(const char *path, const char *name)
 {
     if (!g_project || !g_project->ctx || !path || !name)
@@ -871,8 +920,26 @@ static void index_parsed_file(ProjectFile *pf, ASTNode *root, ParseMarks before)
     }
 }
 
+// Whether a file of the project declares a type named `name`.
+static int project_declares_type(const char *name)
+{
+    for (ProjectFile *pf = g_project->files; pf; pf = pf->next)
+    {
+        for (ASTNode *node = lsp_project_top_level(pf); node; node = node->next)
+        {
+            const char *declared = declared_type_name(node);
+            if (declared && strcmp(declared, name) == 0)
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 // The type names the last parse, whose marks are `before`, read in `pf` and that name no type
-// of the program.
+// that `pf` sees: no type of the program, or one that only files `pf` does not import declare.
+// The server parses the whole workspace with one context, which knows those too.
 static TypeUsage *unknown_types_of(ProjectFile *pf, ParseMarks before)
 {
     TypeUsage *unknown = NULL;
@@ -881,7 +948,8 @@ static TypeUsage *unknown_types_of(ProjectFile *pf, ParseMarks before)
          use = use->next)
     {
         if (use->location.file && strcmp(use->location.file, pf->path) == 0 &&
-            !is_known_type_name(g_project->ctx, use->name))
+            !lsp_project_visible_type(pf->path, use->name) &&
+            (!is_known_type_name(g_project->ctx, use->name) || project_declares_type(use->name)))
         {
             TypeUsage *copy = xmalloc(sizeof(TypeUsage));
             *copy = *use;

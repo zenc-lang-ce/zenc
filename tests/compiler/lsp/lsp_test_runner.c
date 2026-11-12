@@ -2268,6 +2268,185 @@ static void test_implement_trait_action(void)
     printf("PASS: test_implement_trait_action\n");
 }
 
+// The code actions at (line, character), each as "title|newText" and separated by ";".
+static void code_action_imports(int id, const char *path, int line, int character, char *out,
+                                size_t size)
+{
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/codeAction\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"file://%s\"}, \"range\": {\"start\": "
+             "{\"line\": %d, \"character\": %d}, \"end\": {\"line\": %d, \"character\": %d}}, "
+             "\"context\": {\"diagnostics\": []}}}",
+             id, path, line, character, line, character);
+    send_request(json);
+    char *response = wait_for_response(id);
+    cJSON *parsed = response ? cJSON_Parse(response) : NULL;
+    free(response);
+    if (!parsed)
+    {
+        fail("No response for a code action request");
+    }
+    size_t used = 0;
+    out[0] = 0;
+    cJSON *action = NULL;
+    cJSON_ArrayForEach(action, cJSON_GetObjectItem(parsed, "result"))
+    {
+        cJSON *changes = cJSON_GetObjectItem(cJSON_GetObjectItem(action, "edit"), "changes");
+        cJSON *edit = changes && changes->child ? cJSON_GetArrayItem(changes->child, 0) : NULL;
+        int written = snprintf(out + used, size - used, "%s%s|%s", used ? ";" : "",
+                               cJSON_GetObjectItem(action, "title")->valuestring,
+                               edit ? cJSON_GetObjectItem(edit, "newText")->valuestring : "");
+        used += written > 0 && (size_t)written < size - used ? (size_t)written : 0;
+    }
+    cJSON_Delete(parsed);
+}
+
+static void expect_import_actions(int id, const char *path, int line, int character,
+                                  const char *expected)
+{
+    char actions[2048];
+    code_action_imports(id, path, line, character, actions, sizeof(actions));
+    if (strcmp(actions, expected) != 0)
+    {
+        printf("Code actions at %d:%d: '%s', expected '%s'\n", line, character, actions,
+               expected);
+        fail("Wrong import actions");
+    }
+}
+
+// The next diagnostics the server publishes for a document whose path ends in `name`; the caller
+// frees them.
+static char *next_diagnostics(const char *name)
+{
+    for (int i = 0; i < 50; i++)
+    {
+        char *message = read_message();
+        if (!message)
+        {
+            break;
+        }
+        if (strstr(message, "publishDiagnostics") && strstr(message, name))
+        {
+            return message;
+        }
+        free(message);
+    }
+    printf("No diagnostics for %s\n", name);
+    fail("Missing diagnostics");
+}
+
+// The completion items `label` at (line, character), each as "description|import it adds" and
+// separated by ";"; an item without an import is "|".
+static void completion_imports(int id, const char *path, int line, int character,
+                               const char *label, char *out, size_t size)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    size_t used = 0;
+    out[0] = 0;
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, cJSON_GetObjectItem(response, "result"))
+    {
+        const char *item_label = cJSON_GetStringValue(cJSON_GetObjectItem(item, "label"));
+        if (!item_label || strcmp(item_label, label) != 0)
+        {
+            continue;
+        }
+        const char *description = cJSON_GetStringValue(
+            cJSON_GetObjectItem(cJSON_GetObjectItem(item, "labelDetails"), "description"));
+        cJSON *edit = cJSON_GetArrayItem(cJSON_GetObjectItem(item, "additionalTextEdits"), 0);
+        const char *text = edit ? cJSON_GetStringValue(cJSON_GetObjectItem(edit, "newText")) : NULL;
+        int written = snprintf(out + used, size - used, "%s%s|%s", used ? ";" : "",
+                               description ? description : "", text ? text : "");
+        used += written > 0 && (size_t)written < size - used ? (size_t)written : 0;
+    }
+    cJSON_Delete(response);
+}
+
+static void test_import_type_action(void)
+{
+    printf("Running test_import_type_action...\n");
+    // On a type that the file does not see, a code action imports each file that declares it: the
+    // nearest first, written as the parser resolves an import, after the file's last import.
+    mkdir("/tmp/zc_import_type", 0755);
+    mkdir("/tmp/zc_import_type/a", 0755);
+    mkdir("/tmp/zc_import_type/b", 0755);
+    open_document("/tmp/zc_import_type/a/shapes.zc", "struct Polygon { sides: int; }\n");
+    open_document("/tmp/zc_import_type/b/shapes.zc", "struct Polygon { name: int; }\n");
+    open_document("/tmp/zc_import_type/a/util.zc", "fn twice(x: int) -> int { return x * 2; }\n");
+    const char *main_path = "/tmp/zc_import_type/main.zc";
+    open_document(main_path, "import \"a/util.zc\";\n"   // Line 0
+                             "fn area(s: Polygon) {}\n"); // Line 1
+    const char *nested_path = "/tmp/zc_import_type/a/nested.zc";
+    open_document(nested_path, "fn sides(s: Polygon) {}\n");
+    const char *seen_path = "/tmp/zc_import_type/seen.zc";
+    open_document(seen_path, "import \"a/shapes.zc\"\n"
+                             "fn seen(s: Polygon) {}\n");
+    usleep(200000);
+    // After the last import, with its `;`; from a folder, the one beside it first, then `../`.
+    expect_import_actions(1425, main_path, 1, 12,
+                          "Import Polygon from \"a/shapes.zc\"|\nimport \"a/shapes.zc\";;"
+                          "Import Polygon from \"b/shapes.zc\"|\nimport \"b/shapes.zc\";");
+    expect_import_actions(1426, nested_path, 0, 13,
+                          "Import Polygon from \"shapes.zc\"|import \"shapes.zc\"\n\n;"
+                          "Import Polygon from \"../b/shapes.zc\"|import \"../b/shapes.zc\"\n\n");
+    // A type the file sees, and a name that is no type.
+    expect_import_actions(1427, seen_path, 1, 12, "");
+    expect_import_actions(1428, main_path, 1, 4, "");
+
+    // Completion offers the type once for each file that declares it, with its import.
+    char items[1024];
+    const char *typing_path = "/tmp/zc_import_type/typing.zc";
+    open_document(typing_path, "import \"a/util.zc\"\n" // Line 0
+                               "fn c(p: Pol) {}\n");    // Line 1
+    usleep(100000);
+    completion_imports(1429, typing_path, 1, 11, "Polygon", items, sizeof(items));
+    if (strcmp(items, "a/shapes.zc|\nimport \"a/shapes.zc\";b/shapes.zc|\nimport \"b/shapes.zc\"") !=
+        0)
+    {
+        printf("Completion of Polygon: '%s'\n", items);
+        fail("A type the file does not see completes with the import of each file");
+    }
+    // Where the file sees it, it comes without one.
+    completion_imports(1430, seen_path, 1, 12, "Polygon", items, sizeof(items));
+    if (strcmp(items, "|") != 0)
+    {
+        printf("Completion of Polygon: '%s'\n", items);
+        fail("A type the file sees completes without an import");
+    }
+
+    // The type is warned about with the file to import, since `zc build` does not know it there;
+    // not where it is imported, nor where a generic parameter has its name.
+    open_document("/tmp/zc_import_type/warned.zc", "fn w(p: Polygon, q: Undeclared) {}\n");
+    char *diagnostics = next_diagnostics("warned.zc");
+    if (!strstr(diagnostics, "Type 'Polygon' is declared in \\\"a/shapes.zc\\\" and 1 other file, "
+                             "which this file does not import") ||
+        !strstr(diagnostics, "Unknown type 'Undeclared'"))
+    {
+        printf("Diagnostics: %s\n", diagnostics);
+        fail("A type that only files not imported declare is warned about with the file");
+    }
+    free(diagnostics);
+    const char *quiet[][2] = {
+        {"/tmp/zc_import_type/quiet.zc", "import \"a/shapes.zc\"\nfn q(p: Polygon) {}\n"},
+        {"/tmp/zc_import_type/generic.zc", "fn same<Polygon>(x: Polygon) -> Polygon {\n"
+                                           "    return x;\n"
+                                           "}\n"},
+    };
+    for (size_t i = 0; i < sizeof(quiet) / sizeof(quiet[0]); i++)
+    {
+        open_document(quiet[i][0], quiet[i][1]);
+        diagnostics = next_diagnostics(strrchr(quiet[i][0], '/') + 1);
+        if (strstr(diagnostics, "Polygon'"))
+        {
+            printf("Diagnostics: %s\n", diagnostics);
+            fail("A type the file imports, or a generic parameter, is not warned about");
+        }
+        free(diagnostics);
+    }
+    printf("PASS: test_import_type_action\n");
+}
+
 static void test_member_hover(void)
 {
     printf("Running test_member_hover...\n");
@@ -3798,6 +3977,7 @@ int main()
     test_trait_value_completion();
     test_trait_impl_completion();
     test_implement_trait_action();
+    test_import_type_action();
     test_type_from_imported_file();
     test_c_struct_field_completion();
     test_shutdown();

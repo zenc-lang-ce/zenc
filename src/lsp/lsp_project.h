@@ -30,8 +30,9 @@ typedef struct ProjectFile
     int generic_impl_count;
     ASTNode **generic_functions;
     int generic_function_count;
-    /// The type names its last parse read in it that name no type of the program, newest
-    /// first. A C header may still declare them.
+    /// The type names its last parse read in it that name no type it sees, newest first: no type
+    /// of the program, or one that only files it does not import declare. A C header may still
+    /// declare them.
     TypeUsage *unknown_types;
     /// The files its text imports, resolved as the parser resolves them, in the order written.
     char **imports;
@@ -89,6 +90,12 @@ ProjectFile *lsp_project_get_file_by_path(const char *path);
 // that name in a file `path` does not import is not this one. NULL when no file it sees declares
 // it.
 ASTNode *lsp_project_visible_type(const char *path, const char *name);
+
+// Writes to `out` what an `import` in the file `importer` writes to import the file `target`: the
+// path from `std/` for a file of the standard library (`std/net/http.zc`), the path relative to
+// `importer` otherwise (`../shapes.zc`). Each is checked as the parser resolves an import. Returns
+// 0 when it leads to `target` neither way.
+int lsp_project_import_text(const char *importer, const char *target, char *out, size_t size);
 
 // Update a file (re-parse and re-index)
 void lsp_project_update_file(const char *uri, const char *src);

@@ -115,21 +115,7 @@ void lsp_close_file(const char *uri)
     lsp_send_message(root);
 }
 
-// Warns about the type names of `pf` that name no type of the program nor of the C headers
-// the document includes or imports. `zc build` warns about them too, and also about the types
-// of those headers, which it does not read.
-static void warn_unknown_types(ProjectFile *pf)
-{
-    for (TypeUsage *use = pf->unknown_types; use; use = use->next)
-    {
-        const CHeaderSymbol *declaration;
-        if (lsp_c_headers_find_at(pf->path, pf->source, use->location.line - 1,
-                                  use->location.col - 1, &declaration, 1, NULL) == 0)
-        {
-            warn_unknown_type(g_project->ctx, use);
-        }
-    }
-}
+static void warn_unknown_types(ProjectFile *pf);
 
 void lsp_check_file(const char *uri, const char *json_src)
 {
@@ -1708,12 +1694,17 @@ static void add_primitive_completions(cJSON *items)
     }
 }
 
+// Whether `node` declares a type: a struct, an enum, a trait or an alias.
+static int declares_type(ASTNode *node)
+{
+    return node->kind == NODE_STRUCT || node->kind == NODE_ENUM || node->kind == NODE_TRAIT ||
+           node->kind == NODE_TYPE_ALIAS;
+}
+
 // Adds the completion item of a declaration that names a type (see add_declaration_completion).
 static int add_type_declaration_completion(ASTNode *node, void *data)
 {
-    int names_type = node->kind == NODE_STRUCT || node->kind == NODE_ENUM ||
-                     node->kind == NODE_TRAIT || node->kind == NODE_TYPE_ALIAS;
-    return names_type ? add_declaration_completion(node, data) : 0;
+    return declares_type(node) ? add_declaration_completion(node, data) : 0;
 }
 
 // Adds the completion item of a local, `decl`, to the array `data`.
@@ -1726,6 +1717,12 @@ static void add_local_completion(ASTNode *decl, void *data)
     cJSON_AddStringToObject(item, "sortText", "002"); // Local priority
     cJSON_AddItemToArray((cJSON *)data, item);
 }
+
+// Gives each completion item of `items` that names a type `pf` does not see the import of a file
+// that declares it, as an additional edit: one item for each such file (find_import_candidates),
+// which its description names. An item of a type that no file of the project declares stays as it
+// is. Returns the new array; `items` is deleted.
+static cJSON *add_completion_imports(cJSON *items, ProjectFile *pf);
 
 cJSON *lsp_completion(const char *uri, int line, int col)
 {
@@ -2128,7 +2125,8 @@ cJSON *lsp_completion(const char *uri, int line, int col)
         }
     }
 
-    return items;
+    // A type of a file that the document does not import comes with that import.
+    return pf->source ? add_completion_imports(items, pf) : items;
 }
 
 // Name and LSP SymbolKind of a declaration, or NULL when the node is not one.
@@ -2726,6 +2724,298 @@ static cJSON *implement_trait_action(const char *uri, const char *source, Token 
     return action;
 }
 
+// A file that an import can bring a type from (see add_import_actions).
+typedef struct
+{
+    char text[MAX_PATH_LEN]; // What the `import` writes
+    int is_std;
+    int ups; // How many `../` it starts with
+} ImportCandidate;
+
+// The files of the workspace before the standard library; among them, the nearest to the file that
+// imports, then the shortest.
+static int compare_import_candidates(const void *a, const void *b)
+{
+    const ImportCandidate *x = a;
+    const ImportCandidate *y = b;
+    if (x->is_std != y->is_std)
+    {
+        return x->is_std - y->is_std;
+    }
+    if (x->ups != y->ups)
+    {
+        return x->ups - y->ups;
+    }
+    size_t x_len = strlen(x->text);
+    size_t y_len = strlen(y->text);
+    return x_len != y_len ? (x_len < y_len ? -1 : 1) : strcmp(x->text, y->text);
+}
+
+// The files of the project, other than `pf`, that declare a type named `name`, as the imports of
+// `pf` write them, sorted (compare_import_candidates). Returns how many; the caller owns none.
+static int find_import_candidates(ProjectFile *pf, const char *name, ImportCandidate **out)
+{
+    int count = 0;
+    int capacity = 0;
+    *out = NULL;
+    for (ProjectFile *file = g_project->files; file; file = file->next)
+    {
+        if (file == pf)
+        {
+            continue;
+        }
+        ASTNode *node = lsp_project_top_level(file);
+        while (node && !(declares_type(node) && declared_name(node) &&
+                         strcmp(declared_name(node), name) == 0))
+        {
+            node = node->next;
+        }
+        if (!node)
+        {
+            continue;
+        }
+        if (count == capacity)
+        {
+            capacity = capacity ? capacity * 2 : 4;
+            *out = xrealloc(*out, (size_t)capacity * sizeof(ImportCandidate));
+        }
+        ImportCandidate *candidate = &(*out)[count];
+        if (!lsp_project_import_text(pf->path, file->path, candidate->text,
+                                     sizeof(candidate->text)))
+        {
+            continue;
+        }
+        // The same file can be in the project twice, by two paths (through a symbolic link).
+        int repeated = 0;
+        for (int i = 0; i < count && !repeated; i++)
+        {
+            repeated = strcmp((*out)[i].text, candidate->text) == 0;
+        }
+        if (repeated)
+        {
+            continue;
+        }
+        candidate->is_std = strncmp(candidate->text, "std/", 4) == 0;
+        candidate->ups = 0;
+        while (strncmp(candidate->text + 3 * candidate->ups, "../", 3) == 0)
+        {
+            candidate->ups++;
+        }
+        count++;
+    }
+    qsort(*out, (size_t)count, sizeof(ImportCandidate), compare_import_candidates);
+    return count;
+}
+
+// Where an `import` goes in a file, and how it is written there.
+typedef struct
+{
+    const char *at; // The end of the line of the last import; NULL without one
+    int semicolon;  // Whether that import ends with `;`
+} ImportPlace;
+
+// Where an `import` goes in `source`: at the end of the line of the last import at the top level,
+// or, without one, at the start of the file.
+static ImportPlace import_place(const char *source, const char *path)
+{
+    ImportPlace place = {0};
+    Lexer l;
+    lexer_init(&l, source, g_project->ctx->config, path);
+    int depth = 0;
+    for (Token t = lexer_next(&l); t.kind != TOK_EOF; t = lexer_next(&l))
+    {
+        depth += t.kind == TOK_LBRACE;
+        depth -= t.kind == TOK_RBRACE;
+        if (depth != 0 || !is_word(t, "import"))
+        {
+            continue;
+        }
+        Token file = lexer_next(&l);
+        while (file.kind != TOK_STRING && file.kind != TOK_SEMICOLON && file.kind != TOK_EOF)
+        {
+            file = lexer_next(&l);
+        }
+        if (file.kind != TOK_STRING)
+        {
+            continue;
+        }
+        place.at = file.start + file.len;
+        while (*place.at && *place.at != '\n' && *place.at != '\r')
+        {
+            place.at++;
+        }
+        const char *last = place.at;
+        while (last > file.start && isspace((unsigned char)last[-1]))
+        {
+            last--;
+        }
+        place.semicolon = last[-1] == ';';
+    }
+    return place;
+}
+
+// The edit of `source` that imports `file` (what the `import` writes) at `place`: on a line after
+// the last import, with its `;`, or at the start of the file and a blank line after it.
+static cJSON *import_edit(const char *source, ImportPlace place, const char *file)
+{
+    char text[MAX_PATH_LEN + 16];
+    if (place.at)
+    {
+        snprintf(text, sizeof(text), "\nimport \"%s\"%s", file, place.semicolon ? ";" : "");
+    }
+    else
+    {
+        snprintf(text, sizeof(text), "import \"%s\"\n\n", file);
+    }
+    const char *at = place.at ? place.at : source;
+    cJSON *edit = cJSON_CreateObject();
+    cJSON *range = cJSON_AddObjectToObject(edit, "range");
+    add_position(range, "start", source, at);
+    add_position(range, "end", source, at);
+    cJSON_AddStringToObject(edit, "newText", text);
+    return edit;
+}
+
+// Warns about the type names of `pf` that name no type it sees nor of the C headers the document
+// includes or imports. `zc build` warns about them too, and also about the types of those
+// headers, which it does not read. A type that files `pf` does not import declare is warned about
+// with the file to import (see add_import_actions).
+static void warn_unknown_types(ProjectFile *pf)
+{
+    for (TypeUsage *use = pf->unknown_types; use; use = use->next)
+    {
+        const CHeaderSymbol *declaration;
+        if (lsp_c_headers_find_at(pf->path, pf->source, use->location.line - 1,
+                                  use->location.col - 1, &declaration, 1, NULL) != 0)
+        {
+            continue;
+        }
+        ImportCandidate *candidates = NULL;
+        int count = find_import_candidates(pf, use->name, &candidates);
+        if (count == 0)
+        {
+            warn_unknown_type(g_project->ctx, use);
+        }
+        else if (count == 1)
+        {
+            zwarn_at(use->location,
+                     "Type '%s' is declared in \"%s\", which this file does not import", use->name,
+                     candidates[0].text);
+        }
+        else
+        {
+            zwarn_at(
+                use->location,
+                "Type '%s' is declared in \"%s\" and %d other file%s, which this file does not "
+                "import",
+                use->name, candidates[0].text, count - 1, count > 2 ? "s" : "");
+        }
+    }
+}
+
+// The name of the type at `at` in `source`: the word around it. Returns 0 when there is no word.
+static int word_at(const char *source, const char *at, char *out, size_t size)
+{
+    const char *start = at;
+    while (start > source && (isalnum((unsigned char)start[-1]) || start[-1] == '_'))
+    {
+        start--;
+    }
+    const char *end = at;
+    while (isalnum((unsigned char)*end) || *end == '_')
+    {
+        end++;
+    }
+    size_t len = (size_t)(end - start);
+    if (len == 0 || len >= size || isdigit((unsigned char)*start))
+    {
+        return 0;
+    }
+    memcpy(out, start, len);
+    out[len] = 0;
+    return 1;
+}
+
+// Adds a code action for each file of the project that declares a type named as the word at `at`
+// when `pf` sees no type of that name (lsp_project_visible_type): it imports that file, after the
+// file's last import. The workspace's files go first, the nearest first (find_import_candidates);
+// with only one, the action is the preferred one.
+static void add_import_actions(cJSON *actions, const char *uri, ProjectFile *pf, const char *at)
+{
+    char name[MAX_VAR_NAME_LEN];
+    if (!word_at(pf->source, at, name, sizeof(name)) || lsp_project_visible_type(pf->path, name))
+    {
+        return;
+    }
+    ImportCandidate *candidates = NULL;
+    int count = find_import_candidates(pf, name, &candidates);
+    ImportPlace place = import_place(pf->source, pf->path);
+    for (int i = 0; i < count; i++)
+    {
+        cJSON *edits = cJSON_CreateArray();
+        cJSON_AddItemToArray(edits, import_edit(pf->source, place, candidates[i].text));
+
+        cJSON *action = cJSON_CreateObject();
+        char title[MAX_PATH_LEN + MAX_VAR_NAME_LEN + 32];
+        snprintf(title, sizeof(title), "Import %s from \"%s\"", name, candidates[i].text);
+        cJSON_AddStringToObject(action, "title", title);
+        cJSON_AddStringToObject(action, "kind", "quickfix");
+        if (count == 1)
+        {
+            cJSON_AddBoolToObject(action, "isPreferred", 1);
+        }
+        cJSON *changes =
+            cJSON_AddObjectToObject(cJSON_AddObjectToObject(action, "edit"), "changes");
+        cJSON_AddItemToObject(changes, uri, edits);
+        cJSON_AddItemToArray(actions, action);
+    }
+}
+
+static cJSON *add_completion_imports(cJSON *items, ProjectFile *pf)
+{
+    cJSON *result = cJSON_CreateArray();
+    ImportPlace place = {0};
+    int place_read = 0;
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, items)
+    {
+        cJSON *kind = cJSON_GetObjectItem(item, "kind");
+        const char *label = cJSON_GetStringValue(cJSON_GetObjectItem(item, "label"));
+        int names_type = cJSON_IsNumber(kind) && (kind->valueint == LSP_COMPLETION_STRUCT ||
+                                                  kind->valueint == LSP_COMPLETION_ENUM ||
+                                                  kind->valueint == LSP_COMPLETION_INTERFACE);
+        ImportCandidate *candidates = NULL;
+        int count = names_type && label && !lsp_project_visible_type(pf->path, label)
+                        ? find_import_candidates(pf, label, &candidates)
+                        : 0;
+        if (count == 0)
+        {
+            cJSON_AddItemToArray(result, cJSON_Duplicate(item, 1));
+            continue;
+        }
+        if (!place_read)
+        {
+            place = import_place(pf->source, pf->path);
+            place_read = 1;
+        }
+        for (int i = 0; i < count; i++)
+        {
+            cJSON *with_import = cJSON_Duplicate(item, 1);
+            cJSON_AddStringToObject(cJSON_AddObjectToObject(with_import, "labelDetails"),
+                                    "description", candidates[i].text);
+            char detail[MAX_PATH_LEN + 16];
+            snprintf(detail, sizeof(detail), "import \"%s\"", candidates[i].text);
+            cJSON_DeleteItemFromObject(with_import, "detail");
+            cJSON_AddStringToObject(with_import, "detail", detail);
+            cJSON *edits = cJSON_AddArrayToObject(with_import, "additionalTextEdits");
+            cJSON_AddItemToArray(edits, import_edit(pf->source, place, candidates[i].text));
+            cJSON_AddItemToArray(result, with_import);
+        }
+    }
+    cJSON_Delete(items);
+    return result;
+}
+
 cJSON *lsp_code_actions(const char *uri, int line, int col)
 {
     cJSON *actions = cJSON_CreateArray();
@@ -2743,5 +3033,6 @@ cJSON *lsp_code_actions(const char *uri, int line, int col)
     {
         cJSON_AddItemToArray(actions, implement);
     }
+    add_import_actions(actions, uri, pf, at);
     return actions;
 }
