@@ -30,8 +30,9 @@ typedef struct ProjectFile
     int generic_impl_count;
     ASTNode **generic_functions;
     int generic_function_count;
-    /// The type names its last parse read in it that name no type of the program, newest
-    /// first. A C header may still declare them.
+    /// The type names its last parse read in it that name no type it sees, newest first: no type
+    /// of the program, or one that only files it does not import declare. A C header may still
+    /// declare them.
     TypeUsage *unknown_types;
     /// The files its text imports, resolved as the parser resolves them, in the order written.
     char **imports;

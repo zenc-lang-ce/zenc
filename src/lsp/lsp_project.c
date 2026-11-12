@@ -920,8 +920,26 @@ static void index_parsed_file(ProjectFile *pf, ASTNode *root, ParseMarks before)
     }
 }
 
+// Whether a file of the project declares a type named `name`.
+static int project_declares_type(const char *name)
+{
+    for (ProjectFile *pf = g_project->files; pf; pf = pf->next)
+    {
+        for (ASTNode *node = lsp_project_top_level(pf); node; node = node->next)
+        {
+            const char *declared = declared_type_name(node);
+            if (declared && strcmp(declared, name) == 0)
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 // The type names the last parse, whose marks are `before`, read in `pf` and that name no type
-// of the program.
+// that `pf` sees: no type of the program, or one that only files `pf` does not import declare.
+// The server parses the whole workspace with one context, which knows those too.
 static TypeUsage *unknown_types_of(ProjectFile *pf, ParseMarks before)
 {
     TypeUsage *unknown = NULL;
@@ -930,7 +948,8 @@ static TypeUsage *unknown_types_of(ProjectFile *pf, ParseMarks before)
          use = use->next)
     {
         if (use->location.file && strcmp(use->location.file, pf->path) == 0 &&
-            !is_known_type_name(g_project->ctx, use->name))
+            !lsp_project_visible_type(pf->path, use->name) &&
+            (!is_known_type_name(g_project->ctx, use->name) || project_declares_type(use->name)))
         {
             TypeUsage *copy = xmalloc(sizeof(TypeUsage));
             *copy = *use;

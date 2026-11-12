@@ -2315,6 +2315,27 @@ static void expect_import_actions(int id, const char *path, int line, int charac
     }
 }
 
+// The next diagnostics the server publishes for a document whose path ends in `name`; the caller
+// frees them.
+static char *next_diagnostics(const char *name)
+{
+    for (int i = 0; i < 50; i++)
+    {
+        char *message = read_message();
+        if (!message)
+        {
+            break;
+        }
+        if (strstr(message, "publishDiagnostics") && strstr(message, name))
+        {
+            return message;
+        }
+        free(message);
+    }
+    printf("No diagnostics for %s\n", name);
+    fail("Missing diagnostics");
+}
+
 static void test_import_type_action(void)
 {
     printf("Running test_import_type_action...\n");
@@ -2345,6 +2366,36 @@ static void test_import_type_action(void)
     // A type the file sees, and a name that is no type.
     expect_import_actions(1427, seen_path, 1, 12, "");
     expect_import_actions(1428, main_path, 1, 4, "");
+
+    // The type is warned about with the file to import, since `zc build` does not know it there;
+    // not where it is imported, nor where a generic parameter has its name.
+    open_document("/tmp/zc_import_type/warned.zc", "fn w(p: Polygon, q: Undeclared) {}\n");
+    char *diagnostics = next_diagnostics("warned.zc");
+    if (!strstr(diagnostics, "Type 'Polygon' is declared in \\\"a/shapes.zc\\\" and 1 other file, "
+                             "which this file does not import") ||
+        !strstr(diagnostics, "Unknown type 'Undeclared'"))
+    {
+        printf("Diagnostics: %s\n", diagnostics);
+        fail("A type that only files not imported declare is warned about with the file");
+    }
+    free(diagnostics);
+    const char *quiet[][2] = {
+        {"/tmp/zc_import_type/quiet.zc", "import \"a/shapes.zc\"\nfn q(p: Polygon) {}\n"},
+        {"/tmp/zc_import_type/generic.zc", "fn same<Polygon>(x: Polygon) -> Polygon {\n"
+                                           "    return x;\n"
+                                           "}\n"},
+    };
+    for (size_t i = 0; i < sizeof(quiet) / sizeof(quiet[0]); i++)
+    {
+        open_document(quiet[i][0], quiet[i][1]);
+        diagnostics = next_diagnostics(strrchr(quiet[i][0], '/') + 1);
+        if (strstr(diagnostics, "Polygon'"))
+        {
+            printf("Diagnostics: %s\n", diagnostics);
+            fail("A type the file imports, or a generic parameter, is not warned about");
+        }
+        free(diagnostics);
+    }
     printf("PASS: test_import_type_action\n");
 }
 

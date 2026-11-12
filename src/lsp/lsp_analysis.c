@@ -115,21 +115,7 @@ void lsp_close_file(const char *uri)
     lsp_send_message(root);
 }
 
-// Warns about the type names of `pf` that name no type of the program nor of the C headers
-// the document includes or imports. `zc build` warns about them too, and also about the types
-// of those headers, which it does not read.
-static void warn_unknown_types(ProjectFile *pf)
-{
-    for (TypeUsage *use = pf->unknown_types; use; use = use->next)
-    {
-        const CHeaderSymbol *declaration;
-        if (lsp_c_headers_find_at(pf->path, pf->source, use->location.line - 1,
-                                  use->location.col - 1, &declaration, 1, NULL) == 0)
-        {
-            warn_unknown_type(g_project->ctx, use);
-        }
-    }
-}
+static void warn_unknown_types(ProjectFile *pf);
 
 void lsp_check_file(const char *uri, const char *json_src)
 {
@@ -2853,6 +2839,43 @@ static const char *import_position(const char *source, const char *path, int *se
         *semicolon = last[-1] == ';';
     }
     return position;
+}
+
+// Warns about the type names of `pf` that name no type it sees nor of the C headers the document
+// includes or imports. `zc build` warns about them too, and also about the types of those
+// headers, which it does not read. A type that files `pf` does not import declare is warned about
+// with the file to import (see add_import_actions).
+static void warn_unknown_types(ProjectFile *pf)
+{
+    for (TypeUsage *use = pf->unknown_types; use; use = use->next)
+    {
+        const CHeaderSymbol *declaration;
+        if (lsp_c_headers_find_at(pf->path, pf->source, use->location.line - 1,
+                                  use->location.col - 1, &declaration, 1, NULL) != 0)
+        {
+            continue;
+        }
+        ImportCandidate *candidates = NULL;
+        int count = find_import_candidates(pf, use->name, &candidates);
+        if (count == 0)
+        {
+            warn_unknown_type(g_project->ctx, use);
+        }
+        else if (count == 1)
+        {
+            zwarn_at(use->location,
+                     "Type '%s' is declared in \"%s\", which this file does not import", use->name,
+                     candidates[0].text);
+        }
+        else
+        {
+            zwarn_at(
+                use->location,
+                "Type '%s' is declared in \"%s\" and %d other file%s, which this file does not "
+                "import",
+                use->name, candidates[0].text, count - 1, count > 2 ? "s" : "");
+        }
+    }
 }
 
 // The name of the type at `at` in `source`: the word around it. Returns 0 when there is no word.
