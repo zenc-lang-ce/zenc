@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include "../../src/utils/cJSON.h"
 #include "../../src/platform/compiler.h"
+#include "../../src/lsp/lsp_protocol.h"
 
 #define MAX_BUFFER (2 * 1024 * 1024)
 
@@ -1981,6 +1982,52 @@ static void test_qualified_member_completion(void)
     printf("PASS: test_qualified_member_completion\n");
 }
 
+static void test_type_position_completion(void)
+{
+    printf("Running test_type_position_completion...\n");
+    // Where a type goes, completion offers the types (primitives, structs, aliases) and not the
+    // functions; at the top level too, where it offered no primitive. The value of a field in a
+    // struct literal is no type.
+    const char *path = "/tmp/test_type_position_completion.zc";
+    open_document(path, "struct Unit { size: u16; }\n"                                  // Line 0
+                        "alias Word = u16;\n"                                           // Line 1
+                        "fn use_unit(unit: Unit, word: Word) -> usize { return 0; }\n" // Line 2
+                        "fn main() {\n"                                                 // Line 3
+                        "    let w: Word = 1;\n"                                        // Line 4
+                        "    let p = Unit { size: use_unit(Unit { size: 1 }, w) };\n"  // Line 5
+                        "}\n");
+    usleep(100000);
+    // Cursor after the first letter of the type, as while typing it.
+    if (completion_kind(1401, path, 0, 21, "u16") != LSP_COMPLETION_KEYWORD ||
+        completion_kind(1402, path, 0, 21, "use_unit") != -1)
+    {
+        fail("The type of a struct field completes with the types");
+    }
+    if (completion_kind(1403, path, 1, 14, "u16") != LSP_COMPLETION_KEYWORD ||
+        completion_kind(1404, path, 1, 14, "use_unit") != -1)
+    {
+        fail("The right side of an alias completes with the types");
+    }
+    if (completion_kind(1405, path, 2, 31, "Word") != LSP_COMPLETION_STRUCT)
+    {
+        fail("The type of a parameter completes with the aliases");
+    }
+    if (completion_kind(1406, path, 2, 40, "usize") != LSP_COMPLETION_KEYWORD ||
+        completion_kind(1407, path, 2, 40, "use_unit") != -1)
+    {
+        fail("The return type completes with the types");
+    }
+    if (completion_kind(1408, path, 4, 12, "Word") != LSP_COMPLETION_STRUCT)
+    {
+        fail("The type of a let completes with the aliases");
+    }
+    if (completion_kind(1409, path, 5, 26, "use_unit") != LSP_COMPLETION_FUNCTION)
+    {
+        fail("The value of a field in a struct literal completes with the functions");
+    }
+    printf("PASS: test_type_position_completion\n");
+}
+
 static void test_member_hover(void)
 {
     printf("Running test_member_hover...\n");
@@ -3506,6 +3553,7 @@ int main()
     test_loop_variable_hover();
     test_member_hover();
     test_qualified_member_completion();
+    test_type_position_completion();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");

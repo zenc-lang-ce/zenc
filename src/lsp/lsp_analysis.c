@@ -737,10 +737,11 @@ static int offered_by_name(Token t, const char *name)
 // for a node that declares no global name, or whose name is not written (a module's, `m__f`).
 static const char *declared_name(ASTNode *node)
 {
-    const char *name = node->kind == NODE_FUNCTION ? node->func.name
-                       : node->kind == NODE_STRUCT ? node->strct.name
-                       : node->kind == NODE_ENUM   ? node->enm.name
-                       : node->kind == NODE_TRAIT  ? node->trait.name
+    const char *name = node->kind == NODE_FUNCTION     ? node->func.name
+                       : node->kind == NODE_STRUCT     ? node->strct.name
+                       : node->kind == NODE_ENUM       ? node->enm.name
+                       : node->kind == NODE_TRAIT      ? node->trait.name
+                       : node->kind == NODE_TYPE_ALIAS ? node->type_alias.alias
                        : node->kind == NODE_VAR_DECL || node->kind == NODE_CONST
                            ? node->var_decl.name
                            : NULL;
@@ -827,8 +828,9 @@ static int add_declaration_completion(ASTNode *node, void *data)
         cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_INTERFACE);
         cJSON_AddStringToObject(item, "sortText", "060");
     }
-    else if (node->kind == NODE_STRUCT || node->kind == NODE_ENUM)
+    else if (node->kind == NODE_STRUCT || node->kind == NODE_ENUM || node->kind == NODE_TYPE_ALIAS)
     {
+        // An alias goes as a struct, as other servers show it: the protocol has no kind for it.
         cJSON_AddNumberToObject(
             item, "kind", node->kind == NODE_ENUM ? LSP_COMPLETION_ENUM : LSP_COMPLETION_STRUCT);
         cJSON_AddStringToObject(item, "sortText", "060");
@@ -1056,6 +1058,288 @@ static unsigned int keyword_places(LSPContext context)
     default:
         return KEYWORD_IN_BODY;
     }
+}
+
+// What a bracket open before the cursor encloses, for at_type_position.
+typedef enum
+{
+    OPENER_BODY,           // `{` of a block, an impl or a struct literal
+    OPENER_FIELDS,         // `{` of a struct or a union
+    OPENER_VARIANTS,       // `{` of an enum
+    OPENER_PARENTHESES,    // `(` of a call or an expression
+    OPENER_PARAMETERS,     // `(` of the parameters of a function or a lambda
+    OPENER_PAYLOAD,        // `(` of the payload of an enum variant
+    OPENER_BRACKETS,       // `[` of an index or an array literal
+    OPENER_TYPE_BRACKETS,  // `[` of a slice type (`[u8]`)
+    OPENER_TYPE_ARGUMENTS, // `<` of the arguments of a generic type (`Vec<`)
+} Opener;
+
+// What the declaration being read in a brace has had since its `{`, or since the last `;` or `}`
+// in it: the bracket that comes next opens fields, variants or parameters.
+typedef struct
+{
+    int has_struct;
+    int has_enum;
+    int has_fn;
+    int has_parameters;
+} DeclarationSoFar;
+
+#define TYPE_POSITION_MAX_DEPTH 64
+
+static int is_word(Token t, const char *word)
+{
+    return t.kind == TOK_IDENT && t.len == strlen(word) && strncmp(t.start, word, t.len) == 0;
+}
+
+static int is_brace_opener(Opener opener)
+{
+    return opener == OPENER_BODY || opener == OPENER_FIELDS || opener == OPENER_VARIANTS;
+}
+
+static int is_paren_opener(Opener opener)
+{
+    return opener == OPENER_PARENTHESES || opener == OPENER_PARAMETERS || opener == OPENER_PAYLOAD;
+}
+
+// The `:` after `name` (the token `before`, with `before_name` ahead of it) gives its type: in
+// `let`, `def`, `static` and `const`, a parameter or a field.
+static int colon_gives_type(Token before_name, Token before, Opener innermost)
+{
+    if (before.kind != TOK_IDENT)
+    {
+        return 0;
+    }
+    if (before_name.kind == TOK_DEF || is_word(before_name, "let") ||
+        is_word(before_name, "static") || is_word(before_name, "const"))
+    {
+        return 1;
+    }
+    if (innermost == OPENER_PARAMETERS)
+    {
+        return before_name.kind == TOK_LPAREN || before_name.kind == TOK_COMMA;
+    }
+    return innermost == OPENER_FIELDS &&
+           (before_name.kind == TOK_LBRACE || before_name.kind == TOK_SEMICOLON ||
+            before_name.kind == TOK_COMMA);
+}
+
+// What the `(` after `before` opens. After a name, a `)`, a `]` or a `>` it is a call (whose
+// arguments may be named, `f(a: 1)`); elsewhere, the parameters of a lambda or an expression.
+static Opener paren_opener(Token before, Opener innermost, DeclarationSoFar *declaration)
+{
+    if (innermost == OPENER_VARIANTS && before.kind == TOK_IDENT)
+    {
+        return OPENER_PAYLOAD;
+    }
+    if (declaration->has_fn && !declaration->has_parameters)
+    {
+        declaration->has_parameters = 1;
+        return OPENER_PARAMETERS;
+    }
+    int after_callee = before.kind == TOK_IDENT || before.kind == TOK_RPAREN ||
+                       before.kind == TOK_RBRACKET || before.kind == TOK_RANGLE;
+    return after_callee ? OPENER_PARENTHESES : OPENER_PARAMETERS;
+}
+
+// The state of at_type_position while it reads the tokens before the cursor.
+typedef struct
+{
+    Opener openers[TYPE_POSITION_MAX_DEPTH];
+    int open;
+    DeclarationSoFar declarations[TYPE_POSITION_MAX_DEPTH];
+    int braces;
+    Token before_previous;
+    Token before;
+    Opener closed;        // What the last `)` closed
+    int type_next;        // A type can start at the next token
+    int previous_is_type; // The previous token is a type's name
+} TypePositionReader;
+
+static Opener innermost_opener(const TypePositionReader *r)
+{
+    return r->open ? r->openers[r->open - 1] : OPENER_BODY;
+}
+
+// Reads a `(`, `[`, `{`, or the `<` of a generic type; returns 0 for any other token.
+static int read_opener(TypePositionReader *r, Token t, int type_here, int after_type)
+{
+    DeclarationSoFar *declaration = &r->declarations[r->braces];
+    Opener opener;
+    switch (t.kind)
+    {
+    case TOK_LANGLE:
+        if (!after_type)
+        {
+            return 1; // A comparison
+        }
+        opener = OPENER_TYPE_ARGUMENTS;
+        r->type_next = 1;
+        break;
+    case TOK_LBRACKET:
+        opener = type_here ? OPENER_TYPE_BRACKETS : OPENER_BRACKETS;
+        r->type_next = type_here;
+        break;
+    case TOK_LPAREN:
+        opener = paren_opener(r->before, innermost_opener(r), declaration);
+        r->type_next = opener == OPENER_PAYLOAD;
+        break;
+    case TOK_LBRACE:
+        opener = declaration->has_struct ? OPENER_FIELDS
+                 : declaration->has_enum ? OPENER_VARIANTS
+                                         : OPENER_BODY;
+        r->declarations[++r->braces] = (DeclarationSoFar){0};
+        break;
+    default:
+        return 0;
+    }
+    r->openers[r->open++] = opener;
+    return 1;
+}
+
+// Reads a `)`, `]`, `}`, or the `>` (or `>>`) of generic types; returns 0 for any other token.
+// A closer that does not match the innermost bracket is left as it is.
+static int read_closer(TypePositionReader *r, Token t)
+{
+    Opener innermost = innermost_opener(r);
+    switch (t.kind)
+    {
+    case TOK_RANGLE:
+        r->open -= innermost == OPENER_TYPE_ARGUMENTS;
+        return 1;
+    case TOK_OP:
+        if (t.len != 2 || t.start[0] != '>' || t.start[1] != '>')
+        {
+            return 0;
+        }
+        for (int i = 0; i < 2 && innermost_opener(r) == OPENER_TYPE_ARGUMENTS && r->open; i++)
+        {
+            r->open--;
+        }
+        return 1;
+    case TOK_RBRACKET:
+        r->open -= innermost == OPENER_BRACKETS || innermost == OPENER_TYPE_BRACKETS;
+        return 1;
+    case TOK_RPAREN:
+        if (is_paren_opener(innermost) && r->open)
+        {
+            r->closed = innermost;
+            r->open--;
+        }
+        return 1;
+    case TOK_RBRACE:
+        // Brackets left open while typing close with their brace.
+        while (r->open && !is_brace_opener(r->openers[r->open - 1]))
+        {
+            r->open--;
+        }
+        r->open -= r->open > 0;
+        r->braces -= r->braces > 0;
+        r->declarations[r->braces] = (DeclarationSoFar){0};
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+// Reads a token that is no bracket: a word, `:`, `->`, `=`, `,` or `;`.
+static void read_other(TypePositionReader *r, Token t, int type_here)
+{
+    DeclarationSoFar *declaration = &r->declarations[r->braces];
+    Opener innermost = innermost_opener(r);
+    if (t.kind == TOK_UNION || is_word(t, "struct"))
+    {
+        declaration->has_struct = 1;
+    }
+    else if (is_word(t, "enum"))
+    {
+        declaration->has_enum = 1;
+    }
+    else if (is_word(t, "fn"))
+    {
+        // A function starts here, also after a header left unfinished above.
+        declaration->has_fn = 1;
+        declaration->has_parameters = 0;
+    }
+    else if (t.kind == TOK_IDENT)
+    {
+        // `const` in a type (`const u8`) leaves room for the type after it.
+        r->type_next = type_here && is_word(t, "const");
+        r->previous_is_type = type_here && !r->type_next;
+    }
+    else if (t.kind == TOK_COLON)
+    {
+        r->type_next = colon_gives_type(r->before_previous, r->before, innermost);
+    }
+    else if (t.kind == TOK_ARROW)
+    {
+        r->type_next = r->before.kind == TOK_RPAREN && r->closed == OPENER_PARAMETERS;
+    }
+    else if (t.kind == TOK_OP && t.len == 1 && t.start[0] == '=')
+    {
+        r->type_next = r->before.kind == TOK_IDENT && r->before_previous.kind == TOK_ALIAS;
+    }
+    else if (t.kind == TOK_COMMA)
+    {
+        r->type_next = innermost == OPENER_TYPE_ARGUMENTS || innermost == OPENER_PAYLOAD;
+    }
+    else if (t.kind == TOK_SEMICOLON)
+    {
+        *declaration = (DeclarationSoFar){0};
+    }
+}
+
+// Whether the word being typed at `offset` of `source` is a type: after the `:` of a `let`, a
+// `def`, a parameter or a field, after the `->` of a function's parameters, on the right of
+// `alias Name =`, in a variant's payload, after `const` in a type, and inside the `<...>` and
+// `[...]` of a type. Reads the tokens before it as the lexer gives them, so it works on text that
+// does not parse yet.
+static int at_type_position(const char *source, size_t offset, const char *path)
+{
+    TypePositionReader r = {.closed = OPENER_PARENTHESES};
+    Lexer l;
+    lexer_init(&l, source, g_project->ctx->config, path);
+    l.end = source + offset;
+    for (Token t = lexer_next(&l); t.kind != TOK_EOF; t = lexer_next(&l))
+    {
+        if (r.open == TYPE_POSITION_MAX_DEPTH || r.braces == TYPE_POSITION_MAX_DEPTH - 1)
+        {
+            return 0; // Deeper than any program written by hand: not worth tracking
+        }
+        int type_here = r.type_next;
+        int after_type = r.previous_is_type;
+        r.type_next = 0;
+        r.previous_is_type = 0;
+        if (!read_opener(&r, t, type_here, after_type) && !read_closer(&r, t))
+        {
+            read_other(&r, t, type_here);
+        }
+        r.before_previous = r.before;
+        r.before = t;
+    }
+    return r.type_next;
+}
+
+// Adds the names of the primitive types (`u8`, `usize`, `string`...), as primitives.c defines them.
+static void add_primitive_completions(cJSON *items)
+{
+    int type_count = 0;
+    const ZenPrimitive *types = get_zen_primitives(&type_count);
+    for (int i = 0; i < type_count; i++)
+    {
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "label", types[i].zen_name);
+        cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_KEYWORD);
+        cJSON_AddStringToObject(item, "sortText", "008");
+        cJSON_AddItemToArray(items, item);
+    }
+}
+
+// Adds the completion item of a declaration that names a type (see add_declaration_completion).
+static int add_type_declaration_completion(ASTNode *node, void *data)
+{
+    int names_type = node->kind == NODE_STRUCT || node->kind == NODE_ENUM ||
+                     node->kind == NODE_TRAIT || node->kind == NODE_TYPE_ALIAS;
+    return names_type ? add_declaration_completion(node, data) : 0;
 }
 
 // Adds the completion item of a local, `decl`, to the array `data`.
@@ -1328,7 +1612,18 @@ cJSON *lsp_completion(const char *uri, int line, int col)
         }
     }
 
-    if (!dot_completed)
+    // Where a type goes (`size: u`, `-> u`, `alias Word = u`), only the names of types fit.
+    int type_position =
+        !dot_completed && pf->source &&
+        at_type_position(pf->source,
+                         (size_t)(ptr - pf->source) + (size_t)(at < line_len ? at : line_len),
+                         pf->path);
+    if (type_position)
+    {
+        add_primitive_completions(items);
+        visit_declarations(add_type_declaration_completion, items);
+    }
+    else if (!dot_completed)
     {
         // The keywords that can start a construct where the cursor is: with the snippets of
         // KEYWORD_SNIPPETS, or as they are.
@@ -1367,16 +1662,9 @@ cJSON *lsp_completion(const char *uri, int line, int col)
             }
         }
 
-        // Primitive type names — reuse the authoritative table from primitives.c
-        int type_count = 0;
-        const ZenPrimitive *types = get_zen_primitives(&type_count);
-        for (int i = 0; i < type_count && context != CTX_GLOBAL; i++)
+        if (context != CTX_GLOBAL)
         {
-            cJSON *item = cJSON_CreateObject();
-            cJSON_AddStringToObject(item, "label", types[i].zen_name);
-            cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_KEYWORD);
-            cJSON_AddStringToObject(item, "sortText", "008");
-            cJSON_AddItemToArray(items, item);
+            add_primitive_completions(items);
         }
 
         for (size_t i = 0; i < sizeof(BUILTINS) / sizeof(BUILTINS[0]) && context != CTX_GLOBAL; i++)
