@@ -777,6 +777,16 @@ char *find_similar_symbol(ParserContext *ctx, const char *name);
 char *expected_instance_method(ParserContext *ctx, const char *template_name,
                                const char *method_name);
 /**
+ * @brief The function that `value.method()` calls on a value of the type `type_name` names
+ * (as `type_impl_name` gives it): `Type__method`, the method of a trait the type implements
+ * (`Type__Trait__method`), also through a generic impl, or the method of a struct it mixes in
+ * with `use`.
+ * @return 1 if there is one. Its name is `*owner_out` (`type_name`, or the mixed-in struct)
+ * followed by `*method_out` (`method`, or `Trait__method`). 0 if the type has no such method.
+ */
+int find_method_call_target(ParserContext *ctx, const char *type_name, const char *method,
+                            const char **owner_out, char **method_out);
+/**
  * @brief Where a generic impl of `template_name` declares `method_name`: the declaration of
  * `Vec<int>::new`, whose instance is not a function until it is instantiated.
  * @return The token of the method's name, or TOKEN_UNKNOWN if no generic impl declares it.

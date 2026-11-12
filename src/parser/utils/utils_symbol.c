@@ -724,6 +724,74 @@ char *expected_instance_method(ParserContext *ctx, const char *template_name,
     return find_func(ctx, name) ? name : NULL;
 }
 
+int find_method_call_target(ParserContext *ctx, const char *type_name, const char *method,
+                            const char **owner_out, char **method_out)
+{
+    char *direct = mangle_method_symbol(type_name, NULL, method);
+    int found = find_func(ctx, direct) != NULL;
+    zfree(direct);
+    if (found)
+    {
+        *owner_out = type_name;
+        *method_out = xstrdup(method);
+        return 1;
+    }
+
+    // A method of a trait the type implements: `Type__Trait__method`.
+    for (StructRef *ref = ctx->parsed_impls_list; ref; ref = ref->next)
+    {
+        if (ref->node && ref->node->kind == NODE_IMPL_TRAIT &&
+            strcmp(type_impl_name(ref->node->impl_trait.target), type_name) == 0)
+        {
+            const char *trait = ref->node->impl_trait.trait_name;
+            char *trait_mangled = mangle_method_symbol(type_name, trait, method);
+            found = find_func(ctx, trait_mangled) != NULL;
+            zfree(trait_mangled);
+            if (found)
+            {
+                *owner_out = type_name;
+                *method_out = mangle_method_symbol(trait, NULL, method);
+                return 1;
+            }
+        }
+    }
+    for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
+    {
+        if (it->impl_node && it->impl_node->kind == NODE_IMPL_TRAIT)
+        {
+            const char *trait = it->impl_node->impl_trait.trait_name;
+            char *trait_mangled = mangle_method_symbol(type_name, trait, method);
+            found = find_func(ctx, trait_mangled) != NULL;
+            zfree(trait_mangled);
+            if (found)
+            {
+                *owner_out = type_name;
+                *method_out = mangle_method_symbol(trait, NULL, method);
+                return 1;
+            }
+        }
+    }
+
+    // A method of a struct the type mixes in with `use`.
+    ASTNode *def = find_struct_def(ctx, type_name);
+    if (def && def->kind == NODE_STRUCT && def->strct.used_structs)
+    {
+        for (int k = 0; k < def->strct.used_struct_count; k++)
+        {
+            char *mixin = mangle_method_symbol(def->strct.used_structs[k], NULL, method);
+            found = find_func(ctx, mixin) != NULL;
+            zfree(mixin);
+            if (found)
+            {
+                *owner_out = def->strct.used_structs[k];
+                *method_out = xstrdup(method);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 Token template_method_token(ParserContext *ctx, const char *template_name, const char *method_name)
 {
     for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)

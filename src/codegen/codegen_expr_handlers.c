@@ -839,86 +839,14 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             }
             else
             {
-                char *call_base = base;
-
+                const char *call_base = base;
+                char *resolved_method = NULL;
                 int need_cast = 0;
-                char *mixin_func_name_ptr = mangle_method_symbol(call_base, NULL, method);
-                char mixin_func_name[MAX_MANGLED_NAME_LEN * 2];
-                strncpy(mixin_func_name, mixin_func_name_ptr, sizeof(mixin_func_name) - 1);
-                mixin_func_name[sizeof(mixin_func_name) - 1] = 0;
-                zfree(mixin_func_name_ptr);
-
-                char *resolved_method_suffix = NULL;
-
-                if (!find_func(ctx, mixin_func_name))
+                if (find_method_call_target(ctx, base, method, &call_base, &resolved_method))
                 {
-                    StructRef *ref = ctx->parsed_impls_list;
-                    while (ref)
-                    {
-                        if (ref->node && ref->node->kind == NODE_IMPL_TRAIT &&
-                            strcmp(type_impl_name(ref->node->impl_trait.target), base) == 0)
-                        {
-                            char *trait_mangled = mangle_method_symbol(
-                                base, ref->node->impl_trait.trait_name, method);
-                            if (find_func(ctx, trait_mangled))
-                            {
-                                resolved_method_suffix = mangle_method_symbol(
-                                    ref->node->impl_trait.trait_name, NULL, method);
-                                zfree(trait_mangled);
-                                break;
-                            }
-                            zfree(trait_mangled);
-                        }
-                        ref = ref->next;
-                    }
-
-                    if (!resolved_method_suffix)
-                    {
-                        GenericImplTemplate *it = ctx->impl_templates;
-                        while (it)
-                        {
-                            char *tname = NULL;
-                            if (it->impl_node && it->impl_node->kind == NODE_IMPL_TRAIT)
-                            {
-                                tname = it->impl_node->impl_trait.trait_name;
-                                char *trait_mangled = mangle_method_symbol(base, tname, method);
-                                if (find_func(ctx, trait_mangled))
-                                {
-                                    resolved_method_suffix =
-                                        mangle_method_symbol(tname, NULL, method);
-                                    zfree(trait_mangled);
-                                    break;
-                                }
-                                zfree(trait_mangled);
-                            }
-                            it = it->next;
-                        }
-                    }
-
-                    if (resolved_method_suffix)
-                    {
-                        method = resolved_method_suffix;
-                    }
-                    else
-                    {
-                        ASTNode *def = find_struct_def(ctx, base);
-                        if (def && def->kind == NODE_STRUCT && def->strct.used_structs)
-                        {
-                            for (int k = 0; k < def->strct.used_struct_count; k++)
-                            {
-                                char *mixin_check =
-                                    mangle_method_symbol(def->strct.used_structs[k], NULL, method);
-                                if (find_func(ctx, mixin_check))
-                                {
-                                    call_base = def->strct.used_structs[k];
-                                    need_cast = 1;
-                                    zfree(mixin_check);
-                                    break;
-                                }
-                                zfree(mixin_check);
-                            }
-                        }
-                    }
+                    method = resolved_method;
+                    // A mixed-in struct's method takes a pointer to that struct.
+                    need_cast = call_base != base;
                 }
 
                 emit_mangled_name(ctx, call_base, method);
@@ -940,11 +868,7 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                     arg = arg->next;
                 }
                 EMIT(ctx, ")");
-
-                if (resolved_method_suffix)
-                {
-                    zfree(resolved_method_suffix);
-                }
+                zfree(resolved_method);
             }
             return;
         }

@@ -2,6 +2,54 @@
 #include "typecheck_internal.h"
 #include "../utils/utils.h"
 
+// Reports `value.method()` when the struct or enum of `value`, declared in Zen C, has no such
+// method: there is no function for codegen to call. Reported in a build too, which would
+// otherwise fail in the C compiler, on the mangled name.
+static void report_missing_method(TypeChecker *tc, ASTNode *call)
+{
+    ASTNode *callee = call->call.callee;
+    ASTNode *target = callee->member.target;
+    // A field found is called through its value (a function pointer or a closure).
+    if (!target || !target->type_info || !callee->type_info ||
+        callee->type_info->kind != TYPE_UNKNOWN)
+    {
+        return;
+    }
+    // The receiver's type, as codegen takes it to name the method.
+    Type *owner = target->type_info;
+    if (owner->kind == TYPE_POINTER)
+    {
+        owner = owner->inner;
+    }
+    Type *t = get_inner_type(owner);
+    if (!t || (t->kind != TYPE_STRUCT && t->kind != TYPE_ENUM) || !t->name)
+    {
+        return;
+    }
+    // A value of a trait calls through its table; a generic one is named for each instance.
+    const char *name = type_def_name(t);
+    ASTNode *def = find_struct_def(tc->pctx, name);
+    if (!def || is_trait(name) || type_is_generic_dependent(tc->pctx, t) ||
+        (def->kind == NODE_STRUCT && def->strct.is_template) ||
+        (def->kind == NODE_ENUM && def->enm.is_template))
+    {
+        return;
+    }
+    const char *method_owner = NULL;
+    char *method = NULL;
+    if (find_method_call_target(tc->pctx, type_impl_name(owner), callee->member.field,
+                                &method_owner, &method))
+    {
+        zfree(method);
+        return;
+    }
+    char *spelled = zen_c_type_spelling(tc->pctx, t);
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "No method '%s' on '%s'", callee->member.field, spelled);
+    zfree(spelled);
+    tc_ctrl_flow_error(tc, callee->token, msg, NULL);
+}
+
 void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
 {
     check_node(tc, node->call.callee, depth + 1);
@@ -134,6 +182,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
         }
+        report_missing_method(tc, node);
     }
 
     // Count arguments
