@@ -328,6 +328,16 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
             return parse_var_decl(ctx, l, 0);
         }
 
+        // `const x = 5;` declared a variable before v0.5.0. Without this it is
+        // read as the identifier `const` and an assignment to an undeclared `x`,
+        // which only fail in the C compiler. Parse the rest as a `let` so
+        // recovery (LSP) does not report `x` as undeclared too.
+        if (strncmp(tk.start, "const", 5) == 0 && tk.len == 5)
+        {
+            report_local_const(tk);
+            return parse_var_decl(ctx, l, 0);
+        }
+
         // Static local variable: static let x = 0;
         if (strncmp(tk.start, "static", 6) == 0 && tk.len == 6)
         {

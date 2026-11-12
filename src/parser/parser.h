@@ -709,6 +709,7 @@ int skip_braced_block(Lexer *l);
 // (utils_syntax_hints.c).
 void report_unexpected_toplevel(Token t);
 void report_toplevel_const(Lexer *l, Token t);
+void report_local_const(Token t);
 /** @return 1 if `extern` is followed by `enum`, `const`, `def`, `type` or `alias` (reported). */
 int report_extern_with_kind(Lexer *l);
 void report_not_a_field(Lexer *l, Token t);

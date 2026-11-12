@@ -1,0 +1,8 @@
+// ARGS: build
+// `const` does not declare a local variable. It used to be read as the
+// identifier `const` and an assignment to an undeclared `x`, which only failed
+// in the C compiler.
+fn main() {
+    const x = 5;
+    println(f"{x}");
+}
