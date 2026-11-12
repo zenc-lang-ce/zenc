@@ -75,6 +75,10 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - Generic parameters (`T` of `struct Box<T>`, `impl<T>`, `fn max<T>`, a trait or an enum) have hover and go to definition: each `T` leads to the declaration in scope where it is written.
   - Completion after `.` reads the members of the type the value has, whatever qualifies it: `h.` on a `let h: const Header` or a `const Header*`, a field of a C header through a pointer (`font.recs.`), and the methods of an `impl int` on an `int`.
   - A type name that names no type (`origin: Pont`) is warned about, as `zc build` does, with the closest name as a suggestion. The types that the C headers of the file declare are not warned about.
+  - Completion where a type goes offers the types and only them: the primitives, and the structs, enums, traits and aliases. That is the type of a field, a parameter, a `let` or a `def`, the return type, the right side of `alias Word =`, a variant's payload, and inside `Vec<...>` and `[...]`. Before, a field, a parameter, a return type or an alias offered no primitive. Aliases are offered in the rest of the completion too.
+  - Completion where a field's name goes in a struct literal (after `Point {` or a `,`) offers the fields of that struct that the literal does not give yet, written as `name: `.
+  - Completion after `.` on a value of a trait (`h: Header`) offers the trait's methods. Before it offered nothing, since it looked for the fields of a struct of a C header with that name.
+  - Completion where a method goes in an `impl Trait for Type` offers the methods of the trait that the impl does not define yet, and inserts each with the signature written in the trait and an empty body (without `fn` when it is typed already).
 - `zc-format` no longer needs the language server: it is built with `ZC_LSP=0` too.
 - REPL: Backspace and Escape work in reverse search.
 

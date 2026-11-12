@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include "../../src/utils/cJSON.h"
 #include "../../src/platform/compiler.h"
+#include "../../src/lsp/lsp_protocol.h"
 
 #define MAX_BUFFER (2 * 1024 * 1024)
 
@@ -1981,6 +1982,182 @@ static void test_qualified_member_completion(void)
     printf("PASS: test_qualified_member_completion\n");
 }
 
+static void test_type_position_completion(void)
+{
+    printf("Running test_type_position_completion...\n");
+    // Where a type goes, completion offers the types (primitives, structs, aliases) and not the
+    // functions; at the top level too, where it offered no primitive. The value of a field in a
+    // struct literal is no type.
+    const char *path = "/tmp/test_type_position_completion.zc";
+    open_document(path, "struct Unit { size: u16; }\n"                                  // Line 0
+                        "alias Word = u16;\n"                                           // Line 1
+                        "fn use_unit(unit: Unit, word: Word) -> usize { return 0; }\n" // Line 2
+                        "fn main() {\n"                                                 // Line 3
+                        "    let w: Word = 1;\n"                                        // Line 4
+                        "    let p = Unit { size: use_unit(Unit { size: 1 }, w) };\n"  // Line 5
+                        "}\n");
+    usleep(100000);
+    // Cursor after the first letter of the type, as while typing it.
+    if (completion_kind(1401, path, 0, 21, "u16") != LSP_COMPLETION_KEYWORD ||
+        completion_kind(1402, path, 0, 21, "use_unit") != -1)
+    {
+        fail("The type of a struct field completes with the types");
+    }
+    if (completion_kind(1403, path, 1, 14, "u16") != LSP_COMPLETION_KEYWORD ||
+        completion_kind(1404, path, 1, 14, "use_unit") != -1)
+    {
+        fail("The right side of an alias completes with the types");
+    }
+    if (completion_kind(1405, path, 2, 31, "Word") != LSP_COMPLETION_STRUCT)
+    {
+        fail("The type of a parameter completes with the aliases");
+    }
+    if (completion_kind(1406, path, 2, 40, "usize") != LSP_COMPLETION_KEYWORD ||
+        completion_kind(1407, path, 2, 40, "use_unit") != -1)
+    {
+        fail("The return type completes with the types");
+    }
+    if (completion_kind(1408, path, 4, 12, "Word") != LSP_COMPLETION_STRUCT)
+    {
+        fail("The type of a let completes with the aliases");
+    }
+    if (completion_kind(1409, path, 5, 26, "use_unit") != LSP_COMPLETION_FUNCTION)
+    {
+        fail("The value of a field in a struct literal completes with the functions");
+    }
+    printf("PASS: test_type_position_completion\n");
+}
+
+static void test_literal_field_completion(void)
+{
+    printf("Running test_literal_field_completion...\n");
+    // Where a field's name goes in a struct literal, completion offers the fields the literal does
+    // not give yet. A block after a name that is no struct (`if done {`) completes as before.
+    // The literal is still being written, so the document does not parse.
+    const char *literal = "/tmp/test_literal_field_completion.zc";
+    open_document(literal, "struct Inner { depth: int; width: int; }\n"         // Line 0
+                           "struct Outer { inner: Inner; size: int; }\n"        // Line 1
+                           "fn make() -> Outer {\n"                             // Line 2
+                           "    return Outer { inner: Inner { depth: 1 }, s\n" // Line 3
+                           "}\n");
+    // A document that parses: the parameters of the function are offered from its AST.
+    const char *block = "/tmp/test_literal_field_completion_block.zc";
+    open_document(block, "struct Inner { depth: int; width: int; }\n" // Line 0
+                         "fn check(done: bool) {\n"                   // Line 1
+                         "    if done {\n"                            // Line 2
+                         "        d\n"                                // Line 3
+                         "    }\n"                                    // Line 4
+                         "}\n");
+    usleep(100000);
+    if (completion_kind(1410, literal, 3, 47, "size") != LSP_COMPLETION_FIELD ||
+        completion_kind(1411, literal, 3, 47, "inner") != -1)
+    {
+        fail("A struct literal completes with the fields it does not give yet");
+    }
+    if (completion_kind(1412, block, 3, 9, "done") != LSP_COMPLETION_VARIABLE ||
+        completion_kind(1413, block, 3, 9, "depth") != -1)
+    {
+        fail("A block after a name that is no struct completes as before");
+    }
+    printf("PASS: test_literal_field_completion\n");
+}
+
+static void test_trait_value_completion(void)
+{
+    printf("Running test_trait_value_completion...\n");
+    // A value of a trait offers the trait's methods after `.`, with `self` and without it. Its
+    // type is a struct named like the trait, which is no struct of a C header.
+    const char *path = "/tmp/test_trait_value_completion.zc";
+    open_document(path, "trait Shape {\n"                            // Line 0
+                        "    fn area(self) -> int;\n"                // Line 1
+                        "    fn sides() -> int;\n"                   // Line 2
+                        "}\n"                                        // Line 3
+                        "fn measure(shape: Shape) -> int {\n"        // Line 4
+                        "    return shape.area() + shape.sides();\n" // Line 5
+                        "}\n");
+    usleep(100000);
+    // Right after the `.` of `shape.area()` and of `shape.sides()`.
+    if (completion_kind(1414, path, 5, 17, "area") != LSP_COMPLETION_METHOD ||
+        completion_kind(1415, path, 5, 32, "sides") != LSP_COMPLETION_METHOD)
+    {
+        fail("A value of a trait completes with the trait's methods");
+    }
+    printf("PASS: test_trait_value_completion\n");
+}
+
+// The text that the completion item `label` at (line, character) inserts, in `out`; empty when
+// it is not offered.
+static void completion_insert_text(int id, const char *path, int line, int character,
+                                   const char *label, char *out, size_t size)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    out[0] = 0;
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *item = cJSON_GetArrayItem(items, i);
+        cJSON *item_label = cJSON_GetObjectItem(item, "label");
+        cJSON *insert = cJSON_GetObjectItem(item, "insertText");
+        if (cJSON_IsString(item_label) && strcmp(item_label->valuestring, label) == 0 &&
+            cJSON_IsString(insert))
+        {
+            snprintf(out, size, "%s", insert->valuestring);
+        }
+    }
+    cJSON_Delete(response);
+}
+
+static void test_trait_impl_completion(void)
+{
+    printf("Running test_trait_impl_completion...\n");
+    // Where a method of an impl of a trait goes, completion offers the trait's methods that the
+    // impl does not define yet, with the signature written in the trait and an empty body.
+    const char *path = "/tmp/test_trait_impl_completion.zc";
+    const char *head = "trait Shape {\n"                                    // Line 0
+                       "    fn area(self) -> int;\n"                        // Line 1
+                       "    fn sides() -> int;\n"                           // Line 2
+                       "}\n"                                                // Line 3
+                       "struct Square { side: int; }\n"                     // Line 4
+                       "impl Shape for Square {\n"                          // Line 5
+                       "    fn area(self) -> int { return self.side; }\n"; // Line 6
+    char text[1024];
+    snprintf(text, sizeof(text),
+             "%s"
+             "    \n"                                              // Line 7
+             "}\n"                                                 // Line 8
+             "impl Square {\n"                                     // Line 9
+             "    fn half(self) -> int { return self.side / 2; }\n" // Line 10
+             "    \n"                                              // Line 11
+             "}\n",
+             head);
+    open_document(path, text);
+    usleep(100000);
+    char insert[256];
+    completion_insert_text(1416, path, 7, 4, "sides", insert, sizeof(insert));
+    if (strcmp(insert, "fn sides() -> int {\n    $0\n}") != 0)
+    {
+        printf("Inserted: '%s'\n", insert);
+        fail("An impl of a trait completes with the trait's methods it lacks");
+    }
+    // `area` is defined already; an impl of the type alone implements no trait.
+    expect_no_completion(1417, path, 7, 4, "area");
+    expect_no_completion(1418, path, 7, 4, "if");
+    expect_no_completion(1419, path, 11, 4, "sides");
+
+    // After the `fn` of a method being written, which leaves the file without parsing, the
+    // signature goes without its `fn`.
+    snprintf(text, sizeof(text), "%s    fn si\n}\n", head);
+    open_document(path, text);
+    usleep(100000);
+    completion_insert_text(1420, path, 7, 9, "sides", insert, sizeof(insert));
+    if (strcmp(insert, "sides() -> int {\n    $0\n}") != 0)
+    {
+        printf("Inserted: '%s'\n", insert);
+        fail("After `fn`, a method of the trait completes without `fn`");
+    }
+    printf("PASS: test_trait_impl_completion\n");
+}
+
 static void test_member_hover(void)
 {
     printf("Running test_member_hover...\n");
@@ -3506,6 +3683,10 @@ int main()
     test_loop_variable_hover();
     test_member_hover();
     test_qualified_member_completion();
+    test_type_position_completion();
+    test_literal_field_completion();
+    test_trait_value_completion();
+    test_trait_impl_completion();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
