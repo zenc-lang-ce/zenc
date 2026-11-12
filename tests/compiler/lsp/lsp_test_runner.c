@@ -2336,6 +2336,33 @@ static char *next_diagnostics(const char *name)
     fail("Missing diagnostics");
 }
 
+// The completion items `label` at (line, character), each as "description|import it adds" and
+// separated by ";"; an item without an import is "|".
+static void completion_imports(int id, const char *path, int line, int character,
+                               const char *label, char *out, size_t size)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    size_t used = 0;
+    out[0] = 0;
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, cJSON_GetObjectItem(response, "result"))
+    {
+        const char *item_label = cJSON_GetStringValue(cJSON_GetObjectItem(item, "label"));
+        if (!item_label || strcmp(item_label, label) != 0)
+        {
+            continue;
+        }
+        const char *description = cJSON_GetStringValue(
+            cJSON_GetObjectItem(cJSON_GetObjectItem(item, "labelDetails"), "description"));
+        cJSON *edit = cJSON_GetArrayItem(cJSON_GetObjectItem(item, "additionalTextEdits"), 0);
+        const char *text = edit ? cJSON_GetStringValue(cJSON_GetObjectItem(edit, "newText")) : NULL;
+        int written = snprintf(out + used, size - used, "%s%s|%s", used ? ";" : "",
+                               description ? description : "", text ? text : "");
+        used += written > 0 && (size_t)written < size - used ? (size_t)written : 0;
+    }
+    cJSON_Delete(response);
+}
+
 static void test_import_type_action(void)
 {
     printf("Running test_import_type_action...\n");
@@ -2366,6 +2393,27 @@ static void test_import_type_action(void)
     // A type the file sees, and a name that is no type.
     expect_import_actions(1427, seen_path, 1, 12, "");
     expect_import_actions(1428, main_path, 1, 4, "");
+
+    // Completion offers the type once for each file that declares it, with its import.
+    char items[1024];
+    const char *typing_path = "/tmp/zc_import_type/typing.zc";
+    open_document(typing_path, "import \"a/util.zc\"\n" // Line 0
+                               "fn c(p: Pol) {}\n");    // Line 1
+    usleep(100000);
+    completion_imports(1429, typing_path, 1, 11, "Polygon", items, sizeof(items));
+    if (strcmp(items, "a/shapes.zc|\nimport \"a/shapes.zc\";b/shapes.zc|\nimport \"b/shapes.zc\"") !=
+        0)
+    {
+        printf("Completion of Polygon: '%s'\n", items);
+        fail("A type the file does not see completes with the import of each file");
+    }
+    // Where the file sees it, it comes without one.
+    completion_imports(1430, seen_path, 1, 12, "Polygon", items, sizeof(items));
+    if (strcmp(items, "|") != 0)
+    {
+        printf("Completion of Polygon: '%s'\n", items);
+        fail("A type the file sees completes without an import");
+    }
 
     // The type is warned about with the file to import, since `zc build` does not know it there;
     // not where it is imported, nor where a generic parameter has its name.

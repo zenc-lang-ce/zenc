@@ -1718,6 +1718,12 @@ static void add_local_completion(ASTNode *decl, void *data)
     cJSON_AddItemToArray((cJSON *)data, item);
 }
 
+// Gives each completion item of `items` that names a type `pf` does not see the import of a file
+// that declares it, as an additional edit: one item for each such file (find_import_candidates),
+// which its description names. An item of a type that no file of the project declares stays as it
+// is. Returns the new array; `items` is deleted.
+static cJSON *add_completion_imports(cJSON *items, ProjectFile *pf);
+
 cJSON *lsp_completion(const char *uri, int line, int col)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
@@ -2119,7 +2125,8 @@ cJSON *lsp_completion(const char *uri, int line, int col)
         }
     }
 
-    return items;
+    // A type of a file that the document does not import comes with that import.
+    return pf->source ? add_completion_imports(items, pf) : items;
 }
 
 // Name and LSP SymbolKind of a declaration, or NULL when the node is not one.
@@ -2800,12 +2807,18 @@ static int find_import_candidates(ProjectFile *pf, const char *name, ImportCandi
     return count;
 }
 
-// Where an `import` goes in `source`: at the end of the line of the last import at the top level,
-// or, without one, at the start of the file. `semicolon` tells whether that import ends with `;`.
-static const char *import_position(const char *source, const char *path, int *semicolon)
+// Where an `import` goes in a file, and how it is written there.
+typedef struct
 {
-    const char *position = NULL;
-    *semicolon = 0;
+    const char *at; // The end of the line of the last import; NULL without one
+    int semicolon;  // Whether that import ends with `;`
+} ImportPlace;
+
+// Where an `import` goes in `source`: at the end of the line of the last import at the top level,
+// or, without one, at the start of the file.
+static ImportPlace import_place(const char *source, const char *path)
+{
+    ImportPlace place = {0};
     Lexer l;
     lexer_init(&l, source, g_project->ctx->config, path);
     int depth = 0;
@@ -2826,19 +2839,41 @@ static const char *import_position(const char *source, const char *path, int *se
         {
             continue;
         }
-        position = file.start + file.len;
-        while (*position && *position != '\n' && *position != '\r')
+        place.at = file.start + file.len;
+        while (*place.at && *place.at != '\n' && *place.at != '\r')
         {
-            position++;
+            place.at++;
         }
-        const char *last = position;
+        const char *last = place.at;
         while (last > file.start && isspace((unsigned char)last[-1]))
         {
             last--;
         }
-        *semicolon = last[-1] == ';';
+        place.semicolon = last[-1] == ';';
     }
-    return position;
+    return place;
+}
+
+// The edit of `source` that imports `file` (what the `import` writes) at `place`: on a line after
+// the last import, with its `;`, or at the start of the file and a blank line after it.
+static cJSON *import_edit(const char *source, ImportPlace place, const char *file)
+{
+    char text[MAX_PATH_LEN + 16];
+    if (place.at)
+    {
+        snprintf(text, sizeof(text), "\nimport \"%s\"%s", file, place.semicolon ? ";" : "");
+    }
+    else
+    {
+        snprintf(text, sizeof(text), "import \"%s\"\n\n", file);
+    }
+    const char *at = place.at ? place.at : source;
+    cJSON *edit = cJSON_CreateObject();
+    cJSON *range = cJSON_AddObjectToObject(edit, "range");
+    add_position(range, "start", source, at);
+    add_position(range, "end", source, at);
+    cJSON_AddStringToObject(edit, "newText", text);
+    return edit;
 }
 
 // Warns about the type names of `pf` that name no type it sees nor of the C headers the document
@@ -2914,28 +2949,11 @@ static void add_import_actions(cJSON *actions, const char *uri, ProjectFile *pf,
     }
     ImportCandidate *candidates = NULL;
     int count = find_import_candidates(pf, name, &candidates);
-    int semicolon = 0;
-    const char *position = import_position(pf->source, pf->path, &semicolon);
+    ImportPlace place = import_place(pf->source, pf->path);
     for (int i = 0; i < count; i++)
     {
-        char text[MAX_PATH_LEN + 16];
-        if (position)
-        {
-            snprintf(text, sizeof(text), "\nimport \"%s\"%s", candidates[i].text,
-                     semicolon ? ";" : "");
-        }
-        else
-        {
-            snprintf(text, sizeof(text), "import \"%s\"\n\n", candidates[i].text);
-        }
-        const char *at_import = position ? position : pf->source;
-        cJSON *edit = cJSON_CreateObject();
-        cJSON *range = cJSON_AddObjectToObject(edit, "range");
-        add_position(range, "start", pf->source, at_import);
-        add_position(range, "end", pf->source, at_import);
-        cJSON_AddStringToObject(edit, "newText", text);
         cJSON *edits = cJSON_CreateArray();
-        cJSON_AddItemToArray(edits, edit);
+        cJSON_AddItemToArray(edits, import_edit(pf->source, place, candidates[i].text));
 
         cJSON *action = cJSON_CreateObject();
         char title[MAX_PATH_LEN + MAX_VAR_NAME_LEN + 32];
@@ -2951,6 +2969,51 @@ static void add_import_actions(cJSON *actions, const char *uri, ProjectFile *pf,
         cJSON_AddItemToObject(changes, uri, edits);
         cJSON_AddItemToArray(actions, action);
     }
+}
+
+static cJSON *add_completion_imports(cJSON *items, ProjectFile *pf)
+{
+    cJSON *result = cJSON_CreateArray();
+    ImportPlace place = {0};
+    int place_read = 0;
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, items)
+    {
+        cJSON *kind = cJSON_GetObjectItem(item, "kind");
+        const char *label = cJSON_GetStringValue(cJSON_GetObjectItem(item, "label"));
+        int names_type = cJSON_IsNumber(kind) && (kind->valueint == LSP_COMPLETION_STRUCT ||
+                                                  kind->valueint == LSP_COMPLETION_ENUM ||
+                                                  kind->valueint == LSP_COMPLETION_INTERFACE);
+        ImportCandidate *candidates = NULL;
+        int count = names_type && label && !lsp_project_visible_type(pf->path, label)
+                        ? find_import_candidates(pf, label, &candidates)
+                        : 0;
+        if (count == 0)
+        {
+            cJSON_AddItemToArray(result, cJSON_Duplicate(item, 1));
+            continue;
+        }
+        if (!place_read)
+        {
+            place = import_place(pf->source, pf->path);
+            place_read = 1;
+        }
+        for (int i = 0; i < count; i++)
+        {
+            cJSON *with_import = cJSON_Duplicate(item, 1);
+            cJSON_AddStringToObject(cJSON_AddObjectToObject(with_import, "labelDetails"),
+                                    "description", candidates[i].text);
+            char detail[MAX_PATH_LEN + 16];
+            snprintf(detail, sizeof(detail), "import \"%s\"", candidates[i].text);
+            cJSON_DeleteItemFromObject(with_import, "detail");
+            cJSON_AddStringToObject(with_import, "detail", detail);
+            cJSON *edits = cJSON_AddArrayToObject(with_import, "additionalTextEdits");
+            cJSON_AddItemToArray(edits, import_edit(pf->source, place, candidates[i].text));
+            cJSON_AddItemToArray(result, with_import);
+        }
+    }
+    cJSON_Delete(items);
+    return result;
 }
 
 cJSON *lsp_code_actions(const char *uri, int line, int col)
