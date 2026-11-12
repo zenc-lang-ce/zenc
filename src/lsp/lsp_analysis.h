@@ -26,5 +26,7 @@ struct cJSON *lsp_workspace_symbol(const char *query);
 struct cJSON *lsp_references(const char *uri, int line, int col);
 struct cJSON *lsp_signature_help(const char *uri, int line, int col);
 struct cJSON *lsp_rename(const char *uri, int line, int col, const char *new_name);
+// The code actions at (line, col): writing the methods that an impl of a trait lacks.
+struct cJSON *lsp_code_actions(const char *uri, int line, int col);
 
 #endif

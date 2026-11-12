@@ -4,6 +4,7 @@
 #include "../ast/primitives.h"
 #include "../lexer/keywords.h"
 #include "../utils/utils.h"
+#include "../utils/emitter.h"
 #include "lsp_project.h"
 #include "lsp_analysis.h" // Includes lsp_index.h, parser.h
 #include "lsp_c_headers.h"
@@ -1356,11 +1357,12 @@ typedef struct
     // elsewhere.
     Token literal;
     const char *literal_fields;
-    // In the body of an impl or a trait where a member starts (after its `{`, a `}` or a `;`, or
-    // after a `fn` there): its `impl` or `trait`, where its members start, and whether the `fn`
-    // is written. `impl.kind` is TOK_EOF elsewhere.
+    // The impl or trait in whose header, or in whose body between its members, the cursor is: its
+    // `impl` or `trait`. `impl.kind` is TOK_EOF elsewhere.
     Token impl;
-    const char *impl_members;
+    // In that body, where a member starts: after its `{`, a `}` or a `;`, or after a `fn` there
+    // (`after_fn`).
+    int member_start;
     int after_fn;
 } CursorPosition;
 
@@ -1401,14 +1403,18 @@ static CursorPosition read_cursor_position(const char *source, size_t offset, co
         position.literal = r.brackets[r.open - 1].name;
         position.literal_fields = r.brackets[r.open - 1].inside;
     }
-    position.after_fn = is_word(r.before, "fn");
-    Token member_start = position.after_fn ? r.before_previous : r.before;
-    if (innermost_opener(&r) == OPENER_IMPL &&
-        (member_start.kind == TOK_LBRACE || member_start.kind == TOK_RBRACE ||
-         member_start.kind == TOK_SEMICOLON))
+    if (r.declarations[r.braces].impl.kind != TOK_EOF)
+    {
+        position.impl = r.declarations[r.braces].impl; // In the header
+    }
+    else if (innermost_opener(&r) == OPENER_IMPL)
     {
         position.impl = r.brackets[r.open - 1].name;
-        position.impl_members = r.brackets[r.open - 1].inside;
+        position.after_fn = is_word(r.before, "fn");
+        Token member_start = position.after_fn ? r.before_previous : r.before;
+        position.member_start = member_start.kind == TOK_LBRACE ||
+                                member_start.kind == TOK_RBRACE ||
+                                member_start.kind == TOK_SEMICOLON;
     }
     return position;
 }
@@ -1539,6 +1545,71 @@ static int implemented_trait_name(Token impl, char *out, size_t size, const char
     return 1;
 }
 
+// The trait that the impl starting at `impl` implements, as the project declares it; NULL for an
+// impl of a type, a trait's declaration, and a trait that the project does not declare.
+static ASTNode *implemented_trait(Token impl, const char *path)
+{
+    char name[MAX_VAR_NAME_LEN];
+    return implemented_trait_name(impl, name, sizeof(name), path)
+               ? find_declaration(name, NODE_TRAIT)
+               : NULL;
+}
+
+// Where the members of the impl starting at `impl` start: after the `{` of its header. NULL when
+// the header has no `{` yet.
+static const char *impl_members(Token impl, const char *path)
+{
+    Lexer l;
+    lexer_init(&l, impl.start + impl.len, g_project->ctx->config, path);
+    for (Token t = lexer_next(&l); t.kind != TOK_EOF; t = lexer_next(&l))
+    {
+        if (t.kind == TOK_LBRACE)
+        {
+            return t.start + t.len;
+        }
+        if (t.kind == TOK_SEMICOLON || t.kind == TOK_RBRACE)
+        {
+            return NULL;
+        }
+    }
+    return NULL;
+}
+
+// The `}` that closes the impl whose members start at `members`; NULL when it is left open.
+static const char *impl_end(const char *members, const char *path)
+{
+    Lexer l;
+    lexer_init(&l, members, g_project->ctx->config, path);
+    int depth = 0;
+    for (Token t = lexer_next(&l); t.kind != TOK_EOF; t = lexer_next(&l))
+    {
+        if (t.kind == TOK_LPAREN || t.kind == TOK_LBRACE || t.kind == TOK_LBRACKET)
+        {
+            depth++;
+        }
+        else if ((t.kind == TOK_RPAREN || t.kind == TOK_RBRACE || t.kind == TOK_RBRACKET) &&
+                 depth-- == 0)
+        {
+            return t.kind == TOK_RBRACE ? t.start : NULL;
+        }
+    }
+    return NULL;
+}
+
+// Writes to `out` the signature of `method`, a method of a trait, as the trait writes it (see
+// lsp_function_signature). Returns 0 when it has none.
+static int trait_method_signature(ASTNode *method, char *out, size_t size, const char *path)
+{
+    if (method->kind != NODE_FUNCTION || !method->func.method_name || !method->token.start)
+    {
+        return 0;
+    }
+    // The token of a trait's method is its `fn`: the signature starts at the name after it.
+    Lexer l;
+    lexer_init(&l, method->token.start + method->token.len, g_project->ctx->config, path);
+    return lsp_function_signature(lexer_next(&l), out, size);
+}
+
 // Whether the members of an impl, from `members` up to its `}`, define a method named `name`. The
 // name being typed at `word` defines none yet.
 static int impl_has_method(const char *members, const char *word, const char *name,
@@ -1591,28 +1662,18 @@ static void snippet_text(const char *text, char *out, size_t size)
 static int add_trait_member_completions(cJSON *items, CursorPosition position, const char *word,
                                         const char *path)
 {
-    char name[MAX_VAR_NAME_LEN];
-    ASTNode *trait = implemented_trait_name(position.impl, name, sizeof(name), path)
-                         ? find_declaration(name, NODE_TRAIT)
-                         : NULL;
-    if (!trait)
+    ASTNode *trait = implemented_trait(position.impl, path);
+    const char *members = trait ? impl_members(position.impl, path) : NULL;
+    if (!members)
     {
         return 0;
     }
     for (ASTNode *method = trait->trait.methods; method; method = method->next)
     {
         const char *method_name = method->func.method_name;
-        if (method->kind != NODE_FUNCTION || !method_name || !method->token.start ||
-            has_completion(items, method_name) ||
-            impl_has_method(position.impl_members, word, method_name, path))
-        {
-            continue;
-        }
-        // The token of a trait's method is its `fn`: the signature starts at the name after it.
-        Lexer l;
-        lexer_init(&l, method->token.start + method->token.len, g_project->ctx->config, path);
         char signature[MAX_SHORT_MSG_LEN * 4];
-        if (!lsp_function_signature(lexer_next(&l), signature, sizeof(signature)))
+        if (!trait_method_signature(method, signature, sizeof(signature), path) ||
+            has_completion(items, method_name) || impl_has_method(members, word, method_name, path))
         {
             continue;
         }
@@ -1951,8 +2012,7 @@ cJSON *lsp_completion(const char *uri, int line, int col)
     {
         // The fields of the literal, and nothing else
     }
-    else if (position.impl.kind != TOK_EOF &&
-             add_trait_member_completions(items, position, word, pf->path))
+    else if (position.member_start && add_trait_member_completions(items, position, word, pf->path))
     {
         // The methods of the trait that the impl does not define yet, and nothing else
     }
@@ -2561,4 +2621,127 @@ cJSON *lsp_rename(const char *uri, int line, int col, const char *new_name)
 
     cJSON_AddItemToObject(result, "changes", changes);
     return result;
+}
+
+// The byte of `source` at (line, col) of the protocol, or the end of that line when `col` is past
+// it.
+static const char *source_at(const char *source, int line, int col)
+{
+    const char *p = source;
+    for (int l = 0; *p && l < line; p++)
+    {
+        l += *p == '\n';
+    }
+    for (int c = 0; *p && *p != '\n' && c < col; c++)
+    {
+        p++;
+    }
+    return p;
+}
+
+// Adds to `range` the protocol's position of `at`, a byte of `source`, under `key`.
+static void add_position(cJSON *range, const char *key, const char *source, const char *at)
+{
+    int line = 0;
+    const char *line_start = source;
+    for (const char *p = source; p < at; p++)
+    {
+        if (*p == '\n')
+        {
+            line++;
+            line_start = p + 1;
+        }
+    }
+    cJSON *position = cJSON_AddObjectToObject(range, key);
+    cJSON_AddNumberToObject(position, "line", line);
+    cJSON_AddNumberToObject(position, "character", (double)(at - line_start));
+}
+
+// The code action that writes in the impl starting at `impl` the methods of its trait that it does
+// not define, with the signature written in the trait and an empty body, after its last member and
+// one level deeper than the impl. NULL when it is no impl of a trait, it is left open or it lacks
+// no method.
+static cJSON *implement_trait_action(const char *uri, const char *source, Token impl,
+                                     const char *path)
+{
+    ASTNode *trait = implemented_trait(impl, path);
+    const char *members = trait ? impl_members(impl, path) : NULL;
+    const char *end = members ? impl_end(members, path) : NULL;
+    if (!end)
+    {
+        return NULL;
+    }
+    const char *line_start = impl.start;
+    while (line_start > source && line_start[-1] != '\n')
+    {
+        line_start--;
+    }
+    int indent = 0;
+    while (line_start[indent] == ' ' || line_start[indent] == '\t')
+    {
+        indent++;
+    }
+    // The blank between the last member, or the `{`, and the `}` is replaced.
+    const char *after_last = end;
+    while (after_last > members && isspace((unsigned char)after_last[-1]))
+    {
+        after_last--;
+    }
+    Emitter e;
+    emitter_init_buffer(&e);
+    int added = 0;
+    for (ASTNode *method = trait->trait.methods; method; method = method->next)
+    {
+        char signature[MAX_SHORT_MSG_LEN * 4];
+        if (!trait_method_signature(method, signature, sizeof(signature), path) ||
+            impl_has_method(members, NULL, method->func.method_name, path))
+        {
+            continue;
+        }
+        emitter_printf(&e, "%s\n%.*s    %s {\n%.*s    }", added || after_last > members ? "\n" : "",
+                       indent, line_start, signature, indent, line_start);
+        added++;
+    }
+    if (!added)
+    {
+        return NULL;
+    }
+    emitter_printf(&e, "\n%.*s", indent, line_start);
+
+    cJSON *edit = cJSON_CreateObject();
+    cJSON *range = cJSON_AddObjectToObject(edit, "range");
+    add_position(range, "start", source, after_last);
+    add_position(range, "end", source, end);
+    cJSON_AddStringToObject(edit, "newText", emitter_take_string(&e));
+    cJSON *edits = cJSON_CreateArray();
+    cJSON_AddItemToArray(edits, edit);
+
+    cJSON *action = cJSON_CreateObject();
+    char title[MAX_SHORT_MSG_LEN];
+    snprintf(title, sizeof(title), "Implement the missing methods of %s", trait->trait.name);
+    cJSON_AddStringToObject(action, "title", title);
+    cJSON_AddStringToObject(action, "kind", "quickfix");
+    cJSON *changes = cJSON_AddObjectToObject(cJSON_AddObjectToObject(action, "edit"), "changes");
+    cJSON_AddItemToObject(changes, uri, edits);
+    return action;
+}
+
+cJSON *lsp_code_actions(const char *uri, int line, int col)
+{
+    cJSON *actions = cJSON_CreateArray();
+    ProjectFile *pf = lsp_project_get_file(uri);
+    if (!g_project || !g_project->ctx || !pf || !pf->source)
+    {
+        return actions;
+    }
+    const char *at = source_at(pf->source, line, col);
+    CursorPosition position = read_cursor_position(pf->source, (size_t)(at - pf->source), pf->path);
+    cJSON *implement = position.impl.kind == TOK_IMPL
+                           ? implement_trait_action(uri, pf->source, position.impl, pf->path)
+                           : NULL;
+    if (implement)
+    {
+        cJSON_AddItemToArray(actions, implement);
+    }
+    return actions;
 }
