@@ -160,69 +160,6 @@ char *mangle_generic_name(const char *base, char **args, int count)
     return out;
 }
 
-// mangle_generic_name from the argument list as written between `<` and `>`: "K, Vec<A, B>"
-// has two arguments, split at the commas outside a nested `<>`, each without surrounding
-// spaces.
-char *mangle_generic_name_from_arg_list(const char *base, const char *arg_list)
-{
-    int count = 1;
-    int depth = 0;
-    for (const char *p = arg_list; *p; p++)
-    {
-        if (*p == '<')
-        {
-            depth++;
-        }
-        else if (*p == '>')
-        {
-            depth--;
-        }
-        else if (*p == ',' && depth == 0)
-        {
-            count++;
-        }
-    }
-
-    char **args = xmalloc((size_t)count * sizeof(char *));
-    int n = 0;
-    const char *start = arg_list;
-    depth = 0;
-    for (const char *p = arg_list;; p++)
-    {
-        if (*p == '<')
-        {
-            depth++;
-        }
-        else if (*p == '>')
-        {
-            depth--;
-        }
-        else if (*p == '\0' || (*p == ',' && depth == 0))
-        {
-            const char *end = p;
-            while (start < end && *start == ' ')
-            {
-                start++;
-            }
-            while (end > start && end[-1] == ' ')
-            {
-                end--;
-            }
-            size_t len = (size_t)(end - start);
-            args[n] = xmalloc(len + 1);
-            memcpy(args[n], start, len);
-            args[n][len] = '\0';
-            n++;
-            if (*p == '\0')
-            {
-                break;
-            }
-            start = p + 1;
-        }
-    }
-    return mangle_generic_name(base, args, n);
-}
-
 // The C name of the vtable of a trait for a struct: `Struct__Trait__VTable`, as codegen
 // defines it (without merging underscores), so a trait object built in the parser points at
 // the same symbol.
