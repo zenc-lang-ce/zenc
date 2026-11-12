@@ -2191,6 +2191,83 @@ static void test_type_from_imported_file(void)
     printf("PASS: test_type_from_imported_file\n");
 }
 
+// The first edit of the first code action at (line, character), as "line:col-line:col newText";
+// empty when there is no action.
+static void code_action_edit(int id, const char *path, int line, int character, char *out,
+                             size_t size)
+{
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/codeAction\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"file://%s\"}, \"range\": {\"start\": "
+             "{\"line\": %d, \"character\": %d}, \"end\": {\"line\": %d, \"character\": %d}}, "
+             "\"context\": {\"diagnostics\": []}}}",
+             id, path, line, character, line, character);
+    send_request(json);
+    char *response = wait_for_response(id);
+    cJSON *parsed = response ? cJSON_Parse(response) : NULL;
+    free(response);
+    if (!parsed)
+    {
+        fail("No response for a code action request");
+    }
+    out[0] = 0;
+    cJSON *action = cJSON_GetArrayItem(cJSON_GetObjectItem(parsed, "result"), 0);
+    cJSON *changes = cJSON_GetObjectItem(cJSON_GetObjectItem(action, "edit"), "changes");
+    cJSON *edit = changes && changes->child ? cJSON_GetArrayItem(changes->child, 0) : NULL;
+    if (edit)
+    {
+        cJSON *range = cJSON_GetObjectItem(edit, "range");
+        cJSON *start = cJSON_GetObjectItem(range, "start");
+        cJSON *end = cJSON_GetObjectItem(range, "end");
+        snprintf(out, size, "%d:%d-%d:%d %s", cJSON_GetObjectItem(start, "line")->valueint,
+                 cJSON_GetObjectItem(start, "character")->valueint,
+                 cJSON_GetObjectItem(end, "line")->valueint,
+                 cJSON_GetObjectItem(end, "character")->valueint,
+                 cJSON_GetObjectItem(edit, "newText")->valuestring);
+    }
+    cJSON_Delete(parsed);
+}
+
+static void expect_code_action_edit(int id, const char *path, int line, int character,
+                                    const char *expected)
+{
+    char edit[1024];
+    code_action_edit(id, path, line, character, edit, sizeof(edit));
+    if (strcmp(edit, expected) != 0)
+    {
+        printf("Code action at %d:%d: '%s', expected '%s'\n", line, character, edit, expected);
+        fail("Wrong code action");
+    }
+}
+
+static void test_implement_trait_action(void)
+{
+    printf("Running test_implement_trait_action...\n");
+    // In the header or the body of an impl of a trait, a code action writes the trait's methods
+    // that the impl lacks, after its last member and one level deeper than the impl.
+    const char *path = "/tmp/test_implement_trait_action.zc";
+    open_document(path, "trait Shape {\n"                                    // Line 0
+                        "    fn area(self) -> int;\n"                        // Line 1
+                        "    fn sides() -> int;\n"                           // Line 2
+                        "}\n"                                                // Line 3
+                        "trait Named { fn name(self) -> string; }\n"         // Line 4
+                        "struct Square { side: int; }\n"                     // Line 5
+                        "impl Shape for Square {\n"                          // Line 6
+                        "    fn area(self) -> int { return self.side; }\n"   // Line 7
+                        "}\n"                                                // Line 8
+                        "impl Named for Square {}\n"                         // Line 9
+                        "impl Square {}\n");                                 // Line 10
+    usleep(100000);
+    // On the trait's name in the header; between `{}`.
+    expect_code_action_edit(1421, path, 6, 8, "7:46-8:0 \n\n    fn sides() -> int {\n    }\n");
+    expect_code_action_edit(1422, path, 9, 23, "9:23-9:23 \n    fn name(self) -> string {\n    }\n");
+    // An impl of the type alone, and a struct.
+    expect_code_action_edit(1423, path, 10, 13, "");
+    expect_code_action_edit(1424, path, 5, 3, "");
+    printf("PASS: test_implement_trait_action\n");
+}
+
 static void test_member_hover(void)
 {
     printf("Running test_member_hover...\n");
@@ -3720,6 +3797,7 @@ int main()
     test_literal_field_completion();
     test_trait_value_completion();
     test_trait_impl_completion();
+    test_implement_trait_action();
     test_type_from_imported_file();
     test_c_struct_field_completion();
     test_shutdown();

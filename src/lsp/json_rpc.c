@@ -124,7 +124,12 @@ static void get_params(cJSON *root, char **uri, int *line, int *col)
         }
     }
 
+    // A position, or the start of a range (textDocument/codeAction).
     cJSON *pos = cJSON_GetObjectItem(params, "position");
+    if (!pos)
+    {
+        pos = cJSON_GetObjectItem(cJSON_GetObjectItem(params, "range"), "start");
+    }
     if (pos)
     {
         cJSON *l = cJSON_GetObjectItem(pos, "line");
@@ -189,6 +194,7 @@ static cJSON *initialize(const cJSON *params)
         "\"referencesProvider\":true,\"documentSymbolProvider\":true,"
         "\"workspaceSymbolProvider\":true,"
         "\"renameProvider\":true,"
+        "\"codeActionProvider\":{\"codeActionKinds\":[\"quickfix\"]},"
         "\"documentFormattingProvider\":true,"
         "\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\"]},"
         "\"completionProvider\":{"
@@ -352,6 +358,10 @@ void lsp_handle_message(const char *json_str)
         cJSON *new_name = cJSON_GetObjectItem(params, "newName");
         result = uri && cJSON_IsString(new_name) ? lsp_rename(uri, line, col, new_name->valuestring)
                                                  : NULL;
+    }
+    else if (strcmp(method, "textDocument/codeAction") == 0)
+    {
+        result = uri ? lsp_code_actions(uri, line, col) : NULL;
     }
     else if (strcmp(method, "textDocument/formatting") == 0)
     {
