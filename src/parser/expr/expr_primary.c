@@ -1138,6 +1138,26 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
         }
 
+        // In a module parsed with a prefix (imported with `as`, selectively or as `*`), its own
+        // functions are registered as `prefix__helper`: a bare `helper` names that one, before
+        // a function of the program with that very name (from an import without prefix). Only
+        // a local or a parameter called so hides it.
+        ZenSymbol *hiding = ctx->imports.current_module_prefix ? find_symbol_entry(ctx, acc) : NULL;
+        if (ctx->imports.current_module_prefix && !variant.member && !owner &&
+            !(hiding && hiding->is_local))
+        {
+            char *prefixed = mangle_module_symbol(ctx->imports.current_module_prefix, acc);
+            if (find_func(ctx, prefixed))
+            {
+                zfree(acc);
+                acc = prefixed;
+            }
+            else
+            {
+                zfree(prefixed);
+            }
+        }
+
         FuncSig *sig = find_func(ctx, acc);
 
         // A variant is written with its enum: `Shape::Dot`, `Shape::Circle(1.0)`. Alone

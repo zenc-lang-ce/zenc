@@ -1,0 +1,5 @@
+// A `twice` of the program, imported without an alias: its C name is `twice`.
+
+fn twice(x: int) -> int {
+    return x * 100;
+}

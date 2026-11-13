@@ -1,0 +1,24 @@
+// language/modules: a module imported with an alias calls its own functions by their names.
+// The alias gives its declarations a module prefix in C; the calls the module makes to its
+// own functions get it too, also when the program has a function of the same name (here
+// `twice`, imported without an alias).
+import "./test_modules/_own_calls.zc" as own;
+import "std/string.zc" as str;
+import "./test_modules/_global_twice.zc";
+
+test "a module imported with an alias calls its own functions" {
+    assert(own::quadruple(3) == 12, "from a function");
+    assert(own::plus_one_later(4) == 5, "a function declared further down");
+    assert(own::through_value(5) == 10, "through a function value");
+    let c = own::Counter::new(6);
+    assert(c.doubled() == 12, "from a method");
+    assert(own::local_hides(4) == 5, "a local of the same name hides the function");
+    assert(twice(2) == 200, "the program's own `twice` is another function");
+}
+
+test "a module of the standard library imported with an alias" {
+    // String::compare_ignore_case calls a function of std/string.zc.
+    let a = str::String::from("Hola");
+    let b = str::String::from("hola");
+    assert(a.compare_ignore_case(&b) == 0, "the module calls its own function");
+}
