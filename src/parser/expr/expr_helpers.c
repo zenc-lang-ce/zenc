@@ -441,7 +441,7 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
             if (sig && sig->arg_types && res.count < sig->total_args && arg)
             {
                 Type *expected = sig->arg_types[res.count];
-                if (expected && expected->name && is_trait(type_def_name(expected)))
+                if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
                 {
                     arg = transform_to_trait_object(ctx, type_def_name(expected), arg);
                 }
@@ -495,7 +495,7 @@ ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait,
         *p = '\0';
     }
 
-    if (!is_trait(clean_trait))
+    if (!is_trait(ctx, clean_trait))
     {
         zfree(clean_trait);
         return source_expr;

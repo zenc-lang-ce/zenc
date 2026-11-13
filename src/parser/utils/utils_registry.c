@@ -598,6 +598,31 @@ ASTNode *find_trait_def(ParserContext *ctx, const char *name)
     return NULL;
 }
 
+int is_trait(ParserContext *ctx, const char *name)
+{
+    if (!name)
+    {
+        return 0;
+    }
+    if (strncmp(name, "struct ", 7) == 0)
+    {
+        name += 7;
+    }
+    else if (strncmp(name, "union ", 6) == 0)
+    {
+        name += 6;
+    }
+    char base[MAX_MANGLED_NAME_LEN];
+    size_t length = strcspn(name, "*");
+    if (length >= sizeof(base))
+    {
+        return 0; // Longer than any name the program declares
+    }
+    memcpy(base, name, length);
+    base[length] = 0;
+    return find_trait_def(ctx, base) != NULL;
+}
+
 ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name)
 {
     Instantiation *i = ctx->instantiations;

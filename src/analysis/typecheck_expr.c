@@ -1021,7 +1021,7 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     }
 
     // Trait object compatibility: Struct -> Trait
-    if (resolved_target->name && is_trait(type_def_name(resolved_target)) &&
+    if (resolved_target->name && is_trait(tc->pctx, type_def_name(resolved_target)) &&
         resolved_value->kind == TYPE_STRUCT && resolved_value->name)
     {
         if (check_impl(tc->pctx, type_def_name(resolved_target), type_def_name(resolved_value)))

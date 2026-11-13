@@ -509,7 +509,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     n->type_info = type_obj;
 
     // Auto-construct Trait Object
-    if (type && is_trait(type))
+    if (type && is_trait(ctx, type))
     {
         init = transform_to_trait_object(ctx, type, init);
     }

@@ -202,7 +202,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 
         // Check for common error: swapped Struct and Trait
         // impl MyStruct for MyTrait (Wrong) vs impl MyTrait for MyStruct (Correct)
-        if (!is_trait(name1) && is_trait(name2))
+        if (!is_trait(ctx, name1) && is_trait(ctx, name2))
         {
             zpanic_at(t1,
                       "Incorrect usage of impl. Did you mean 'impl %s for %s'? Syntax is 'impl "

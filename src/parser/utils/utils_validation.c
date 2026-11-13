@@ -26,7 +26,7 @@ void register_type_usage(ParserContext *ctx, const char *name, Token t)
 int is_known_type_name(ParserContext *ctx, const char *name)
 {
     if (find_struct_def(ctx, name) || find_type_alias(ctx, name) ||
-        find_selective_import(ctx, name) || is_extern_symbol(ctx, name) || is_trait(name) ||
+        find_selective_import(ctx, name) || is_extern_symbol(ctx, name) || is_trait(ctx, name) ||
         find_primitive_kind(name) != TYPE_UNKNOWN)
     {
         return 1;
