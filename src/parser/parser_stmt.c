@@ -737,10 +737,7 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
         int is_assign = 0;
         if (s->kind == NODE_EXPR_BINARY)
         {
-            char *op = s->binary.op;
-            if (strcmp(op, "=") == 0 ||
-                (strlen(op) > 1 && op[strlen(op) - 1] == '=' && strcmp(op, "==") != 0 &&
-                 strcmp(op, "!=") != 0 && strcmp(op, "<=") != 0 && strcmp(op, ">=") != 0))
+            if (is_assignment_operator(s->binary.op))
             {
                 is_assign = 1;
             }

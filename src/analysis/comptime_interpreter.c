@@ -408,14 +408,14 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
         return val_null;
     }
 
-    const char *op = node->binary.op;
-    if (!op)
+    OperatorKind kind = node->binary.op;
+    if (kind == OP_NONE)
     {
         val_free(&left);
         return val_null;
     }
-    OperatorKind kind = binary_operator_of(op);
-    OperatorClass op_class = binary_operator_class(op);
+    const char *op = operator_spelling(kind);
+    OperatorClass op_class = operator_class(kind);
 
     // Handle string concat with +
     if (left.kind == VAL_STRING && kind == OP_ADD)
@@ -571,7 +571,7 @@ static CValue eval_unary(CInterp *ci, ASTNode *node)
     {
         return val_null;
     }
-    OperatorKind kind = unary_operator_of(node->unary.op);
+    OperatorKind kind = node->unary.op;
     if (kind == OP_NEG)
     {
         CValue v = eval_expr(ci, node->unary.operand);
@@ -601,7 +601,8 @@ static CValue eval_unary(CInterp *ci, ASTNode *node)
         }
         return v;
     }
-    zerror_at(node->token, "comptime: unsupported unary operator '%s'", node->unary.op);
+    zerror_at(node->token, "comptime: unsupported unary operator '%s'",
+              operator_spelling(node->unary.op));
     ci->error_happened = 1;
     return val_null;
 }
@@ -653,7 +654,7 @@ static CValue call_builtin(CInterp *ci, const char *name, ASTNode *args)
         {
             arg = eval_expr(ci, args);
         }
-        else if (args->kind == NODE_EXPR_BINARY && binary_operator_of(args->binary.op) == OP_ADD)
+        else if (args->kind == NODE_EXPR_BINARY && args->binary.op == OP_ADD)
         {
             arg = eval_expr(ci, args); // string concat
         }
@@ -1051,7 +1052,7 @@ static void exec_stmt(CInterp *ci, ASTNode *node)
         exec_let(ci, node);
         break;
     case NODE_EXPR_BINARY:
-        if (binary_operator_of(node->binary.op) == OP_ASSIGN)
+        if (node->binary.op == OP_ASSIGN)
         {
             exec_assign(ci, node);
         }

@@ -451,10 +451,10 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
     case NODE_EXPR_BINARY:
         new_node->binary.left = copy_ast_replacing(ctx, n->binary.left, b, os, ns);
         new_node->binary.right = copy_ast_replacing(ctx, n->binary.right, b, os, ns);
-        new_node->binary.op = n->binary.op ? xstrdup(n->binary.op) : NULL;
+        new_node->binary.op = n->binary.op;
         break;
     case NODE_EXPR_UNARY:
-        new_node->unary.op = n->unary.op ? xstrdup(n->unary.op) : NULL;
+        new_node->unary.op = n->unary.op;
         new_node->unary.operand = copy_ast_replacing(ctx, n->unary.operand, b, os, ns);
         break;
     case NODE_EXPR_CALL:

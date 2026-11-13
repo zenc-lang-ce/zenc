@@ -83,17 +83,16 @@ void codegen_expression_bare(ParserContext *ctx, ASTNode *node)
 
     if (node->kind == NODE_EXPR_BINARY)
     {
-        const char *op = node->binary.op;
-        int is_simple = (strcmp(op, "<") == 0 || strcmp(op, ">") == 0 || strcmp(op, "<=") == 0 ||
-                         strcmp(op, ">=") == 0 || strcmp(op, "+") == 0 || strcmp(op, "-") == 0 ||
-                         strcmp(op, "*") == 0 || strcmp(op, "/") == 0 || strcmp(op, "%") == 0 ||
-                         strcmp(op, "+=") == 0 || strcmp(op, "-=") == 0 || strcmp(op, "*=") == 0 ||
-                         strcmp(op, "/=") == 0 || strcmp(op, "=") == 0);
+        OperatorKind op = node->binary.op;
+        int is_simple =
+            (op == OP_LT || op == OP_GT || op == OP_LE || op == OP_GE || op == OP_ADD ||
+             op == OP_SUB || op == OP_MUL || op == OP_DIV || op == OP_MOD || op == OP_ADD_ASSIGN ||
+             op == OP_SUB_ASSIGN || op == OP_MUL_ASSIGN || op == OP_DIV_ASSIGN || op == OP_ASSIGN);
 
         if (is_simple)
         {
             codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, " %s ", op);
+            EMIT(ctx, " %s ", operator_spelling(op));
             codegen_expression(ctx, node->binary.right);
             RECURSION_EXIT(ctx);
             return;
@@ -102,14 +101,14 @@ void codegen_expression_bare(ParserContext *ctx, ASTNode *node)
 
     if (node->kind == NODE_EXPR_UNARY && node->unary.op)
     {
-        if (strcmp(node->unary.op, "_post++") == 0)
+        if (node->unary.op == OP_POST_INC)
         {
             codegen_expression(ctx, node->unary.operand);
             EMIT(ctx, "++");
             RECURSION_EXIT(ctx);
             return;
         }
-        if (strcmp(node->unary.op, "_post--") == 0)
+        if (node->unary.op == OP_POST_DEC)
         {
             codegen_expression(ctx, node->unary.operand);
             EMIT(ctx, "--");

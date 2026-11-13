@@ -38,7 +38,7 @@ static void check_assignment_condition(ASTNode *cond)
     }
     if (cond->kind == NODE_EXPR_BINARY)
     {
-        if (cond->binary.op && strcmp(cond->binary.op, "=") == 0)
+        if (cond->binary.op == OP_ASSIGN)
         {
             zwarn_at(cond->token, "Assignment in condition");
             fprintf(stderr, COLOR_CYAN "   = note: " COLOR_RESET "Did you mean '=='?\n");
@@ -289,7 +289,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                         idx_bind->var_decl.init_expr = idx_ref;
 
                         ASTNode *idx_inc = ast_create(NODE_EXPR_UNARY);
-                        idx_inc->unary.op = xstrdup("++");
+                        idx_inc->unary.op = OP_PRE_INC;
                         ASTNode *idx_ref2 = ast_create(NODE_EXPR_VAR);
                         idx_ref2->var_ref.name = xstrdup("__zc_enum_idx");
                         idx_inc->unary.operand = idx_ref2;
@@ -348,7 +348,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 ASTNode *slice_decl = NULL;
 
                 if (obj_expr->kind == NODE_EXPR_UNARY && obj_expr->unary.op &&
-                    strcmp(obj_expr->unary.op, "&") == 0)
+                    obj_expr->unary.op == OP_ADDRESS)
                 {
                     obj_expr = obj_expr->unary.operand;
                     iter_method = "iter_ref";
@@ -378,7 +378,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     from_array_call->call.callee = static_method;
 
                     ASTNode *arr_addr = ast_create(NODE_EXPR_UNARY);
-                    arr_addr->unary.op = xstrdup("&");
+                    arr_addr->unary.op = OP_ADDRESS;
                     arr_addr->unary.operand = obj_expr;
 
                     ASTNode *arr_cast = ast_create(NODE_EXPR_CAST);
@@ -570,7 +570,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 if (enum_idx_name)
                 {
                     ASTNode *idx_inc = ast_create(NODE_EXPR_UNARY);
-                    idx_inc->unary.op = xstrdup("++");
+                    idx_inc->unary.op = OP_PRE_INC;
                     ASTNode *idx_ref3 = ast_create(NODE_EXPR_VAR);
                     idx_ref3->var_ref.name = xstrdup("__zc_enum_idx");
                     idx_inc->unary.operand = idx_ref3;

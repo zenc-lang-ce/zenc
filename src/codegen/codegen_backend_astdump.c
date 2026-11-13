@@ -6,11 +6,6 @@
 #include "../parser/parser.h"
 #include "../ast/ast.h"
 
-static int is_printable(const char *s)
-{
-    return s && s[0] >= 32 && s[0] < 127;
-}
-
 // Forward declaration
 static void dump_node(ParserContext *ctx, ASTNode *node, int is_last, const char *prefix);
 
@@ -60,15 +55,15 @@ static void emit_label(ParserContext *ctx, ASTNode *node)
         }
         break;
     case NODE_EXPR_BINARY:
-        if (node->binary.op && is_printable(node->binary.op))
+        if (node->binary.op != OP_NONE)
         {
-            emitter_printf(&ctx->cg.emitter, " '%s'", node->binary.op);
+            emitter_printf(&ctx->cg.emitter, " '%s'", operator_spelling(node->binary.op));
         }
         break;
     case NODE_EXPR_UNARY:
-        if (node->unary.op && is_printable(node->unary.op))
+        if (node->unary.op != OP_NONE)
         {
-            emitter_printf(&ctx->cg.emitter, " '%s'", node->unary.op);
+            emitter_printf(&ctx->cg.emitter, " '%s'", operator_spelling(node->unary.op));
         }
         break;
     case NODE_EXPR_CALL:

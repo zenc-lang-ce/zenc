@@ -104,23 +104,21 @@ const OperatorInfo *operator_info(OperatorKind kind);
 OperatorKind binary_operator_from_text(const char *text, size_t len);
 /** @brief The unary (prefix) operator written `text` (`len` bytes). */
 OperatorKind unary_operator_from_text(const char *text, size_t len);
-/** @brief The binary operator of a terminated text, such as `binary.op`; OP_NONE for NULL. */
-OperatorKind binary_operator_of(const char *op);
-/** @brief The unary operator of a terminated text, such as `unary.op`; OP_NONE for NULL. */
-OperatorKind unary_operator_of(const char *op);
-/** @brief The class of the binary operator `op`; OPERATOR_OTHER if it is none. */
-OperatorClass binary_operator_class(const char *op);
-
 /**
  * @brief Whether the operator text `op` (`len` bytes, not necessarily terminated) assigns:
  * `=` or a compound such as `+=`, `<<=` or `??=`.
  */
 int is_assignment_op_text(const char *op, size_t len);
-/** @brief is_assignment_op_text for a terminated string, such as `binary.op`. */
-int is_assignment_op(const char *op);
-/** @brief Whether the binary operator `op` compares: `== != < <= > >=`. */
-int is_comparison_op(const char *op);
-/** @brief The method that overloads the binary operator `op` (`add` for `+`), or NULL. */
-const char *binary_operator_method(const char *op);
+
+/** @brief The class of `kind`; OPERATOR_OTHER for OP_NONE. */
+OperatorClass operator_class(OperatorKind kind);
+/** @brief Whether `kind` assigns: `=` or a compound assignment. */
+int is_assignment_operator(OperatorKind kind);
+/** @brief Whether `kind` compares: `== != < <= > >=`. */
+int is_comparison_operator(OperatorKind kind);
+/** @brief The method that overloads `kind` (`add` for `+`, `neg` for unary `-`), or NULL. */
+const char *operator_method(OperatorKind kind);
+/** @brief How the AST writes `kind` (`+=`, `_post++`); "" for OP_NONE. */
+const char *operator_spelling(OperatorKind kind);
 
 #endif
