@@ -292,193 +292,183 @@ static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *ri
     EMIT(ctx, "})");
 }
 
-void handle_expr_binary(ParserContext *ctx, ASTNode *node)
+// `a ?? b`: `a` unless it is null or zero.
+static void emit_coalesce(ParserContext *ctx, ASTNode *node)
 {
-    if (ctx->config->misra_mode)
-    {
-        EMIT(ctx, "(");
-    }
-    if (node->binary.op == OP_COALESCE)
-    {
-        EMIT(ctx, "({ ");
-        emit_auto_type(ctx, node->binary.left, node->token);
-        EMIT(ctx, " _l = (");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, "); _l ? _l : (");
-        codegen_expression(ctx, node->binary.right);
-        EMIT(ctx, "); })");
-    }
-    else if (node->binary.op == OP_COALESCE_ASSIGN)
-    {
-        EMIT(ctx, "({ if (!(");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, ")) ");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, " = (");
-        codegen_expression(ctx, node->binary.right);
-        EMIT(ctx, "); ");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, "; })");
-    }
-    else if ((node->binary.op == OP_EQ || node->binary.op == OP_NE))
-    {
-        char *t1 = infer_type(ctx, node->binary.left);
-        int is_ptr = 0;
-        char *fully_resolved = t1;
-        char *mangle_base = t1;
-        int found_opaque = 0;
+    EMIT(ctx, "({ ");
+    emit_auto_type(ctx, node->binary.left, node->token);
+    EMIT(ctx, " _l = (");
+    codegen_expression(ctx, node->binary.left);
+    EMIT(ctx, "); _l ? _l : (");
+    codegen_expression(ctx, node->binary.right);
+    EMIT(ctx, "); })");
+}
 
-        if (t1)
+// `a ??= b`: assigns `b` to `a` when `a` is null or zero.
+static void emit_coalesce_assign(ParserContext *ctx, ASTNode *node)
+{
+    EMIT(ctx, "({ if (!(");
+    codegen_expression(ctx, node->binary.left);
+    EMIT(ctx, ")) ");
+    codegen_expression(ctx, node->binary.left);
+    EMIT(ctx, " = (");
+    codegen_expression(ctx, node->binary.right);
+    EMIT(ctx, "); ");
+    codegen_expression(ctx, node->binary.left);
+    EMIT(ctx, "; })");
+}
+
+// `==` and `!=`: a struct compares through its `eq` (or `neq`), anything else as in C.
+static void emit_equality(ParserContext *ctx, ASTNode *node)
+{
+    char *t1 = infer_type(ctx, node->binary.left);
+    int is_ptr = 0;
+    char *fully_resolved = t1;
+    char *mangle_base = t1;
+    int found_opaque = 0;
+
+    if (t1)
+    {
+        char *curr = t1;
+        int depth = 0;
+        while (depth++ < 20)
         {
-            char *curr = t1;
-            int depth = 0;
-            while (depth++ < 20)
+            if (strchr(curr, '*'))
             {
-                if (strchr(curr, '*'))
-                {
-                    is_ptr = 1;
-                    break;
-                }
-
-                int resolved = 0;
-                TypeAlias *ta = find_type_alias_node(ctx, curr);
-                if (ta)
-                {
-                    if (ta->is_opaque)
-                    {
-                        if (!found_opaque)
-                        {
-                            mangle_base = ta->alias;
-                            found_opaque = 1;
-                        }
-                    }
-                    else if (!found_opaque)
-                    {
-                        mangle_base = type_mangle_spelling(ta->type_info);
-                    }
-
-                    curr = type_mangle_spelling(ta->type_info);
-                    resolved = 1;
-                }
-
-                if (!resolved)
-                {
-                    break;
-                }
+                is_ptr = 1;
+                break;
             }
-            fully_resolved = curr;
-        }
 
-        int is_basic = str_is_basic_type(fully_resolved);
-        ASTNode *def = t1 ? find_struct_def(ctx, t1) : NULL;
-
-        int is_simple_enum = 0;
-        if (def && def->kind == NODE_ENUM)
-        {
-            is_simple_enum = 1;
-            ASTNode *v = def->enm.variants;
-            while (v)
+            int resolved = 0;
+            TypeAlias *ta = find_type_alias_node(ctx, curr);
+            if (ta)
             {
-                if (v->variant.payload)
+                if (ta->is_opaque)
                 {
-                    is_simple_enum = 0;
-                    break;
+                    if (!found_opaque)
+                    {
+                        mangle_base = ta->alias;
+                        found_opaque = 1;
+                    }
                 }
-                v = v->next;
+                else if (!found_opaque)
+                {
+                    mangle_base = type_mangle_spelling(ta->type_info);
+                }
+
+                curr = type_mangle_spelling(ta->type_info);
+                resolved = 1;
+            }
+
+            if (!resolved)
+            {
+                break;
             }
         }
+        fully_resolved = curr;
+    }
 
-        if (t1 && (def || found_opaque) && !is_basic && !is_ptr && !is_simple_enum)
+    int is_basic = str_is_basic_type(fully_resolved);
+    ASTNode *def = t1 ? find_struct_def(ctx, t1) : NULL;
+
+    int is_simple_enum = 0;
+    if (def && def->kind == NODE_ENUM)
+    {
+        is_simple_enum = 1;
+        ASTNode *v = def->enm.variants;
+        while (v)
         {
-            char *base = mangle_base;
-            if (strncmp(base, "struct ", 7) == 0)
+            if (v->variant.payload)
             {
-                base += 7;
+                is_simple_enum = 0;
+                break;
             }
+            v = v->next;
+        }
+    }
 
-            if (node->binary.op == OP_NE)
-            {
-                EMIT(ctx, "(!");
-            }
-            // `eq` of the Eq trait, or an inherent `eq`.
-            char *trait_eq = mangle_method_symbol(base, "Eq", "eq");
-            ZenSymbol *sym = find_symbol_in_all(ctx, trait_eq);
-            if (!sym || !sym->data.sig)
-            {
-                sym = find_symbol_in_all(ctx, mangle_method_symbol(base, NULL, "eq"));
-            }
-            FuncSig *sig = sym ? sym->data.sig : NULL;
-            const char *call_name = sig ? sig->name : trait_eq;
+    if (t1 && (def || found_opaque) && !is_basic && !is_ptr && !is_simple_enum)
+    {
+        char *base = mangle_base;
+        if (strncmp(base, "struct ", 7) == 0)
+        {
+            base += 7;
+        }
 
-            EMIT(ctx, "%s(", (sig && sig->link_name) ? sig->link_name : call_name);
+        if (node->binary.op == OP_NE)
+        {
+            EMIT(ctx, "(!");
+        }
+        // `eq` of the Eq trait, or an inherent `eq`.
+        char *trait_eq = mangle_method_symbol(base, "Eq", "eq");
+        ZenSymbol *sym = find_symbol_in_all(ctx, trait_eq);
+        if (!sym || !sym->data.sig)
+        {
+            sym = find_symbol_in_all(ctx, mangle_method_symbol(base, NULL, "eq"));
+        }
+        FuncSig *sig = sym ? sym->data.sig : NULL;
+        const char *call_name = sig ? sig->name : trait_eq;
 
-            if (node->binary.left->kind == NODE_EXPR_VAR ||
-                node->binary.left->kind == NODE_EXPR_INDEX ||
-                node->binary.left->kind == NODE_EXPR_MEMBER)
-            {
-                EMIT(ctx, "&");
-                codegen_expression(ctx, node->binary.left);
-            }
-            else
-            {
-                emit_rvalue_address(ctx, node->binary.left);
-            }
+        EMIT(ctx, "%s(", (sig && sig->link_name) ? sig->link_name : call_name);
 
-            EMIT(ctx, ", ");
+        if (node->binary.left->kind == NODE_EXPR_VAR ||
+            node->binary.left->kind == NODE_EXPR_INDEX ||
+            node->binary.left->kind == NODE_EXPR_MEMBER)
+        {
+            EMIT(ctx, "&");
+            codegen_expression(ctx, node->binary.left);
+        }
+        else
+        {
+            emit_rvalue_address(ctx, node->binary.left);
+        }
 
-            int needs_ptr = 1;
-            if (sig)
-            {
-                needs_ptr = (sig->total_args > 1 && sig->arg_types[1]->kind == TYPE_POINTER);
-            }
+        EMIT(ctx, ", ");
 
-            if (needs_ptr && (node->binary.right->kind == NODE_EXPR_VAR ||
-                              node->binary.right->kind == NODE_EXPR_INDEX ||
-                              node->binary.right->kind == NODE_EXPR_MEMBER))
-            {
-                EMIT(ctx, "&");
-                codegen_expression(ctx, node->binary.right);
-            }
-            else if (needs_ptr)
-            {
-                emit_rvalue_address(ctx, node->binary.right);
-            }
-            else
-            {
-                codegen_expression(ctx, node->binary.right);
-            }
+        int needs_ptr = 1;
+        if (sig)
+        {
+            needs_ptr = (sig->total_args > 1 && sig->arg_types[1]->kind == TYPE_POINTER);
+        }
 
+        if (needs_ptr && (node->binary.right->kind == NODE_EXPR_VAR ||
+                          node->binary.right->kind == NODE_EXPR_INDEX ||
+                          node->binary.right->kind == NODE_EXPR_MEMBER))
+        {
+            EMIT(ctx, "&");
+            codegen_expression(ctx, node->binary.right);
+        }
+        else if (needs_ptr)
+        {
+            emit_rvalue_address(ctx, node->binary.right);
+        }
+        else
+        {
+            codegen_expression(ctx, node->binary.right);
+        }
+
+        EMIT(ctx, ")");
+        if (node->binary.op == OP_NE)
+        {
             EMIT(ctx, ")");
-            if (node->binary.op == OP_NE)
-            {
-                EMIT(ctx, ")");
-            }
         }
-        else if (t1 && (strcmp(t1, "string") == 0))
+    }
+    else if (t1 && (strcmp(t1, "string") == 0))
+    {
+        char *t2 = infer_type(ctx, node->binary.right);
+        if (t2 && (strcmp(t2, "string") == 0))
         {
-            char *t2 = infer_type(ctx, node->binary.right);
-            if (t2 && (strcmp(t2, "string") == 0))
+            EMIT(ctx, "(strcmp(");
+            codegen_expression(ctx, node->binary.left);
+            EMIT(ctx, ", ");
+            codegen_expression(ctx, node->binary.right);
+            if (node->binary.op == OP_EQ)
             {
-                EMIT(ctx, "(strcmp(");
-                codegen_expression(ctx, node->binary.left);
-                EMIT(ctx, ", ");
-                codegen_expression(ctx, node->binary.right);
-                if (node->binary.op == OP_EQ)
-                {
-                    EMIT(ctx, ") == 0)");
-                }
-                else
-                {
-                    EMIT(ctx, ") != 0)");
-                }
+                EMIT(ctx, ") == 0)");
             }
             else
             {
-                EMIT(ctx, "(");
-                codegen_expression(ctx, node->binary.left);
-                EMIT(ctx, " %s ", operator_spelling(node->binary.op));
-                codegen_expression(ctx, node->binary.right);
-                EMIT(ctx, ")");
+                EMIT(ctx, ") != 0)");
             }
         }
         else
@@ -489,132 +479,142 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             codegen_expression(ctx, node->binary.right);
             EMIT(ctx, ")");
         }
-        if (t1)
-        {
-            zfree(t1);
-        }
-    }
-    else if (node->binary.op == OP_POW)
-    {
-        EMIT(ctx, "(_zc_pow((double)(");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, "), (double)(");
-        codegen_expression(ctx, node->binary.right);
-        EMIT(ctx, ")))");
-    }
-    else if (node->binary.op == OP_POW_ASSIGN)
-    {
-        EMIT(ctx, "({ ");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, " = _zc_pow((double)(");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, "), (double)(");
-        codegen_expression(ctx, node->binary.right);
-        EMIT(ctx, ")); ");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, "; })");
     }
     else
     {
-        int is_assignment = is_assignment_operator(node->binary.op);
+        EMIT(ctx, "(");
+        codegen_expression(ctx, node->binary.left);
+        EMIT(ctx, " %s ", operator_spelling(node->binary.op));
+        codegen_expression(ctx, node->binary.right);
+        EMIT(ctx, ")");
+    }
+    if (t1)
+    {
+        zfree(t1);
+    }
+}
 
-        // Assigning to a variable that holds a value with Drop drops the old value first: the
-        // glue of a struct, enum or tuple, or the drop of a closure that owns its context.
-        char *drop_old = NULL;
-        if (is_assignment && node->binary.op == OP_ASSIGN &&
-            node->binary.left->kind == NODE_EXPR_VAR)
+// `a ** b`, through _zc_pow.
+static void emit_pow(ParserContext *ctx, ASTNode *node)
+{
+    EMIT(ctx, "(_zc_pow((double)(");
+    codegen_expression(ctx, node->binary.left);
+    EMIT(ctx, "), (double)(");
+    codegen_expression(ctx, node->binary.right);
+    EMIT(ctx, ")))");
+}
+
+// `a **= b`, through _zc_pow.
+static void emit_pow_assign(ParserContext *ctx, ASTNode *node)
+{
+    EMIT(ctx, "({ ");
+    codegen_expression(ctx, node->binary.left);
+    EMIT(ctx, " = _zc_pow((double)(");
+    codegen_expression(ctx, node->binary.left);
+    EMIT(ctx, "), (double)(");
+    codegen_expression(ctx, node->binary.right);
+    EMIT(ctx, ")); ");
+    codegen_expression(ctx, node->binary.left);
+    EMIT(ctx, "; })");
+}
+
+// The other binary operators and assignments, written as in C; an assignment drops the old
+// value of a variable with Drop, and copies a fixed-size array.
+static void emit_plain_binary(ParserContext *ctx, ASTNode *node)
+{
+    int is_assignment = is_assignment_operator(node->binary.op);
+
+    // Assigning to a variable that holds a value with Drop drops the old value first: the
+    // glue of a struct, enum or tuple, or the drop of a closure that owns its context.
+    char *drop_old = NULL;
+    if (is_assignment && node->binary.op == OP_ASSIGN && node->binary.left->kind == NODE_EXPR_VAR)
+    {
+        char *glue = value_drop_struct(ctx, node->binary.left);
+        if (glue)
         {
-            char *glue = value_drop_struct(ctx, node->binary.left);
-            if (glue)
-            {
-                size_t sz = strlen(glue) + 32;
-                drop_old = xmalloc(sz);
-                snprintf(drop_old, sz, "%s__Drop__glue(_z_dest);", glue);
-            }
-            else if (is_owning_closure(node->binary.left->type_info))
-            {
-                drop_old = drop_value_stmt(node->binary.left->type_info, "(*_z_dest)", 0);
-            }
+            size_t sz = strlen(glue) + 32;
+            drop_old = xmalloc(sz);
+            snprintf(drop_old, sz, "%s__Drop__glue(_z_dest);", glue);
         }
-
-        if (is_assignment && node->binary.op == OP_ASSIGN &&
-            is_fixed_size_array(node->binary.left->type_info))
+        else if (is_owning_closure(node->binary.left->type_info))
         {
-            emit_array_assignment(ctx, node->binary.left, node->binary.right);
+            drop_old = drop_value_stmt(node->binary.left->type_info, "(*_z_dest)", 0);
         }
-        else if (drop_old)
+    }
+
+    if (is_assignment && node->binary.op == OP_ASSIGN &&
+        is_fixed_size_array(node->binary.left->type_info))
+    {
+        emit_array_assignment(ctx, node->binary.left, node->binary.right);
+    }
+    else if (drop_old)
+    {
+        // The variable's type, not ZC_AUTO: tcc has no __auto_type.
+        EMIT(ctx, "({ __typeof__((");
+        codegen_expression(ctx, node->binary.left);
+        EMIT(ctx, ")) _z_tmp = (");
+        codegen_expression_with_move(ctx, node->binary.right);
+        EMIT(ctx, "); ");
+
+        EMIT(ctx, "__typeof__((");
+        codegen_expression(ctx, node->binary.left);
+        EMIT(ctx, "))* _z_dest = &(");
+        codegen_expression(ctx, node->binary.left);
+        EMIT(ctx, "); ");
+
+        EMIT(ctx, "if (__z_drop_flag_%s) %s ", node->binary.left->var_ref.name, drop_old);
+        EMIT(ctx, "*_z_dest = _z_tmp; ");
+        EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
+
+        EMIT(ctx, "*_z_dest; })");
+    }
+    else
+    {
+        EMIT(ctx, "(");
+        if (is_assignment)
         {
-            // The variable's type, not ZC_AUTO: tcc has no __auto_type.
-            EMIT(ctx, "({ __typeof__((");
             codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, ")) _z_tmp = (");
-            codegen_expression_with_move(ctx, node->binary.right);
-            EMIT(ctx, "); ");
-
-            EMIT(ctx, "__typeof__((");
-            codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, "))* _z_dest = &(");
-            codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, "); ");
-
-            EMIT(ctx, "if (__z_drop_flag_%s) %s ", node->binary.left->var_ref.name, drop_old);
-            EMIT(ctx, "*_z_dest = _z_tmp; ");
-            EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
-
-            EMIT(ctx, "*_z_dest; })");
         }
         else
         {
-            EMIT(ctx, "(");
-            if (is_assignment)
-            {
-                codegen_expression(ctx, node->binary.left);
-            }
-            else
-            {
-                codegen_expression_with_move(ctx, node->binary.left);
-            }
+            codegen_expression_with_move(ctx, node->binary.left);
+        }
 
-            EMIT(ctx, " %s ", operator_spelling(node->binary.op));
-            if (ctx->config->misra_mode ||
-                (ctx->config->use_cpp && is_assignment && node->binary.op == OP_ASSIGN))
+        EMIT(ctx, " %s ", operator_spelling(node->binary.op));
+        if (ctx->config->misra_mode ||
+            (ctx->config->use_cpp && is_assignment && node->binary.op == OP_ASSIGN))
+        {
+            int should_cast = ctx->config->misra_mode;
+            if (!should_cast && node->binary.left->type_info)
             {
-                int should_cast = ctx->config->misra_mode;
-                if (!should_cast && node->binary.left->type_info)
+                TypeKind k = node->binary.left->type_info->kind;
+                if (k == TYPE_POINTER || k == TYPE_ENUM ||
+                    is_enum_type_name(ctx, type_def_name(node->binary.left->type_info)))
                 {
-                    TypeKind k = node->binary.left->type_info->kind;
-                    if (k == TYPE_POINTER || k == TYPE_ENUM ||
-                        is_enum_type_name(ctx, type_def_name(node->binary.left->type_info)))
-                    {
-                        should_cast = 1;
-                    }
+                    should_cast = 1;
                 }
+            }
 
-                if (should_cast)
+            if (should_cast)
+            {
+                char *c_type = NULL;
+                if (node->binary.left->type_info)
                 {
-                    char *c_type = NULL;
-                    if (node->binary.left->type_info)
-                    {
-                        c_type = c_type_spelling(ctx, node->binary.left->type_info);
-                    }
-                    if (c_type && strcmp(c_type, "unknown") != 0 && strcmp(c_type, "void") != 0)
-                    {
-                        EMIT(ctx, "(%s)(", c_type);
-                        codegen_expression_with_move(ctx, node->binary.right);
-                        EMIT(ctx, ")");
-                        zfree(c_type);
-                    }
-                    else
-                    {
-                        if (c_type)
-                        {
-                            zfree(c_type);
-                        }
-                        codegen_expression_with_move(ctx, node->binary.right);
-                    }
+                    c_type = c_type_spelling(ctx, node->binary.left->type_info);
+                }
+                if (c_type && strcmp(c_type, "unknown") != 0 && strcmp(c_type, "void") != 0)
+                {
+                    EMIT(ctx, "(%s)(", c_type);
+                    codegen_expression_with_move(ctx, node->binary.right);
+                    EMIT(ctx, ")");
+                    zfree(c_type);
                 }
                 else
                 {
+                    if (c_type)
+                    {
+                        zfree(c_type);
+                    }
                     codegen_expression_with_move(ctx, node->binary.right);
                 }
             }
@@ -622,8 +622,42 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             {
                 codegen_expression_with_move(ctx, node->binary.right);
             }
-            EMIT(ctx, ")");
         }
+        else
+        {
+            codegen_expression_with_move(ctx, node->binary.right);
+        }
+        EMIT(ctx, ")");
+    }
+}
+
+void handle_expr_binary(ParserContext *ctx, ASTNode *node)
+{
+    if (ctx->config->misra_mode)
+    {
+        EMIT(ctx, "(");
+    }
+    switch (node->binary.op)
+    {
+    case OP_COALESCE:
+        emit_coalesce(ctx, node);
+        break;
+    case OP_COALESCE_ASSIGN:
+        emit_coalesce_assign(ctx, node);
+        break;
+    case OP_EQ:
+    case OP_NE:
+        emit_equality(ctx, node);
+        break;
+    case OP_POW:
+        emit_pow(ctx, node);
+        break;
+    case OP_POW_ASSIGN:
+        emit_pow_assign(ctx, node);
+        break;
+    default:
+        emit_plain_binary(ctx, node);
+        break;
     }
     if (ctx->config->misra_mode)
     {
