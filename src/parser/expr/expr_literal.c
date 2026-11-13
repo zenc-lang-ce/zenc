@@ -436,7 +436,7 @@ ASTNode *parse_int_literal(ParserContext *ctx, Token t)
     ASTNode *node = ast_create(NODE_EXPR_LITERAL);
     node->token = t;
     node->literal.kind = LITERAL_INT;
-    node->type_info = type_new(TYPE_INT);
+    node->type_info = type_new(TYPE_I32);
     char *s = token_strdup(t);
     int write_idx = 0;
     for (int read_idx = 0; s[read_idx]; read_idx++)

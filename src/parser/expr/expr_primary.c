@@ -875,7 +875,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         TypeKind tk = get_primitive_type_kind(acc);
                         if (tk == TYPE_UNKNOWN)
                         {
-                            tk = TYPE_INT; // fallback
+                            tk = TYPE_I32; // fallback
                         }
 
                         if (tk == TYPE_F32 || tk == TYPE_F64 || tk == TYPE_FLOAT)
@@ -909,7 +909,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         TypeKind tk = get_primitive_type_kind(acc);
                         if (tk == TYPE_UNKNOWN)
                         {
-                            tk = TYPE_INT;
+                            tk = TYPE_I32;
                         }
 
                         cast->type_info = type_new(tk);
@@ -1209,7 +1209,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 ASTNode *callee = ast_create(NODE_EXPR_VAR);
                 callee->var_ref.name = xstrdup("_z_scan_helper");
                 node->call.callee = callee;
-                node->type_info = type_new(TYPE_INT);
+                node->type_info = type_new(TYPE_I32);
 
                 ASTNode *fmt_node = ast_create(NODE_EXPR_LITERAL);
                 fmt_node->literal.kind = LITERAL_STRING; // string
@@ -1515,7 +1515,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 long long value = sym->const_int_val;
                 // The literal takes the declared primitive type (`def X: u64`) without
                 // the symbol's const qualifier; anything else stays `int`.
-                Type *value_type = type_new(TYPE_INT);
+                Type *value_type = type_new(TYPE_I32);
                 if (sym->type_info && is_integer_type(sym->type_info) &&
                     sym->type_info->kind != TYPE_ALIAS && sym->type_info->kind != TYPE_STRUCT)
                 {
@@ -1526,7 +1526,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node->literal.kind = LITERAL_INT;
                 node->type_info = value_type;
                 // A `def` without a type is an untyped constant, as a literal is.
-                node->literal.is_untyped = value_type->kind == TYPE_INT;
+                node->literal.is_untyped = sym->is_untyped;
                 if (value < 0 && value != LLONG_MIN && !is_unsigned_type(value_type))
                 {
                     // A literal holds the magnitude: emit `-N`, as the source would
@@ -2181,12 +2181,12 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     }
                     else
                     {
-                        idx_node->type_info = type_new(TYPE_INT);
+                        idx_node->type_info = type_new(TYPE_I32);
                     }
                 }
                 else
                 {
-                    idx_node->type_info = type_new(TYPE_INT);
+                    idx_node->type_info = type_new(TYPE_I32);
                 }
                 node = idx_node;
             }

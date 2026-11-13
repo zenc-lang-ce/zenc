@@ -1360,7 +1360,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
                 if (!node->type_info)
                 {
-                    node->type_info = type_new(TYPE_INT);
+                    node->type_info = type_new(TYPE_I32);
                 }
 
                 lhs = node;
@@ -2162,7 +2162,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
             if (is_comparison_operator(bin->binary.op))
             {
-                bin->type_info = type_new(TYPE_INT); // bool
+                bin->type_info = type_new(TYPE_I32); // bool
                 char *t1 = type_to_string(lhs->type_info);
                 char *t2 = type_to_string(rhs->type_info);
                 // Skip type check if either operand is void* (escape hatch type)
@@ -2232,7 +2232,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     {
                         zwarn_at(op, "LSP: %s", msg);
                         // Assume result is int (bool) to continue
-                        bin->type_info = type_new(TYPE_INT);
+                        bin->type_info = type_new(TYPE_I32);
                     }
                     else
                     {

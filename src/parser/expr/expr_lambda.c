@@ -24,7 +24,7 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
 
     // Create Type Info: unknown -> unknown
     Type *t = type_new(TYPE_FUNCTION);
-    t->inner = type_new(TYPE_INT);
+    t->inner = type_new(TYPE_I32);
     t->args = xmalloc(sizeof(Type *));
     t->args[0] = type_new(TYPE_UNKNOWN); // Arg
     t->count = 1;
@@ -116,7 +116,7 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
 
     // Type Info construction
     Type *t = type_new(TYPE_FUNCTION);
-    t->inner = type_new(TYPE_INT);
+    t->inner = type_new(TYPE_I32);
     t->args = xmalloc(sizeof(Type *) * (size_t)(count));
     t->count = count;
 
@@ -182,7 +182,7 @@ static Type *literal_element_type(ParserContext *ctx, ASTNode *element)
     char *inferred = infer_type(ctx, element);
     if (!inferred)
     {
-        return type_new(TYPE_INT);
+        return type_new(TYPE_I32);
     }
     char *text = xstrdup(inferred);
     int pointers = 0;
