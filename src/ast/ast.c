@@ -312,6 +312,7 @@ ASTChildren ast_children(ASTNode *node)
     return c;
 }
 
+ZEN_CONST
 const char *ast_kind_name(NodeType kind)
 {
     switch (kind)
