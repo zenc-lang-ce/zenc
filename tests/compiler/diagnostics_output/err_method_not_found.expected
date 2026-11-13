@@ -1,0 +1,32 @@
+   Compiling tests/compiler/diagnostics_output/err_method_not_found.zc...
+error: No method 'missing' on 'Frame'
+  --> tests/compiler/diagnostics_output/err_method_not_found.zc:74:16
+   |
+74 |     let _a = f.missing();
+   |                ^ here
+   |
+error: No method 'missing' on 'Frame'
+  --> tests/compiler/diagnostics_output/err_method_not_found.zc:75:16
+   |
+75 |     let _b = p.missing();
+   |                ^ here
+   |
+error: No method 'code' on 'Color'
+  --> tests/compiler/diagnostics_output/err_method_not_found.zc:76:16
+   |
+76 |     let _c = c.code();
+   |                ^ here
+   |
+error: No method 'size' on 'Option<Frame>'
+  --> tests/compiler/diagnostics_output/err_method_not_found.zc:77:16
+   |
+77 |     let _d = o.size();
+   |                ^ here
+   |
+error: No method 'gone' on 'Frame'
+  --> tests/compiler/diagnostics_output/err_method_not_found.zc:78:21
+   |
+78 |     let _e = make().gone();
+   |                     ^ here
+   |
+[exit 1]
