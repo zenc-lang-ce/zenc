@@ -2448,6 +2448,39 @@ static cJSON *signature_parameters(const char *signature)
     return params;
 }
 
+// The protocol's position of `at`, a byte of `source`.
+static void position_of(const char *source, const char *at, int *line, int *col)
+{
+    *line = 0;
+    const char *line_start = source;
+    for (const char *p = source; p < at; p++)
+    {
+        if (*p == '\n')
+        {
+            (*line)++;
+            line_start = p + 1;
+        }
+    }
+    *col = (int)(at - line_start);
+}
+
+// The function that a call of `pf` calls, `name` written at `name_start` before its `(`: the one
+// the index links that name to, as the hover finds it (`Item::create` is the method of `Item`,
+// not another `create`). By its name only where the index has no use there (a call the last
+// parse did not read, while it is written) or its declaration is in no file the project indexed.
+static ASTNode *called_function(ProjectFile *pf, const char *name_start, const char *name)
+{
+    int line = 0, col = 0;
+    position_of(pf->source, name_start, &line, &col);
+    LSPRange *r = pf->index ? lsp_find_at(pf->index, line, col) : NULL;
+    LSPRange *def = r ? lsp_project_definition(pf, r, NULL) : NULL;
+    if (def)
+    {
+        return def->node && def->node->kind == NODE_FUNCTION ? def->node : NULL;
+    }
+    return find_declaration(name, NODE_FUNCTION);
+}
+
 cJSON *lsp_signature_help(const char *uri, int line, int col)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
@@ -2510,8 +2543,7 @@ cJSON *lsp_signature_help(const char *uri, int line, int col)
                 char func_name[MAX_FUNC_NAME_LEN];
                 strncpy(func_name, ident_start, (size_t)(len));
                 func_name[len] = 0;
-                // The function as the files of the project declare it now.
-                ASTNode *fn = find_declaration(func_name, NODE_FUNCTION);
+                ASTNode *fn = called_function(pf, ident_start, func_name);
                 // The signature as written, as the hover shows it
                 char label[MAX_SHORT_MSG_LEN * 4];
                 if (fn && lsp_function_signature(fn->token, label, sizeof(label)))
@@ -2638,19 +2670,11 @@ static const char *source_at(const char *source, int line, int col)
 // Adds to `range` the protocol's position of `at`, a byte of `source`, under `key`.
 static void add_position(cJSON *range, const char *key, const char *source, const char *at)
 {
-    int line = 0;
-    const char *line_start = source;
-    for (const char *p = source; p < at; p++)
-    {
-        if (*p == '\n')
-        {
-            line++;
-            line_start = p + 1;
-        }
-    }
+    int line = 0, col = 0;
+    position_of(source, at, &line, &col);
     cJSON *position = cJSON_AddObjectToObject(range, key);
     cJSON_AddNumberToObject(position, "line", line);
-    cJSON_AddNumberToObject(position, "character", (double)(at - line_start));
+    cJSON_AddNumberToObject(position, "character", col);
 }
 
 // The code action that writes in the impl starting at `impl` the methods of its trait that it does

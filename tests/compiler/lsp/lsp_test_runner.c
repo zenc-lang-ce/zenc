@@ -1909,6 +1909,64 @@ static void test_signature_as_written(void)
     printf("PASS: test_signature_as_written\n");
 }
 
+// The label of the signature help at (line, character) of `path`; NULL when it shows none.
+static char *signature_label_at(int id, const char *path, int line, int character)
+{
+    cJSON *response = position_request(id, "textDocument/signatureHelp", path, line, character);
+    cJSON *result = cJSON_GetObjectItem(response, "result");
+    cJSON *sig = cJSON_GetArrayItem(cJSON_GetObjectItem(result, "signatures"), 0);
+    const char *label = cJSON_GetStringValue(cJSON_GetObjectItem(sig, "label"));
+    char *copy = label ? strdup(label) : NULL;
+    cJSON_Delete(response);
+    return copy;
+}
+
+static void expect_signature_label(int id, const char *path, int line, int character,
+                                   const char *expected)
+{
+    char *label = signature_label_at(id, path, line, character);
+    if (!label || strcmp(label, expected) != 0)
+    {
+        printf("Signature help at %d:%d: %s (expected %s)\n", line, character,
+               label ? label : "(none)", expected);
+        fail("Signature help must show the function that the call calls");
+    }
+    free(label);
+}
+
+// Signature help shows the function the call calls, as the hover finds it: a method called through
+// its type or on a value, not another function of the same name.
+static void test_signature_of_the_called_function(void)
+{
+    printf("Running test_signature_of_the_called_function...\n");
+    const char *path = "/tmp/test_signature_of_the_called_function.zc";
+    open_document(path, "fn create(size: int) -> int {\n"
+                        "    return size;\n"
+                        "}\n"
+                        "struct Item {\n"
+                        "    code: int;\n"
+                        "}\n"
+                        "impl Item {\n"
+                        "    fn create(code: int, name: string) -> Item {\n"
+                        "        return Item { code: code };\n"
+                        "    }\n"
+                        "    fn scaled(self, factor: int) -> int {\n"
+                        "        return self.code * factor;\n"
+                        "    }\n"
+                        "}\n"
+                        "fn main() {\n"
+                        "    let item = Item::create(1, \"a\");\n"
+                        "    let size = create(2);\n"
+                        "    let big = item.scaled(3);\n"
+                        "}\n");
+    usleep(100000);
+
+    expect_signature_label(142, path, 15, 28, "fn create(code: int, name: string) -> Item");
+    expect_signature_label(143, path, 16, 22, "fn create(size: int) -> int");
+    expect_signature_label(144, path, 17, 26, "fn scaled(self, factor: int) -> int");
+    printf("PASS: test_signature_of_the_called_function\n");
+}
+
 static void test_c_header_completion(void)
 {
     printf("Running test_c_header_completion...\n");
@@ -3956,6 +4014,7 @@ int main()
     test_c_header_reexports();
     test_c_header_completion();
     test_signature_as_written();
+    test_signature_of_the_called_function();
     test_member_completion();
     test_local_completion();
     test_keyword_completion();
