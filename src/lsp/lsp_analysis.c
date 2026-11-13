@@ -1755,7 +1755,7 @@ static void add_local_completion(ASTNode *decl, void *data)
 // is. Returns the new array; `items` is deleted.
 static cJSON *add_completion_imports(cJSON *items, ProjectFile *pf);
 
-cJSON *lsp_completion(const char *uri, int line, int col)
+cJSON *lsp_completion(const char *uri, int line, int col, const char *trigger)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
     if (!g_project || !g_project->ctx || !pf)
@@ -1848,6 +1848,12 @@ cJSON *lsp_completion(const char *uri, int line, int col)
     int at = col - prefix_len;
     int is_scoped =
         pf->source && at > 1 && at <= line_len && ptr[at - 2] == ':' && ptr[at - 1] == ':';
+    // A `:` opens the completion on its own for `Type::`; after a single one (`let x:`,
+    // `Point { x:`, the first of `::`) nothing is offered.
+    if (trigger && strcmp(trigger, ":") == 0 && !is_scoped)
+    {
+        return items;
+    }
     if (pf->source && at > 0 && at <= line_len && (ptr[at - 1] == '.' || is_scoped))
     {
         // After a `.` or a `::`, no keyword or free name fits.

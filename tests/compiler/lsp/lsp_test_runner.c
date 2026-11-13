@@ -222,6 +222,12 @@ static void test_initialize()
         printf("Initialize response: %s\n", resp);
         fail("Init response must give the legend of the semantic tokens");
     }
+    // `.` opens the members of a value and `:` those of a type (`Color::`).
+    if (!strstr(resp, "\"completionProvider\":{\"triggerCharacters\":[\".\",\":\"]}"))
+    {
+        printf("Initialize response: %s\n", resp);
+        fail("Init response must give `.` and `:` as the characters that open the completion");
+    }
     printf("PASS: test_initialize\n");
     free(resp);
 }
@@ -2140,6 +2146,94 @@ static void test_literal_field_completion(void)
         fail("A block after a name that is no struct completes as before");
     }
     printf("PASS: test_literal_field_completion\n");
+}
+
+// The labels of the completion at (line, character) that `trigger` opened, as an editor asks
+// when that character is typed, joined by spaces; NULL `trigger` asks for it as Ctrl+Space does.
+static void completion_labels(int id, const char *path, int line, int character,
+                              const char *trigger, char *out, size_t out_size)
+{
+    char context[128] = "";
+    if (trigger)
+    {
+        snprintf(context, sizeof(context),
+                 ", \"context\": {\"triggerKind\": 2, \"triggerCharacter\": \"%s\"}", trigger);
+    }
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/completion\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"file://%s\"}, \"position\": {\"line\": "
+             "%d, \"character\": %d}%s}}",
+             id, path, line, character, context);
+    send_request(json);
+    char *response = wait_for_response(id);
+    cJSON *parsed = response ? cJSON_Parse(response) : NULL;
+    free(response);
+    if (!parsed)
+    {
+        fail("No response for a completion request");
+    }
+    cJSON *items = cJSON_GetObjectItem(parsed, "result");
+    out[0] = '\0';
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *label = cJSON_GetObjectItem(cJSON_GetArrayItem(items, i), "label");
+        if (cJSON_IsString(label) && strlen(out) + strlen(label->valuestring) + 2 < out_size)
+        {
+            strcat(out, label->valuestring);
+            strcat(out, " ");
+        }
+    }
+    cJSON_Delete(parsed);
+}
+
+static void test_scope_completion_trigger(void)
+{
+    printf("Running test_scope_completion_trigger...\n");
+    // Typing the second `:` of `Color::` opens the variants; a single `:` (a `let`'s type, a
+    // field of a struct literal, the first of `::`) opens nothing, though asking for the
+    // completion there still offers what fits.
+    const char *path = "/tmp/test_scope_completion_trigger.zc";
+    open_document(path, "enum Color { Red, Green }\n" // Line 0
+                        "struct Point { x: int; }\n"  // Line 1
+                        "fn main() {\n"               // Line 2
+                        "    let c = Color::\n"       // Line 3
+                        "    let p = Point { x:\n"    // Line 4
+                        "    let w:\n"                // Line 5
+                        "}\n");
+    usleep(100000);
+    char labels[4096];
+    completion_labels(1701, path, 3, 19, ":", labels, sizeof(labels));
+    if (!strstr(labels, "Red ") || !strstr(labels, "Green "))
+    {
+        printf("Completion after `Color::`: %s\n", labels);
+        fail("The second `:` of `Color::` opens the variants of the enum");
+    }
+    completion_labels(1702, path, 3, 18, ":", labels, sizeof(labels));
+    if (labels[0])
+    {
+        printf("Completion after `Color:`: %s\n", labels);
+        fail("The first `:` of `::` opens nothing");
+    }
+    completion_labels(1703, path, 4, 22, ":", labels, sizeof(labels));
+    if (labels[0])
+    {
+        printf("Completion after `Point { x:`: %s\n", labels);
+        fail("The `:` of a field in a struct literal opens nothing");
+    }
+    completion_labels(1704, path, 5, 10, ":", labels, sizeof(labels));
+    if (labels[0])
+    {
+        printf("Completion after `let w:`: %s\n", labels);
+        fail("The `:` of a let's type opens nothing");
+    }
+    completion_labels(1705, path, 5, 10, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "int "))
+    {
+        printf("Completion asked for after `let w:`: %s\n", labels);
+        fail("Asking for the completion after a `:` still offers what fits");
+    }
+    printf("PASS: test_scope_completion_trigger\n");
 }
 
 static void test_trait_value_completion(void)
@@ -4062,6 +4156,7 @@ int main()
     test_qualified_member_completion();
     test_type_position_completion();
     test_literal_field_completion();
+    test_scope_completion_trigger();
     test_trait_value_completion();
     test_trait_impl_completion();
     test_implement_trait_action();
