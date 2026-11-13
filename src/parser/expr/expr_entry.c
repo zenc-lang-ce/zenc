@@ -85,9 +85,7 @@ Precedence get_token_precedence(Token t)
 
     if (t.kind == TOK_OP)
     {
-        if (is_token(t, "=") || is_token(t, "+=") || is_token(t, "-=") || is_token(t, "*=") ||
-            is_token(t, "/=") || is_token(t, "%=") || is_token(t, "|=") || is_token(t, "&=") ||
-            is_token(t, "^=") || is_token(t, "<<=") || is_token(t, ">>=") || is_token(t, "**="))
+        if (is_assignment_op_text(t.start, t.len))
         {
             return PREC_ASSIGNMENT;
         }
