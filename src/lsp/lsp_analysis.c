@@ -199,8 +199,6 @@ void lsp_check_file(const char *uri, const char *json_src)
         d = d->next;
     }
 
-    lsp_c_headers_add_diagnostics(lsp_uri_to_path(uri), json_src, diag_array);
-
     cJSON_AddItemToObject(params, "diagnostics", diag_array);
     cJSON_AddItemToObject(root, "params", params);
 

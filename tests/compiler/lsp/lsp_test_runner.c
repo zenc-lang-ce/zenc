@@ -1763,29 +1763,26 @@ static void test_c_header_reexports(void)
                             "    md::mod_function();\n"
                             "}\n");
 
-    // The directive of gfx_a.zc does not apply when building use_a.zc.
+    // `zc build use_a.zc` applies the directive of gfx_a.zc too: nothing to warn about.
+    int published = 0;
     int warned = 0;
-    for (int i = 0; i < 20 && !warned; i++)
+    for (int i = 0; i < 20 && !published; i++)
     {
         char *message = read_message();
         if (!message)
         {
             break;
         }
-        if (strstr(message, "publishDiagnostics") && strstr(message, "use_a.zc") &&
-            strstr(message, "modonly.h"))
+        if (strstr(message, "publishDiagnostics") && strstr(message, "use_a.zc"))
         {
-            warned = 1;
+            published = 1;
+            warned = strstr(message, "modonly.h") != NULL;
         }
         free(message);
-        if (!warned && i > 0)
-        {
-            break;
-        }
     }
-    if (!warned)
+    if (!published || warned)
     {
-        fail("No warning for a header only found through an imported module's directive");
+        fail("A header found through an imported module's directive must not warn");
     }
 
     expect_definition(820, "re-exported name", use_path, 3, 10, "/include_mod/modonly.h", 0);
