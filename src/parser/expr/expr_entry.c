@@ -85,74 +85,15 @@ Precedence get_token_precedence(Token t)
 
     if (t.kind == TOK_OP)
     {
-        if (is_assignment_op_text(t.start, t.len))
+        OperatorKind op = binary_operator_from_text(t.start, t.len);
+        if (op != OP_NONE)
         {
-            return PREC_ASSIGNMENT;
-        }
-
-        if (is_token(t, "||") || is_token(t, "or"))
-        {
-            return PREC_OR;
-        }
-
-        if (is_token(t, "&&") || is_token(t, "and"))
-        {
-            return PREC_AND;
-        }
-
-        if (is_token(t, "|"))
-        {
-            return PREC_TERM;
-        }
-
-        if (is_token(t, "^"))
-        {
-            return PREC_TERM;
-        }
-
-        if (is_token(t, "&"))
-        {
-            return PREC_TERM;
-        }
-
-        if (is_token(t, "<<") || is_token(t, ">>"))
-        {
-            return PREC_TERM;
-        }
-
-        if (is_token(t, "==") || is_token(t, "!="))
-        {
-            return PREC_EQUALITY;
-        }
-
-        if (is_token(t, "<") || is_token(t, ">") || is_token(t, "<=") || is_token(t, ">="))
-        {
-            return PREC_COMPARISON;
-        }
-
-        if (is_token(t, "+") || is_token(t, "-"))
-        {
-            return PREC_TERM;
-        }
-
-        if (is_token(t, "*") || is_token(t, "/") || is_token(t, "%"))
-        {
-            return PREC_FACTOR;
-        }
-
-        if (is_token(t, "**"))
-        {
-            return PREC_POWER;
+            return (Precedence)operator_info(op)->precedence;
         }
 
         if (is_token(t, "."))
         {
             return PREC_CALL;
-        }
-
-        if (is_token(t, "|>"))
-        {
-            return PREC_TERM;
         }
     }
 

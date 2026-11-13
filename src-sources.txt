@@ -49,6 +49,7 @@ src/parser/expr/expr_field.c
 src/parser/expr/expr_prec.c
 src/parser/expr/expr_lambda.c
 src/ast/ast.c
+src/ast/operators.c
 src/ast/primitives.c
 src/ast/symbols.c
 src/codegen/codegen.c
