@@ -1,0 +1,27 @@
+// language/features/compiler: @cfg knows the host OS by the name __COMPTIME_TARGET__ and the
+// `//>` build directives give it (linux, windows or macos); on macOS, apple too. If none is
+// defined, host() does not exist and the test does not build.
+
+@cfg(linux)
+fn host() -> string { return "linux"; }
+@cfg(windows)
+fn host() -> string { return "windows"; }
+@cfg(macos)
+fn host() -> string { return "macos"; }
+
+@cfg(apple)
+fn apple_defined() -> bool { return true; }
+@cfg(not(apple))
+fn apple_defined() -> bool { return false; }
+
+test "the host OS is defined for @cfg" {
+    let name = host();
+    let known = strcmp(name, "linux") == 0 || strcmp(name, "windows") == 0 ||
+                strcmp(name, "macos") == 0;
+    assert(known, "host() should come from @cfg(linux), @cfg(windows) or @cfg(macos)");
+}
+
+test "apple is defined only on macOS" {
+    let is_macos = strcmp(host(), "macos") == 0;
+    assert(apple_defined() == is_macos, "apple should be defined on macOS and only there");
+}

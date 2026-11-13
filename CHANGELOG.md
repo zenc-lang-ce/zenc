@@ -51,6 +51,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - MISRA Rule 2.4 does not flag an enum the program uses; `assert` and `test` blocks are reported under Rule 21.6 instead of C that does not compile.
 - `#line` is emitted when the file changes on the same line, and again when a newline was written since the last one; a `for` loop restores the lexer after its lookahead.
 - The C is written in binary mode on Windows.
+- `@cfg(macos)` is defined on macOS, the name `__COMPTIME_TARGET__` and the `//> macos:` directives use; before, only `@cfg(apple)` was, and code under `@cfg(macos)` was left out without a warning. `apple` stays defined.
 - Language server:
   - Completes what the program declares by the name it declares, `__` or not.
   - Hover and go to definition work on type names, inside f-string interpolations, and on both parts of a path: the type and the function of `Vec<int>::new()`.
