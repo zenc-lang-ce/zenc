@@ -958,11 +958,12 @@ Type *common_integer_type(Type *a, Type *b)
     return (is_unsigned_type(resolve_alias(b)) && !is_unsigned_type(resolve_alias(a))) ? b : a;
 }
 
-// An integer literal written without a suffix (`15`), whose type adapts to the other operand.
+// An integer literal written without a suffix (`15`) whose value fits in an i32, its default
+// type: its type adapts to the other operand. A larger one (`3000000000`) is an i64 and does not.
 static int is_plain_int_literal(ASTNode *n)
 {
-    return n && n->kind == NODE_EXPR_LITERAL && n->literal.kind == LITERAL_INT && n->type_info &&
-           n->type_info->kind == TYPE_INT;
+    return n && n->kind == NODE_EXPR_LITERAL && n->literal.kind == LITERAL_INT &&
+           n->literal.is_untyped && n->literal.int_val <= (unsigned long long)INT32_MAX;
 }
 
 Type *integer_operation_type(ASTNode *left, ASTNode *right)
