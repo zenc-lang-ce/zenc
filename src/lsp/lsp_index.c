@@ -374,6 +374,37 @@ static ASTNode *enum_named(ParserContext *ctx, const char *name)
                : NULL;
 }
 
+// Whether the struct `strct` declares `field` itself: a field mixed in with `use` has the token of
+// the struct it comes from, declared before it.
+static int declares_field(ASTNode *strct, ASTNode *field)
+{
+    Token s = strct->token;
+    Token f = field->token;
+    return s.file && f.file && strcmp(s.file, f.file) == 0 &&
+           (f.line > s.line || (f.line == s.line && f.col > s.col));
+}
+
+// `let Point{x: a} = p` and `let {x} = p`: each field where the destructuring writes it, a use of
+// that field of the value's struct.
+static void add_destructured_field_refs(LSPIndex *idx, ParserContext *ctx, ASTNode *node)
+{
+    if (!node->destruct.is_struct_destruct || !node->destruct.field_tokens ||
+        !node->destruct.init_expr)
+    {
+        return;
+    }
+    for (int i = 0; i < node->destruct.count; i++)
+    {
+        const char *name =
+            node->destruct.field_names ? node->destruct.field_names[i] : node->destruct.names[i];
+        ASTNode *field = find_struct_field(ctx, node->destruct.init_expr->type_info, name);
+        if (field)
+        {
+            lsp_index_add_ref(idx, node->destruct.field_tokens[i], field->token, node);
+        }
+    }
+}
+
 // The references of the patterns of a `match` on a value of type `subject`: the enum of
 // `Color::Red` where it is written, and the variant, of that enum or of the subject's.
 static void add_pattern_refs(LSPIndex *idx, ParserContext *ctx, ASTNode *match, Type *subject)
@@ -484,7 +515,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             ASTNode *field = node->strct.fields;
             while (field)
             {
-                if (field->kind == NODE_FIELD)
+                if (field->kind == NODE_FIELD && declares_field(node, field))
                 {
                     char fh[MAX_SHORT_MSG_LEN];
                     const char *fname = field->field.name ? field->field.name : "unknown";
@@ -572,6 +603,10 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
         {
             // `Mode::On`: its token is where the enum's name is written.
             lsp_index_add_type_ref(idx, ctx, node->token, node->var_ref.variant.owner->name);
+        }
+        if (node->kind == NODE_DESTRUCT_VAR)
+        {
+            add_destructured_field_refs(idx, ctx, node);
         }
         if (node->kind == NODE_EXPR_STRUCT_INIT)
         {

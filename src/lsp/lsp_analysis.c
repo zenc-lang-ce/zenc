@@ -2549,13 +2549,44 @@ cJSON *lsp_signature_help(const char *uri, int line, int col)
 }
 
 // Whether renaming a symbol of this kind edits every place that names it. The index has no uses
-// of fields and variants, nor of traits and aliases outside type names; `self` is the receiver
-// by its name (see parse_and_convert_args), and with another one the method has none.
+// of variants, nor of traits and aliases outside type names; `self` is the receiver by its name
+// (see parse_and_convert_args), and with another one the method has none.
 static int is_renamable(DeclarationKind kind)
 {
     return kind == DECLARATION_FUNCTION || kind == DECLARATION_VARIABLE ||
            kind == DECLARATION_CONSTANT || kind == DECLARATION_PARAMETER ||
-           kind == DECLARATION_STRUCT;
+           kind == DECLARATION_STRUCT || kind == DECLARATION_FIELD;
+}
+
+// The text that renames to `new_name` the symbol at `r`. In `let Point{x} = p` the field's name is
+// the variable's too, which keeps it: `Point{y: x}`. NULL where no text renames it: `let {x} = p`
+// has no form that gives a variable another name than its field's.
+static char *rename_text(const LSPRange *r, const char *new_name)
+{
+    ASTNode *n = r->node;
+    if (!n || n->kind != NODE_DESTRUCT_VAR || !n->destruct.name_tokens)
+    {
+        return xstrdup(new_name);
+    }
+    for (int i = 0; i < n->destruct.count; i++)
+    {
+        Token field = n->destruct.field_tokens[i];
+        Token name = n->destruct.name_tokens[i];
+        if (field.line - 1 != r->start_line || field.col - 1 != r->start_col ||
+            name.line != field.line || name.col != field.col)
+        {
+            continue;
+        }
+        if (!n->destruct.field_names)
+        {
+            return NULL;
+        }
+        size_t size = strlen(new_name) + strlen(r->symbol.name) + 3;
+        char *text = xmalloc(size);
+        snprintf(text, size, "%s: %s", new_name, r->symbol.name);
+        return text;
+    }
+    return xstrdup(new_name);
 }
 
 cJSON *lsp_rename(const char *uri, int line, int col, const char *new_name)
@@ -2590,6 +2621,13 @@ cJSON *lsp_rename(const char *uri, int line, int col, const char *new_name)
         {
             continue;
         }
+        char *text = rename_text(cur->range, new_name);
+        if (!text)
+        {
+            cJSON_Delete(result);
+            cJSON_Delete(changes);
+            return NULL;
+        }
         cJSON *edits = cJSON_GetObjectItem(changes, cur->uri);
         if (!edits)
         {
@@ -2610,7 +2648,7 @@ cJSON *lsp_rename(const char *uri, int line, int col, const char *new_name)
         cJSON_AddItemToObject(range, "start", start);
         cJSON_AddItemToObject(range, "end", end);
         cJSON_AddItemToObject(edit, "range", range);
-        cJSON_AddStringToObject(edit, "newText", new_name);
+        cJSON_AddStringToObject(edit, "newText", text);
 
         cJSON_AddItemToArray(edits, edit);
     }

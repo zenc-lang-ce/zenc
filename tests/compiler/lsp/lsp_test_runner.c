@@ -548,6 +548,85 @@ static void test_occurrences_by_scope(void)
     printf("PASS: test_occurrences_by_scope\n");
 }
 
+static void test_field_occurrences(void)
+{
+    printf("Running test_field_occurrences...\n");
+    // Line 0: struct Point { x: int; y: int; }
+    // Line 1: struct Size { x: int; }
+    // Line 2: impl Point {
+    // Line 3:     fn sum(self) -> int { return self.x + self.y; }
+    // Line 4: }
+    // Line 5: fn make() -> Point { return Point { x: 1, y: 2 }; }
+    // Line 6: fn width(s: Size*) -> int { return s.x; }
+    // Line 7: fn read(p: Point) -> int { let q = &p; return p.x + q.x; }
+    // Line 8: fn grow(p: Point*) { p.x = p.x + 1; }
+    // Line 9: fn split(p: Point) -> int { let Point{x: a, y: b} = p; return a + b; }
+    // Line 10: fn short(p: Point) -> int { let Point{x, y} = p; return x + y; }
+    // Line 11: struct Base { v: int; }
+    // Line 12: struct Derived { use Base; w: int; }
+    // Line 13: fn mix(d: Derived) -> int { return d.v + Derived { v: 1, w: 2 }.v; }
+    const char *uri = "file:///tmp/test_field_occurrences.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_field_occurrences.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Point { x: int; y: int; }\\nstruct Size { x: int; }\\nimpl Point {\\n"
+                 "    fn sum(self) -> int { return self.x + self.y; }\\n}\\n"
+                 "fn make() -> Point { return Point { x: 1, y: 2 }; }\\n"
+                 "fn width(s: Size*) -> int { return s.x; }\\n"
+                 "fn read(p: Point) -> int { let q = &p; return p.x + q.x; }\\n"
+                 "fn grow(p: Point*) { p.x = p.x + 1; }\\n"
+                 "fn split(p: Point) -> int { let Point{x: a, y: b} = p; return a + b; }\\n"
+                 "fn short(p: Point) -> int { let Point{x, y} = p; return x + y; }\\n"
+                 "struct Base { v: int; }\\nstruct Derived { use Base; w: int; }\\n"
+                 "fn mix(d: Derived) -> int { return d.v + Derived { v: 1, w: 2 }.v; }\\n\"}}}");
+    usleep(100000);
+
+    // The `x` of Point, from its declaration, a literal, a use through a pointer and a
+    // destructuring; the `x` of Size is another field.
+    expect_occurrence_lines(uri, 336, "references", 0, 15, "0,3,5,7,7,8,8,9,10");
+    expect_occurrence_lines(uri, 337, "rename", 0, 15, "0,3,5,7,7,8,8,9,10");
+    expect_occurrence_lines(uri, 338, "rename", 5, 36, "0,3,5,7,7,8,8,9,10");
+    expect_occurrence_lines(uri, 339, "rename", 8, 29, "0,3,5,7,7,8,8,9,10");
+    expect_occurrence_lines(uri, 340, "rename", 9, 38, "0,3,5,7,7,8,8,9,10");
+    expect_occurrence_lines(uri, 341, "rename", 6, 37, "1,6");
+    // A field mixed in with `use` is declared once, by the struct it comes from.
+    expect_occurrence_lines(uri, 342, "rename", 13, 37, "11,13,13,13");
+
+    // In `Point{x, y}` the field's name is the variable's too: the variable keeps it.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 343, \"method\": \"textDocument/rename\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/test_field_occurrences.zc\"}, "
+                 "\"position\": {\"line\": 0, \"character\": 15}, \"newName\": \"col\"}}");
+    char *resp = wait_for_response(343);
+    if (!resp || !strstr(resp, "\"newText\":\"col: x\""))
+    {
+        printf("Renaming a field destructured as `Point{x}` answered: %s\n",
+               resp ? resp : "(no response)");
+        fail("Rename must keep the variable of a shorthand destructuring");
+    }
+    free(resp);
+
+    // `let {x} = p` cannot name the variable apart from its field: rename refuses.
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_field_anonymous.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Spot { z: int; }\\n"
+                 "fn take(s: Spot) -> int { let {z} = s; return z; }\\n\"}}}");
+    usleep(100000);
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 344, \"method\": \"textDocument/rename\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_field_anonymous.zc\"}, "
+                 "\"position\": {\"line\": 0, \"character\": 14}, \"newName\": \"col\"}}");
+    resp = wait_for_response(344);
+    if (!resp || !strstr(resp, "\"result\":null"))
+    {
+        printf("Renaming a field destructured as `{z}` answered: %s\n",
+               resp ? resp : "(no response)");
+        fail("Rename must refuse a field that `let {z}` destructures");
+    }
+    free(resp);
+    printf("PASS: test_field_occurrences\n");
+}
+
 static void test_hover_beside_generated_code(void)
 {
     printf("Running test_hover_beside_generated_code...\n");
@@ -3914,6 +3993,7 @@ int main()
     test_fstring_interpolation_lookup();
     test_hover_parameters();
     test_occurrences_by_scope();
+    test_field_occurrences();
     test_hover_beside_generated_code();
     test_hover_type_names();
     test_hover_module_type_names();
