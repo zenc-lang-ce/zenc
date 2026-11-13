@@ -36,6 +36,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
 - `int` and `i32` share one generic instance.
 - A type alias is emitted once; `@fields` names a `@link_name` struct by its C name.
 - Casts are decided by whether the name is a type, as in C.
+- A compound assignment (`%=`, `|=`, `<<=`, `**=`...) to a `const` variable, a member of one or an element of one is an error of `zc`, as `=` and `+=` were, instead of C that does not compile.
 - Typechecker: one exhaustiveness check for `match`; `return` in lambdas, `Self` literals and casts to `@link_name` structs; a struct's address only for a pointer to the same struct; moving a value bound by a `match` arm is an error.
 - Diagnostics:
   - `println "..."` is reported at the `match` arm.
