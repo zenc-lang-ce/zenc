@@ -1,0 +1,34 @@
+// language/functions: arrays of raw function pointers in locals and fields
+
+alias IntFn = fn*(int) -> int;
+
+fn one(x: int) -> int { return x + 1; }
+fn two(x: int) -> int { return x + 2; }
+
+struct Table {
+    fs: IntFn[2];
+}
+
+test "a struct field can contain an array of function pointers" {
+    let table = Table{};
+    table.fs[0] = one;
+    table.fs[1] = two;
+
+    expect_eq(table.fs[0](1), 2, "the first function pointer should call one");
+    expect_eq(table.fs[1](1), 3, "the second function pointer should call two");
+}
+
+test "a local array literal can initialize function pointers" {
+    let functions: IntFn[2] = [one, two];
+
+    expect_eq(functions[0](1), 2, "the first array function pointer should call one");
+    expect_eq(functions[1](1), 3, "the second array function pointer should call two");
+}
+
+test "an array literal can be assigned to a struct field" {
+    let table = Table{};
+    table.fs = [one, two];
+
+    expect_eq(table.fs[0](1), 2, "the first assigned function pointer should call one");
+    expect_eq(table.fs[1](1), 3, "the second assigned function pointer should call two");
+}
