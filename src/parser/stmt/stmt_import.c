@@ -555,6 +555,9 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         }
     }
 
+    // The module's `//> link:`, `include:`... go to the build, as those of the file it compiles.
+    scan_build_directives(ctx, src);
+
     Lexer i;
     // The imported file's own path: tokens carry it into diagnostics and #line.
     lexer_init(&i, src, ctx->config, fn);

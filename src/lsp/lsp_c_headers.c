@@ -603,8 +603,7 @@ static void fill_origin(CHeaderOrigin *origin, const HeaderImport *header, const
 }
 
 // Where to look for a header that a module imports: where the document looks, plus the
-// module's own directives. `zc build` ignores those (see lsp_c_headers_add_diagnostics()),
-// but the module may well be compiled on its own or with them copied over.
+// module's own directives, which `zc build` applies too.
 static void module_search_dirs(const CSearchDirList *document_dirs, const ModuleHeader *entry,
                                CSearchDirList *dirs)
 {
@@ -1792,93 +1791,4 @@ struct cJSON *lsp_c_headers_origin_location(const CHeaderOrigin *origin, CHeader
     cJSON *links = cJSON_CreateArray();
     cJSON_AddItemToArray(links, link);
     return links;
-}
-
-/* --- Diagnostics --- */
-
-typedef struct
-{
-    const CSearchDirList *document_dirs;
-    struct cJSON *diagnostics;
-    StringList warned;
-} DirectiveCheck;
-
-// `zc build` only applies the `//>` directives of the file it compiles, but every header
-// of every imported module ends up in the generated C. Warns about the headers that only a
-// module's own directive makes findable.
-static int check_module_header(const ModuleHeader *entry, void *data)
-{
-    DirectiveCheck *check = data;
-    const HeaderImport *header = entry->header;
-    if (string_list_contains(&check->warned, header->name))
-    {
-        return 0;
-    }
-    char module_dir[MAX_PATH_LEN];
-    c_headers_directory_of(entry->module_path, module_dir, sizeof(module_dir));
-    char *path = c_headers_find(header->name, header->is_system ? NULL : module_dir,
-                                check->document_dirs, NULL, 0);
-    if (path)
-    {
-        libc_free(path);
-        return 0;
-    }
-
-    CSearchDirList module_dirs = {0};
-    collect_directive_dirs(entry->module_source, entry->module_path, &module_dirs);
-    char found_by[MAX_PATH_LEN];
-    path = c_headers_find(header->name, NULL, &module_dirs, found_by, sizeof(found_by));
-    c_search_dirs_free(&module_dirs);
-    if (!path)
-    {
-        return 0;
-    }
-    libc_free(path);
-    string_list_add(&check->warned, header->name);
-
-    // Three paths may not fit: a message cut at the buffer size still points at the problem.
-    char message[MAX_PATH_LEN * 2];
-    int written = snprintf(message, sizeof(message),
-                           "C header '%s' (imported by %s) is only found through %s, but zc "
-                           "build only applies the directives of the file it compiles: add "
-                           "that directive here.",
-                           header->name, file_label(entry->module_path), found_by);
-    if (written < 0)
-    {
-        return 0;
-    }
-    cJSON *diagnostic = cJSON_CreateObject();
-    cJSON_AddItemToObject(
-        diagnostic, "range",
-        make_range(entry->top->line, entry->top->name_column, (int)strlen(entry->top->name)));
-    cJSON_AddNumberToObject(diagnostic, "severity", LSP_SEVERITY_WARNING);
-    cJSON_AddStringToObject(diagnostic, "message", message);
-    cJSON_AddItemToArray(check->diagnostics, diagnostic);
-    return 0;
-}
-
-void lsp_c_headers_add_diagnostics(const char *document_path, const char *source,
-                                   struct cJSON *diagnostics)
-{
-    if (!document_path || !source || !diagnostics)
-    {
-        return;
-    }
-    FileImports imports = {0};
-    collect_imports(source, &imports);
-    int module_count = imports.module_count;
-    free_imports(&imports);
-    if (module_count == 0)
-    {
-        return;
-    }
-
-    CSearchDirList dirs = {0};
-    collect_search_dirs(source, document_path, &dirs);
-    DirectiveCheck check = {&dirs, diagnostics, {0}};
-    StringList visited = {0};
-    walk_module_headers(source, document_path, NULL, 0, 0, &visited, check_module_header, &check);
-    string_list_free(&visited);
-    string_list_free(&check.warned);
-    c_search_dirs_free(&dirs);
 }

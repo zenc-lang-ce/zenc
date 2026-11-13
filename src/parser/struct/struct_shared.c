@@ -41,6 +41,7 @@ void load_std_module(ParserContext *ctx, const char *path)
         zfree(resolved);
         return;
     }
+    scan_build_directives(ctx, src);
     Lexer i;
     lexer_init(&i, src, ctx->config, resolved);
     // Save and restore filename context
