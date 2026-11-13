@@ -567,12 +567,6 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
         {
             add_pattern_refs(idx, ctx, node, node->match_stmt.expr->type_info);
         }
-        if (node->kind == NODE_EXPR_VAR && node->var_ref.variant.owner &&
-            node->var_ref.variant.owner->name)
-        {
-            // `Mode::On`: its token is where the enum's name is written.
-            lsp_index_add_type_ref(idx, ctx, node->token, node->var_ref.variant.owner->name);
-        }
         if (node->kind == NODE_EXPR_STRUCT_INIT)
         {
             // `Box { v: 1 }`: its token is where the type's name is written.
