@@ -2367,12 +2367,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             // Check for arithmetic promotion (Int * Float, etc)
                             int lhs_is_num = is_integer_type(lhs->type_info) ||
                                              lhs->type_info->kind == TYPE_F32 ||
-                                             lhs->type_info->kind == TYPE_F64 ||
-                                             lhs->type_info->kind == TYPE_FLOAT;
+                                             lhs->type_info->kind == TYPE_F64;
                             int rhs_is_num = is_integer_type(rhs->type_info) ||
                                              rhs->type_info->kind == TYPE_F32 ||
-                                             rhs->type_info->kind == TYPE_F64 ||
-                                             rhs->type_info->kind == TYPE_FLOAT;
+                                             rhs->type_info->kind == TYPE_F64;
 
                             int valid_arith = 0;
                             if (lhs_is_num && rhs_is_num)
@@ -2390,13 +2388,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                                              : rhs->type_info;
                                     }
                                     else if (lhs->type_info->kind == TYPE_F32 ||
-                                             rhs->type_info->kind == TYPE_F32 ||
-                                             lhs->type_info->kind == TYPE_FLOAT ||
-                                             rhs->type_info->kind == TYPE_FLOAT)
+                                             rhs->type_info->kind == TYPE_F32)
                                     {
                                         // Pick the float type. If both float, pick lhs.
-                                        if (lhs->type_info->kind == TYPE_F32 ||
-                                            lhs->type_info->kind == TYPE_FLOAT)
+                                        if (lhs->type_info->kind == TYPE_F32)
                                         {
                                             bin->type_info = lhs->type_info;
                                         }

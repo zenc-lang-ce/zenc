@@ -699,7 +699,6 @@ static const char *scan_conversion(Type *t)
     case TYPE_USIZE:
         return "%zu";
     case TYPE_F32:
-    case TYPE_FLOAT:
         return "%f";
     case TYPE_F64:
         return "%lf";
@@ -909,7 +908,7 @@ void check_format_string(ParserContext *ctx, ASTNode *call, Token t)
             else if (spec == 'f' || spec == 'F' || spec == 'e' || spec == 'E' || spec == 'g' ||
                      spec == 'G')
             {
-                if (vt && vt->kind != TYPE_FLOAT && vt->kind != TYPE_F64)
+                if (vt && vt->kind != TYPE_F64)
                 {
                     warn_format_string(t, arg_num, "float", got_type);
                 }

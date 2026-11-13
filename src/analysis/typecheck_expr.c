@@ -676,9 +676,9 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 tc_error_with_hints(tc, node->binary.right->token, "Shift amount too large", hints);
             }
             else if (shift_amt >= 32 && left_type &&
-                     (left_type->kind == TYPE_INT || left_type->kind == TYPE_UINT ||
-                      left_type->kind == TYPE_I32 || left_type->kind == TYPE_U32 ||
-                      left_type->kind == TYPE_C_INT || left_type->kind == TYPE_C_UINT))
+                     (left_type->kind == TYPE_UINT || left_type->kind == TYPE_I32 ||
+                      left_type->kind == TYPE_U32 || left_type->kind == TYPE_C_INT ||
+                      left_type->kind == TYPE_C_UINT))
             {
                 const char *hints[] = {
                     "Shift amount >= 32 is undefined behavior for 32-bit integers", NULL};
