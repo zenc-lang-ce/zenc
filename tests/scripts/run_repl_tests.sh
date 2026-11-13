@@ -165,7 +165,7 @@ quit')
     out=$(run_session 'let x = 5;
 :vars
 quit')
-    if echo "$out" | grep -q "x (int): 5"; then
+    if echo "$out" | grep -q "x (i32): 5"; then
         check ":vars lists session variables" 1
     else
         check ":vars lists session variables" 0
@@ -178,7 +178,7 @@ let y = 7;
 :load $SAVE_FILE
 :vars
 quit")
-    if echo "$out" | grep -q "x (int): 5" && echo "$out" | grep -q "y (int): 7"; then
+    if echo "$out" | grep -q "x (i32): 5" && echo "$out" | grep -q "y (i32): 7"; then
         check ":save / :reset / :load round-trip" 1
     else
         check ":save / :reset / :load round-trip" 0

@@ -51,6 +51,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - A diagnostic about a field of a struct literal (a type mismatch, a pointer that escapes, a MISRA rule) points at that field, not at the name of the struct.
   - "Use of moved value" shows where the value was moved, with its own line of code and `^`, or says that a loop moved it on an earlier iteration. With `--json` the place comes in a `note` field.
   - MISRA Rule 2.4 does not flag an enum the program uses; `assert` and `test` blocks are reported under Rule 21.6 instead of C that does not compile.
+  - A type inferred from an integer literal is called `i32`, as an `int` the program writes already was: `found 'i32'` instead of `found 'int'`, also in hover and in the REPL's `:vars`. `int` is `i32`; the compiler no longer keeps a second kind for it.
 - `#line` is emitted when the file changes on the same line, and again when a newline was written since the last one; a `for` loop restores the lexer after its lookahead.
 - The C is written in binary mode on Windows.
 - Language server:

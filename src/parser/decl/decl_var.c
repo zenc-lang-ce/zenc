@@ -387,13 +387,13 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
             {
                 if (init->literal.kind == LITERAL_INT)
                 {
-                    type = xstrdup("int");
-                    type_obj = type_new(TYPE_INT);
+                    type_obj = type_new(TYPE_I32);
+                    type = type_mangle_spelling(type_obj);
                 }
                 else if (init->literal.kind == LITERAL_FLOAT)
                 {
-                    type = xstrdup("float");
-                    type_obj = type_new(TYPE_FLOAT);
+                    type_obj = type_new(TYPE_F64);
+                    type = type_mangle_spelling(type_obj);
                 }
                 else if (init->literal.kind == LITERAL_STRING)
                 {
@@ -433,11 +433,11 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         {
             if (init->literal.kind == LITERAL_INT)
             {
-                temp_literal_type = type_new(TYPE_INT);
+                temp_literal_type = type_new(TYPE_I32);
             }
             else if (init->literal.kind == LITERAL_FLOAT)
             {
-                temp_literal_type = type_new(TYPE_FLOAT);
+                temp_literal_type = type_new(TYPE_F64);
             }
             else if (init->literal.kind == LITERAL_STRING)
             {
@@ -639,12 +639,12 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                     if (next_init->literal.kind == LITERAL_INT)
                     {
                         next_type = xstrdup("int");
-                        next_type_obj = type_new(TYPE_INT);
+                        next_type_obj = type_new(TYPE_I32);
                     }
                     else if (next_init->literal.kind == LITERAL_FLOAT)
                     {
                         next_type = xstrdup("float");
-                        next_type_obj = type_new(TYPE_FLOAT);
+                        next_type_obj = type_new(TYPE_F64);
                     }
                     else if (next_init->literal.kind == LITERAL_STRING)
                     {

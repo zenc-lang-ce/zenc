@@ -471,7 +471,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
         {
             // `for i in 0..n`: no node declares `i`.
             add_variable_def(ctx, idx, node->for_range.var_token, node->for_range.var_name,
-                             type_new(TYPE_INT), DECLARATION_VARIABLE, NULL);
+                             type_new(TYPE_I32), DECLARATION_VARIABLE, NULL);
         }
         else if (node->kind == NODE_STRUCT)
         {
