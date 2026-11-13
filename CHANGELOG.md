@@ -33,6 +33,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
 - CLI: `-I`, `-O` and other options read their value correctly; `-g` passes `-g` to the C compiler; options can come before the command (`zc -g build app.zc`).
 - C headers: `import "x.h"` reads the names the header declares, and `zc check` accepts a struct literal of a type from a header.
 - With `--cpp`, an f-string interpolation is evaluated once.
+- `comptime` computes `<< >> & | ^ ~`, which it rejected as unsupported operators, and integer operations as constant folding does: a shift by 64 or more and `LLONG_MIN / -1` are errors instead of undefined behaviour.
 - `int` and `i32` share one generic instance.
 - A type alias is emitted once; `@fields` names a `@link_name` struct by its C name.
 - Casts are decided by whether the name is a type, as in C.
