@@ -490,7 +490,7 @@ void try_parse_macro_const(ParserContext *ctx, const char *content)
         ZenSymbol *existing = find_symbol_entry(ctx, n);
         if (!existing)
         {
-            add_symbol_with_token(ctx, n, type_new(TYPE_INT), name, 0);
+            add_symbol_with_token(ctx, n, type_new(TYPE_I32), name, 0);
             ZenSymbol *sym = find_symbol_entry(ctx, n);
             if (sym)
             {

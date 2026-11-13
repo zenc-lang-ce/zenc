@@ -21,7 +21,7 @@ Type *get_field_type(ParserContext *ctx, Type *struct_type, const char *field_na
     // `.len` of a fixed-size array; a slice's fields are those of its struct.
     if (struct_type->kind == TYPE_ARRAY && strcmp(field_name, "len") == 0)
     {
-        return type_new(TYPE_INT);
+        return type_new(TYPE_I32);
     }
 
     Type *tuple = tuple_of(struct_type);

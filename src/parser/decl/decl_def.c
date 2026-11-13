@@ -79,7 +79,8 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
                         {
                             zfree(s->type_info);
                         }
-                        s->type_info = type_new(is_wide ? TYPE_I64 : TYPE_INT);
+                        s->type_info = type_new(is_wide ? TYPE_I64 : TYPE_I32);
+                        s->is_untyped = !is_wide;
                         s->type_info->is_const = 1;
                     }
                 }

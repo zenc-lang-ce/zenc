@@ -436,7 +436,7 @@ static void test_hover_parameters(void)
     expect_hover_in(uri, 318, 11, 39, "```zc\\nq: i32\\n```");
     expect_hover_in(uri, 319, 12, 32, "```zc\\nm: i32\\n```");
     expect_hover_in(uri, 320, 12, 36, "```zc\\nn: i32\\n```");
-    expect_hover_in(uri, 321, 13, 17, "```zc\\nx: int\\n```");
+    expect_hover_in(uri, 321, 13, 17, "```zc\\nx: i32\\n```");
 
     // `self` is not renamed: with another name the method has no receiver.
     // Line 3:         self.total = self.total + n;
@@ -2504,8 +2504,8 @@ static void test_loop_variable_hover(void)
     usleep(100000);
     expect_hover_in(uri, 952, 4, 9, "let entry: Entry");
     expect_hover_in(uri, 953, 4, 38, "let entry: Entry");
-    expect_hover_in(uri, 954, 5, 8, "let i: int");
-    expect_hover_in(uri, 955, 5, 36, "let i: int");
+    expect_hover_in(uri, 954, 5, 8, "let i: i32");
+    expect_hover_in(uri, 955, 5, 36, "let i: i32");
     printf("PASS: test_loop_variable_hover\n");
 }
 
@@ -2556,7 +2556,7 @@ static void test_generic_function_hover(void)
     usleep(100000);
     expect_hover_in(uri, 962, 0, 4, "fn pop_count<T>(n: T) -> int");
     expect_hover_in(uri, 963, 0, 16, "n: T");
-    expect_hover_in(uri, 964, 2, 12, "let count: int");
+    expect_hover_in(uri, 964, 2, 12, "let count: i32");
     expect_hover_in(uri, 965, 2, 20, "n: T");
     expect_hover_in(uri, 966, 4, 29, "fn pop_count<T>(n: T) -> int");
     printf("PASS: test_generic_function_hover\n");

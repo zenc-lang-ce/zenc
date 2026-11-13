@@ -23,7 +23,7 @@ warning: Integer constant 100000 does not fit in 'u16' (16-bit)
 27 |     let t = scale(LIMIT * 100);
    |                         ^ here
    |
-warning: Implicit narrowing conversion from 'int' (32-bit) to 'u8' (8-bit)
+warning: Implicit narrowing conversion from 'i32' (32-bit) to 'u8' (8-bit)
   --> tests/compiler/diagnostics_output/warn_integer_constant_range.zc:30:9
    |
 30 |     let narrowed: u8 = count;
