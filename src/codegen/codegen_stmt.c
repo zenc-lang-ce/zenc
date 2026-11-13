@@ -608,7 +608,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                     EMIT(ctx, "*");
                 }
                 else if (node->ret.value && node->ret.value->kind == NODE_EXPR_UNARY &&
-                         strcmp(node->ret.value->unary.op, "&") == 0 &&
+                         node->ret.value->unary.op == OP_ADDRESS &&
                          node->ret.value->unary.operand->kind == NODE_EXPR_VAR &&
                          strcmp(node->ret.value->unary.operand->var_ref.name, "self") == 0)
                 {

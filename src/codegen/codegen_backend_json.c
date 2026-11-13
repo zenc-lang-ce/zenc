@@ -208,17 +208,17 @@ static void json_emit_node(ParserContext *ctx, ASTNode *node, int pretty, int de
         }
         break;
     case NODE_EXPR_BINARY:
-        if (node->binary.op)
+        if (node->binary.op != OP_NONE)
         {
             emitter_printf(&ctx->cg.emitter, ",\"op\":");
-            json_escape(ctx, node->binary.op);
+            json_escape(ctx, operator_spelling(node->binary.op));
         }
         break;
     case NODE_EXPR_UNARY:
-        if (node->unary.op)
+        if (node->unary.op != OP_NONE)
         {
             emitter_printf(&ctx->cg.emitter, ",\"op\":");
-            json_escape(ctx, node->unary.op);
+            json_escape(ctx, operator_spelling(node->unary.op));
         }
         break;
     default:

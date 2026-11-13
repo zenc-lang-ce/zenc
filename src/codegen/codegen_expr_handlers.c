@@ -298,7 +298,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
     {
         EMIT(ctx, "(");
     }
-    if (strncmp(node->binary.op, "??", 2) == 0 && strlen(node->binary.op) == 2)
+    if (node->binary.op == OP_COALESCE)
     {
         EMIT(ctx, "({ ");
         emit_auto_type(ctx, node->binary.left, node->token);
@@ -308,7 +308,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
         codegen_expression(ctx, node->binary.right);
         EMIT(ctx, "); })");
     }
-    else if (strcmp(node->binary.op, "?\?=") == 0)
+    else if (node->binary.op == OP_COALESCE_ASSIGN)
     {
         EMIT(ctx, "({ if (!(");
         codegen_expression(ctx, node->binary.left);
@@ -320,7 +320,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
         codegen_expression(ctx, node->binary.left);
         EMIT(ctx, "; })");
     }
-    else if ((strcmp(node->binary.op, "==") == 0 || strcmp(node->binary.op, "!=") == 0))
+    else if ((node->binary.op == OP_EQ || node->binary.op == OP_NE))
     {
         char *t1 = infer_type(ctx, node->binary.left);
         int is_ptr = 0;
@@ -396,7 +396,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                 base += 7;
             }
 
-            if (strcmp(node->binary.op, "!=") == 0)
+            if (node->binary.op == OP_NE)
             {
                 EMIT(ctx, "(!");
             }
@@ -449,7 +449,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             }
 
             EMIT(ctx, ")");
-            if (strcmp(node->binary.op, "!=") == 0)
+            if (node->binary.op == OP_NE)
             {
                 EMIT(ctx, ")");
             }
@@ -463,7 +463,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                 codegen_expression(ctx, node->binary.left);
                 EMIT(ctx, ", ");
                 codegen_expression(ctx, node->binary.right);
-                if (strcmp(node->binary.op, "==") == 0)
+                if (node->binary.op == OP_EQ)
                 {
                     EMIT(ctx, ") == 0)");
                 }
@@ -476,7 +476,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             {
                 EMIT(ctx, "(");
                 codegen_expression(ctx, node->binary.left);
-                EMIT(ctx, " %s ", node->binary.op);
+                EMIT(ctx, " %s ", operator_spelling(node->binary.op));
                 codegen_expression(ctx, node->binary.right);
                 EMIT(ctx, ")");
             }
@@ -485,7 +485,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
         {
             EMIT(ctx, "(");
             codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, " %s ", node->binary.op);
+            EMIT(ctx, " %s ", operator_spelling(node->binary.op));
             codegen_expression(ctx, node->binary.right);
             EMIT(ctx, ")");
         }
@@ -494,7 +494,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             zfree(t1);
         }
     }
-    else if (strcmp(node->binary.op, "**") == 0)
+    else if (node->binary.op == OP_POW)
     {
         EMIT(ctx, "(_zc_pow((double)(");
         codegen_expression(ctx, node->binary.left);
@@ -502,7 +502,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
         codegen_expression(ctx, node->binary.right);
         EMIT(ctx, ")))");
     }
-    else if (strcmp(node->binary.op, "**=") == 0)
+    else if (node->binary.op == OP_POW_ASSIGN)
     {
         EMIT(ctx, "({ ");
         codegen_expression(ctx, node->binary.left);
@@ -516,12 +516,12 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
     }
     else
     {
-        int is_assignment = is_assignment_op(node->binary.op);
+        int is_assignment = is_assignment_operator(node->binary.op);
 
         // Assigning to a variable that holds a value with Drop drops the old value first: the
         // glue of a struct, enum or tuple, or the drop of a closure that owns its context.
         char *drop_old = NULL;
-        if (is_assignment && strcmp(node->binary.op, "=") == 0 &&
+        if (is_assignment && node->binary.op == OP_ASSIGN &&
             node->binary.left->kind == NODE_EXPR_VAR)
         {
             char *glue = value_drop_struct(ctx, node->binary.left);
@@ -537,7 +537,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             }
         }
 
-        if (is_assignment && strcmp(node->binary.op, "=") == 0 &&
+        if (is_assignment && node->binary.op == OP_ASSIGN &&
             is_fixed_size_array(node->binary.left->type_info))
         {
             emit_array_assignment(ctx, node->binary.left, node->binary.right);
@@ -575,9 +575,9 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                 codegen_expression_with_move(ctx, node->binary.left);
             }
 
-            EMIT(ctx, " %s ", node->binary.op);
+            EMIT(ctx, " %s ", operator_spelling(node->binary.op));
             if (ctx->config->misra_mode ||
-                (ctx->config->use_cpp && is_assignment && strcmp(node->binary.op, "=") == 0))
+                (ctx->config->use_cpp && is_assignment && node->binary.op == OP_ASSIGN))
             {
                 int should_cast = ctx->config->misra_mode;
                 if (!should_cast && node->binary.left->type_info)

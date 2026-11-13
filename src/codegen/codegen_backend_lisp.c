@@ -58,89 +58,35 @@ static void lemit_s(ParserContext *ctx, const char *s)
     emitter_printf(&ctx->cg.emitter, "\"");
 }
 
-static const char *lop(const char *zop)
+// The Common Lisp name of a binary operator; its own spelling when Lisp writes it the same.
+static const char *lop(OperatorKind op)
 {
-    if (!zop)
+    switch (op)
     {
+    case OP_NONE:
         return "?";
-    }
-    if (strcmp(zop, "+") == 0)
-    {
-        return "+";
-    }
-    if (strcmp(zop, "-") == 0)
-    {
-        return "-";
-    }
-    if (strcmp(zop, "*") == 0)
-    {
-        return "*";
-    }
-    if (strcmp(zop, "/") == 0)
-    {
-        return "/";
-    }
-    if (strcmp(zop, "%") == 0)
-    {
+    case OP_MOD:
         return "mod";
-    }
-    if (strcmp(zop, "==") == 0)
-    {
+    case OP_EQ:
         return "=";
-    }
-    if (strcmp(zop, "!=") == 0)
-    {
+    case OP_NE:
         return "/=";
-    }
-    if (strcmp(zop, "<") == 0)
-    {
-        return "<";
-    }
-    if (strcmp(zop, "<=") == 0)
-    {
-        return "<=";
-    }
-    if (strcmp(zop, ">") == 0)
-    {
-        return ">";
-    }
-    if (strcmp(zop, ">=") == 0)
-    {
-        return ">=";
-    }
-    if (strcmp(zop, "&&") == 0)
-    {
+    case OP_AND:
         return "and";
-    }
-    if (strcmp(zop, "||") == 0)
-    {
+    case OP_OR:
         return "or";
-    }
-    if (strcmp(zop, "&") == 0)
-    {
+    case OP_BIT_AND:
         return "logand";
-    }
-    if (strcmp(zop, "|") == 0)
-    {
+    case OP_BIT_OR:
         return "logior";
-    }
-    if (strcmp(zop, "^") == 0)
-    {
+    case OP_BIT_XOR:
         return "logxor";
-    }
-    if (strcmp(zop, "<<") == 0)
-    {
+    case OP_SHL:
+    case OP_SHR:
         return "ash";
+    default:
+        return operator_spelling(op);
     }
-    if (strcmp(zop, ">>") == 0)
-    {
-        return "ash";
-    }
-    if (strcmp(zop, "~") == 0)
-    {
-        return "lognot";
-    }
-    return zop;
 }
 
 // Forward declarations
@@ -269,7 +215,7 @@ static void lemit_expr(ParserContext *ctx, ASTNode *node, int depth)
     case NODE_EXPR_BINARY:
     {
         const char *op = lop(node->binary.op);
-        if (strcmp(node->binary.op, "=") == 0 && node->binary.left && node->binary.right)
+        if (node->binary.op == OP_ASSIGN && node->binary.left && node->binary.right)
         {
             // Assignment
             emitter_printf(&ctx->cg.emitter, "(setf ");
@@ -299,56 +245,44 @@ static void lemit_expr(ParserContext *ctx, ASTNode *node, int depth)
 
     case NODE_EXPR_UNARY:
     {
-        const char *op = node->unary.op;
-        if (strcmp(op, "!") == 0)
+        const char *wrapper = NULL; // `(wrapper operand)`
+        switch (node->unary.op)
         {
-            emitter_printf(&ctx->cg.emitter, "(not ");
-            lemit_expr(ctx, node->unary.operand, depth);
-            emitter_printf(&ctx->cg.emitter, ")");
-        }
-        else if (strcmp(op, "-") == 0)
+        case OP_NOT:
+            wrapper = "not";
+            break;
+        case OP_NEG:
+            wrapper = "-";
+            break;
+        case OP_DEREF:
+            wrapper = "_z_deref";
+            break;
+        case OP_ADDRESS:
+            wrapper = "_z_ref";
+            break;
+        case OP_BIT_NOT:
+            wrapper = "lognot";
+            break;
+        case OP_PRE_INC:
+        case OP_POST_INC:
+        case OP_PRE_DEC:
+        case OP_POST_DEC:
         {
-            emitter_printf(&ctx->cg.emitter, "(- ");
-            lemit_expr(ctx, node->unary.operand, depth);
-            emitter_printf(&ctx->cg.emitter, ")");
-        }
-        else if (strcmp(op, "*") == 0)
-        {
-            emitter_printf(&ctx->cg.emitter, "(_z_deref ");
-            lemit_expr(ctx, node->unary.operand, depth);
-            emitter_printf(&ctx->cg.emitter, ")");
-        }
-        else if (strcmp(op, "&") == 0)
-        {
-            emitter_printf(&ctx->cg.emitter, "(_z_ref ");
-            lemit_expr(ctx, node->unary.operand, depth);
-            emitter_printf(&ctx->cg.emitter, ")");
-        }
-        else if (strcmp(op, "++") == 0 || strcmp(op, "post++") == 0 || strcmp(op, "_post++") == 0)
-        {
+            int up = node->unary.op == OP_PRE_INC || node->unary.op == OP_POST_INC;
             emitter_printf(&ctx->cg.emitter, "(setf ");
             lemit_expr(ctx, node->unary.operand, depth);
-            emitter_printf(&ctx->cg.emitter, " (+ ");
+            emitter_printf(&ctx->cg.emitter, up ? " (+ " : " (- ");
             lemit_expr(ctx, node->unary.operand, depth);
             emitter_printf(&ctx->cg.emitter, " 1))");
+            break;
         }
-        else if (strcmp(op, "--") == 0 || strcmp(op, "post--") == 0 || strcmp(op, "_post--") == 0)
-        {
-            emitter_printf(&ctx->cg.emitter, "(setf ");
-            lemit_expr(ctx, node->unary.operand, depth);
-            emitter_printf(&ctx->cg.emitter, " (- ");
-            lemit_expr(ctx, node->unary.operand, depth);
-            emitter_printf(&ctx->cg.emitter, " 1))");
+        default:
+            wrapper = operator_spelling(node->unary.op);
+            break;
         }
-        else if (strcmp(op, "~") == 0)
+        if (wrapper)
         {
-            emitter_printf(&ctx->cg.emitter, "(lognot ");
-            lemit_expr(ctx, node->unary.operand, depth);
-            emitter_printf(&ctx->cg.emitter, ")");
-        }
-        else
-        {
-            emitter_printf(&ctx->cg.emitter, "(%s ", op);
+            emitter_printf(&ctx->cg.emitter, "(%s ", wrapper);
             lemit_expr(ctx, node->unary.operand, depth);
             emitter_printf(&ctx->cg.emitter, ")");
         }
@@ -591,7 +525,7 @@ static void lemit_expr(ParserContext *ctx, ASTNode *node, int depth)
         {
             emitter_printf(&ctx->cg.emitter, " ");
             ASTNode *fval = NULL;
-            if (f->kind == NODE_EXPR_BINARY && f->binary.op && strcmp(f->binary.op, "=") == 0)
+            if (f->kind == NODE_EXPR_BINARY && f->binary.op == OP_ASSIGN)
             {
                 fval = f->binary.right;
             }
@@ -853,7 +787,7 @@ static void lemit_stmt(ParserContext *ctx, ASTNode *node, int depth, int *first)
             lemit_i(ctx, depth + 2);
             // Emit step: if it's =, emit setf directly
             if (node->for_stmt.step->kind == NODE_EXPR_BINARY && node->for_stmt.step->binary.op &&
-                strcmp(node->for_stmt.step->binary.op, "=") == 0)
+                node->for_stmt.step->binary.op == OP_ASSIGN)
             {
                 emitter_printf(&ctx->cg.emitter, "(setf ");
                 lemit_expr(ctx, node->for_stmt.step->binary.left, depth);

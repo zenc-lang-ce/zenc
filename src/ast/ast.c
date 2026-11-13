@@ -1906,7 +1906,7 @@ ASTNode *deref_to_one_pointer(ASTNode *expr)
     while (pointee && pointee->kind == TYPE_POINTER)
     {
         ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-        deref->unary.op = xstrdup("*");
+        deref->unary.op = OP_DEREF;
         deref->unary.operand = expr;
         deref->type_info = t->inner;
         deref->token = expr->token;
@@ -2149,12 +2149,12 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
 
     if (node->kind == NODE_EXPR_BINARY)
     {
-        if (binary_operator_of(node->binary.op) == OP_COALESCE)
+        if (node->binary.op == OP_COALESCE)
         {
             return infer_type(ctx, node->binary.left);
         }
 
-        OperatorClass op_class = binary_operator_class(node->binary.op);
+        OperatorClass op_class = operator_class(node->binary.op);
         char *left_type = infer_type(ctx, node->binary.left);
         char *right_type = infer_type(ctx, node->binary.right);
 
@@ -2231,7 +2231,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
 
     if (node->kind == NODE_EXPR_UNARY)
     {
-        if (unary_operator_of(node->unary.op) == OP_ADDRESS)
+        if (node->unary.op == OP_ADDRESS)
         {
             char *inner = infer_type(ctx, node->unary.operand);
             if (inner)
@@ -2241,7 +2241,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
                 return buf;
             }
         }
-        if (unary_operator_of(node->unary.op) == OP_DEREF)
+        if (node->unary.op == OP_DEREF)
         {
             char *inner = infer_type(ctx, node->unary.operand);
             if (inner)

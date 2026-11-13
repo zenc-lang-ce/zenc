@@ -40,7 +40,7 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
             mark_symbol_moved(tc->pctx, sym, rvalue);
         }
     }
-    else if (rvalue->kind == NODE_EXPR_UNARY && unary_operator_of(rvalue->unary.op) == OP_DEREF)
+    else if (rvalue->kind == NODE_EXPR_UNARY && rvalue->unary.op == OP_DEREF)
     {
         const char *hints[] = {"This type owns resources and cannot be implicitly copied",
                                "Consider borrowing value via references or implementing Copy",
@@ -66,8 +66,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     check_node(tc, node->unary.operand, depth + 1);
 
     Type *operand_type = node->unary.operand->type_info;
-    const char *op = node->unary.op;
-    OperatorKind unop = unary_operator_of(op);
+    OperatorKind unop = node->unary.op;
 
     if (!operand_type)
     {
@@ -156,7 +155,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
             }
         }
         else if (node->unary.operand->kind == NODE_EXPR_UNARY &&
-                 unary_operator_of(node->unary.operand->unary.op) == OP_DEREF)
+                 node->unary.operand->unary.op == OP_DEREF)
         {
             ASTNode *inner = node->unary.operand->unary.operand;
             if (inner->kind == NODE_EXPR_VAR)
@@ -216,12 +215,12 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
 
 void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
 {
-    const char *op = node->binary.op;
-    OperatorKind binop = binary_operator_of(op);
-    OperatorClass op_class = binary_operator_class(op);
+    OperatorKind binop = node->binary.op;
+    const char *op = operator_spelling(binop);
+    OperatorClass op_class = operator_class(binop);
     Type *contextual_type = node->type_info;
 
-    if (is_assignment_op(op))
+    if (is_assignment_operator(binop))
     {
         if (!tc->is_stmt_context)
         {
@@ -361,7 +360,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
             else if (node->binary.left->kind == NODE_EXPR_UNARY &&
-                     unary_operator_of(node->binary.left->unary.op) == OP_DEREF)
+                     node->binary.left->unary.op == OP_DEREF)
             {
                 ASTNode *inner = node->binary.left->unary.operand;
                 if (inner->kind == NODE_EXPR_VAR)
@@ -763,7 +762,7 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
 
     {
         ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-        deref->unary.op = xstrdup("*");
+        deref->unary.op = OP_DEREF;
         deref->unary.operand = expr;
         deref->type_info = a_res->inner;
         deref->token = expr->token;
@@ -778,7 +777,7 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
     {
         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
         int is_rvalue = expr_is_rvalue(tc->pctx, expr);
-        addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
+        addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
         addr->unary.operand = expr;
         addr->type_info = e_res;
         addr->token = expr->token;

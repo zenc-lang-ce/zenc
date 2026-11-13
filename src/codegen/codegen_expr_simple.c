@@ -53,25 +53,17 @@ void handle_expr_unary(ParserContext *ctx, ASTNode *node)
         // A temporary that the enclosing call materialised (see handle_expr_call).
         EMIT(ctx, "(&_z_temp_%d)", node->unary.temp_id - 1);
     }
-    else if (node->unary.op && strcmp(node->unary.op, "&_rval") == 0)
+    else if (node->unary.op == OP_ADDRESS_RVALUE)
     {
         emit_rvalue_address(ctx, node->unary.operand);
     }
-    else if (node->unary.op && strcmp(node->unary.op, "?") == 0)
-    {
-        EMIT(ctx, "({ ");
-        emit_auto_type(ctx, node->unary.operand, node->token);
-        EMIT(ctx, " _t = (");
-        codegen_expression(ctx, node->unary.operand);
-        EMIT(ctx, "); if (_t.tag != 0) return _t; _t.data.Ok; })");
-    }
-    else if (node->unary.op && strcmp(node->unary.op, "_post++") == 0)
+    else if (node->unary.op == OP_POST_INC)
     {
         EMIT(ctx, "(");
         codegen_expression(ctx, node->unary.operand);
         EMIT(ctx, "++)");
     }
-    else if (node->unary.op && strcmp(node->unary.op, "_post--") == 0)
+    else if (node->unary.op == OP_POST_DEC)
     {
         EMIT(ctx, "(");
         codegen_expression(ctx, node->unary.operand);
@@ -79,7 +71,7 @@ void handle_expr_unary(ParserContext *ctx, ASTNode *node)
     }
     else
     {
-        EMIT(ctx, "(%s", node->unary.op);
+        EMIT(ctx, "(%s", operator_spelling(node->unary.op));
         codegen_expression(ctx, node->unary.operand);
         EMIT(ctx, ")");
     }

@@ -78,7 +78,7 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
 
         // +, -, * and << work on the unsigned bits: a signed overflow is undefined
         // in C, an unsigned one wraps around.
-        switch (binary_operator_of(node->binary.op))
+        switch (node->binary.op)
         {
         case OP_ADD:
             *out_val = (long long)((unsigned long long)left + (unsigned long long)right);
@@ -165,7 +165,7 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
             return 0;
         }
 
-        switch (unary_operator_of(node->unary.op))
+        switch (node->unary.op)
         {
         case OP_NEG:
             *out_val = (long long)(0ULL - (unsigned long long)operand); // -LLONG_MIN overflows

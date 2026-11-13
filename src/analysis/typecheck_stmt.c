@@ -650,8 +650,12 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
         {
             if (node->for_stmt.step->kind == NODE_EXPR_BINARY)
             {
-                const char *step_op = node->for_stmt.step->binary.op;
-                if (strstr(step_op, "=") && node->for_stmt.step->binary.left->type_info)
+                OperatorKind step_op = node->for_stmt.step->binary.op;
+                // Written with a `=`, as when this tested the text: the assignments and also
+                // `== != <= >=`.
+                if ((is_assignment_operator(step_op) || step_op == OP_EQ || step_op == OP_NE ||
+                     step_op == OP_LE || step_op == OP_GE) &&
+                    node->for_stmt.step->binary.left->type_info)
                 {
                     misra_check_loop_counter_float(tc->pctx,
                                                    node->for_stmt.step->binary.left->type_info,
