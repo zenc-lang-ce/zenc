@@ -22,6 +22,19 @@
 
 // Forward declarations (most are in headers — only keep what's not in headers)
 
+// Defines `name` for @cfg(...), unless the command line already did.
+static void add_cfg_define(ZenCompiler *compiler, const char *name)
+{
+    for (size_t i = 0; i < compiler->config.cfg_defines.length; i++)
+    {
+        if (strcmp(compiler->config.cfg_defines.data[i], name) == 0)
+        {
+            return;
+        }
+    }
+    zvec_push_Str(&compiler->config.cfg_defines, xstrdup(name));
+}
+
 int driver_run(ZenCompiler *compiler)
 {
     // Backend detection for @cfg purposes
@@ -42,34 +55,13 @@ int driver_run(ZenCompiler *compiler)
         zvec_push_Str(&compiler->config.cfg_defines, xstrdup("__FILCC__"));
     }
 
-    // Make the host OS available to @cfg(...) so @cfg(windows)/@cfg(not(windows))
-    // and @cfg(apple)/@cfg(not(apple)) (used by std/sys/fs.zc, std/sys/env.zc,
-    // std/sync.zc) resolve against the host platform instead of always falling
-    // through to the non-Windows/non-Apple branch.
-    const char *host_cfg = NULL;
-#if ZC_OS_WINDOWS
-    host_cfg = "windows";
-#elif ZC_OS_MACOS
-    host_cfg = "apple";
-#else
-    host_cfg = "linux";
+    // The host OS for @cfg(...), by the name that `__COMPTIME_TARGET__` and the `//>` build
+    // directives use (z_get_system_name): `linux`, `windows` or `macos`. On macOS `apple` too,
+    // the name std/sync.zc and older programs use.
+    add_cfg_define(compiler, z_get_system_name());
+#if ZC_OS_MACOS
+    add_cfg_define(compiler, "apple");
 #endif
-    if (host_cfg)
-    {
-        int found = 0;
-        for (size_t i = 0; i < compiler->config.cfg_defines.length; i++)
-        {
-            if (strcmp(compiler->config.cfg_defines.data[i], host_cfg) == 0)
-            {
-                found = 1;
-                break;
-            }
-        }
-        if (!found)
-        {
-            zvec_push_Str(&compiler->config.cfg_defines, xstrdup(host_cfg));
-        }
-    }
 
     init_builtins();
 
