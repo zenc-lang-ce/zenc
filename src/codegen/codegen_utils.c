@@ -130,6 +130,34 @@ const char *field_c_type(ParserContext *ctx, ASTNode *field)
 }
 
 // Helper to emit C declaration (handle arrays, function pointers correctly)
+static const char *function_pointer_params_end(const char *fn_ptr)
+{
+    const char *decl_end = strchr(fn_ptr, ')');
+    if (!decl_end || decl_end[1] != '(')
+    {
+        return NULL;
+    }
+
+    int depth = 0;
+    for (const char *p = decl_end + 1; *p; p++)
+    {
+        if (*p == '(')
+        {
+            depth++;
+        }
+        else if (*p == ')')
+        {
+            depth--;
+            if (depth == 0)
+            {
+                return p + 1;
+            }
+        }
+    }
+
+    return NULL;
+}
+
 void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name)
 {
     // The type is C already: a Zen C generic is spelled by its mangled name. A `<` comes only
@@ -144,6 +172,27 @@ void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name)
         char *end_paren = (char *)strchr(fn_ptr, ')');
         if (end_paren)
         {
+            const char *params_end = function_pointer_params_end(fn_ptr);
+            if (params_end)
+            {
+                const char *array_suffix = params_end;
+                while (isspace((unsigned char)*array_suffix))
+                {
+                    array_suffix++;
+                }
+
+                if (*array_suffix == '[')
+                {
+                    ptrdiff_t prefix_len = fn_ptr - type_str;
+                    ptrdiff_t pointer_len = end_paren - fn_ptr;
+                    ptrdiff_t suffix_len = (type_str + strlen(type_str)) - params_end;
+                    ptrdiff_t params_len = params_end - end_paren;
+                    EMIT(ctx, "%.*s%.*s%s%.*s%.*s", (int)prefix_len, type_str, (int)pointer_len,
+                         fn_ptr, name, (int)suffix_len, params_end, (int)params_len, end_paren);
+                    return;
+                }
+            }
+
             ptrdiff_t prefix_len = end_paren - type_str;
             EMIT(ctx, "%.*s%s%s", (int)prefix_len, type_str, name, end_paren);
         }

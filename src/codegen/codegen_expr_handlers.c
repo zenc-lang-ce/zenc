@@ -269,7 +269,7 @@ static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *ri
     {
         EMIT(ctx, "; memcpy(_z_src, ");
         codegen_expression(ctx, right);
-        EMIT(ctx, ", sizeof(%s)); ", c_type);
+        EMIT(ctx, ", sizeof(_z_src)); ");
         if (drops && emit_moved_out(ctx, right))
         {
             EMIT(ctx, "; ");
@@ -284,7 +284,7 @@ static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *ri
     }
     EMIT(ctx, "memcpy(");
     codegen_expression(ctx, left);
-    EMIT(ctx, ", _z_src, sizeof(%s)); ", c_type);
+    EMIT(ctx, ", _z_src, sizeof(_z_src)); ");
     if (flag_name)
     {
         EMIT(ctx, "__z_drop_flag_%s = 1; ", flag_name);
