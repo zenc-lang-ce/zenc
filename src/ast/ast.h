@@ -835,6 +835,14 @@ typedef struct
  */
 ASTChildren ast_children(ASTNode *node);
 
+/**
+ * @brief The name of a node kind, as the tree backends print it ("BINARY",
+ * "VAR_DECL"...).
+ *
+ * Every NodeType has one: a new kind fails to compile until it is named here.
+ */
+const char *ast_kind_name(NodeType kind);
+
 Type *type_new(TypeKind kind);
 Type *type_new_ptr(Type *inner);
 Type *type_new_array(Type *inner, int size);

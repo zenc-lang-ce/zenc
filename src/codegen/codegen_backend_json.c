@@ -5,131 +5,6 @@
 #include "../ast/ast.h"
 #include <string.h>
 
-static const char *node_type_name(int type)
-{
-    switch (type)
-    {
-    case NODE_ROOT:
-        return "ROOT";
-    case NODE_FUNCTION:
-        return "FUNCTION";
-    case NODE_BLOCK:
-        return "BLOCK";
-    case NODE_RETURN:
-        return "RETURN";
-    case NODE_VAR_DECL:
-        return "VAR_DECL";
-    case NODE_FIELD_INIT:
-        return "FIELD_INIT";
-    case NODE_CONST:
-        return "CONST";
-    case NODE_TYPE_ALIAS:
-        return "TYPE_ALIAS";
-    case NODE_IF:
-        return "IF";
-    case NODE_WHILE:
-        return "WHILE";
-    case NODE_FOR:
-        return "FOR";
-    case NODE_FOR_RANGE:
-        return "FOR_RANGE";
-    case NODE_LOOP:
-        return "LOOP";
-    case NODE_BREAK:
-        return "BREAK";
-    case NODE_CONTINUE:
-        return "CONTINUE";
-    case NODE_MATCH:
-        return "MATCH";
-    case NODE_MATCH_CASE:
-        return "MATCH_CASE";
-    case NODE_EXPR_BINARY:
-        return "BINARY";
-    case NODE_EXPR_UNARY:
-        return "UNARY";
-    case NODE_EXPR_LITERAL:
-        return "LITERAL";
-    case NODE_EXPR_VAR:
-        return "VAR";
-    case NODE_EXPR_CALL:
-        return "CALL";
-    case NODE_EXPR_MEMBER:
-        return "MEMBER";
-    case NODE_EXPR_INDEX:
-        return "INDEX";
-    case NODE_EXPR_CAST:
-        return "CAST";
-    case NODE_EXPR_SIZEOF:
-        return "SIZEOF";
-    case NODE_EXPR_STRUCT_INIT:
-        return "STRUCT_INIT";
-    case NODE_EXPR_ARRAY_LITERAL:
-        return "ARRAY_LIT";
-    case NODE_EXPR_TUPLE_LITERAL:
-        return "TUPLE";
-    case NODE_EXPR_SLICE:
-        return "SLICE";
-    case NODE_STRUCT:
-        return "STRUCT";
-    case NODE_FIELD:
-        return "FIELD";
-    case NODE_ENUM:
-        return "ENUM";
-    case NODE_ENUM_VARIANT:
-        return "ENUM_VARIANT";
-    case NODE_TRAIT:
-        return "TRAIT";
-    case NODE_IMPL:
-        return "IMPL";
-    case NODE_IMPL_TRAIT:
-        return "IMPL_TRAIT";
-    case NODE_INCLUDE:
-        return "INCLUDE";
-    case NODE_IMPORT:
-        return "IMPORT";
-    case NODE_RAW_STMT:
-        return "RAW";
-    case NODE_EXPR_FSTRING:
-        return "FSTRING";
-    case NODE_FSTRING_PART:
-        return "FSTRING_PART";
-    case NODE_GOTO:
-        return "GOTO";
-    case NODE_LABEL:
-        return "LABEL";
-    case NODE_DEFER:
-        return "DEFER";
-    case NODE_TEST:
-        return "TEST";
-    case NODE_ASSERT:
-        return "ASSERT";
-    case NODE_EXPECT:
-        return "EXPECT";
-    case NODE_DESTRUCT_VAR:
-        return "DESTRUCT_VAR";
-    case NODE_LAMBDA:
-        return "LAMBDA";
-    case NODE_PLUGIN:
-        return "PLUGIN";
-    case NODE_TERNARY:
-        return "TERNARY";
-    case NODE_TYPEOF:
-        return "TYPEOF";
-    case NODE_TRY:
-        return "TRY";
-    case NODE_REFLECTION:
-        return "REFLECTION";
-    case NODE_REPL_PRINT:
-        return "REPL_PRINT";
-    case NODE_CUDA_LAUNCH:
-        return "CUDA_LAUNCH";
-    case NODE_VA_START:
-        return "VA_START";
-    default:
-        return "UNKNOWN";
-    }
-}
-
 static void json_escape(ParserContext *ctx, const char *s)
 {
     if (!s)
@@ -289,7 +164,7 @@ static void json_emit_node(ParserContext *ctx, ASTNode *node, int pretty, int de
     {
         json_indent(ctx, depth);
     }
-    emitter_printf(&ctx->cg.emitter, "{\"node\":\"%s\"", node_type_name((int)(node->kind)));
+    emitter_printf(&ctx->cg.emitter, "{\"node\":\"%s\"", ast_kind_name(node->kind));
 
     // Name for named nodes
     switch (node->kind)

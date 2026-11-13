@@ -6,113 +6,6 @@
 #include "../parser/parser.h"
 #include "../ast/ast.h"
 
-static const char *node_type_name(int type)
-{
-    switch (type)
-    {
-    case NODE_ROOT:
-        return "ROOT";
-    case NODE_FUNCTION:
-        return "FUNCTION";
-    case NODE_BLOCK:
-        return "BLOCK";
-    case NODE_RETURN:
-        return "RETURN";
-    case NODE_VAR_DECL:
-        return "VAR_DECL";
-    case NODE_FIELD_INIT:
-        return "FIELD_INIT";
-    case NODE_CONST:
-        return "CONST";
-    case NODE_TYPE_ALIAS:
-        return "TYPE_ALIAS";
-    case NODE_IF:
-        return "IF";
-    case NODE_WHILE:
-        return "WHILE";
-    case NODE_FOR:
-        return "FOR";
-    case NODE_FOR_RANGE:
-        return "FOR_RANGE";
-    case NODE_LOOP:
-        return "LOOP";
-    case NODE_BREAK:
-        return "BREAK";
-    case NODE_CONTINUE:
-        return "CONTINUE";
-    case NODE_MATCH:
-        return "MATCH";
-    case NODE_MATCH_CASE:
-        return "MATCH_CASE";
-    case NODE_EXPR_BINARY:
-        return "BINARY";
-    case NODE_EXPR_UNARY:
-        return "UNARY";
-    case NODE_EXPR_LITERAL:
-        return "LITERAL";
-    case NODE_EXPR_VAR:
-        return "VAR";
-    case NODE_EXPR_CALL:
-        return "CALL";
-    case NODE_EXPR_MEMBER:
-        return "MEMBER";
-    case NODE_EXPR_INDEX:
-        return "INDEX";
-    case NODE_EXPR_CAST:
-        return "CAST";
-    case NODE_EXPR_SIZEOF:
-        return "SIZEOF";
-    case NODE_EXPR_STRUCT_INIT:
-        return "STRUCT_INIT";
-    case NODE_EXPR_ARRAY_LITERAL:
-        return "ARRAY_LIT";
-    case NODE_EXPR_TUPLE_LITERAL:
-        return "TUPLE";
-    case NODE_EXPR_SLICE:
-        return "SLICE";
-    case NODE_STRUCT:
-        return "STRUCT";
-    case NODE_FIELD:
-        return "FIELD";
-    case NODE_ENUM:
-        return "ENUM";
-    case NODE_ENUM_VARIANT:
-        return "ENUM_VARIANT";
-    case NODE_TRAIT:
-        return "TRAIT";
-    case NODE_IMPL:
-        return "IMPL";
-    case NODE_IMPL_TRAIT:
-        return "IMPL_TRAIT";
-    case NODE_INCLUDE:
-        return "INCLUDE";
-    case NODE_IMPORT:
-        return "IMPORT";
-    case NODE_RAW_STMT:
-        return "RAW";
-    case NODE_EXPR_FSTRING:
-        return "FSTRING";
-    case NODE_FSTRING_PART:
-        return "FSTRING_PART";
-    case NODE_GOTO:
-        return "GOTO";
-    case NODE_LABEL:
-        return "LABEL";
-    case NODE_DEFER:
-        return "DEFER";
-    case NODE_TEST:
-        return "TEST";
-    case NODE_LAMBDA:
-        return "LAMBDA";
-    case NODE_TERNARY:
-        return "TERNARY";
-    case NODE_ASM:
-        return "ASM";
-    default:
-        return "UNKNOWN";
-    }
-}
-
 static int is_printable(const char *s)
 {
     return s && s[0] >= 32 && s[0] < 127;
@@ -125,7 +18,7 @@ static void dump_node(ParserContext *ctx, ASTNode *node, int is_last, const char
 static void emit_label(ParserContext *ctx, ASTNode *node)
 {
     // Title: short type name
-    emitter_printf(&ctx->cg.emitter, " %s", node_type_name((int)(node->kind)));
+    emitter_printf(&ctx->cg.emitter, " %s", ast_kind_name(node->kind));
 
     // Name or operator for relevant node types
     switch (node->kind)
@@ -254,35 +147,7 @@ static void emit_label(ParserContext *ctx, ASTNode *node)
     }
 }
 
-// Recursively dump linked-list children
-static void dump_children(ParserContext *ctx, ASTNode *children, const char *parent_prefix,
-                          int parent_is_last)
-{
-    if (!children)
-    {
-        return;
-    }
-
-    // Count siblings
-    int total = 0;
-    for (ASTNode *c = children; c; c = c->next)
-    {
-        total++;
-    }
-
-    // Build child prefix
-    char child_prefix[512];
-    snprintf(child_prefix, sizeof(child_prefix), "%s%s", parent_prefix,
-             parent_is_last ? "    " : "\342\224\202   "); // │
-
-    int idx = 0;
-    for (ASTNode *c = children; c; c = c->next, idx++)
-    {
-        dump_node(ctx, c, (idx >= total - 1), child_prefix);
-    }
-}
-
-// Dump two fixed children (left/right pair)
+// Dump a node and, below it, all its children
 static void dump_node(ParserContext *ctx, ASTNode *node, int is_last, const char *prefix)
 {
     if (!node)
@@ -301,179 +166,34 @@ static void dump_node(ParserContext *ctx, ASTNode *node, int is_last, const char
     emit_label(ctx, node);
     emitter_printf(&ctx->cg.emitter, "\n");
 
-    // Children
-    switch (node->kind)
+    // Children: every node of every child field, in order. Count them first so
+    // that only the last one closes the branch (└──).
+    ASTChildren children = ast_children(node);
+    int total = 0;
+    for (int i = 0; i < children.count; i++)
     {
-    case NODE_ROOT:
-        dump_children(ctx, node->root.children, prefix, is_last);
-        break;
-    case NODE_FUNCTION:
-        if (node->func.body)
+        ASTNode *c = *children.slots[i];
+        while (c)
         {
-            dump_node(ctx, node->func.body, 1, prefix);
+            total++;
+            c = c->next;
         }
-        break;
-    case NODE_BLOCK:
-        dump_children(ctx, node->block.statements, prefix, is_last);
-        break;
-    case NODE_IF:
-    {
-        ASTNode *c[3] = {node->if_stmt.condition, node->if_stmt.then_body, node->if_stmt.else_body};
-        int n = 0;
-        if (c[2])
-        {
-            n = 3;
-        }
-        else if (c[1])
-        {
-            n = 2;
-        }
-        else if (c[0])
-        {
-            n = 1;
-        }
-        char cp[512];
-        snprintf(cp, sizeof(cp), "%s%s", prefix, is_last ? "    " : "\342\224\202   ");
-        for (int i = 0; i < n; i++)
-        {
-            dump_node(ctx, c[i], (i == n - 1), cp);
-        }
-        break;
     }
-    case NODE_WHILE:
-        if (node->while_stmt.condition && node->while_stmt.body)
-        {
-            char cp[512];
-            snprintf(cp, sizeof(cp), "%s%s", prefix, is_last ? "    " : "\342\224\202   ");
-            dump_node(ctx, node->while_stmt.condition, 0, cp);
-            dump_node(ctx, node->while_stmt.body, 1, cp);
-        }
-        break;
-    case NODE_FOR_RANGE:
-        if (node->for_range.body)
-        {
-            dump_node(ctx, node->for_range.body, 1, prefix);
-        }
-        break;
-    case NODE_RETURN:
+
+    char child_prefix[512];
+    snprintf(child_prefix, sizeof(child_prefix), "%s%s", prefix,
+             is_last ? "    " : "\342\224\202   "); // │
+
+    int idx = 0;
+    for (int i = 0; i < children.count; i++)
     {
-        if (node->ret.value)
+        ASTNode *c = *children.slots[i];
+        while (c)
         {
-            char cp[512];
-            snprintf(cp, sizeof(cp), "%s%s", prefix, is_last ? "    " : "\342\224\202   ");
-            dump_node(ctx, node->ret.value, 1, cp);
+            idx++;
+            dump_node(ctx, c, idx == total, child_prefix);
+            c = c->next;
         }
-        break;
-    }
-    case NODE_VAR_DECL:
-    case NODE_FIELD_INIT:
-    {
-        if (node->var_decl.init_expr)
-        {
-            char cp[512];
-            snprintf(cp, sizeof(cp), "%s%s", prefix, is_last ? "    " : "\342\224\202   ");
-            dump_node(ctx, node->var_decl.init_expr, 1, cp);
-        }
-        break;
-    }
-    case NODE_EXPR_BINARY:
-        if (node->binary.left || node->binary.right)
-        {
-            char cp[512];
-            snprintf(cp, sizeof(cp), "%s%s", prefix, is_last ? "    " : "\342\224\202   ");
-            if (node->binary.left)
-            {
-                dump_node(ctx, node->binary.left, node->binary.right ? 0 : 1, cp);
-            }
-            if (node->binary.right)
-            {
-                dump_node(ctx, node->binary.right, 1, cp);
-            }
-        }
-        break;
-    case NODE_EXPR_UNARY:
-        if (node->unary.operand)
-        {
-            char cp[512];
-            snprintf(cp, sizeof(cp), "%s%s", prefix, is_last ? "    " : "\342\224\202   ");
-            dump_node(ctx, node->unary.operand, 1, cp);
-        }
-        break;
-    case NODE_EXPR_CALL:
-        if (node->call.args)
-        {
-            dump_children(ctx, node->call.args, prefix, is_last);
-        }
-        break;
-    case NODE_EXPR_MEMBER:
-        if (node->member.target)
-        {
-            dump_node(ctx, node->member.target, 1, prefix);
-        }
-        break;
-    case NODE_EXPR_INDEX:
-        if (node->index.array || node->index.index)
-        {
-            char cp[512];
-            snprintf(cp, sizeof(cp), "%s%s", prefix, is_last ? "    " : "\342\224\202   ");
-            if (node->index.array)
-            {
-                dump_node(ctx, node->index.array, node->index.index ? 0 : 1, cp);
-            }
-            if (node->index.index)
-            {
-                dump_node(ctx, node->index.index, 1, cp);
-            }
-        }
-        break;
-    case NODE_EXPR_CAST:
-        if (node->cast.expr)
-        {
-            dump_node(ctx, node->cast.expr, 1, prefix);
-        }
-        break;
-    case NODE_MATCH:
-    {
-        char cp[512];
-        snprintf(cp, sizeof(cp), "%s%s", prefix, is_last ? "    " : "\342\224\202   ");
-        if (node->match_stmt.expr)
-        {
-            dump_node(ctx, node->match_stmt.expr, node->match_stmt.cases ? 0 : 1, cp);
-        }
-        if (node->match_stmt.cases)
-        {
-            dump_children(ctx, node->match_stmt.cases, prefix, is_last);
-        }
-        break;
-    }
-    case NODE_STRUCT:
-        dump_children(ctx, node->strct.fields, prefix, is_last);
-        break;
-    case NODE_ENUM:
-        dump_children(ctx, node->enm.variants, prefix, is_last);
-        break;
-    case NODE_EXPR_STRUCT_INIT:
-        dump_children(ctx, node->struct_init.fields, prefix, is_last);
-        break;
-    case NODE_EXPR_ARRAY_LITERAL:
-        dump_children(ctx, node->array_literal.elements, prefix, is_last);
-        break;
-    case NODE_IMPL:
-        dump_children(ctx, node->impl.methods, prefix, is_last);
-        break;
-    case NODE_INCLUDE:
-    case NODE_RAW_STMT:
-    case NODE_FIELD:
-    case NODE_ENUM_VARIANT:
-    case NODE_BREAK:
-    case NODE_CONTINUE:
-    case NODE_EXPR_LITERAL:
-    case NODE_EXPR_VAR:
-    case NODE_GOTO:
-    case NODE_LABEL:
-        break;
-    default:
-        break;
     }
 }
 
