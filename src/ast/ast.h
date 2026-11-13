@@ -463,6 +463,9 @@ struct ASTNode
         struct
         {
             LiteralKind kind;
+            /// Written without a suffix (`15`, `0.5`): its type comes from where it is used.
+            /// Also a `def` without a type, folded into a literal.
+            int is_untyped;
             unsigned long long int_val;
             double float_val;
             char *string_val;

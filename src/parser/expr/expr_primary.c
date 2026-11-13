@@ -1525,6 +1525,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node->token = t;
                 node->literal.kind = LITERAL_INT;
                 node->type_info = value_type;
+                // A `def` without a type is an untyped constant, as a literal is.
+                node->literal.is_untyped = value_type->kind == TYPE_INT;
                 if (value < 0 && value != LLONG_MIN && !is_unsigned_type(value_type))
                 {
                     // A literal holds the magnitude: emit `-N`, as the source would
