@@ -54,12 +54,6 @@ char *sanitize_mangled_name(const char *s);
 char *mangle_generic_name(const char *base, char **args, int count);
 
 /**
- * @brief mangle_generic_name from the argument list as written between `<` and `>`
- *        ("K, Vec<A, B>" is two arguments).
- */
-char *mangle_generic_name_from_arg_list(const char *base, const char *arg_list);
-
-/**
  * @brief The C name of the vtable of a trait for a struct: `Struct__Trait__VTable`.
  */
 char *mangle_vtable_symbol(const char *struct_name, const char *trait_name);

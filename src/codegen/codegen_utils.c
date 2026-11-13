@@ -132,8 +132,11 @@ const char *field_c_type(ParserContext *ctx, ASTNode *field)
 // Helper to emit C declaration (handle arrays, function pointers correctly)
 void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name)
 {
-    char *bracket = (char *)strchr(type_str, '[');
-    char *generic = (char *)strchr(type_str, '<');
+    // The type is C already: a Zen C generic is spelled by its mangled name. A `<` comes only
+    // from a C++ template a parameter's `@ctype` names (`std::map<int, std::vector<int>>&`),
+    // which is written as it is; brackets inside its arguments are not an array's.
+    const char *close = strrchr(type_str, '>');
+    char *bracket = (char *)strchr(close ? close : type_str, '[');
     char *fn_ptr = (char *)strstr(type_str, "(*");
 
     if (fn_ptr)
@@ -149,45 +152,6 @@ void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name)
             // Fallback if malformed (shouldn't happen)
             ptrdiff_t prefix_len = fn_ptr - type_str + 2;
             EMIT(ctx, "%.*s%s%s", (int)prefix_len, type_str, name, fn_ptr + 2);
-        }
-    }
-    else if (generic && (!bracket || generic < bracket))
-    {
-        char *gt = (char *)strchr(generic, '>');
-        int success = 0;
-
-        if (gt)
-        {
-            ptrdiff_t base_len = generic - type_str;
-            ptrdiff_t arg_len = gt - generic - 1;
-            char *base = xmalloc((size_t)base_len + 1);
-            memcpy(base, type_str, (size_t)base_len);
-            base[base_len] = '\0';
-            char *arg_list = xmalloc((size_t)arg_len + 1);
-            memcpy(arg_list, generic + 1, (size_t)arg_len);
-            arg_list[arg_len] = '\0';
-
-            char *mangled_candidate = mangle_generic_name_from_arg_list(base, arg_list);
-            if (find_struct_def(ctx, mangled_candidate))
-            {
-                EMIT(ctx, "%s %s", mangled_candidate, name);
-                success = 1;
-            }
-        }
-
-        if (!success)
-        {
-            ptrdiff_t base_len = generic - type_str;
-            EMIT(ctx, "%.*s %s", (int)base_len, type_str, name);
-        }
-        else if (gt[1] == '*')
-        {
-            EMIT(ctx, "*");
-        }
-
-        if (bracket)
-        {
-            EMIT(ctx, "%s", bracket);
         }
     }
     else if (bracket)
