@@ -60,8 +60,6 @@ typedef enum
     TYPE_U128,   ///< `u128` type.
     TYPE_F32,    ///< `f32` type.
     TYPE_F64,    ///< `f64` type.
-    TYPE_INT,    ///< `int` (alias, usually i32).
-    TYPE_FLOAT,  ///< `float` (alias).
     TYPE_USIZE,  ///< `usize` (pointer size unsigned).
     TYPE_ISIZE,  ///< `isize` (pointer size signed).
     TYPE_BYTE,   ///< `byte`.

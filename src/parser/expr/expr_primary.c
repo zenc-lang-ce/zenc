@@ -878,7 +878,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             tk = TYPE_I32; // fallback
                         }
 
-                        if (tk == TYPE_F32 || tk == TYPE_F64 || tk == TYPE_FLOAT)
+                        if (tk == TYPE_F32 || tk == TYPE_F64)
                         {
                             node->literal.kind = LITERAL_FLOAT;
                             node->literal.float_val = 0.0;

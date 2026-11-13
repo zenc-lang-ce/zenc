@@ -836,16 +836,15 @@ int is_integer_type(Type *t)
     }
 
     int res =
-        (t->kind == TYPE_INT || t->kind == TYPE_CHAR || t->kind == TYPE_BOOL ||
-         t->kind == TYPE_I8 || t->kind == TYPE_U8 || t->kind == TYPE_I16 || t->kind == TYPE_U16 ||
-         t->kind == TYPE_I32 || t->kind == TYPE_U32 || t->kind == TYPE_I64 || t->kind == TYPE_U64 ||
-         t->kind == TYPE_USIZE || t->kind == TYPE_ISIZE || t->kind == TYPE_BYTE ||
-         t->kind == TYPE_RUNE || t->kind == TYPE_UINT || t->kind == TYPE_I128 ||
-         t->kind == TYPE_U128 || t->kind == TYPE_BITINT || t->kind == TYPE_UBITINT ||
-         t->kind == TYPE_C_INT || t->kind == TYPE_C_UINT || t->kind == TYPE_C_LONG ||
-         t->kind == TYPE_C_ULONG || t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_ULONGLONG ||
-         t->kind == TYPE_C_SHORT || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_CHAR ||
-         t->kind == TYPE_C_UCHAR ||
+        (t->kind == TYPE_CHAR || t->kind == TYPE_BOOL || t->kind == TYPE_I8 || t->kind == TYPE_U8 ||
+         t->kind == TYPE_I16 || t->kind == TYPE_U16 || t->kind == TYPE_I32 || t->kind == TYPE_U32 ||
+         t->kind == TYPE_I64 || t->kind == TYPE_U64 || t->kind == TYPE_USIZE ||
+         t->kind == TYPE_ISIZE || t->kind == TYPE_BYTE || t->kind == TYPE_RUNE ||
+         t->kind == TYPE_UINT || t->kind == TYPE_I128 || t->kind == TYPE_U128 ||
+         t->kind == TYPE_BITINT || t->kind == TYPE_UBITINT || t->kind == TYPE_C_INT ||
+         t->kind == TYPE_C_UINT || t->kind == TYPE_C_LONG || t->kind == TYPE_C_ULONG ||
+         t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_SHORT ||
+         t->kind == TYPE_C_USHORT || t->kind == TYPE_C_CHAR || t->kind == TYPE_C_UCHAR ||
          (t->kind == TYPE_STRUCT && t->name &&
           (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "uint8_t") ||
            0 == strcmp(t->name, "int16_t") || 0 == strcmp(t->name, "uint16_t") ||
@@ -921,7 +920,6 @@ int integer_type_width(Type *t)
         return 16;
     case TYPE_I32:
     case TYPE_U32:
-    case TYPE_INT:
     case TYPE_UINT:
     case TYPE_RUNE:
     case TYPE_C_INT:
@@ -991,15 +989,14 @@ int is_signed_type(Type *t)
         return is_signed_type(t->inner);
     }
 
-    int res =
-        (t->kind == TYPE_I8 || t->kind == TYPE_I16 || t->kind == TYPE_I32 || t->kind == TYPE_I64 ||
-         t->kind == TYPE_ISIZE || t->kind == TYPE_INT || t->kind == TYPE_I128 ||
-         t->kind == TYPE_BITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_LONG ||
-         t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_CHAR ||
-         (t->kind == TYPE_STRUCT && t->name &&
-          (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "int16_t") ||
-           0 == strcmp(t->name, "int32_t") || 0 == strcmp(t->name, "int64_t") ||
-           0 == strcmp(t->name, "ssize_t") || 0 == strcmp(t->name, "ptrdiff_t"))));
+    int res = (t->kind == TYPE_I8 || t->kind == TYPE_I16 || t->kind == TYPE_I32 ||
+               t->kind == TYPE_I64 || t->kind == TYPE_ISIZE || t->kind == TYPE_I128 ||
+               t->kind == TYPE_BITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_LONG ||
+               t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_CHAR ||
+               (t->kind == TYPE_STRUCT && t->name &&
+                (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "int16_t") ||
+                 0 == strcmp(t->name, "int32_t") || 0 == strcmp(t->name, "int64_t") ||
+                 0 == strcmp(t->name, "ssize_t") || 0 == strcmp(t->name, "ptrdiff_t"))));
     return res;
 }
 
@@ -1030,7 +1027,7 @@ int is_float_type(Type *t)
         return is_float_type(t->inner);
     }
 
-    int res = (t->kind == TYPE_FLOAT || t->kind == TYPE_F32 || t->kind == TYPE_F64);
+    int res = (t->kind == TYPE_F32 || t->kind == TYPE_F64);
     return res;
 }
 
@@ -1368,11 +1365,6 @@ static char *type_spelling_impl(Type *t, TypeSpelling spelling, WrittenNameLooku
     case TYPE_C_UCHAR:
         return xstrdup("c_uchar");
 
-    case TYPE_INT:
-        // `int` is `i32`: its C names are i32's (`Vec__int32_t`), so both make one instance.
-        return xstrdup(spelling == SPELLING_C ? "int32_t" : "int");
-    case TYPE_FLOAT:
-        return xstrdup("float");
     case TYPE_BITINT:
     {
         char *res = xmalloc(32);
@@ -1708,12 +1700,6 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
     case TYPE_C_UCHAR:
         return xstrdup(misra_mode ? "uint8_t" : "unsigned char");
 
-    case TYPE_INT:
-        // 'int' in Zen C maps to 'i32' now for portability.
-        // FFI should use c_int.
-        return xstrdup("int32_t");
-    case TYPE_FLOAT:
-        return xstrdup("float");
     case TYPE_BITINT:
     {
         char *res = xmalloc(32);
