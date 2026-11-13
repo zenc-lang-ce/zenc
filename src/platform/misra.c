@@ -188,7 +188,7 @@ void misra_check_implicit_conversion(struct ParserContext *ctx, struct Type *tar
     }
 }
 
-void misra_check_char_arithmetic(ParserContext *ctx, Type *left, Type *right, const char *op,
+void misra_check_char_arithmetic(ParserContext *ctx, Type *left, Type *right, OperatorKind op,
                                  Token token)
 {
     if (!ctx->config->misra_mode)
@@ -200,7 +200,7 @@ void misra_check_char_arithmetic(ParserContext *ctx, Type *left, Type *right, co
 
     if (cl == ESS_CHAR || cr == ESS_CHAR)
     {
-        if (strcmp(op, "-") == 0)
+        if (op == OP_SUB)
         {
             // char - char is allowed (Rule 10.2)
             if (cl == ESS_CHAR && cr == ESS_CHAR)
@@ -1261,7 +1261,7 @@ void misra_check_reserved_identifier(struct ParserContext *ctx, const char *name
     }
 }
 
-void misra_check_unsigned_wrap(struct ParserContext *ctx, const char *op, long long left,
+void misra_check_unsigned_wrap(struct ParserContext *ctx, OperatorKind op, long long left,
                                long long right, long long res, struct Type *type, Token token)
 {
     (void)res;
@@ -1303,21 +1303,21 @@ void misra_check_unsigned_wrap(struct ParserContext *ctx, const char *op, long l
     unsigned long long l = (unsigned long long)left;
     unsigned long long r = (unsigned long long)right;
 
-    if (strcmp(op, "+") == 0)
+    if (op == OP_ADD)
     {
         if (l > max_val - r)
         {
             wrap = true;
         }
     }
-    else if (strcmp(op, "-") == 0)
+    else if (op == OP_SUB)
     {
         if (r > l)
         {
             wrap = true;
         }
     }
-    else if (strcmp(op, "*") == 0)
+    else if (op == OP_MUL)
     {
         if (l != 0 && r > max_val / l)
         {

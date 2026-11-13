@@ -80,7 +80,7 @@ char *get_node_path(ASTNode *node, int depth, ParserContext *ctx)
         // (deref_to_one_pointer).
         ASTNode *target = node->member.target;
         while (target && target->kind == NODE_EXPR_UNARY && target->unary.op &&
-               strcmp(target->unary.op, "*") == 0)
+               unary_operator_of(target->unary.op) == OP_DEREF)
         {
             target = target->unary.operand;
         }

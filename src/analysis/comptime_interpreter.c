@@ -414,9 +414,11 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
         val_free(&left);
         return val_null;
     }
+    OperatorKind kind = binary_operator_of(op);
+    OperatorClass op_class = binary_operator_class(op);
 
     // Handle string concat with +
-    if (left.kind == VAL_STRING && strcmp(op, "+") == 0)
+    if (left.kind == VAL_STRING && kind == OP_ADD)
     {
         CValue right = eval_expr(ci, node->binary.right);
         if (ci->error_happened)
@@ -452,11 +454,7 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
     }
 
     // Logical operators work on bools; arithmetic/comparison on ints
-    int is_logic = (strcmp(op, "&&") == 0 || strcmp(op, "||") == 0);
-    int is_compare = (strcmp(op, "==") == 0 || strcmp(op, "!=") == 0 || strcmp(op, "<") == 0 ||
-                      strcmp(op, ">") == 0 || strcmp(op, "<=") == 0 || strcmp(op, ">=") == 0);
-
-    if (is_logic)
+    if (op_class == OPERATOR_LOGICAL)
     {
         int a = 0, b = 0;
         if (left.kind == VAL_BOOL)
@@ -477,7 +475,7 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
         }
         val_free(&left);
         val_free(&right);
-        CValue r = {VAL_BOOL, {.b = (strcmp(op, "&&") == 0) ? (a && b) : (a || b)}};
+        CValue r = {VAL_BOOL, {.b = (kind == OP_AND) ? (a && b) : (a || b)}};
         return r;
     }
 
@@ -501,20 +499,22 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
     int64_t a = left.as.i, b = right.as.i;
     CValue r = {VAL_INT, {0}};
 
-    if (strcmp(op, "+") == 0)
+    if (op_class == OPERATOR_COMPARISON)
     {
+        r.kind = VAL_BOOL;
+    }
+    switch (kind)
+    {
+    case OP_ADD:
         r.as.i = a + b;
-    }
-    else if (strcmp(op, "-") == 0)
-    {
+        break;
+    case OP_SUB:
         r.as.i = a - b;
-    }
-    else if (strcmp(op, "*") == 0)
-    {
+        break;
+    case OP_MUL:
         r.as.i = a * b;
-    }
-    else if (strcmp(op, "/") == 0)
-    {
+        break;
+    case OP_DIV:
         if (b == 0)
         {
             zerror_at(node->token, "comptime: division by zero");
@@ -524,9 +524,8 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
             return val_null;
         }
         r.as.i = a / b;
-    }
-    else if (strcmp(op, "%") == 0)
-    {
+        break;
+    case OP_MOD:
         if (b == 0)
         {
             zerror_at(node->token, "comptime: modulo by zero");
@@ -536,49 +535,29 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
             return val_null;
         }
         r.as.i = a % b;
-    }
-    else if (is_compare)
-    {
-        r.kind = VAL_BOOL;
-        if (strcmp(op, "==") == 0)
-        {
-            r.as.b = (a == b);
-        }
-        else if (strcmp(op, "!=") == 0)
-        {
-            r.as.b = (a != b);
-        }
-        else if (strcmp(op, "<") == 0)
-        {
-            r.as.b = (a < b);
-        }
-        else if (strcmp(op, ">") == 0)
-        {
-            r.as.b = (a > b);
-        }
-        else if (strcmp(op, "<=") == 0)
-        {
-            r.as.b = (a <= b);
-        }
-        else if (strcmp(op, ">=") == 0)
-        {
-            r.as.b = (a >= b);
-        }
-    }
-    else if (strcmp(op, "&&") == 0)
-    {
-        r.kind = VAL_BOOL;
-        r.as.b = (a && b);
-    }
-    else if (strcmp(op, "||") == 0)
-    {
-        r.kind = VAL_BOOL;
-        r.as.b = (a || b);
-    }
-    else
-    {
+        break;
+    case OP_EQ:
+        r.as.b = (a == b);
+        break;
+    case OP_NE:
+        r.as.b = (a != b);
+        break;
+    case OP_LT:
+        r.as.b = (a < b);
+        break;
+    case OP_GT:
+        r.as.b = (a > b);
+        break;
+    case OP_LE:
+        r.as.b = (a <= b);
+        break;
+    case OP_GE:
+        r.as.b = (a >= b);
+        break;
+    default:
         zerror_at(node->token, "comptime: unsupported binary operator '%s'", op);
         ci->error_happened = 1;
+        break;
     }
 
     val_free(&left);
@@ -592,7 +571,8 @@ static CValue eval_unary(CInterp *ci, ASTNode *node)
     {
         return val_null;
     }
-    if (strcmp(node->unary.op, "-") == 0)
+    OperatorKind kind = unary_operator_of(node->unary.op);
+    if (kind == OP_NEG)
     {
         CValue v = eval_expr(ci, node->unary.operand);
         if (ci->error_happened || v.kind != VAL_INT)
@@ -603,7 +583,7 @@ static CValue eval_unary(CInterp *ci, ASTNode *node)
         v.as.i = -v.as.i;
         return v;
     }
-    if (strcmp(node->unary.op, "!") == 0)
+    if (kind == OP_NOT)
     {
         CValue v = eval_expr(ci, node->unary.operand);
         if (ci->error_happened)
@@ -673,7 +653,7 @@ static CValue call_builtin(CInterp *ci, const char *name, ASTNode *args)
         {
             arg = eval_expr(ci, args);
         }
-        else if (args->kind == NODE_EXPR_BINARY && strcmp(args->binary.op, "+") == 0)
+        else if (args->kind == NODE_EXPR_BINARY && binary_operator_of(args->binary.op) == OP_ADD)
         {
             arg = eval_expr(ci, args); // string concat
         }
@@ -1071,7 +1051,7 @@ static void exec_stmt(CInterp *ci, ASTNode *node)
         exec_let(ci, node);
         break;
     case NODE_EXPR_BINARY:
-        if (node->binary.op && strcmp(node->binary.op, "=") == 0)
+        if (binary_operator_of(node->binary.op) == OP_ASSIGN)
         {
             exec_assign(ci, node);
         }

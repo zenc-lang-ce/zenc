@@ -78,96 +78,79 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
 
         // +, -, * and << work on the unsigned bits: a signed overflow is undefined
         // in C, an unsigned one wraps around.
-        if (strcmp(node->binary.op, "+") == 0)
+        switch (binary_operator_of(node->binary.op))
         {
+        case OP_ADD:
             *out_val = (long long)((unsigned long long)left + (unsigned long long)right);
-        }
-        else if (strcmp(node->binary.op, "-") == 0)
-        {
+            break;
+        case OP_SUB:
             *out_val = (long long)((unsigned long long)left - (unsigned long long)right);
-        }
-        else if (strcmp(node->binary.op, "*") == 0)
-        {
+            break;
+        case OP_MUL:
             *out_val = (long long)((unsigned long long)left * (unsigned long long)right);
-        }
-        else if (strcmp(node->binary.op, "/") == 0)
-        {
+            break;
+        case OP_DIV:
             if (right == 0 || (left == LLONG_MIN && right == -1))
             {
                 return 0; // Division by zero or overflow
             }
             *out_val = left / right;
-        }
-        else if (strcmp(node->binary.op, "%") == 0)
-        {
+            break;
+        case OP_MOD:
             if (right == 0 || (left == LLONG_MIN && right == -1))
             {
                 return 0;
             }
             *out_val = left % right;
-        }
-        else if (strcmp(node->binary.op, "<<") == 0)
-        {
+            break;
+        case OP_SHL:
             if (right < 0 || right >= 64)
             {
                 return 0; // Shift amount out of range
             }
             *out_val = (long long)((unsigned long long)left << right);
-        }
-        else if (strcmp(node->binary.op, ">>") == 0)
-        {
+            break;
+        case OP_SHR:
             if (right < 0 || right >= 64)
             {
                 return 0;
             }
             *out_val = left >> right;
-        }
-        else if (strcmp(node->binary.op, "&") == 0)
-        {
+            break;
+        case OP_BIT_AND:
             *out_val = left & right;
-        }
-        else if (strcmp(node->binary.op, "|") == 0)
-        {
+            break;
+        case OP_BIT_OR:
             *out_val = left | right;
-        }
-        else if (strcmp(node->binary.op, "^") == 0)
-        {
+            break;
+        case OP_BIT_XOR:
             *out_val = left ^ right;
-        }
-        else if (strcmp(node->binary.op, "==") == 0)
-        {
+            break;
+        case OP_EQ:
             *out_val = (left == right);
-        }
-        else if (strcmp(node->binary.op, "!=") == 0)
-        {
+            break;
+        case OP_NE:
             *out_val = (left != right);
-        }
-        else if (strcmp(node->binary.op, "<") == 0)
-        {
+            break;
+        case OP_LT:
             *out_val = (left < right);
-        }
-        else if (strcmp(node->binary.op, ">") == 0)
-        {
+            break;
+        case OP_GT:
             *out_val = (left > right);
-        }
-        else if (strcmp(node->binary.op, "<=") == 0)
-        {
+            break;
+        case OP_LE:
             *out_val = (left <= right);
-        }
-        else if (strcmp(node->binary.op, ">=") == 0)
-        {
+            break;
+        case OP_GE:
             *out_val = (left >= right);
-        }
-        else if (strcmp(node->binary.op, "&&") == 0)
-        {
+            break;
+        case OP_AND:
             *out_val = (left && right);
-        }
-        else if (strcmp(node->binary.op, "||") == 0)
-        {
+            break;
+        case OP_OR:
             *out_val = (left || right);
-        }
-        else
-        {
+            break;
+        default:
             return 0;
         }
 
@@ -182,24 +165,21 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
             return 0;
         }
 
-        if (strcmp(node->unary.op, "-") == 0)
+        switch (unary_operator_of(node->unary.op))
         {
+        case OP_NEG:
             *out_val = (long long)(0ULL - (unsigned long long)operand); // -LLONG_MIN overflows
-        }
-        else if (strcmp(node->unary.op, "+") == 0)
-        {
+            break;
+        case OP_PLUS:
             *out_val = +operand;
-        }
-        else if (strcmp(node->unary.op, "~") == 0)
-        {
+            break;
+        case OP_BIT_NOT:
             *out_val = ~operand;
-        }
-        else if (strcmp(node->unary.op, "!") == 0)
-        {
+            break;
+        case OP_NOT:
             *out_val = !operand;
-        }
-        else
-        {
+            break;
+        default:
             return 0;
         }
 
