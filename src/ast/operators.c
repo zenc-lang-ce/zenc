@@ -98,40 +98,35 @@ OperatorKind unary_operator_from_text(const char *text, size_t len)
     return operator_from_text(text, len, 1);
 }
 
-OperatorKind binary_operator_of(const char *op)
+int is_assignment_op_text(const char *op, size_t len)
 {
-    return op ? binary_operator_from_text(op, strlen(op)) : OP_NONE;
+    return is_assignment_operator(binary_operator_from_text(op, len));
 }
 
-OperatorKind unary_operator_of(const char *op)
+OperatorClass operator_class(OperatorKind kind)
 {
-    return op ? unary_operator_from_text(op, strlen(op)) : OP_NONE;
-}
-
-OperatorClass binary_operator_class(const char *op)
-{
-    const OperatorInfo *info = operator_info(binary_operator_of(op));
+    const OperatorInfo *info = operator_info(kind);
     return info ? info->operator_class : OPERATOR_OTHER;
 }
 
-int is_assignment_op_text(const char *op, size_t len)
+int is_assignment_operator(OperatorKind kind)
 {
-    const OperatorInfo *info = operator_info(binary_operator_from_text(op, len));
-    return info && info->operator_class == OPERATOR_ASSIGNMENT;
+    return kind != OP_NONE && operator_class(kind) == OPERATOR_ASSIGNMENT;
 }
 
-int is_assignment_op(const char *op)
+int is_comparison_operator(OperatorKind kind)
 {
-    return op && is_assignment_op_text(op, strlen(op));
+    return kind != OP_NONE && operator_class(kind) == OPERATOR_COMPARISON;
 }
 
-int is_comparison_op(const char *op)
+const char *operator_method(OperatorKind kind)
 {
-    return binary_operator_class(op) == OPERATOR_COMPARISON;
-}
-
-const char *binary_operator_method(const char *op)
-{
-    const OperatorInfo *info = operator_info(binary_operator_of(op));
+    const OperatorInfo *info = operator_info(kind);
     return info ? info->method : NULL;
+}
+
+const char *operator_spelling(OperatorKind kind)
+{
+    const OperatorInfo *info = operator_info(kind);
+    return info ? info->spelling : "";
 }

@@ -134,8 +134,10 @@ static int dot_emit_node(ParserContext *ctx, ASTNode *node)
         name = node->import_stmt.path;
         break;
     case NODE_EXPR_BINARY:
+        name = operator_spelling(node->binary.op);
+        break;
     case NODE_EXPR_UNARY:
-        name = node->unary.op;
+        name = operator_spelling(node->unary.op);
         break;
     default:
         break;

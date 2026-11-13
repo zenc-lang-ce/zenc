@@ -256,7 +256,7 @@ ASTNode *find_function_definition(ParserContext *ctx, const char *name)
 void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
                      char **out_var_ref_name)
 {
-    if (node->kind == NODE_EXPR_UNARY && strcmp(node->unary.op, "&") == 0 &&
+    if (node->kind == NODE_EXPR_UNARY && node->unary.op == OP_ADDRESS &&
         node->unary.operand->kind == NODE_EXPR_VAR)
     {
         *out_var_ref_name = node->unary.operand->var_ref.name;
@@ -520,7 +520,7 @@ ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait,
             char *code = xmalloc(512);
             char *v_mangled = mangle_vtable_symbol(clean_struct_type, clean_trait);
 
-            if (source_expr->kind == NODE_EXPR_UNARY && strcmp(source_expr->unary.op, "&") == 0)
+            if (source_expr->kind == NODE_EXPR_UNARY && source_expr->unary.op == OP_ADDRESS)
             {
                 snprintf(code, 512, "(%s){.self=(void*)&%s, .vtable=&%s}", clean_trait,
                          var_ref_name, v_mangled);
@@ -562,7 +562,7 @@ ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait,
                 }
 
                 ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                addr->unary.op = xstrdup("&");
+                addr->unary.op = OP_ADDRESS;
                 addr->unary.operand = wrapper;
                 addr->token = source_expr->token;
 
