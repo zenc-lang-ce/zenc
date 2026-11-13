@@ -232,7 +232,6 @@ int is_type_copy(ParserContext *ctx, Type *t)
     {
         switch (t->kind)
         {
-        case TYPE_INT:
         case TYPE_I8:
         case TYPE_I16:
         case TYPE_I32:
