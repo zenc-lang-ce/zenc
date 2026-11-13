@@ -810,14 +810,29 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             int is_pointer = target_type->kind == TYPE_POINTER;
             char *base = type_impl_name(is_pointer ? target_type->inner : target_type);
 
+            const char *call_base = base;
+            char *resolved_method = NULL;
+            int need_cast = 0;
+            if (find_method_call_target(ctx, base, method, &call_base, &resolved_method))
+            {
+                method = resolved_method;
+                // A mixed-in struct's method takes a pointer to that struct.
+                need_cast = call_base != base;
+            }
+
+            emit_mangled_name(ctx, call_base, method);
+            EMIT(ctx, "(");
+            if (need_cast)
+            {
+                EMIT(ctx, "(%s*)", call_base);
+            }
             if (!is_pointer &&
                 (target->kind == NODE_EXPR_CALL || target->kind == NODE_EXPR_LITERAL ||
                  target->kind == NODE_EXPR_BINARY || target->kind == NODE_EXPR_UNARY ||
                  target->kind == NODE_EXPR_CAST || target->kind == NODE_EXPR_STRUCT_INIT))
             {
-                emit_mangled_name(ctx, base, method);
-                EMIT(ctx, "(");
-                // C names the instance just mangled; C++ needs no type (_z_rval)
+                // A temporary has no address: C names the instance just mangled;
+                // C++ needs no type (_z_rval)
                 if (ctx->config->use_cpp)
                 {
                     emit_rvalue_address(ctx, target);
@@ -828,48 +843,24 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                     codegen_expression(ctx, target);
                     EMIT(ctx, "})");
                 }
-                ASTNode *arg = node->call.args;
-                while (arg)
-                {
-                    EMIT(ctx, ", ");
-                    codegen_expression_with_move(ctx, arg);
-                    arg = arg->next;
-                }
-                EMIT(ctx, ")");
             }
             else
             {
-                const char *call_base = base;
-                char *resolved_method = NULL;
-                int need_cast = 0;
-                if (find_method_call_target(ctx, base, method, &call_base, &resolved_method))
-                {
-                    method = resolved_method;
-                    // A mixed-in struct's method takes a pointer to that struct.
-                    need_cast = call_base != base;
-                }
-
-                emit_mangled_name(ctx, call_base, method);
-                EMIT(ctx, "(");
-                if (need_cast)
-                {
-                    EMIT(ctx, "(%s*)%s", call_base, is_pointer ? "" : "&");
-                }
-                else if (!is_pointer)
+                if (!is_pointer)
                 {
                     EMIT(ctx, "&");
                 }
                 codegen_expression(ctx, target);
-                ASTNode *arg = node->call.args;
-                while (arg)
-                {
-                    EMIT(ctx, ", ");
-                    codegen_expression_with_move(ctx, arg);
-                    arg = arg->next;
-                }
-                EMIT(ctx, ")");
-                zfree(resolved_method);
             }
+            ASTNode *arg = node->call.args;
+            while (arg)
+            {
+                EMIT(ctx, ", ");
+                codegen_expression_with_move(ctx, arg);
+                arg = arg->next;
+            }
+            EMIT(ctx, ")");
+            zfree(resolved_method);
             return;
         }
     }

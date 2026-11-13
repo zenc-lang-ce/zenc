@@ -1,0 +1,41 @@
+
+// language/features/traits: traits: test_mixin_method_temporary
+import "std/io.zc"
+
+struct Base {
+    v: int;
+}
+
+impl Base {
+    fn value(self) -> int {
+        return self.v;
+    }
+
+    fn plus(self, n: int) -> int {
+        return self.v + n;
+    }
+}
+
+struct Derived {
+    use Base;
+    w: int;
+}
+
+fn make() -> Derived {
+    return Derived { v: 3, w: 4 };
+}
+
+test "test_mixin_method_on_returned_value" {
+    assert(make().value() == 3, "make().value() should call Base's method");
+    assert(make().plus(2) == 5, "make().plus(2) should call Base's method");
+    println(f"{make().value()}");
+}
+
+test "test_mixin_method_on_struct_literal" {
+    assert(Derived { v: 5, w: 6 }.value() == 5, "a literal's mixed-in method should be Base's");
+}
+
+test "test_mixin_method_on_variable" {
+    let d = make();
+    assert(d.value() == 3, "d.value() should call Base's method");
+}
