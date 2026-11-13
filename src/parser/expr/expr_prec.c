@@ -1787,9 +1787,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
         }
 
-        if (strcmp(bin->binary.op, "=") == 0 || strcmp(bin->binary.op, "+=") == 0 ||
-            strcmp(bin->binary.op, "-=") == 0 || strcmp(bin->binary.op, "*=") == 0 ||
-            strcmp(bin->binary.op, "/=") == 0)
+        if (is_assignment_op(bin->binary.op))
         {
 
             if (lhs->kind == NODE_EXPR_VAR)
@@ -1834,25 +1832,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
         }
 
-        int is_compound = 0;
         size_t op_len = strlen(bin->binary.op);
 
-        // Check if operator ends with '=' but is not ==, !=, <=, >=
-        if (op_len > 1 && bin->binary.op[op_len - 1] == '=')
-        {
-            char c = bin->binary.op[0];
-            if (c != '=' && c != '!' && c != '<' && c != '>')
-            {
-                is_compound = 1;
-            }
-            // Special handle for <<= and >>=
-            if (strcmp(bin->binary.op, "<<=") == 0 || strcmp(bin->binary.op, ">>=") == 0)
-            {
-                is_compound = 1;
-            }
-        }
-
-        if (is_compound)
+        // `x op= y` becomes `x = x op y`.
+        if (op_len > 1 && is_assignment_op(bin->binary.op))
         {
             ASTNode *op_node = ast_create(NODE_EXPR_BINARY);
             op_node->binary.left = lhs;

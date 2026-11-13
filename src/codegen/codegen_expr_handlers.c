@@ -516,10 +516,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
     }
     else
     {
-        int is_assignment =
-            (node->binary.op[strlen(node->binary.op) - 1] == '=' &&
-             strcmp(node->binary.op, "==") != 0 && strcmp(node->binary.op, "!=") != 0 &&
-             strcmp(node->binary.op, "<=") != 0 && strcmp(node->binary.op, ">=") != 0);
+        int is_assignment = is_assignment_op(node->binary.op);
 
         // Assigning to a variable that holds a value with Drop drops the old value first: the
         // glue of a struct, enum or tuple, or the drop of a closure that owns its context.
