@@ -204,13 +204,14 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
     }
     else if (is_enum)
     {
-        EMIT(ctx,
-             "; if (_try.tag == %s__Err_Tag) return (%s__Err(_try.data.Err)); _try.data.Ok; })",
-             ret_name, ret_name);
+        char *err = mangle_variant_symbol(ret_name, "Err");
+        EMIT(ctx, "; if (_try.tag == %s_Tag) return (%s(_try.data.Err)); _try.data.Ok; })", err,
+             err);
     }
     else
     {
-        EMIT(ctx, "; if (!_try.is_ok) return %s__Err(_try.err); _try.val; })", ret_name);
+        EMIT(ctx, "; if (!_try.is_ok) return %s(_try.err); _try.val; })",
+             mangle_method_symbol(ret_name, NULL, "Err"));
     }
 }
 
