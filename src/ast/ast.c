@@ -2149,18 +2149,16 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
 
     if (node->kind == NODE_EXPR_BINARY)
     {
-        if (strcmp(node->binary.op, "??") == 0)
+        if (binary_operator_of(node->binary.op) == OP_COALESCE)
         {
             return infer_type(ctx, node->binary.left);
         }
 
-        const char *op = node->binary.op;
+        OperatorClass op_class = binary_operator_class(node->binary.op);
         char *left_type = infer_type(ctx, node->binary.left);
         char *right_type = infer_type(ctx, node->binary.right);
 
-        int is_logical = (strcmp(op, "&&") == 0 || strcmp(op, "||") == 0 || strcmp(op, "==") == 0 ||
-                          strcmp(op, "!=") == 0 || strcmp(op, "<") == 0 || strcmp(op, ">") == 0 ||
-                          strcmp(op, "<=") == 0 || strcmp(op, ">=") == 0);
+        int is_logical = op_class == OPERATOR_LOGICAL || op_class == OPERATOR_COMPARISON;
 
         if (is_logical)
         {
@@ -2233,7 +2231,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
 
     if (node->kind == NODE_EXPR_UNARY)
     {
-        if (strcmp(node->unary.op, "&") == 0)
+        if (unary_operator_of(node->unary.op) == OP_ADDRESS)
         {
             char *inner = infer_type(ctx, node->unary.operand);
             if (inner)
@@ -2243,7 +2241,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
                 return buf;
             }
         }
-        if (strcmp(node->unary.op, "*") == 0)
+        if (unary_operator_of(node->unary.op) == OP_DEREF)
         {
             char *inner = infer_type(ctx, node->unary.operand);
             if (inner)
