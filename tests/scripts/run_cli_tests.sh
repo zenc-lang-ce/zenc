@@ -509,6 +509,34 @@ else
     check "doc names a method with __ in it whole" 0
 fi
 
+# --- Build directives of imported modules -------------------------------------
+
+# A module's `//> include:`, `link:` and OS-guarded directives reach the build of a program
+# that imports it, also through another module.
+mkdir -p "$workdir/directives/vendor/include/probe" "$workdir/directives/lib"
+printf 'int zc_directive_probe(void);\n' > "$workdir/directives/vendor/include/probe/probe.h"
+printf 'int zc_directive_probe(void) { return 42; }\n' > "$workdir/directives/vendor/probe.c"
+cat > "$workdir/directives/lib/probe.zc" <<EOF
+//> include: $workdir/directives/vendor/include
+//> link: $workdir/directives/vendor/probe.c
+//> linux: define: ZC_DIRECTIVE_OS=1
+//> windows: define: ZC_DIRECTIVE_OS=1
+//> macos: define: ZC_DIRECTIVE_OS=1
+include <probe/probe.h>
+
+fn probe() -> int { return zc_directive_probe(); }
+EOF
+printf 'import "probe.zc"\n\nfn wrapped() -> int { return probe(); }\n' > "$workdir/directives/lib/wrap.zc"
+printf 'import "lib/wrap.zc"\n\nfn main() {\n    printf("value=%%d os=%%d\\n", wrapped(), ZC_DIRECTIVE_OS);\n}\n' \
+    > "$workdir/directives/main.zc"
+zc_path="$(cd "$(dirname "$ZC")" && pwd)/$(basename "$ZC")"
+out=$(cd "$workdir/directives" && XDG_CACHE_HOME="$workdir/directives/cache" "$zc_path" run -q main.zc -o main 2>&1)
+if echo "$out" | grep -q "value=42 os=1"; then
+    check "the build directives of an imported module apply" 1
+else
+    check "the build directives of an imported module apply" 0
+fi
+
 # --- Linkage of the program's functions --------------------------------------
 
 # With --prune-unused, a build of the generated C alone makes the functions that are not `main`

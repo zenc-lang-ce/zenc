@@ -657,6 +657,11 @@ static void append_prefixed_words(char *dst, size_t dst_size, const char *value,
 void scan_build_directives(ParserContext *ctx, const char *src)
 {
     ZenCompiler *compiler = ctx->compiler;
+    // Without a compiler (the language server) there is no build for the flags to go to.
+    if (!compiler)
+    {
+        return;
+    }
     const char *p = src;
     while (*p)
     {
