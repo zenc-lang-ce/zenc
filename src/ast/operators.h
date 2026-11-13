@@ -66,6 +66,10 @@ typedef enum
     OP_ADDRESS,
     OP_PRE_INC,
     OP_PRE_DEC,
+    OP_POST_INC,       ///< `x++`, written `_post++` in the AST.
+    OP_POST_DEC,       ///< `x--`, written `_post--` in the AST.
+    OP_ADDRESS_RVALUE, ///< `&` of a temporary, written `&_rval`: the call that takes it drops it.
+    OP_PREFIX_AND_AND, ///< A prefix `&&`, emitted as written (GNU C's address of a label).
 
     OP_COUNT
 } OperatorKind;
@@ -78,7 +82,7 @@ typedef enum
     OPERATOR_COMPARISON, ///< `== != < <= > >=`.
     OPERATOR_LOGICAL,    ///< `&& ||`, unary `!`.
     OPERATOR_ASSIGNMENT, ///< `=` and the compound assignments.
-    OPERATOR_OTHER,      ///< `??`, `|>`, and the unary `*`, `&`, `++`, `--`.
+    OPERATOR_OTHER,      ///< `??`, `|>`, and the unary `*`, `&`, `++`, `--` and their forms.
 } OperatorClass;
 
 typedef struct
@@ -100,6 +104,12 @@ const OperatorInfo *operator_info(OperatorKind kind);
 OperatorKind binary_operator_from_text(const char *text, size_t len);
 /** @brief The unary (prefix) operator written `text` (`len` bytes). */
 OperatorKind unary_operator_from_text(const char *text, size_t len);
+/** @brief The binary operator of a terminated text, such as `binary.op`; OP_NONE for NULL. */
+OperatorKind binary_operator_of(const char *op);
+/** @brief The unary operator of a terminated text, such as `unary.op`; OP_NONE for NULL. */
+OperatorKind unary_operator_of(const char *op);
+/** @brief The class of the binary operator `op`; OPERATOR_OTHER if it is none. */
+OperatorClass binary_operator_class(const char *op);
 
 /**
  * @brief Whether the operator text `op` (`len` bytes, not necessarily terminated) assigns:
