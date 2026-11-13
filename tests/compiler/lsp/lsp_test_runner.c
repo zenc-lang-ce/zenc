@@ -2236,6 +2236,76 @@ static void test_scope_completion_trigger(void)
     printf("PASS: test_scope_completion_trigger\n");
 }
 
+static void test_module_alias_completion(void)
+{
+    printf("Running test_module_alias_completion...\n");
+    // After the alias of an imported module, what the module declares; after `alias::Type::`, the
+    // variants and functions of that module's type, not those of a type of the same name in
+    // another module.
+    mkdir(C_TEST_DIR, 0755);
+    const char *math = C_TEST_DIR "/alias_math.zc";
+    const char *math_text = "enum Axis { Horizontal, Vertical }\n"
+                            "struct Vector { x: int; }\n"
+                            "impl Vector {\n"
+                            "    fn new(x: int) -> Vector { return Vector { x: x }; }\n"
+                            "}\n"
+                            "fn add(a: int, b: int) -> int { return a + b; }\n"
+                            "fn absolute(a: int) -> int { return a; }\n";
+    const char *physics = C_TEST_DIR "/alias_physics.zc";
+    const char *physics_text = "struct Vector { x: f64; }\n"
+                               "impl Vector {\n"
+                               "    fn create(x: f64) -> Vector { return Vector { x: x }; }\n"
+                               "}\n";
+    write_file(math, math_text);
+    write_file(physics, physics_text);
+    open_document(math, math_text);
+    open_document(physics, physics_text);
+    const char *path = C_TEST_DIR "/alias_use.zc";
+    open_document(path, "import \"alias_math.zc\" as math\n"   // Line 0
+                        "import \"alias_physics.zc\" as phy\n" // Line 1
+                        "fn main() {\n"                        // Line 2
+                        "    let a = math::\n"                 // Line 3
+                        "    let b = math::ab\n"               // Line 4
+                        "    let c = math::Vector::\n"         // Line 5
+                        "    let d = phy::Vector::\n"          // Line 6
+                        "    let e = math::Axis::\n"           // Line 7
+                        "}\n");
+    usleep(100000);
+    char labels[4096];
+    completion_labels(1711, path, 3, 18, ":", labels, sizeof(labels));
+    if (!strstr(labels, "Axis ") || !strstr(labels, "Vector ") || !strstr(labels, "add ") ||
+        !strstr(labels, "absolute "))
+    {
+        printf("Completion after `math::`: %s\n", labels);
+        fail("After the alias of a module, what the module declares");
+    }
+    completion_labels(1712, path, 4, 20, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "absolute "))
+    {
+        printf("Completion after `math::ab`: %s\n", labels);
+        fail("A name being typed after the alias of a module");
+    }
+    completion_labels(1713, path, 5, 26, ":", labels, sizeof(labels));
+    if (!strstr(labels, "new ") || strstr(labels, "create "))
+    {
+        printf("Completion after `math::Vector::`: %s\n", labels);
+        fail("After `alias::Type::`, the functions of that module's type only");
+    }
+    completion_labels(1714, path, 6, 25, ":", labels, sizeof(labels));
+    if (!strstr(labels, "create ") || strstr(labels, "new "))
+    {
+        printf("Completion after `phy::Vector::`: %s\n", labels);
+        fail("After `alias::Type::`, the functions of the other module's type only");
+    }
+    completion_labels(1715, path, 7, 24, ":", labels, sizeof(labels));
+    if (!strstr(labels, "Horizontal ") || !strstr(labels, "Vertical "))
+    {
+        printf("Completion after `math::Axis::`: %s\n", labels);
+        fail("After `alias::Enum::`, the variants of the module's enum");
+    }
+    printf("PASS: test_module_alias_completion\n");
+}
+
 static void test_trait_value_completion(void)
 {
     printf("Running test_trait_value_completion...\n");
@@ -4157,6 +4227,7 @@ int main()
     test_type_position_completion();
     test_literal_field_completion();
     test_scope_completion_trigger();
+    test_module_alias_completion();
     test_trait_value_completion();
     test_trait_impl_completion();
     test_implement_trait_action();

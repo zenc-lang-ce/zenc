@@ -718,42 +718,74 @@ static int offered_by_name(Token t, const char *name)
     return t.len == strlen(name) && strncmp(t.start, name, t.len) == 0;
 }
 
+// The name the parser gave a top-level declaration (`geo__area` for one of a module imported with
+// an alias); NULL for a node that declares no global name.
+static const char *parsed_name(ASTNode *node)
+{
+    return node->kind == NODE_FUNCTION                               ? node->func.name
+           : node->kind == NODE_STRUCT                               ? node->strct.name
+           : node->kind == NODE_ENUM                                 ? node->enm.name
+           : node->kind == NODE_TRAIT                                ? node->trait.name
+           : node->kind == NODE_TYPE_ALIAS                           ? node->type_alias.alias
+           : node->kind == NODE_VAR_DECL || node->kind == NODE_CONST ? node->var_decl.name
+                                                                     : NULL;
+}
+
 // The name a top-level declaration of the project is offered and found by, as it is written; NULL
 // for a node that declares no global name, or whose name is not written (a module's, `m__f`).
 static const char *declared_name(ASTNode *node)
 {
-    const char *name = node->kind == NODE_FUNCTION     ? node->func.name
-                       : node->kind == NODE_STRUCT     ? node->strct.name
-                       : node->kind == NODE_ENUM       ? node->enm.name
-                       : node->kind == NODE_TRAIT      ? node->trait.name
-                       : node->kind == NODE_TYPE_ALIAS ? node->type_alias.alias
-                       : node->kind == NODE_VAR_DECL || node->kind == NODE_CONST
-                           ? node->var_decl.name
-                           : NULL;
+    const char *name = parsed_name(node);
     return name && offered_by_name(node->token, name) ? name : NULL;
+}
+
+// The name a top-level declaration has where it is written (`area`), whatever name the parser
+// gave it (`geo__area`, for a module imported with an alias), into `out`; NULL for a node that
+// declares no global name, or an internal name starting with `__`.
+static const char *written_declaration_name(ASTNode *node, char *out, size_t size)
+{
+    if (!parsed_name(node) || !node->token.start || node->token.len == 0 ||
+        node->token.len >= size || strncmp(node->token.start, "__", 2) == 0)
+    {
+        return NULL;
+    }
+    memcpy(out, node->token.start, node->token.len);
+    out[node->token.len] = '\0';
+    return out;
 }
 
 // Calls `visit` with each declaration of the project that is not inside another one, as the
 // files' last parse left them: the top level of each file's AST, and its generic functions, which
 // are templates and no nodes of the AST. Stops at the first node for which `visit` returns
 // nonzero, and returns it; NULL when it visits them all.
+static ASTNode *visit_file_declarations(ProjectFile *pf, int (*visit)(ASTNode *node, void *data),
+                                        void *data)
+{
+    for (ASTNode *node = lsp_project_top_level(pf); node; node = node->next)
+    {
+        if (visit(node, data))
+        {
+            return node;
+        }
+    }
+    for (int i = 0; i < pf->generic_function_count; i++)
+    {
+        if (visit(pf->generic_functions[i], data))
+        {
+            return pf->generic_functions[i];
+        }
+    }
+    return NULL;
+}
+
 static ASTNode *visit_declarations(int (*visit)(ASTNode *node, void *data), void *data)
 {
     for (ProjectFile *pf = g_project->files; pf; pf = pf->next)
     {
-        for (ASTNode *node = lsp_project_top_level(pf); node; node = node->next)
+        ASTNode *found = visit_file_declarations(pf, visit, data);
+        if (found)
         {
-            if (visit(node, data))
-            {
-                return node;
-            }
-        }
-        for (int i = 0; i < pf->generic_function_count; i++)
-        {
-            if (visit(pf->generic_functions[i], data))
-            {
-                return pf->generic_functions[i];
-            }
+            return found;
         }
     }
     return NULL;
@@ -780,12 +812,20 @@ static ASTNode *find_declaration(const char *name, NodeType kind)
     return visit_declarations(is_declaration_of, &query);
 }
 
-// Adds the completion item of a declaration (see visit_declarations) to the array `data`, under
-// its written name.
-static int add_declaration_completion(ASTNode *node, void *data)
+// Whether `node` is the struct or enum whose written name is `data` (see
+// written_declaration_name).
+static int is_written_type(ASTNode *node, void *data)
 {
-    cJSON *items = data;
-    const char *name = declared_name(node);
+    char written[MAX_VAR_NAME_LEN];
+    return (node->kind == NODE_STRUCT || node->kind == NODE_ENUM) &&
+           written_declaration_name(node, written, sizeof(written)) &&
+           strcmp(written, (const char *)data) == 0;
+}
+
+// Adds the completion item of the top-level declaration `node` to `items`, under `name`, unless
+// an item has that name.
+static int add_named_declaration_completion(cJSON *items, ASTNode *node, const char *name)
+{
     if (!name || has_completion(items, name))
     {
         return 0;
@@ -829,6 +869,22 @@ static int add_declaration_completion(ASTNode *node, void *data)
     }
     cJSON_AddItemToArray(items, item);
     return 0;
+}
+
+// Adds the completion item of a declaration (see visit_declarations) to the array `data`, under
+// its written name.
+static int add_declaration_completion(ASTNode *node, void *data)
+{
+    return add_named_declaration_completion(data, node, declared_name(node));
+}
+
+// Adds the completion item of a declaration of the module after `alias::` to the array `data`,
+// under the name the module writes.
+static int add_module_declaration_completion(ASTNode *node, void *data)
+{
+    char name[MAX_VAR_NAME_LEN];
+    return add_named_declaration_completion(data, node,
+                                            written_declaration_name(node, name, sizeof(name)));
 }
 
 // Adds the methods of `impl` that take `self` when `with_self`, the other ones otherwise, if it is
@@ -987,14 +1043,15 @@ visit_functions_of_impl(ASTNode *impl, const char *owner, int with_self,
 // `owner`: the methods that take `self` when `with_self`, the other ones otherwise. A generic,
 // written (`Vec<int>`) or instantiated (`Vec__int32_t`), has those of its template
 // (`impl Vec<T>`). The impls are those of the files of the project as their last parse left
-// them, so a method that was deleted is not visited. Stops at the first function for which
-// `visit` returns nonzero and returns it; NULL when there is none.
-static ASTNode *visit_impl_functions(const char *type_name, int with_self,
+// them, so a method that was deleted is not visited; only those of the file `only` when it is
+// not NULL. Stops at the first function for which `visit` returns nonzero and returns it; NULL
+// when there is none.
+static ASTNode *visit_impl_functions(const char *type_name, int with_self, ProjectFile *only,
                                      int (*visit)(ASTNode *method, const char *owner, void *data),
                                      void *data)
 {
     const Instantiation *inst = find_instantiation(g_project->ctx, type_name);
-    for (ProjectFile *pf = g_project->files; pf; pf = pf->next)
+    for (ProjectFile *pf = only ? only : g_project->files; pf; pf = only ? NULL : pf->next)
     {
         for (ASTNode *node = lsp_project_top_level(pf); node; node = node->next)
         {
@@ -1030,9 +1087,10 @@ static int add_impl_function_completion(ASTNode *method, const char *owner, void
 
 // Adds the functions of the impl blocks of `type_name` (see visit_impl_functions) under the name
 // they are called by.
-static void add_impl_completions(cJSON *items, const char *type_name, int with_self)
+static void add_impl_completions(cJSON *items, const char *type_name, int with_self,
+                                 ProjectFile *only)
 {
-    visit_impl_functions(type_name, with_self, add_impl_function_completion, items);
+    visit_impl_functions(type_name, with_self, only, add_impl_function_completion, items);
 }
 
 // How completion writes the construct a keyword starts. A keyword may have more than one (`for`
@@ -1749,6 +1807,64 @@ static void add_local_completion(ASTNode *decl, void *data)
     cJSON_AddItemToArray((cJSON *)data, item);
 }
 
+// Copies to `out` the name written before the `::` that ends right before `at`, a byte of
+// `source`: a type (`Item` of `Item::create`, `Vec<int>` of `Vec<int>::new`) or the alias of a
+// module (`geo` of `geo::Point`). Returns whether there is one.
+static int name_before_scope(const char *source, const char *at, char *out, size_t size)
+{
+    const char *end = at;
+    if (end - source < 3 || end[-1] != ':' || end[-2] != ':')
+    {
+        return 0;
+    }
+    end -= 2;
+    const char *start = end;
+    while (start > source && (isalnum((unsigned char)start[-1]) || start[-1] == '_' ||
+                              start[-1] == '<' || start[-1] == '>'))
+    {
+        start--;
+    }
+    size_t len = (size_t)(end - start);
+    if (len == 0 || len >= size)
+    {
+        return 0;
+    }
+    memcpy(out, start, len);
+    out[len] = 0;
+    return 1;
+}
+
+// Adds what follows `name::` in `pf` (`Color::`, `geo::`, `geo::Point::`): what the module that
+// `pf` imports as `name` declares, under the names it writes; otherwise the variants and the
+// functions of the type `name`, the one of the module imported as `qualifier` when it is not empty
+// (`geo` of `geo::Point::`), else the project's.
+static void add_scope_completions(cJSON *items, ProjectFile *pf, const char *qualifier,
+                                  const char *name)
+{
+    ProjectFile *module = lsp_project_aliased_module(pf, qualifier[0] ? qualifier : name);
+    if (module && !qualifier[0])
+    {
+        visit_file_declarations(module, add_module_declaration_completion, items);
+        return;
+    }
+    // The type of the module under the name the parser gave it (`geo__Point`).
+    ASTNode *type = module ? visit_file_declarations(module, is_written_type, (void *)name) : NULL;
+    const char *type_name = !type                     ? name
+                            : type->kind == NODE_ENUM ? type->enm.name
+                                                      : type->strct.name;
+    ASTNode *enm = module ? (type && type->kind == NODE_ENUM ? type : NULL)
+                          : find_declaration(name, NODE_ENUM);
+    for (ASTNode *v = enm ? enm->enm.variants : NULL; v; v = v->next)
+    {
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "label", v->variant.name);
+        cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_ENUM_MEMBER);
+        cJSON_AddStringToObject(item, "detail", "enum variant");
+        cJSON_AddItemToArray(items, item);
+    }
+    add_impl_completions(items, type_name, 0, module);
+}
+
 // Gives each completion item of `items` that names a type `pf` does not see the import of a file
 // that declares it, as an additional edit: one item for each such file (find_import_candidates),
 // which its description names. An item of a type that no file of the project declares stays as it
@@ -1906,18 +2022,12 @@ cJSON *lsp_completion(const char *uri, int line, int col, const char *trigger)
                     t = strtok(NULL, ".");
                 }
 
-                if (is_scoped && part_count == 1 && g_project->ctx)
+                if (is_scoped && part_count == 1)
                 {
-                    ASTNode *enm = find_declaration(parts[0], NODE_ENUM);
-                    for (ASTNode *v = enm ? enm->enm.variants : NULL; v; v = v->next)
-                    {
-                        cJSON *item = cJSON_CreateObject();
-                        cJSON_AddStringToObject(item, "label", v->variant.name);
-                        cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_ENUM_MEMBER);
-                        cJSON_AddStringToObject(item, "detail", "enum variant");
-                        cJSON_AddItemToArray(items, item);
-                    }
-                    add_impl_completions(items, parts[0], 0);
+                    // The alias of a module before the name (`geo` of `geo::Point::`), if any.
+                    char qualifier[MAX_VAR_NAME_LEN] = "";
+                    name_before_scope(ptr, ptr + start_ident, qualifier, sizeof(qualifier));
+                    add_scope_completions(items, pf, qualifier, parts[0]);
                 }
 
                 if (!is_scoped && part_count > 0)
@@ -2010,7 +2120,7 @@ cJSON *lsp_completion(const char *uri, int line, int col, const char *trigger)
                             char *impl_name = type_impl_name(member_owner(type));
                             if (impl_name)
                             {
-                                add_impl_completions(items, impl_name, 1);
+                                add_impl_completions(items, impl_name, 1, NULL);
                             }
                         }
                     }
@@ -2018,7 +2128,7 @@ cJSON *lsp_completion(const char *uri, int line, int col, const char *trigger)
                     {
                         // A struct from a C header: its fields as the header declares them.
                         lsp_c_headers_add_fields(pf->path, pf->source, c_struct, items);
-                        add_impl_completions(items, c_struct, 1);
+                        add_impl_completions(items, c_struct, 1, NULL);
                     }
                 }
                 zfree(copy);
@@ -2510,33 +2620,6 @@ static int is_function_named(ASTNode *method, const char *owner, void *name)
     return method->func.method_name && strcmp(method->func.method_name, name) == 0;
 }
 
-// Copies to `out` the type written before the `::` that ends right before `at`, a byte of
-// `source` (`Item` of `Item::create`, `Vec<int>` of `Vec<int>::new`). Returns whether there is
-// one.
-static int type_before_scope(const char *source, const char *at, char *out, size_t size)
-{
-    const char *end = at;
-    if (end - source < 3 || end[-1] != ':' || end[-2] != ':')
-    {
-        return 0;
-    }
-    end -= 2;
-    const char *start = end;
-    while (start > source && (isalnum((unsigned char)start[-1]) || start[-1] == '_' ||
-                              start[-1] == '<' || start[-1] == '>'))
-    {
-        start--;
-    }
-    size_t len = (size_t)(end - start);
-    if (len == 0 || len >= size)
-    {
-        return 0;
-    }
-    memcpy(out, start, len);
-    out[len] = 0;
-    return 1;
-}
-
 // The function that a call of `pf` calls, `name` written at `name_start` before its `(`: the one
 // the index links that name to, as the hover finds it (`Item::create` is the method of `Item`,
 // not another `create`). Where the index has no use there, as in a call the last parse did not
@@ -2553,11 +2636,11 @@ static ASTNode *called_function(ProjectFile *pf, const char *name_start, const c
         return def->node && def->node->kind == NODE_FUNCTION ? def->node : NULL;
     }
     char owner[MAX_VAR_NAME_LEN];
-    if (type_before_scope(pf->source, name_start, owner, sizeof(owner)))
+    if (name_before_scope(pf->source, name_start, owner, sizeof(owner)))
     {
         // `Item::create(` calls a function of `Item`; `Item::scaled(&item, 3)`, a method.
-        ASTNode *fn = visit_impl_functions(owner, 0, is_function_named, (void *)name);
-        fn = fn ? fn : visit_impl_functions(owner, 1, is_function_named, (void *)name);
+        ASTNode *fn = visit_impl_functions(owner, 0, NULL, is_function_named, (void *)name);
+        fn = fn ? fn : visit_impl_functions(owner, 1, NULL, is_function_named, (void *)name);
         if (fn)
         {
             return fn;
