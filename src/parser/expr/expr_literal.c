@@ -567,6 +567,7 @@ ASTNode *parse_int_literal(ParserContext *ctx, Token t)
     }
     else
     {
+        node->literal.is_untyped = 1;
         // No suffix: default to int or i64 if too large
         if (val > 2147483647ULL)
         {
@@ -614,6 +615,7 @@ ASTNode *parse_float_literal(Token t)
     // Check for suffix
     char *endptr = NULL;
     strtod(s, &endptr);
+    node->literal.is_untyped = !(endptr && *endptr);
     if (endptr && *endptr)
     {
         if (!is_valid_float_suffix(endptr))
