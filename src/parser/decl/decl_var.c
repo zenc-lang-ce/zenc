@@ -131,12 +131,19 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     if (lexer_peek(l).kind == TOK_LBRACE)
     {
         lexer_next(l);
-        char **names = xmalloc(16 * sizeof(char *));
-        char **fields = xmalloc(16 * sizeof(char *));
+        int cap = 16;
+        char **names = xmalloc((size_t)cap * sizeof(char *));
+        char **fields = xmalloc((size_t)cap * sizeof(char *));
         int count = 0;
 
         while (1)
         {
+            if (count >= cap)
+            {
+                cap *= 2;
+                names = xrealloc(names, (size_t)cap * sizeof(char *));
+                fields = xrealloc(fields, (size_t)cap * sizeof(char *));
+            }
             // Parse field:name or just name
             Token t = lexer_next(l);
             check_identifier(t);

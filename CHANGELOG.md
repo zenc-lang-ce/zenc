@@ -49,6 +49,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - A diagnostic about a field of a struct literal (a type mismatch, a pointer that escapes, a MISRA rule) points at that field, not at the name of the struct.
   - "Use of moved value" shows where the value was moved, with its own line of code and `^`, or says that a loop moved it on an earlier iteration. With `--json` the place comes in a `note` field.
   - MISRA Rule 2.4 does not flag an enum the program uses; `assert` and `test` blocks are reported under Rule 21.6 instead of C that does not compile.
+- No limit on the length of four lists the compiler wrote past the end of, crashing it or corrupting what it compiled: the fields of `let Point{...} = p` (16), the `use` of a struct (8), the generic parameters of a trait (8) and the captures of `fn[a, b, ...]` (32).
 - `#line` is emitted when the file changes on the same line, and again when a newline was written since the last one; a `for` loop restores the lexer after its lookahead.
 - The C is written in binary mode on Windows.
 - Language server:

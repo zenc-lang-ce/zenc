@@ -33,10 +33,16 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
     int generic_count = 0;
     if (lexer_peek(l).kind == TOK_LANGLE)
     {
-        lexer_next(l);                                // eat <
-        generic_params = xmalloc(sizeof(char *) * 8); // simplified
+        lexer_next(l); // eat <
+        int generic_cap = 8;
+        generic_params = xmalloc(sizeof(char *) * (size_t)generic_cap);
         while (1)
         {
+            if (generic_count == generic_cap)
+            {
+                generic_cap *= 2;
+                generic_params = xrealloc(generic_params, sizeof(char *) * (size_t)generic_cap);
+            }
             Token p = lexer_next(l);
             check_identifier(p);
             if (p.kind != TOK_IDENT)

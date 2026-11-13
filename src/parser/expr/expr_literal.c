@@ -78,8 +78,9 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     Token lambda_token = lexer_next(l);
 
     int default_capture_mode = 0; // 0=Value, 1=Reference
-    char **explicit_captures = xmalloc(sizeof(char *) * 32);
-    int *explicit_capture_modes = xmalloc(sizeof(int) * 32);
+    int explicit_capture_cap = 32;
+    char **explicit_captures = xmalloc(sizeof(char *) * (size_t)explicit_capture_cap);
+    int *explicit_capture_modes = xmalloc(sizeof(int) * (size_t)explicit_capture_cap);
     int explicit_capture_count = 0;
 
     if (lexer_peek(l).kind == TOK_LBRACKET)
@@ -88,6 +89,15 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
 
         while (lexer_peek(l).kind != TOK_RBRACKET && lexer_peek(l).kind != TOK_EOF)
         {
+            // Each item adds at most one capture.
+            if (explicit_capture_count == explicit_capture_cap)
+            {
+                explicit_capture_cap *= 2;
+                explicit_captures =
+                    xrealloc(explicit_captures, sizeof(char *) * (size_t)explicit_capture_cap);
+                explicit_capture_modes =
+                    xrealloc(explicit_capture_modes, sizeof(int) * (size_t)explicit_capture_cap);
+            }
             if (lexer_peek(l).kind == TOK_OP && lexer_peek(l).len == 1 &&
                 lexer_peek(l).start[0] == '&')
             {

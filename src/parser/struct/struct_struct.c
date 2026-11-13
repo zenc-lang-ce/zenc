@@ -94,6 +94,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     // Temp storage for used structs
     char **temp_used_structs = NULL;
     int temp_used_count = 0;
+    int temp_used_cap = 0;
 
     while (1)
     {
@@ -201,9 +202,11 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
 
             if (def && def->kind == NODE_STRUCT)
             {
-                if (!temp_used_structs)
+                if (temp_used_count == temp_used_cap)
                 {
-                    temp_used_structs = xmalloc(sizeof(char *) * 8);
+                    temp_used_cap = temp_used_cap ? temp_used_cap * 2 : 8;
+                    temp_used_structs =
+                        xrealloc(temp_used_structs, sizeof(char *) * (size_t)temp_used_cap);
                 }
                 temp_used_structs[temp_used_count++] = xstrdup(use_name);
 
