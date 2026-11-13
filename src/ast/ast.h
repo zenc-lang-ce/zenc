@@ -14,6 +14,7 @@
 
 #include "token.h"
 #include "../feature_flags.h"
+#include "operators.h"
 #include <stdlib.h>
 
 typedef struct ParserContext ParserContext;
@@ -908,13 +909,6 @@ int is_signed_type(Type *t);
 int is_boolean_type(Type *t);
 int is_float_type(Type *t);
 int is_composite_expression(ASTNode *node);
-/**
- * @brief Whether the operator text `op` (`len` bytes, not necessarily terminated) assigns:
- * `=` or a compound such as `+=`, `<<=` or `??=`. A compound is its operator followed by `=`.
- */
-int is_assignment_op_text(const char *op, size_t len);
-/** @brief is_assignment_op_text for a terminated string, such as `binary.op`. */
-int is_assignment_op(const char *op);
 /**
  * @brief The spelling of a type inside a C name (`Vec__int32_t`, `Tuple__int32_t__bool`):
  * primitives by their C name, structs and enums by the name the program gives them. The names
