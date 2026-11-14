@@ -141,14 +141,11 @@ int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b)
         return 0;
     }
 
-    RECURSION_GUARD(ctx, NULL, 0); // null lexer, return 0 on fail
-
     int a_is_opaque = (a->kind == TYPE_ALIAS && a->alias.is_opaque_alias);
     int b_is_opaque = (b->kind == TYPE_ALIAS && b->alias.is_opaque_alias);
 
     if (!a_is_opaque && !b_is_opaque)
     {
-        RECURSION_EXIT(ctx);
         return 1;
     }
 
@@ -157,38 +154,12 @@ int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b)
     // type, not to the other.
     if (a_is_opaque && b_is_opaque)
     {
-        RECURSION_EXIT(ctx);
         return a->name && b->name && strcmp(a->name, b->name) == 0;
     }
 
-    if (a_is_opaque)
-    {
-        if (a->alias.alias_defined_in_file && ctx->current_filename &&
-            strcmp(a->alias.alias_defined_in_file, ctx->current_filename) == 0)
-        {
-            int res = check_opaque_alias_compat(ctx, a->inner, b);
-            RECURSION_EXIT(ctx);
-            return res;
-        }
-        RECURSION_EXIT(ctx);
-        return 0;
-    }
-
-    if (b_is_opaque)
-    {
-        if (b->alias.alias_defined_in_file && ctx->current_filename &&
-            strcmp(b->alias.alias_defined_in_file, ctx->current_filename) == 0)
-        {
-            int res = check_opaque_alias_compat(ctx, a, b->inner);
-            RECURSION_EXIT(ctx);
-            return res;
-        }
-        RECURSION_EXIT(ctx);
-        return 0;
-    }
-
-    RECURSION_EXIT(ctx);
-    return 0;
+    // One opaque alias converts to and from its underlying type only where that is what it is.
+    Type *seen = type_seen_from(a_is_opaque ? a : b, ctx->current_filename);
+    return !(seen->kind == TYPE_ALIAS && seen->alias.is_opaque_alias);
 }
 
 #include "../zen/zen_facts.h"
