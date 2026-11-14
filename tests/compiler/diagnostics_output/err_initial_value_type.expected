@@ -1,0 +1,36 @@
+   Compiling tests/compiler/diagnostics_output/err_initial_value_type.zc...
+error: Type mismatch: expected 'i32', but found 'string'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:10:5
+   |
+10 | def LIMIT: int = "hello";
+   |     ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Type mismatch: expected 'Point', but found 'i32'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:17:9
+   |
+17 |     def LOCAL: Point = 5;
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Type mismatch: expected 'i32', but found 'Point'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:18:9
+   |
+18 |     let _count: i32 = origin();
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Type mismatch: expected 'Point', but found 'i32'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:19:9
+   |
+19 |     let _p: Point = 7;
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+     error: semantic analysis found 4 errors
+       Check failed with 4 errors
+[exit 1]

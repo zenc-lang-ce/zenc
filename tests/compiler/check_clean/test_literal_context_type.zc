@@ -1,0 +1,25 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A literal written without a suffix, or an expression of such literals, takes
+// the type it is declared with; a lambda takes the function type it is
+// declared with.
+
+def RATIO: f64 = 2;
+def MASK: u8 = 1 << 3;
+
+fn twice(x: i32) -> i32 {
+    return x * 2;
+}
+
+fn main() {
+    let a: f64 = 3;
+    let b: u8 = 200;
+    let c: f32 = 0.5;
+    let d: i64 = -5;
+    let e: u16 = 255 + 1;
+    let call: fn*(i32) -> i32 = fn(x: i32) -> i32 {
+        return twice(x);
+    };
+    assert(a == 3.0 && b == 200 && c == 0.5 && d == -5 && e == 256, "the literals");
+    assert(RATIO == 2.0 && MASK == 8, "the constants");
+    assert(call(4) == 8, "the lambda");
+}
