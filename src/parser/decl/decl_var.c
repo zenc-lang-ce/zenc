@@ -131,23 +131,16 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     if (lexer_peek(l).kind == TOK_LBRACE)
     {
         lexer_next(l);
-        int cap = 16;
-        char **names = xmalloc((size_t)cap * sizeof(char *));
-        char **fields = xmalloc((size_t)cap * sizeof(char *));
-        int count = 0;
+        zvec_Text names = {0};
+        zvec_Text fields = {0};
 
         while (1)
         {
-            if (count >= cap)
-            {
-                cap *= 2;
-                names = xrealloc(names, (size_t)cap * sizeof(char *));
-                fields = xrealloc(fields, (size_t)cap * sizeof(char *));
-            }
             // Parse field:name or just name
             Token t = lexer_next(l);
             check_identifier(t);
-            char *ident = token_strdup(t);
+            char *field = token_strdup(t);
+            char *variable = field; // Shorthand: field (implies var name = field)
 
             if (lexer_peek(l).kind == TOK_COLON)
             {
@@ -155,19 +148,12 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 lexer_next(l); // eat :
                 Token v = lexer_next(l);
                 check_identifier(v);
-                fields[count] = ident;
-                names[count] = token_strdup(v);
+                variable = token_strdup(v);
             }
-            else
-            {
-                // Shorthand: field (implies var name = field)
-                fields[count] = ident;
-                names[count] = ident; // Share pointer or duplicate? duplicate safer if we free
-            }
+            zvec_push_Text(&fields, field);
+            zvec_push_Text(&names, variable);
             // Register symbol for variable
-            add_symbol(ctx, names[count], NULL, is_export);
-
-            count++;
+            add_symbol(ctx, variable, NULL, is_export);
 
             Token next = lexer_next(l);
             if (next.kind == TOK_EOF)
@@ -199,9 +185,9 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
 
         ASTNode *n = ast_create(NODE_DESTRUCT_VAR);
         n->token = name_tok;
-        n->destruct.names = names;
-        n->destruct.field_names = fields;
-        n->destruct.count = count;
+        n->destruct.names = names.data;
+        n->destruct.field_names = fields.data;
+        n->destruct.count = (int)names.length;
         n->destruct.init_expr = init;
         n->destruct.is_struct_destruct = 1;
         n->destruct.struct_name = name; // "Point"

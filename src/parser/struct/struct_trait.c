@@ -29,20 +29,12 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
     // Generics <T>. `register_generic` skips a name that is already a generic parameter: what
     // the trait registers is undone by restoring the count, not by subtracting what it declared.
     int generics_before = ctx->known_generics_count;
-    char **generic_params = NULL;
-    int generic_count = 0;
+    zvec_Text generic_params = {0};
     if (lexer_peek(l).kind == TOK_LANGLE)
     {
         lexer_next(l); // eat <
-        int generic_cap = 8;
-        generic_params = xmalloc(sizeof(char *) * (size_t)generic_cap);
         while (1)
         {
-            if (generic_count == generic_cap)
-            {
-                generic_cap *= 2;
-                generic_params = xrealloc(generic_params, sizeof(char *) * (size_t)generic_cap);
-            }
             Token p = lexer_next(l);
             check_identifier(p);
             if (p.kind != TOK_IDENT)
@@ -50,10 +42,7 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
                 zpanic_at(p, "Expected generic parameter name");
                 return NULL;
             }
-            generic_params[generic_count] = xmalloc(p.len + 1);
-            strncpy(generic_params[generic_count], p.start, p.len);
-            generic_params[generic_count][p.len] = 0;
-            generic_count++;
+            zvec_push_Text(&generic_params, token_strdup(p));
             register_generic(ctx, p);
 
             Token sep = lexer_peek(l);
@@ -178,8 +167,8 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
     n_node->token = n;
     n_node->trait.name = name;
     n_node->trait.methods = methods;
-    n_node->trait.generic_params = generic_params;
-    n_node->trait.generic_param_count = generic_count;
+    n_node->trait.generic_params = generic_params.data;
+    n_node->trait.generic_param_count = (int)generic_params.length;
 
     ctx->known_generics_count = generics_before;
 

@@ -14,6 +14,14 @@
 #include "../utils/mangle.h"
 #include "../utils/string_list.h"
 
+// Growable lists the parser fills as it reads. They are generated after arena.h, so they
+// allocate from the arena like the AST that keeps them; never call their zvec_free_*.
+// (`zvec_Str`, in compiler_config.h, uses the libc heap.)
+ZVEC_GENERATE_IMPL(char *, Text)
+ZVEC_GENERATE_IMPL(int, Int)
+ZVEC_GENERATE_IMPL(Type *, Type)
+ZVEC_GENERATE_IMPL(Token, Token)
+
 // Operator precedence for expression parsing
 
 /**

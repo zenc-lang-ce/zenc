@@ -78,10 +78,8 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     Token lambda_token = lexer_next(l);
 
     int default_capture_mode = 0; // 0=Value, 1=Reference
-    int explicit_capture_cap = 32;
-    char **explicit_captures = xmalloc(sizeof(char *) * (size_t)explicit_capture_cap);
-    int *explicit_capture_modes = xmalloc(sizeof(int) * (size_t)explicit_capture_cap);
-    int explicit_capture_count = 0;
+    zvec_Text explicit_captures = {0};
+    zvec_Int explicit_capture_modes = {0};
 
     if (lexer_peek(l).kind == TOK_LBRACKET)
     {
@@ -89,24 +87,14 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
 
         while (lexer_peek(l).kind != TOK_RBRACKET && lexer_peek(l).kind != TOK_EOF)
         {
-            // Each item adds at most one capture.
-            if (explicit_capture_count == explicit_capture_cap)
-            {
-                explicit_capture_cap *= 2;
-                explicit_captures =
-                    xrealloc(explicit_captures, sizeof(char *) * (size_t)explicit_capture_cap);
-                explicit_capture_modes =
-                    xrealloc(explicit_capture_modes, sizeof(int) * (size_t)explicit_capture_cap);
-            }
             if (lexer_peek(l).kind == TOK_OP && lexer_peek(l).len == 1 &&
                 lexer_peek(l).start[0] == '&')
             {
                 lexer_next(l);
                 if (lexer_peek(l).kind == TOK_IDENT)
                 {
-                    explicit_captures[explicit_capture_count] = token_strdup(lexer_peek(l));
-                    explicit_capture_modes[explicit_capture_count] = 1; // By-Reference
-                    explicit_capture_count++;
+                    zvec_push_Text(&explicit_captures, token_strdup(lexer_peek(l)));
+                    zvec_push_Int(&explicit_capture_modes, 1); // By-Reference
                     lexer_next(l);
                 }
                 else
@@ -122,9 +110,8 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
             }
             else if (lexer_peek(l).kind == TOK_IDENT)
             {
-                explicit_captures[explicit_capture_count] = token_strdup(lexer_peek(l));
-                explicit_capture_modes[explicit_capture_count] = 0; // By-Value
-                explicit_capture_count++;
+                zvec_push_Text(&explicit_captures, token_strdup(lexer_peek(l)));
+                zvec_push_Int(&explicit_capture_modes, 0); // By-Value
                 lexer_next(l);
             }
             else
@@ -157,20 +144,13 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     lexer_next(l);
 
     Type *t = type_new(TYPE_FUNCTION);
-    t->args = xmalloc(sizeof(Type *) * 16);
-    char **param_names = xmalloc(sizeof(char *) * 16);
-    Token param_tokens[16];
-    int count = 0;
+    zvec_Type param_types = {0};
+    zvec_Text param_names = {0};
+    zvec_Token param_tokens = {0};
 
     while (lexer_peek(l).kind != TOK_RPAREN)
     {
-        if (count >= 16)
-        {
-            zpanic_at(lexer_peek(l), "Too many function parameters (max 16)");
-            break;
-        }
-
-        if (count > 0)
+        if (param_names.length > 0)
         {
             if (lexer_peek(l).kind != TOK_COMMA)
             {
@@ -188,8 +168,8 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
             break;
         }
 
-        param_names[count] = token_strdup(name_tok);
-        param_tokens[count] = name_tok;
+        zvec_push_Text(&param_names, token_strdup(name_tok));
+        zvec_push_Token(&param_tokens, name_tok);
 
         if (lexer_peek(l).kind != TOK_COLON)
         {
@@ -204,10 +184,11 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
         {
             return NULL;
         }
-        t->args[t->count] = typef;
-        count++;
-        t->count = count;
+        zvec_push_Type(&param_types, typef);
     }
+    t->args = param_types.data;
+    t->count = (int)param_types.length;
+    int count = t->count;
     lexer_next(l);
 
     if (lexer_peek(l).kind == TOK_ARROW)
@@ -225,7 +206,7 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
 
     for (int i = 0; i < count; i++)
     {
-        add_symbol_with_token(ctx, param_names[i], t->args[i], param_tokens[i], 0);
+        add_symbol_with_token(ctx, param_names.data[i], t->args[i], param_tokens.data[i], 0);
     }
 
     ASTNode *body = NULL;
@@ -245,19 +226,15 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     ASTNode *lambda = ast_create(NODE_LAMBDA);
     lambda->token = lambda_token;
     lambda->line = lambda_token.line;
-    lambda->lambda.param_names = param_names;
-    lambda->lambda.param_tokens = xmalloc(sizeof(Token) * (size_t)(count));
-    for (int i = 0; i < count; i++)
-    {
-        lambda->lambda.param_tokens[i] = param_tokens[i];
-    }
+    lambda->lambda.param_names = param_names.data;
+    lambda->lambda.param_tokens = param_tokens.data;
     lambda->lambda.body = body;
     lambda->lambda.body = body;
     lambda->lambda.count = count;
     lambda->lambda.default_capture_mode = default_capture_mode;
-    lambda->lambda.explicit_captures = explicit_captures;
-    lambda->lambda.explicit_capture_modes = explicit_capture_modes;
-    lambda->lambda.explicit_capture_count = explicit_capture_count;
+    lambda->lambda.explicit_captures = explicit_captures.data;
+    lambda->lambda.explicit_capture_modes = explicit_capture_modes.data;
+    lambda->lambda.explicit_capture_count = (int)explicit_captures.length;
     lambda->lambda.capture_modes = NULL; // Will be allocated in analysis
     lambda->lambda.lambda_id = ctx->lambda_counter++;
     lambda->lambda.is_expression = 0;
