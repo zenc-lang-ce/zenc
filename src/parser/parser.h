@@ -1014,6 +1014,11 @@ char *token_get_string_content(Token t);
  */
 int token_string_content_offset(Token t, int *end_offset);
 ASTNode *find_struct_def(ParserContext *ctx, const char *name);
+/**
+ * @brief Whether `enum_name` names an enum with no payload in any variant: C emits it as a plain
+ *        `enum`, an integer, not as a tag and a union.
+ */
+int is_simple_enum(ParserContext *ctx, const char *enum_name);
 ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char *link_name,
                         int is_export);
 void push_pending_body(ParserContext *ctx, PendingBody *pending);

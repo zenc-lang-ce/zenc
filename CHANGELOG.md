@@ -49,6 +49,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - A diagnostic about a field of a struct literal (a type mismatch, a pointer that escapes, a MISRA rule) points at that field, not at the name of the struct.
   - "Use of moved value" shows where the value was moved, with its own line of code and `^`, or says that a loop moved it on an earlier iteration. With `--json` the place comes in a `note` field.
   - MISRA Rule 2.4 does not flag an enum the program uses; `assert` and `test` blocks are reported under Rule 21.6 instead of C that does not compile.
+  - The printf format warning (W701, part of `-Wstyle`, on by default) is reported: the typechecker checks the arguments of `printf`, `sprintf`, `fprintf` and `dprintf` against a literal format. It never ran before: the parser checked it only in a call path that a call to `printf` by name never takes. An `f32` matches `%f`, and an enum without payloads matches `%d`.
 - `#line` is emitted when the file changes on the same line, and again when a newline was written since the last one; a `for` loop restores the lexer after its lookahead.
 - The C is written in binary mode on Windows.
 - Language server:
