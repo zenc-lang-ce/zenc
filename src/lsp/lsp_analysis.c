@@ -885,8 +885,10 @@ static void add_trait_methods(cJSON *items, ASTNode *trait)
     }
 }
 
-static int add_impl_methods(cJSON *items, ASTNode *impl, const char *type_name,
-                            const Instantiation *inst, int is_template, int with_self)
+// The target of `impl` (as its methods name it) when it is an impl of `type_name`, or of the
+// template `inst` instantiates when `impl` is a template (`impl Vec<T>`); NULL otherwise.
+static const char *impl_target_of(ASTNode *impl, const char *type_name, const Instantiation *inst,
+                                  int is_template)
 {
     size_t base_len = strcspn(type_name, "<");
     const char *target = impl->kind == NODE_IMPL         ? type_impl_name(impl->impl.target)
@@ -895,23 +897,7 @@ static int add_impl_methods(cJSON *items, ASTNode *impl, const char *type_name,
     size_t target_len = target ? strlen(target) : 0;
     int same = target && target_len == base_len && strncmp(target, type_name, base_len) == 0;
     int instance = target && is_template && inst && strcmp(inst->template_name, target) == 0;
-    if (!same && !instance)
-    {
-        return 0;
-    }
-    int added = 0;
-    ASTNode *method = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
-    for (; method; method = method->next)
-    {
-        if (method->kind != NODE_FUNCTION || takes_self(method) != with_self ||
-            !method->token.start)
-        {
-            continue;
-        }
-        added += add_method_completion(items, method, target,
-                                       with_self ? LSP_COMPLETION_METHOD : LSP_COMPLETION_FUNCTION);
-    }
-    return added;
+    return same || instance ? target : NULL;
 }
 
 // What a `.` on a value of type `t` reaches: `t` through its pointers (`p.x` on a `Pak*`).
@@ -979,27 +965,74 @@ static void c_struct_name(const char *c_type, char *out, size_t size)
     out[n] = 0;
 }
 
-// Adds the functions of the impl blocks of `type_name` under the name they are called by: the
-// methods that take `self` when `with_self`, the other ones otherwise. A generic, written
-// (`Vec<int>`) or instantiated (`Vec__int32_t`), takes those of its template (`impl Vec<T>`).
-// The impls are those of the files of the project as their last parse left them, so a method
-// that was deleted is not offered. Returns how many were added.
-static int add_impl_completions(cJSON *items, const char *type_name, int with_self)
+// Calls `visit` on the functions of `impl`, of the type `owner`, that take `self` when
+// `with_self` and the other ones otherwise; returns the first for which it returns nonzero.
+static ASTNode *
+visit_functions_of_impl(ASTNode *impl, const char *owner, int with_self,
+                        int (*visit)(ASTNode *method, const char *owner, void *data), void *data)
+{
+    ASTNode *method = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
+    for (; method; method = method->next)
+    {
+        if (method->kind == NODE_FUNCTION && takes_self(method) == with_self &&
+            method->token.start && visit(method, owner, data))
+        {
+            return method;
+        }
+    }
+    return NULL;
+}
+
+// Calls `visit` on the functions of the impl blocks of `type_name`, with the impl's target as
+// `owner`: the methods that take `self` when `with_self`, the other ones otherwise. A generic,
+// written (`Vec<int>`) or instantiated (`Vec__int32_t`), has those of its template
+// (`impl Vec<T>`). The impls are those of the files of the project as their last parse left
+// them, so a method that was deleted is not visited. Stops at the first function for which
+// `visit` returns nonzero and returns it; NULL when there is none.
+static ASTNode *visit_impl_functions(const char *type_name, int with_self,
+                                     int (*visit)(ASTNode *method, const char *owner, void *data),
+                                     void *data)
 {
     const Instantiation *inst = find_instantiation(g_project->ctx, type_name);
-    int added = 0;
     for (ProjectFile *pf = g_project->files; pf; pf = pf->next)
     {
         for (ASTNode *node = lsp_project_top_level(pf); node; node = node->next)
         {
-            added += add_impl_methods(items, node, type_name, inst, 0, with_self);
+            const char *owner = impl_target_of(node, type_name, inst, 0);
+            ASTNode *found =
+                owner ? visit_functions_of_impl(node, owner, with_self, visit, data) : NULL;
+            if (found)
+            {
+                return found;
+            }
         }
         for (int i = 0; i < pf->generic_impl_count; i++)
         {
-            added += add_impl_methods(items, pf->generic_impls[i], type_name, inst, 1, with_self);
+            ASTNode *impl = pf->generic_impls[i];
+            const char *owner = impl_target_of(impl, type_name, inst, 1);
+            ASTNode *found =
+                owner ? visit_functions_of_impl(impl, owner, with_self, visit, data) : NULL;
+            if (found)
+            {
+                return found;
+            }
         }
     }
-    return added;
+    return NULL;
+}
+
+static int add_impl_function_completion(ASTNode *method, const char *owner, void *items)
+{
+    add_method_completion(items, method, owner,
+                          takes_self(method) ? LSP_COMPLETION_METHOD : LSP_COMPLETION_FUNCTION);
+    return 0;
+}
+
+// Adds the functions of the impl blocks of `type_name` (see visit_impl_functions) under the name
+// they are called by.
+static void add_impl_completions(cJSON *items, const char *type_name, int with_self)
+{
+    visit_impl_functions(type_name, with_self, add_impl_function_completion, items);
 }
 
 // How completion writes the construct a keyword starts. A keyword may have more than one (`for`
@@ -2464,10 +2497,45 @@ static void position_of(const char *source, const char *at, int *line, int *col)
     *col = (int)(at - line_start);
 }
 
+// Whether `method` is called `name` (visit_impl_functions).
+static int is_function_named(ASTNode *method, const char *owner, void *name)
+{
+    (void)owner;
+    return method->func.method_name && strcmp(method->func.method_name, name) == 0;
+}
+
+// Copies to `out` the type written before the `::` that ends right before `at`, a byte of
+// `source` (`Item` of `Item::create`, `Vec<int>` of `Vec<int>::new`). Returns whether there is
+// one.
+static int type_before_scope(const char *source, const char *at, char *out, size_t size)
+{
+    const char *end = at;
+    if (end - source < 3 || end[-1] != ':' || end[-2] != ':')
+    {
+        return 0;
+    }
+    end -= 2;
+    const char *start = end;
+    while (start > source && (isalnum((unsigned char)start[-1]) || start[-1] == '_' ||
+                              start[-1] == '<' || start[-1] == '>'))
+    {
+        start--;
+    }
+    size_t len = (size_t)(end - start);
+    if (len == 0 || len >= size)
+    {
+        return 0;
+    }
+    memcpy(out, start, len);
+    out[len] = 0;
+    return 1;
+}
+
 // The function that a call of `pf` calls, `name` written at `name_start` before its `(`: the one
 // the index links that name to, as the hover finds it (`Item::create` is the method of `Item`,
-// not another `create`). By its name only where the index has no use there (a call the last
-// parse did not read, while it is written) or its declaration is in no file the project indexed.
+// not another `create`). Where the index has no use there, as in a call the last parse did not
+// read because it is still being written (`Item::create(`), by the text: a function of the
+// impls of the type before a `::`, or else any function of that name.
 static ASTNode *called_function(ProjectFile *pf, const char *name_start, const char *name)
 {
     int line = 0, col = 0;
@@ -2477,6 +2545,17 @@ static ASTNode *called_function(ProjectFile *pf, const char *name_start, const c
     if (def)
     {
         return def->node && def->node->kind == NODE_FUNCTION ? def->node : NULL;
+    }
+    char owner[MAX_VAR_NAME_LEN];
+    if (type_before_scope(pf->source, name_start, owner, sizeof(owner)))
+    {
+        // `Item::create(` calls a function of `Item`; `Item::scaled(&item, 3)`, a method.
+        ASTNode *fn = visit_impl_functions(owner, 0, is_function_named, (void *)name);
+        fn = fn ? fn : visit_impl_functions(owner, 1, is_function_named, (void *)name);
+        if (fn)
+        {
+            return fn;
+        }
     }
     return find_declaration(name, NODE_FUNCTION);
 }
