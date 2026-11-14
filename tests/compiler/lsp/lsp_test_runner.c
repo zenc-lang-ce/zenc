@@ -222,6 +222,12 @@ static void test_initialize()
         printf("Initialize response: %s\n", resp);
         fail("Init response must give the legend of the semantic tokens");
     }
+    // `.` opens the members of a value and `:` those of a type (`Color::`).
+    if (!strstr(resp, "\"completionProvider\":{\"triggerCharacters\":[\".\",\":\"]}"))
+    {
+        printf("Initialize response: %s\n", resp);
+        fail("Init response must give `.` and `:` as the characters that open the completion");
+    }
     printf("PASS: test_initialize\n");
     free(resp);
 }
@@ -2140,6 +2146,164 @@ static void test_literal_field_completion(void)
         fail("A block after a name that is no struct completes as before");
     }
     printf("PASS: test_literal_field_completion\n");
+}
+
+// The labels of the completion at (line, character) that `trigger` opened, as an editor asks
+// when that character is typed, joined by spaces; NULL `trigger` asks for it as Ctrl+Space does.
+static void completion_labels(int id, const char *path, int line, int character,
+                              const char *trigger, char *out, size_t out_size)
+{
+    char context[128] = "";
+    if (trigger)
+    {
+        snprintf(context, sizeof(context),
+                 ", \"context\": {\"triggerKind\": 2, \"triggerCharacter\": \"%s\"}", trigger);
+    }
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/completion\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"file://%s\"}, \"position\": {\"line\": "
+             "%d, \"character\": %d}%s}}",
+             id, path, line, character, context);
+    send_request(json);
+    char *response = wait_for_response(id);
+    cJSON *parsed = response ? cJSON_Parse(response) : NULL;
+    free(response);
+    if (!parsed)
+    {
+        fail("No response for a completion request");
+    }
+    cJSON *items = cJSON_GetObjectItem(parsed, "result");
+    out[0] = '\0';
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *label = cJSON_GetObjectItem(cJSON_GetArrayItem(items, i), "label");
+        if (cJSON_IsString(label) && strlen(out) + strlen(label->valuestring) + 2 < out_size)
+        {
+            strcat(out, label->valuestring);
+            strcat(out, " ");
+        }
+    }
+    cJSON_Delete(parsed);
+}
+
+static void test_scope_completion_trigger(void)
+{
+    printf("Running test_scope_completion_trigger...\n");
+    // Typing the second `:` of `Color::` opens the variants; a single `:` (a `let`'s type, a
+    // field of a struct literal, the first of `::`) opens nothing, though asking for the
+    // completion there still offers what fits.
+    const char *path = "/tmp/test_scope_completion_trigger.zc";
+    open_document(path, "enum Color { Red, Green }\n" // Line 0
+                        "struct Point { x: int; }\n"  // Line 1
+                        "fn main() {\n"               // Line 2
+                        "    let c = Color::\n"       // Line 3
+                        "    let p = Point { x:\n"    // Line 4
+                        "    let w:\n"                // Line 5
+                        "}\n");
+    usleep(100000);
+    char labels[4096];
+    completion_labels(1701, path, 3, 19, ":", labels, sizeof(labels));
+    if (!strstr(labels, "Red ") || !strstr(labels, "Green "))
+    {
+        printf("Completion after `Color::`: %s\n", labels);
+        fail("The second `:` of `Color::` opens the variants of the enum");
+    }
+    completion_labels(1702, path, 3, 18, ":", labels, sizeof(labels));
+    if (labels[0])
+    {
+        printf("Completion after `Color:`: %s\n", labels);
+        fail("The first `:` of `::` opens nothing");
+    }
+    completion_labels(1703, path, 4, 22, ":", labels, sizeof(labels));
+    if (labels[0])
+    {
+        printf("Completion after `Point { x:`: %s\n", labels);
+        fail("The `:` of a field in a struct literal opens nothing");
+    }
+    completion_labels(1704, path, 5, 10, ":", labels, sizeof(labels));
+    if (labels[0])
+    {
+        printf("Completion after `let w:`: %s\n", labels);
+        fail("The `:` of a let's type opens nothing");
+    }
+    completion_labels(1705, path, 5, 10, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "int "))
+    {
+        printf("Completion asked for after `let w:`: %s\n", labels);
+        fail("Asking for the completion after a `:` still offers what fits");
+    }
+    printf("PASS: test_scope_completion_trigger\n");
+}
+
+static void test_module_alias_completion(void)
+{
+    printf("Running test_module_alias_completion...\n");
+    // After the alias of an imported module, what the module declares; after `alias::Type::`, the
+    // variants and functions of that module's type, not those of a type of the same name in
+    // another module.
+    mkdir(C_TEST_DIR, 0755);
+    const char *math = C_TEST_DIR "/alias_math.zc";
+    const char *math_text = "enum Axis { Horizontal, Vertical }\n"
+                            "struct Vector { x: int; }\n"
+                            "impl Vector {\n"
+                            "    fn new(x: int) -> Vector { return Vector { x: x }; }\n"
+                            "}\n"
+                            "fn add(a: int, b: int) -> int { return a + b; }\n"
+                            "fn absolute(a: int) -> int { return a; }\n";
+    const char *physics = C_TEST_DIR "/alias_physics.zc";
+    const char *physics_text = "struct Vector { x: f64; }\n"
+                               "impl Vector {\n"
+                               "    fn create(x: f64) -> Vector { return Vector { x: x }; }\n"
+                               "}\n";
+    write_file(math, math_text);
+    write_file(physics, physics_text);
+    open_document(math, math_text);
+    open_document(physics, physics_text);
+    const char *path = C_TEST_DIR "/alias_use.zc";
+    open_document(path, "import \"alias_math.zc\" as math\n"   // Line 0
+                        "import \"alias_physics.zc\" as phy\n" // Line 1
+                        "fn main() {\n"                        // Line 2
+                        "    let a = math::\n"                 // Line 3
+                        "    let b = math::ab\n"               // Line 4
+                        "    let c = math::Vector::\n"         // Line 5
+                        "    let d = phy::Vector::\n"          // Line 6
+                        "    let e = math::Axis::\n"           // Line 7
+                        "}\n");
+    usleep(100000);
+    char labels[4096];
+    completion_labels(1711, path, 3, 18, ":", labels, sizeof(labels));
+    if (!strstr(labels, "Axis ") || !strstr(labels, "Vector ") || !strstr(labels, "add ") ||
+        !strstr(labels, "absolute "))
+    {
+        printf("Completion after `math::`: %s\n", labels);
+        fail("After the alias of a module, what the module declares");
+    }
+    completion_labels(1712, path, 4, 20, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "absolute "))
+    {
+        printf("Completion after `math::ab`: %s\n", labels);
+        fail("A name being typed after the alias of a module");
+    }
+    completion_labels(1713, path, 5, 26, ":", labels, sizeof(labels));
+    if (!strstr(labels, "new ") || strstr(labels, "create "))
+    {
+        printf("Completion after `math::Vector::`: %s\n", labels);
+        fail("After `alias::Type::`, the functions of that module's type only");
+    }
+    completion_labels(1714, path, 6, 25, ":", labels, sizeof(labels));
+    if (!strstr(labels, "create ") || strstr(labels, "new "))
+    {
+        printf("Completion after `phy::Vector::`: %s\n", labels);
+        fail("After `alias::Type::`, the functions of the other module's type only");
+    }
+    completion_labels(1715, path, 7, 24, ":", labels, sizeof(labels));
+    if (!strstr(labels, "Horizontal ") || !strstr(labels, "Vertical "))
+    {
+        printf("Completion after `math::Axis::`: %s\n", labels);
+        fail("After `alias::Enum::`, the variants of the module's enum");
+    }
+    printf("PASS: test_module_alias_completion\n");
 }
 
 static void test_trait_value_completion(void)
@@ -4062,6 +4226,8 @@ int main()
     test_qualified_member_completion();
     test_type_position_completion();
     test_literal_field_completion();
+    test_scope_completion_trigger();
+    test_module_alias_completion();
     test_trait_value_completion();
     test_trait_impl_completion();
     test_implement_trait_action();
