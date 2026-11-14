@@ -1,0 +1,12 @@
+   Compiling tests/compiler/diagnostics_output/unsigned_suffix_type_name.zc...
+error: Type mismatch: expected 'Point', but found 'u32'
+  --> tests/compiler/diagnostics_output/unsigned_suffix_type_name.zc:11:9
+   |
+11 |     let _p: Point = a;
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+     error: semantic analysis found 1 error
+       Check failed with 1 errors
+[exit 1]

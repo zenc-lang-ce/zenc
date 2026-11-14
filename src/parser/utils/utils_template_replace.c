@@ -221,7 +221,7 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c)
     }
     if (strcmp(c, "uint") == 0)
     {
-        return type_new(TYPE_UINT);
+        return type_new(TYPE_U32);
     }
 
     if (strcmp(c, "byte") == 0)
