@@ -680,6 +680,65 @@ char *module_written_name(ParserContext *ctx, const char *name)
     return written;
 }
 
+// The name the module being parsed registered its own `name` under (`prefix__name`), when
+// `declares` finds it; NULL outside a module parsed with a prefix or when the module has none.
+static char *module_own_name(ParserContext *ctx, const char *name,
+                             int (*declares)(ParserContext *, const char *))
+{
+    if (!ctx->imports.current_module_prefix)
+    {
+        return NULL;
+    }
+    char *own = mangle_module_symbol(ctx->imports.current_module_prefix, name);
+    if (declares(ctx, own))
+    {
+        return own;
+    }
+    zfree(own);
+    return NULL;
+}
+
+static int declares_type(ParserContext *ctx, const char *name)
+{
+    return find_struct_def(ctx, name) != NULL;
+}
+
+static int declares_function(ParserContext *ctx, const char *name)
+{
+    return find_func(ctx, name) != NULL;
+}
+
+char *module_type_name(ParserContext *ctx, const char *name)
+{
+    // Names no module declares: a generic parameter, a primitive, `Self`, a C type.
+    if (is_known_generic(ctx, name) || is_primitive_type_name(name) ||
+        strcasecmp(name, "Self") == 0 || is_extern_symbol(ctx, name))
+    {
+        return NULL;
+    }
+    char *own = module_own_name(ctx, name, declares_type);
+    if (own || !ctx->imports.current_module_prefix)
+    {
+        return own;
+    }
+    if (find_struct_def(ctx, name) || find_type_alias(ctx, name))
+    {
+        return NULL;
+    }
+    // Not declared yet anywhere: a type the module declares further down (`next: Node*`).
+    return mangle_module_symbol(ctx->imports.current_module_prefix, name);
+}
+
+char *module_function_name(ParserContext *ctx, const char *name)
+{
+    ZenSymbol *local = find_symbol_entry(ctx, name);
+    if (local && local->is_local)
+    {
+        return NULL;
+    }
+    return module_own_name(ctx, name, declares_function);
+}
+
 // The name programs write for the struct or enum `name`, kept when its C name got a module
 // prefix; NULL for one written as it is named.
 static const char *written_type_name(void *context, const char *name)

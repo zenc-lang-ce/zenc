@@ -197,6 +197,13 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             }
             register_generic(ctx, gt);
         }
+        // In a module, its own type first (`impl Drop for Arena` of a module imported with `as`).
+        char *type_name = module_type_name(ctx, name2);
+        if (type_name)
+        {
+            zfree(name2);
+            name2 = type_name;
+        }
         Type *target = impl_target(ctx, name2);
         name2 = type_impl_name(target);
 
@@ -321,12 +328,12 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
     {
         // Regular impl Struct (impl Box or impl Box<T>)
 
-        // Auto-prefix struct name if in module context
-        if (ctx->imports.current_module_prefix && !gen_param && !is_extern_symbol(ctx, name1))
+        // In a module, its own type first.
+        char *type_name = module_type_name(ctx, name1);
+        if (type_name)
         {
-            char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name1);
             zfree(name1);
-            name1 = prefixed_name;
+            name1 = type_name;
         }
 
         Type *target = impl_target(ctx, name1);

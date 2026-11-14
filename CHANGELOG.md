@@ -32,6 +32,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
 - `match` works through a pointer subject.
 - CLI: `-I`, `-O` and other options read their value correctly; `-g` passes `-g` to the C compiler; options can come before the command (`zc -g build app.zc`).
 - C headers: `import "x.h"` reads the names the header declares, and `zc check` accepts a struct literal of a type from a header.
+- A module imported with an alias (`as m`, a selective import or `as *`) uses its own functions and types by their names: `import "std/string.zc" as str` and `import "std/arena.zc" as arena` build, and such a name no longer goes to a function or a type of the program with the same name.
 - With `--cpp`, an f-string interpolation is evaluated once.
 - `int` and `i32` share one generic instance.
 - A type alias is emitted once; `@fields` names a `@link_name` struct by its C name.

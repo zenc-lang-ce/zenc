@@ -1,0 +1,79 @@
+// A module that calls its own functions: from a function, from a method, before the
+// function is declared, and through a function value. A local of the same name hides them.
+// It also uses its own type `Point`, which the program has too.
+
+fn twice(x: int) -> int {
+    return x * 2;
+}
+
+fn quadruple(x: int) -> int {
+    return twice(twice(x));
+}
+
+fn plus_one_later(x: int) -> int {
+    return add_one(x);
+}
+
+fn add_one(x: int) -> int {
+    return x + 1;
+}
+
+fn through_value(x: int) -> int {
+    let f = twice;
+    return f(x);
+}
+
+fn local_hides(x: int) -> int {
+    let twice = x + 1;
+    return twice;
+}
+
+struct Counter {
+    value: int;
+}
+
+impl Counter {
+    fn new(value: int) -> Counter {
+        return Counter { value: value };
+    }
+
+    fn doubled(self) -> int {
+        return twice(self.value);
+    }
+}
+
+struct Point {
+    y: int;
+    z: int;
+}
+
+enum Side {
+    Left,
+    Right,
+}
+
+trait Measured {
+    fn measure(self) -> int;
+}
+
+impl Point {
+    fn new(y: int, z: int) -> Point {
+        return Point { y: y, z: z };
+    }
+}
+
+impl Measured for Point {
+    fn measure(self) -> int {
+        return self.y + self.z;
+    }
+}
+
+fn own_point(y: int, z: int) -> int {
+    let built: Point = Point::new(y, z);
+    let literal = Point { y: 1, z: 1 };
+    let side = Side::Right;
+    if side == Side::Right {
+        return built.measure() + literal.measure();
+    }
+    return 0;
+}

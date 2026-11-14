@@ -284,27 +284,12 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             }
         }
 
-        // If we're IN a module and no selective import matched, apply module prefix
-        // to types defined WITHIN this module. Types imported from other modules
-        // (identifiable by existing as bare-named structs/aliases) are not prefixed.
-        if (ctx->imports.current_module_prefix && !is_known_generic(ctx, name) &&
-            !is_primitive_type_name(name) && strcasecmp(name, "Self") != 0 &&
-            !is_extern_symbol(ctx, name))
+        // In a module parsed with a prefix, a bare type name names the module's own type.
+        char *type_name = module_type_name(ctx, name);
+        if (type_name)
         {
-            // Check if this is a type imported from another module (registered
-            // without prefix). If so, don't prefix — the bare name already resolves.
-            int is_imported_type =
-                (find_struct_def(ctx, name) != NULL) || (find_type_alias(ctx, name) != NULL);
-
-            if (!is_imported_type)
-            {
-                // Auto-prefix struct name if in module context (unless it's a known
-                // primitive/generic or an imported type)
-                char *prefixed_name =
-                    mangle_module_symbol(ctx->imports.current_module_prefix, name);
-                zfree(name);
-                name = prefixed_name;
-            }
+            zfree(name);
+            name = type_name;
         }
 
         if (is_known_generic(ctx, name))
