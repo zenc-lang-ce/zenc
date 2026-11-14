@@ -566,6 +566,9 @@ struct ASTNode
         {
             char *name; // The field's type is the node's type_info.
             int bit_width;
+            // The field this one copies when the struct mixes it in with `use`; NULL when the
+            // struct declares it. The copy keeps that field's token.
+            ASTNode *mixed_in_from;
         } field;
 
         struct
@@ -650,6 +653,10 @@ struct ASTNode
             int is_struct_destruct;
             char *struct_name;  // "Point" (or NULL if unchecked/inferred).
             char **field_names; // NULL if same as 'names', otherwise mapped.
+            // A struct's: where each field and each name is written. In `Point{x}` the two are
+            // the same token, in `Point{x: a}` they are not.
+            Token *field_tokens;
+            Token *name_tokens;
             int is_guard;
             char *guard_variant; // "Some", "Ok".
             ASTNode *else_block;

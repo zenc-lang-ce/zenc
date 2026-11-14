@@ -1022,6 +1022,12 @@ char *token_get_string_content(Token t);
  */
 int token_string_content_offset(Token t, int *end_offset);
 ASTNode *find_struct_def(ParserContext *ctx, const char *name);
+/**
+ * @brief The field `field_name` of the struct that `struct_type` is or points to; NULL when it
+ *        has no such field. A field mixed in with `use` has the token of the struct it comes
+ *        from.
+ */
+ASTNode *find_struct_field(ParserContext *ctx, Type *struct_type, const char *field_name);
 ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char *link_name,
                         int is_export);
 void push_pending_body(ParserContext *ctx, PendingBody *pending);

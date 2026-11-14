@@ -56,11 +56,13 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         lexer_next(l);
         zvec_Text names = {0};
         zvec_Type type_infos = {0};
+        zvec_Token tokens = {0};
         while (1)
         {
             Token t = lexer_next(l);
             check_identifier(t);
             char *nm = token_strdup(t);
+            zvec_push_Token(&tokens, t);
 
             // Check for optional type annotation: name: type
             Type *type_obj = NULL;
@@ -106,6 +108,12 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         n->destruct.count = (int)names.length;
         n->destruct.init_expr = init;
         n->destruct.is_struct_destruct = is_struct;
+        if (is_struct)
+        {
+            // `let {x, y}`: each name is the field's.
+            n->destruct.field_tokens = tokens.data;
+            n->destruct.name_tokens = tokens.data;
+        }
         return n;
     }
 
@@ -120,6 +128,8 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         lexer_next(l);
         zvec_Text names = {0};
         zvec_Text fields = {0};
+        zvec_Token field_tokens = {0};
+        zvec_Token name_tokens = {0};
 
         while (1)
         {
@@ -128,6 +138,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
             check_identifier(t);
             char *field = token_strdup(t);
             char *variable = field; // Shorthand: field (implies var name = field)
+            Token variable_token = t;
 
             if (lexer_peek(l).kind == TOK_COLON)
             {
@@ -136,9 +147,12 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 Token v = lexer_next(l);
                 check_identifier(v);
                 variable = token_strdup(v);
+                variable_token = v;
             }
             zvec_push_Text(&fields, field);
             zvec_push_Text(&names, variable);
+            zvec_push_Token(&field_tokens, t);
+            zvec_push_Token(&name_tokens, variable_token);
             // Register symbol for variable
             add_symbol(ctx, variable, NULL, is_export);
 
@@ -174,6 +188,8 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         n->token = name_tok;
         n->destruct.names = names.data;
         n->destruct.field_names = fields.data;
+        n->destruct.field_tokens = field_tokens.data;
+        n->destruct.name_tokens = name_tokens.data;
         n->destruct.count = (int)names.length;
         n->destruct.init_expr = init;
         n->destruct.is_struct_destruct = 1;

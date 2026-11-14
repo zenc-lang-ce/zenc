@@ -36,44 +36,29 @@ Type *get_field_type(ParserContext *ctx, Type *struct_type, const char *field_na
         return tuple_element_type(tuple, field_name);
     }
 
+    ASTNode *field = find_struct_field(ctx, struct_type, field_name);
+    return field ? field->type_info : NULL;
+}
+
+ASTNode *find_struct_field(ParserContext *ctx, Type *struct_type, const char *field_name)
+{
     // Use resolve_struct_name_from_type to handle Generics and Pointers correctly
     int is_ptr = 0;
     char *alloc_name = NULL;
-    char *sname = resolve_struct_name_from_type(ctx, struct_type, &is_ptr, &alloc_name);
-
-    if (!sname)
+    char *sname =
+        struct_type ? resolve_struct_name_from_type(ctx, struct_type, &is_ptr, &alloc_name) : NULL;
+    ASTNode *def = sname ? find_struct_def(ctx, sname) : NULL;
+    ASTNode *found = NULL;
+    for (ASTNode *f = def && def->kind == NODE_STRUCT ? def->strct.fields : NULL; f && !found;
+         f = f->next)
     {
-        return NULL;
-    }
-
-    ASTNode *def = find_struct_def(ctx, sname);
-    if (!def)
-    {
-        if (alloc_name)
+        if (f->kind == NODE_FIELD && f->field.name && strcmp(f->field.name, field_name) == 0)
         {
-            zfree(alloc_name);
+            found = f;
         }
-        return NULL;
     }
-
-    ASTNode *f = def->strct.fields;
-    while (f)
-    {
-        if (strcmp(f->field.name, field_name) == 0)
-        {
-            if (alloc_name)
-            {
-                zfree(alloc_name);
-            }
-            return f->type_info;
-        }
-        f = f->next;
-    }
-    if (alloc_name)
-    {
-        zfree(alloc_name);
-    }
-    return NULL;
+    zfree(alloc_name);
+    return found;
 }
 
 const char *get_operator_method(const char *op)
