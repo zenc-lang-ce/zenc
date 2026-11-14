@@ -304,10 +304,7 @@ void lsp_handle_message(const char *json_str)
         }
         if (uri && cJSON_IsString(text))
         {
-            lsp_check_file(uri, text->valuestring);
-            lsp_project_track_document(uri, text->valuestring);
-            // What the documents that import it resolved in it may have changed.
-            lsp_project_visit_documents_seeing(uri, lsp_check_file);
+            lsp_change_file(uri, text->valuestring);
         }
     }
     else if (strcmp(method, "textDocument/didClose") == 0)

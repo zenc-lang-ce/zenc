@@ -91,34 +91,9 @@ void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d)
                         msg, d->id);
 }
 
-void lsp_close_file(const char *uri)
-{
-    // The client's unsaved changes are gone: back to the file on disk. A file deleted
-    // meanwhile keeps its last contents.
-    lsp_project_untrack_document(uri);
-    ProjectFile *pf = lsp_project_get_file(uri);
-    char *src = pf ? load_file(pf->path, NULL, g_project->ctx->config) : NULL;
-    if (src)
-    {
-        lsp_project_update_file(uri, src);
-        zfree(src);
-        lsp_project_visit_documents_seeing(uri, lsp_check_file);
-    }
-
-    // Diagnostics are only computed for open documents, so a closed one's would go stale.
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
-    cJSON_AddStringToObject(root, "method", "textDocument/publishDiagnostics");
-    cJSON *params = cJSON_CreateObject();
-    cJSON_AddStringToObject(params, "uri", uri);
-    cJSON_AddItemToObject(params, "diagnostics", cJSON_CreateArray());
-    cJSON_AddItemToObject(root, "params", params);
-    lsp_send_message(root);
-}
-
 static void warn_unknown_types(ProjectFile *pf);
 
-void lsp_check_file(const char *uri, const char *json_src)
+static void lsp_check_file(const char *uri, const char *json_src)
 {
     if (!g_project)
     {
@@ -213,6 +188,51 @@ void lsp_check_file(const char *uri, const char *json_src)
         zfree(cur);
         cur = next;
     }
+}
+
+// Whether `src` is not the text the project has for `uri`. Only then may what the open documents
+// that import it resolved in it change.
+static int is_new_text(const char *uri, const char *src)
+{
+    ProjectFile *pf = lsp_project_get_file(uri);
+    return !pf || !pf->source || strcmp(pf->source, src) != 0;
+}
+
+void lsp_change_file(const char *uri, const char *src)
+{
+    int changed = is_new_text(uri, src);
+    lsp_check_file(uri, src);
+    lsp_project_track_document(uri, src);
+    // Opening a file with the text on disk changes nothing for the documents that import it.
+    if (changed)
+    {
+        lsp_project_visit_documents_seeing(uri, lsp_check_file);
+    }
+}
+
+void lsp_close_file(const char *uri)
+{
+    // The client's unsaved changes are gone: back to the file on disk. A file deleted
+    // meanwhile keeps its last contents.
+    lsp_project_untrack_document(uri);
+    ProjectFile *pf = lsp_project_get_file(uri);
+    char *src = pf ? load_file(pf->path, NULL, g_project->ctx->config) : NULL;
+    if (src && is_new_text(uri, src))
+    {
+        lsp_project_update_file(uri, src);
+        lsp_project_visit_documents_seeing(uri, lsp_check_file);
+    }
+    zfree(src);
+
+    // Diagnostics are only computed for open documents, so a closed one's would go stale.
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(root, "method", "textDocument/publishDiagnostics");
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "uri", uri);
+    cJSON_AddItemToObject(params, "diagnostics", cJSON_CreateArray());
+    cJSON_AddItemToObject(root, "params", params);
+    lsp_send_message(root);
 }
 
 cJSON *lsp_goto_definition(const char *uri, int line, int col)

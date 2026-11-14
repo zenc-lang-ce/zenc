@@ -736,8 +736,8 @@ void lsp_project_visit_documents_seeing(const char *uri,
     {
         return;
     }
-    // Imports are resolved as the parser resolves them, following symbolic links (/tmp is
-    // /private/tmp on macOS); the path of an open document is the one of its URI.
+    // The files a file imports are resolved as the parser resolves them, to their real path (/tmp
+    // is /private/tmp on macOS); the path of an open document is the one of its URI.
     const char *resolved = z_resolve_path(seen->path, NULL, g_project->ctx->config);
     for (TrackedDocument *document = g_tracked_documents; document; document = document->next)
     {
@@ -747,7 +747,7 @@ void lsp_project_visit_documents_seeing(const char *uri,
             continue;
         }
         const VisibleFiles *visible = visible_files(pf->path);
-        if (is_visible(visible, seen->path) || is_visible(visible, resolved))
+        if (is_visible(visible, resolved))
         {
             visit(document->uri, document->source);
         }
