@@ -34,7 +34,6 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig);
  *   `Handle<B>`).
  */
 void check_argument_type(ParserContext *ctx, Type *expected, ASTNode *arg);
-void check_format_string(ParserContext *ctx, ASTNode *call, Token t);
 
 // From expr_entry.c
 void analyze_lambda_captures(ParserContext *ctx, ASTNode *lambda);

@@ -658,36 +658,6 @@ void codegen_expression_with_move(ParserContext *ctx, ASTNode *node)
     codegen_expression(ctx, node);
 }
 
-// Helper: check if an enum is "simple" (no variant has a payload).
-// Simple enums are emitted as plain C enums, not struct+tag+union.
-int is_simple_enum(ParserContext *ctx, const char *enum_name)
-{
-    if (!ctx || !enum_name)
-    {
-        return 0;
-    }
-    const char *clean = enum_name;
-    if (strncmp(clean, "struct ", 7) == 0)
-    {
-        clean += 7;
-    }
-    ASTNode *def = find_struct_def(ctx, clean);
-    if (!def || def->kind != NODE_ENUM)
-    {
-        return 0;
-    }
-    ASTNode *v = def->enm.variants;
-    while (v)
-    {
-        if (v->variant.payload)
-        {
-            return 0;
-        }
-        v = v->next;
-    }
-    return 1;
-}
-
 int impl_on_template(ParserContext *ctx, ASTNode *impl)
 {
     Type *target = impl->kind == NODE_IMPL ? impl->impl.target : impl->impl_trait.target;

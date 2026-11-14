@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "typecheck_internal.h"
 #include "../utils/utils.h"
+#include <ctype.h>
 
 // Reports `value.method()` when the struct or enum of `value`, declared in Zen C, has no such
 // method: there is no function for codegen to call. Reported in a build too, which would
@@ -48,6 +49,198 @@ static void report_missing_method(TypeChecker *tc, ASTNode *call)
     snprintf(msg, sizeof(msg), "No method '%s' on '%s'", callee->member.field, spelled);
     zfree(spelled);
     tc_ctrl_flow_error(tc, callee->token, msg, NULL);
+}
+
+// Warning W701 (`-Wstyle`): an argument of printf, sprintf, fprintf or dprintf that does not
+// match its conversion in a literal format. It runs once the arguments are checked, when each one
+// has its type.
+static void check_format_string(TypeChecker *tc, ASTNode *call)
+{
+    Token t = call->token;
+    if (tc_file_in_std(tc, t.file))
+    {
+        return;
+    }
+    ASTNode *callee = call->call.callee;
+    if (callee->kind != NODE_EXPR_VAR)
+    {
+        return;
+    }
+
+    char *fname = callee->var_ref.name;
+    if (!fname)
+    {
+        return;
+    }
+
+    if (strcmp(fname, "printf") != 0 && strcmp(fname, "sprintf") != 0 &&
+        strcmp(fname, "fprintf") != 0 && strcmp(fname, "dprintf") != 0)
+    {
+        return;
+    }
+
+    int fmt_idx = 0;
+    if (strcmp(fname, "fprintf") == 0 || strcmp(fname, "sprintf") == 0 ||
+        strcmp(fname, "dprintf") == 0)
+    {
+        fmt_idx = 1;
+    }
+
+    ASTNode *args = call->call.args;
+    ASTNode *fmt_arg = args;
+    for (int i = 0; i < fmt_idx; i++)
+    {
+        if (!fmt_arg)
+        {
+            return;
+        }
+        fmt_arg = fmt_arg->next;
+    }
+    if (!fmt_arg)
+    {
+        return;
+    }
+
+    if (fmt_arg->kind != NODE_EXPR_LITERAL || fmt_arg->literal.kind != 2)
+    {
+        return;
+    }
+
+    const char *fmt = fmt_arg->literal.string_val;
+
+    ASTNode *curr_arg = fmt_arg->next;
+    int arg_num = fmt_idx + 2;
+
+    for (int i = 0; fmt[i]; i++)
+    {
+        if (fmt[i] == '%')
+        {
+            i++;
+            if (fmt[i] == 0)
+            {
+                break;
+            }
+            if (fmt[i] == '%')
+            {
+                continue;
+            }
+
+            // Flags.
+            while (fmt[i] == '-' || fmt[i] == '+' || fmt[i] == ' ' || fmt[i] == '#' ||
+                   fmt[i] == '0')
+            {
+                i++;
+            }
+
+            // Width.
+            while (isdigit(fmt[i]))
+            {
+                i++;
+            }
+
+            if (fmt[i] == '*')
+            {
+                i++;
+                if (!curr_arg)
+                {
+                    warn_format_string(t, arg_num, "width(int)", "missing");
+                }
+                else
+                {
+                    /* check int */
+                    curr_arg = curr_arg->next;
+                    arg_num++;
+                }
+            }
+
+            // Precision.
+            if (fmt[i] == '.')
+            {
+                i++;
+                while (isdigit(fmt[i]))
+                {
+                    i++;
+                }
+
+                if (fmt[i] == '*')
+                {
+                    i++;
+                    if (!curr_arg)
+                    {
+                        warn_format_string(t, arg_num, "precision(int)", "missing");
+                    }
+                    else
+                    {
+                        /* check int */
+                        curr_arg = curr_arg->next;
+                        arg_num++;
+                    }
+                }
+            }
+
+            // Length.
+            if (fmt[i] == 'h' || fmt[i] == 'l' || fmt[i] == 'L' || fmt[i] == 'z' || fmt[i] == 'j' ||
+                fmt[i] == 't')
+            {
+                if (fmt[i] == 'h' && fmt[i + 1] == 'h')
+                {
+                    i++;
+                }
+                else if (fmt[i] == 'l' && fmt[i + 1] == 'l')
+                {
+                    i++;
+                }
+                i++;
+            }
+
+            char spec = fmt[i];
+
+            if (!curr_arg)
+            {
+                warn_format_string(t, arg_num, "argument", "missing");
+                continue;
+            }
+
+            Type *vt = curr_arg->type_info;
+            char *got_type = vt ? zen_c_type_spelling(tc->pctx, vt) : "?";
+
+            if (spec == 'd' || spec == 'i' || spec == 'u' || spec == 'x' || spec == 'X' ||
+                spec == 'o')
+            {
+                if (vt && !is_integer_type(vt) &&
+                    !(vt->kind == TYPE_ENUM && is_simple_enum(tc->pctx, vt->name)))
+                {
+                    warn_format_string(t, arg_num, "integer", got_type);
+                }
+            }
+            else if (spec == 's')
+            {
+                if (vt && vt->kind != TYPE_STRING && vt->kind != TYPE_POINTER &&
+                    vt->kind != TYPE_ARRAY)
+                {
+                    warn_format_string(t, arg_num, "string", got_type);
+                }
+            }
+            else if (spec == 'f' || spec == 'F' || spec == 'e' || spec == 'E' || spec == 'g' ||
+                     spec == 'G')
+            {
+                if (vt && !is_float_type(vt))
+                {
+                    warn_format_string(t, arg_num, "float", got_type);
+                }
+            }
+            else if (spec == 'p')
+            {
+                if (vt && vt->kind != TYPE_POINTER && vt->kind != TYPE_ARRAY)
+                {
+                    warn_format_string(t, arg_num, "pointer", got_type);
+                }
+            }
+
+            curr_arg = curr_arg->next;
+            arg_num++;
+        }
+    }
 }
 
 void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
@@ -459,6 +652,8 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                             ? node->call.callee->member.target
                             : NULL;
     check_all_args_side_effects(tc, receiver, node->call.args, node->token);
+
+    check_format_string(tc, node);
 
     // Evaluation order check: function call arguments should not have conflicting side effects
     if (tc->pctx->config->misra_mode)

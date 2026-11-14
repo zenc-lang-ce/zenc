@@ -1,0 +1,16 @@
+   Compiling tests/compiler/diagnostics_output/warn_format_string.zc...
+warning: Format argument 2: expected 'integer', got 'f32'
+  --> tests/compiler/diagnostics_output/warn_format_string.zc:13:5
+   |
+13 |     printf("%d\n", f);
+   |     ^ here
+   |
+   = note: Mismatched format specifier may cause undefined behavior
+warning: Format argument 2: expected 'string', got 'i64'
+  --> tests/compiler/diagnostics_output/warn_format_string.zc:14:5
+   |
+14 |     printf("%s\n", n);
+   |     ^ here
+   |
+   = note: Mismatched format specifier may cause undefined behavior
+[exit 0]
