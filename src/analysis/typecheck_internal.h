@@ -45,6 +45,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth);
 void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth);
 void check_expr_var(TypeChecker *tc, ASTNode *node);
 void check_expr_literal(TypeChecker *tc, ASTNode *node);
+void adopt_context_type(ASTNode *value, Type *expected);
 void check_struct_init(TypeChecker *tc, ASTNode *node, int depth);
 void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth);
 int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t,
@@ -58,6 +59,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth);
 // Statement checkers (defined in typecheck_stmt.c)
 void check_block(TypeChecker *tc, ASTNode *block, int depth);
 void check_var_decl(TypeChecker *tc, ASTNode *node, int depth);
+void check_def(TypeChecker *tc, ASTNode *node, int depth);
 void check_function(TypeChecker *tc, ASTNode *node, int depth);
 void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth);
 void tc_check_trait(TypeChecker *tc, ASTNode *node, int depth);

@@ -1162,6 +1162,88 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
     }
 }
 
+// Whether the operator `op` computes a constant of the type `target`: arithmetic for any number,
+// bitwise operators and shifts for an integer.
+static int constant_operator(OperatorKind op, Type *target)
+{
+    OperatorClass c = operator_class(op);
+    if (c == OPERATOR_ARITHMETIC)
+    {
+        return 1;
+    }
+    return (c == OPERATOR_BITWISE || c == OPERATOR_SHIFT) && is_integer_type(target);
+}
+
+// Whether `node` is made only of untyped literals (`5`, `0.5`) under arithmetic and bitwise
+// operators, and `target` can hold it: an integer literal any integer or float type, a float
+// literal any float type.
+static int is_untyped_constant(ASTNode *node, Type *target)
+{
+    switch (node->kind)
+    {
+    case NODE_EXPR_LITERAL:
+        if (!node->literal.is_untyped)
+        {
+            return 0;
+        }
+        if (node->literal.kind == LITERAL_INT)
+        {
+            return is_integer_type(target) || is_float_type(target);
+        }
+        return node->literal.kind == LITERAL_FLOAT && is_float_type(target);
+    case NODE_EXPR_UNARY:
+        return constant_operator(node->unary.op, target) &&
+               is_untyped_constant(node->unary.operand, target);
+    case NODE_EXPR_BINARY:
+        return constant_operator(node->binary.op, target) &&
+               is_untyped_constant(node->binary.left, target) &&
+               is_untyped_constant(node->binary.right, target);
+    default:
+        return 0;
+    }
+}
+
+static void give_type(ASTNode *node, Type *type)
+{
+    node->type_info = type;
+    if (node->kind == NODE_EXPR_UNARY)
+    {
+        give_type(node->unary.operand, type);
+    }
+    else if (node->kind == NODE_EXPR_BINARY)
+    {
+        give_type(node->binary.left, type);
+        give_type(node->binary.right, type);
+    }
+}
+
+// A value whose type comes from its context takes the type `expected` before it is checked:
+// - an untyped constant (`5`, `-5`, `0.5`, `255 + 1`) when that type can hold it: the whole
+//   expression is computed in it, as a single literal is;
+// - a lambda, when a function type is expected (check_expr_lambda reads it: a lambda for a
+//   `fn*` is emitted without a context).
+// Any other value keeps its own type, for the caller to compare with the expected one.
+void adopt_context_type(ASTNode *value, Type *expected)
+{
+    if (!value || !expected)
+    {
+        return;
+    }
+    Type *target = get_inner_type(expected);
+    if (value->kind == NODE_LAMBDA)
+    {
+        if (target->kind == TYPE_FUNCTION)
+        {
+            value->type_info = expected;
+        }
+        return;
+    }
+    if (is_untyped_constant(value, target))
+    {
+        give_type(value, expected);
+    }
+}
+
 void check_expr_literal(TypeChecker *tc, ASTNode *node)
 {
     (void)tc;

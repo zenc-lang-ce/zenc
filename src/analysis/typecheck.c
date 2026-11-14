@@ -212,6 +212,9 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
     case NODE_VAR_DECL:
         check_var_decl(tc, node, depth + 1);
         break;
+    case NODE_CONST:
+        check_def(tc, node, depth + 1);
+        break;
     case NODE_FUNCTION:
         check_function(tc, node, depth + 1);
         break;

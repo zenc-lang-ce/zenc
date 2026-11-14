@@ -1,0 +1,20 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// The value of a `let` or a `def` is checked against the declared type, not
+// given that type: these values do not convert, and the C would not compile.
+
+struct Point {
+    x: i32;
+}
+
+def LIMIT: int = "hello";
+
+fn origin() -> Point {
+    return Point{x: 0};
+}
+
+fn main() {
+    def LOCAL: Point = 5;
+    let _count: i32 = origin();
+    let _p: Point = 7;
+}

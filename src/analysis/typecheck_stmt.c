@@ -54,6 +54,42 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
     tc_exit_scope(tc);
 }
 
+// The initial value `*value` of a declaration whose type is `declared` (NULL when it is inferred).
+// A value with no type of its own takes the declared one, and one whose type comes from its
+// context adopts it (adopt_context_type); any other value keeps its type and is compared with the
+// declared one.
+static void check_initial_value(TypeChecker *tc, Type *declared, ASTNode **value, Token t,
+                                int depth)
+{
+    if (declared && !(*value)->type_info)
+    {
+        (*value)->type_info = declared;
+    }
+    adopt_context_type(*value, declared);
+    int old_stmt_ctx = tc->is_stmt_context;
+    tc->is_stmt_context = 0;
+    check_node(tc, *value, depth + 1);
+    tc->is_stmt_context = old_stmt_ctx;
+
+    if (declared && (*value)->type_info)
+    {
+        apply_implicit_struct_pointer_conversions(tc, value, declared);
+        // A variable points where its value points, so a declaration cannot make its value
+        // escape; where the variable lives is its symbol's scope depth (tc_storage_depth).
+        declared->lifetime_depth = (*value)->type_info->lifetime_depth;
+        check_type_compatibility(tc, declared, (*value)->type_info, t, *value, 0);
+    }
+}
+
+// A `def`: its value is checked as a `let`'s is. The node keeps the declared type in type_info.
+void check_def(TypeChecker *tc, ASTNode *node, int depth)
+{
+    if (node->var_decl.init_expr)
+    {
+        check_initial_value(tc, node->type_info, &node->var_decl.init_expr, node->token, depth);
+    }
+}
+
 void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
 {
     if (node->var_decl.type_info)
@@ -74,36 +110,14 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
 
     if (node->var_decl.init_expr)
     {
-        if (node->type_info)
-        {
-            node->var_decl.init_expr->type_info = node->type_info;
-        }
-        int old_stmt_ctx = tc->is_stmt_context;
-        tc->is_stmt_context = 0;
-        check_node(tc, node->var_decl.init_expr, depth + 1);
-        tc->is_stmt_context = old_stmt_ctx;
+        check_initial_value(tc, node->var_decl.type_info, &node->var_decl.init_expr, node->token,
+                            depth);
 
         Type *decl_type = node->var_decl.type_info;
         Type *init_type = node->var_decl.init_expr->type_info;
 
         if (decl_type && init_type)
         {
-            apply_implicit_struct_pointer_conversions(tc, &node->var_decl.init_expr, decl_type);
-            init_type = node->var_decl.init_expr->type_info;
-
-            // The declared type retains its original lifetime metadata (from init or explicit decl)
-
-            // If initialization exists, check compatibility
-            if (node->var_decl.type_info)
-            {
-                // A variable points where its value points, so a declaration cannot make its
-                // value escape; where the variable lives is its symbol's scope depth
-                // (tc_storage_depth).
-                node->var_decl.type_info->lifetime_depth = init_type->lifetime_depth;
-                check_type_compatibility(tc, node->var_decl.type_info, init_type, node->token,
-                                         node->var_decl.init_expr, 0);
-            }
-
             if (tc->pctx->config->misra_mode)
             {
                 misra_check_pointer_conversion(tc->pctx, decl_type, init_type, node->token);
