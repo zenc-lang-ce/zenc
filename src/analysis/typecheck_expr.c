@@ -458,9 +458,9 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
             else if (kind == LITERAL_FLOAT && node->binary.right->literal.float_val >= -0.0 &&
                      node->binary.right->literal.float_val <= 0.0)
             {
-                const char *hints[] = {"Division by zero results in infinity or NaN", NULL};
-                tc_error_with_hints(tc, node->binary.right->token, "Division by zero detected",
-                                    hints);
+                // Defined for floats (IEEE 754): infinity or NaN, as `1.0 / 0.0` spells infinity.
+                tc_warning(tc, node->binary.right->token,
+                           "Float division by zero: the result is infinity or NaN");
             }
         }
 

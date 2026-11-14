@@ -1,0 +1,17 @@
+   Compiling tests/compiler/diagnostics_output/float_division_by_zero.zc...
+warning: Float division by zero: the result is infinity or NaN
+  --> tests/compiler/diagnostics_output/float_division_by_zero.zc:7:23
+   |
+7  |     let ratio = 1.0 / 0.0;
+   |                       ^ here
+   |
+error: Division by zero detected
+  --> tests/compiler/diagnostics_output/float_division_by_zero.zc:8:21
+   |
+8  |     let count = 4 / 0;
+   |                     ^ here
+   |
+   = help: Division by zero is undefined behavior
+     error: semantic analysis found 1 error
+       Check failed with 1 errors
+[exit 1]
