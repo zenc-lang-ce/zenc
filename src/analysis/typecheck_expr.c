@@ -1272,7 +1272,7 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
             // Localize expected field type depth for initialization check.
             // A local struct's fields expect lifetimes compatible with the struct's own scope.
             Type *localized_expected = type_clone(expected_type);
-            if (localized_expected && tc->current_func)
+            if (localized_expected && tc->current_depth > 0)
             {
                 localized_expected->lifetime_depth = tc->current_depth;
             }
