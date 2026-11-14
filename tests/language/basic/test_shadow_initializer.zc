@@ -1,0 +1,94 @@
+// language/basic: the initializer of a `let` that shadows a name reads the shadowed one, in C
+// too, where a local is in scope in its own initializer.
+
+let drops = 0;
+
+struct Res {
+    id: int
+}
+
+impl Drop for Res {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+fn add_ten(x: int) -> int {
+    let x = x + 10;
+    return x;
+}
+
+fn f() -> int {
+    return 41;
+}
+
+test "a let that shadows a parameter reads the parameter" {
+    assert(add_ten(1) == 11, "the initializer read the new variable");
+}
+
+test "a let that shadows a variable of an enclosing block reads that variable" {
+    let x = 1;
+    {
+        let x = x + 10;
+        assert(x == 11, "the initializer read the new variable");
+    }
+    assert(x == 1, "the shadowed variable is unchanged");
+}
+
+test "a let with a type that shadows a variable reads that variable" {
+    let x = 1;
+    {
+        let x: int = x * 100;
+        assert(x == 100, "the initializer read the new variable");
+    }
+}
+
+test "a let that shadows a string reads that string" {
+    let s = "abc";
+    {
+        let s = s;
+        assert(s == "abc", "the initializer read the new variable");
+    }
+}
+
+test "a let named as a function calls the function" {
+    let f = f() + 1;
+    assert(f == 42, "the initializer did not call the function");
+}
+
+test "a let that shadows an array copies that array" {
+    let a: int[3] = [1, 2, 3];
+    {
+        let a = a;
+        assert(a[0] == 1 && a[2] == 3, "the initializer read the new variable");
+    }
+}
+
+test "a let that shadows a value with Drop moves it and drops it once" {
+    drops = 0;
+    {
+        let r = Res { id: 7 };
+        {
+            let r = r;
+            assert(r.id == 7, "the initializer read the new variable");
+        }
+        assert(drops == 1, "the moved value is dropped at the end of the new variable's scope");
+    }
+    assert(drops == 1, "the value moved out of the shadowed variable is not dropped again");
+}
+
+test "a lambda in the initializer captures the shadowed variable" {
+    let k = 5;
+    {
+        let k = fn() -> int { return k * 2; };
+        assert(k() == 10, "the lambda captured the new variable");
+    }
+}
+
+test "a let that shadows a tuple reads its fields" {
+    let t = (1, 2);
+    {
+        let t = t.0 + t.1;
+        assert(t == 3, "the initializer read the new variable");
+    }
+}

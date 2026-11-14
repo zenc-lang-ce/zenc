@@ -579,6 +579,71 @@ static int defer_typed_local_drop(ParserContext *ctx, ASTNode *node, Type *t)
     return 1;
 }
 
+// C puts a local in scope at the end of its declarator, so in `T x = <init>` a name `x` in
+// <init> is the new variable, not the one the let shadows (`let x = x + 1;`, `let f = f();`).
+// Such an initializer is evaluated into a temporary before the declaration, on its line, and
+// moved out of there, while `x` still names the shadowed one. Returns the temporary, or NULL
+// when the initializer does not name the variable.
+static char *emit_shadowed_init(ParserContext *ctx, ASTNode *node)
+{
+    ASTNode *init = node->var_decl.init_expr;
+    if (!init)
+    {
+        return NULL;
+    }
+    char **refs = NULL;
+    int ref_count = 0;
+    find_var_refs(init, &refs, &ref_count);
+    int names_itself = 0;
+    for (int i = 0; i < ref_count && !names_itself; i++)
+    {
+        names_itself = strcmp(refs[i], node->var_decl.name) == 0;
+    }
+    if (!names_itself)
+    {
+        return NULL;
+    }
+
+    char *temp = xmalloc(32);
+    snprintf(temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
+    if (is_fixed_size_array(init->type_info))
+    {
+        // C cannot copy an array by value: the temporary points to its first element, and the
+        // declaration copies the elements from there.
+        char *ptr = c_type_spelling(ctx, type_new_ptr(resolve_alias(init->type_info)->inner));
+        emit_var_decl_type(ctx, ptr, temp);
+        EMIT(ctx, " = ");
+    }
+    else
+    {
+        emit_auto_type(ctx, init, node->token);
+        EMIT(ctx, " %s = ", temp);
+    }
+    codegen_expression(ctx, init);
+    EMIT(ctx, "; ");
+    int moved = is_fixed_size_array(init->type_info) && type_needs_drop(ctx, init->type_info)
+                    ? emit_moved_out(ctx, init)
+                    : emit_move_invalidation(ctx, init);
+    if (moved)
+    {
+        EMIT(ctx, "; ");
+    }
+    return temp;
+}
+
+// The initializer of `node`, or the temporary emit_shadowed_init evaluated it into.
+static void emit_var_init(ParserContext *ctx, ASTNode *node, const char *temp)
+{
+    if (temp)
+    {
+        EMIT(ctx, "%s", temp);
+    }
+    else
+    {
+        codegen_expression(ctx, node->var_decl.init_expr);
+    }
+}
+
 void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 {
 
@@ -604,6 +669,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             return;
         }
     }
+    char *temp = node->var_decl.is_static ? NULL : emit_shadowed_init(ctx, node);
     if (node->var_decl.is_thread_local)
     {
         EMIT(ctx, "_Thread_local ");
@@ -643,9 +709,9 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 // values that need dropping is moved, so its source is marked as moved out.
                 const char *name = c_name(ctx, node->var_decl.name);
                 EMIT(ctx, "; memcpy(%s, ", name);
-                codegen_expression(ctx, init);
+                emit_var_init(ctx, node, temp);
                 EMIT(ctx, ", sizeof(%s))", name);
-                if (type_needs_drop(ctx, node->type_info))
+                if (!temp && type_needs_drop(ctx, node->type_info))
                 {
                     EMIT(ctx, "; ");
                     emit_moved_out(ctx, init);
@@ -659,13 +725,13 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 {
                     char *ct = c_type_spelling(ctx, node->type_info);
                     EMIT(ctx, "(%s)(", ct);
-                    codegen_expression(ctx, node->var_decl.init_expr);
+                    emit_var_init(ctx, node, temp);
                     EMIT(ctx, ")");
                     zfree(ct);
                 }
                 else
                 {
-                    codegen_expression(ctx, node->var_decl.init_expr);
+                    emit_var_init(ctx, node, temp);
                 }
             }
             else if (zero_initializer(ctx, node->type_info))
@@ -673,7 +739,8 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, " = %s", zero_initializer(ctx, node->type_info));
             }
             EMIT(ctx, ";\n");
-            if (node->var_decl.init_expr && emit_move_invalidation(ctx, node->var_decl.init_expr))
+            if (!temp && node->var_decl.init_expr &&
+                emit_move_invalidation(ctx, node->var_decl.init_expr))
             {
                 EMIT(ctx, ";\n");
             }
@@ -715,16 +782,16 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                     (strchr(inferred, '*') || is_enum_type_name(ctx, inferred)))
                 {
                     EMIT(ctx, "(%s)(", inferred);
-                    codegen_expression(ctx, node->var_decl.init_expr);
+                    emit_var_init(ctx, node, temp);
                     EMIT(ctx, ")");
                 }
                 else
                 {
-                    codegen_expression(ctx, node->var_decl.init_expr);
+                    emit_var_init(ctx, node, temp);
                 }
                 EMIT(ctx, ";\n");
 
-                if (node->var_decl.init_expr &&
+                if (!temp && node->var_decl.init_expr &&
                     emit_move_invalidation(ctx, node->var_decl.init_expr))
                 {
                     EMIT(ctx, ";\n");
@@ -738,9 +805,9 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 add_symbol_local(ctx, node->var_decl.name, NULL);
 
                 EMIT(ctx, " = ");
-                codegen_expression(ctx, node->var_decl.init_expr);
+                emit_var_init(ctx, node, temp);
                 EMIT(ctx, ";\n");
-                if (node->var_decl.init_expr &&
+                if (!temp && node->var_decl.init_expr &&
                     emit_move_invalidation(ctx, node->var_decl.init_expr))
                 {
                     EMIT(ctx, ";\n");
