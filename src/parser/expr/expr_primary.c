@@ -108,13 +108,9 @@ static int next_is_dot_variant(ParserContext *ctx, Lexer *l, const char *name, T
         return 0;
     }
 
-    // Find the type called `name`: as written (`Color`)...
-    ASTNode *def = find_struct_def(ctx, name);
-    // ...with the prefix of the current module, for a type declared inside it...
-    if (!def && ctx->imports.current_module_prefix)
-    {
-        def = find_struct_def(ctx, mangle_module_symbol(ctx->imports.current_module_prefix, name));
-    }
+    // Find the type called `name` (in a module, its own type first)...
+    char *type_name = module_type_name(ctx, name);
+    ASTNode *def = find_struct_def(ctx, type_name ? type_name : name);
     // ...or, for an instance of a generic type (`Maybe<int>`), its template.
     if (!def && generic)
     {
@@ -506,7 +502,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     }
                     else
                     {
-                        ASTNode *def = find_struct_def(ctx, acc);
+                        // In a module, its own type first.
+                        char *type_name = module_type_name(ctx, acc);
+                        ASTNode *def = find_struct_def(ctx, type_name ? type_name : acc);
+                        if (def && type_name)
+                        {
+                            zfree(acc);
+                            acc = type_name;
+                        }
                         if (def)
                         {
                             // `Point::new`: the type's name, as any other type name read.
@@ -514,24 +517,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
 
                         int is_opaque_alias = 0;
-                        if (!def && ctx->imports.current_module_prefix)
-                        {
-                            // Module prefix is set — try the prefixed name
-                            // (the struct was defined WITHIN this module, so it's
-                            //  registered as prefix__name, not bare name).
-                            char *prefixed =
-                                mangle_module_symbol(ctx->imports.current_module_prefix, acc);
-                            def = find_struct_def(ctx, prefixed);
-                            if (def)
-                            {
-                                zfree(acc);
-                                acc = prefixed;
-                            }
-                            else
-                            {
-                                zfree(prefixed);
-                            }
-                        }
                         if (!def)
                         {
                             TypeAlias *ta = find_type_alias_node(ctx, acc);
@@ -937,16 +922,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         struct_name = mangle_module_symbol(si->source_module, si->symbol);
                     }
                 }
-                if (struct_name == acc && ctx->imports.current_module_prefix &&
-                    !is_known_generic(ctx, acc))
+                char *type_name = struct_name == acc ? module_type_name(ctx, acc) : NULL;
+                if (type_name)
                 {
-                    // Only prefix module-defined types, not imported types.
-                    // Imports are registered with bare names, so if find_struct_def
-                    // succeeds on the bare name, this is an imported type — skip.
-                    if (!find_struct_def(ctx, acc) && !find_type_alias(ctx, acc))
-                    {
-                        struct_name = mangle_module_symbol(ctx->imports.current_module_prefix, acc);
-                    }
+                    struct_name = type_name;
                 }
 
                 // Opaque Struct Check
@@ -1138,24 +1117,12 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
         }
 
-        // In a module parsed with a prefix (imported with `as`, selectively or as `*`), its own
-        // functions are registered as `prefix__helper`: a bare `helper` names that one, before
-        // a function of the program with that very name (from an import without prefix). Only
-        // a local or a parameter called so hides it.
-        ZenSymbol *hiding = ctx->imports.current_module_prefix ? find_symbol_entry(ctx, acc) : NULL;
-        if (ctx->imports.current_module_prefix && !variant.member && !owner &&
-            !(hiding && hiding->is_local))
+        // A bare `helper` in a module parsed with a prefix names the module's own function.
+        char *own_function = (!variant.member && !owner) ? module_function_name(ctx, acc) : NULL;
+        if (own_function)
         {
-            char *prefixed = mangle_module_symbol(ctx->imports.current_module_prefix, acc);
-            if (find_func(ctx, prefixed))
-            {
-                zfree(acc);
-                acc = prefixed;
-            }
-            else
-            {
-                zfree(prefixed);
-            }
+            zfree(acc);
+            acc = own_function;
         }
 
         FuncSig *sig = find_func(ctx, acc);

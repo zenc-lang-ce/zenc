@@ -1,0 +1,34 @@
+// language/modules: a module imported with an alias uses its own functions and types by their
+// names. The alias gives its declarations a module prefix in C; the names the module writes
+// get it too, also when the program has a function or a type of the same name (here `twice`
+// and `Point`, imported without an alias).
+import "./test_modules/_own_names.zc" as own;
+import "std/string.zc" as str;
+import "std/arena.zc" as arena;
+import "./test_modules/_global_names.zc";
+
+test "a module imported with an alias calls its own functions" {
+    assert(own::quadruple(3) == 12, "from a function");
+    assert(own::plus_one_later(4) == 5, "a function declared further down");
+    assert(own::through_value(5) == 10, "through a function value");
+    let c = own::Counter::new(6);
+    assert(c.doubled() == 12, "from a method");
+    assert(own::local_hides(4) == 5, "a local of the same name hides the function");
+    assert(twice(2) == 200, "the program's own `twice` is another function");
+}
+
+test "a module imported with an alias uses its own types" {
+    assert(own::own_point(2, 3) == 7, "the module's own `Point`");
+    let p = Point { x: 4 };
+    assert(p.x == 4, "the program's own `Point` is another type");
+}
+
+test "a module of the standard library imported with an alias" {
+    // String::compare_ignore_case calls a function of std/string.zc.
+    let a = str::String::from("Hola");
+    let b = str::String::from("hola");
+    assert(a.compare_ignore_case(&b) == 0, "the module calls its own function");
+    // std/arena.zc implements `Drop for Arena`, its own type.
+    let a2 = arena::Arena::new(64);
+    assert(a2.alloc_bytes(8) != NULL, "the module's own type in `impl Drop for`");
+}

@@ -1,0 +1,9 @@
+// Names of the program, imported without an alias: their C names are `twice` and `Point`.
+
+fn twice(x: int) -> int {
+    return x * 100;
+}
+
+struct Point {
+    x: int;
+}

@@ -894,7 +894,7 @@ void record_generic_parameter_use(ParserContext *ctx, Token t);
 /**
  * @brief Checks if a name is a known generic parameter.
  */
-int is_known_generic(ParserContext *ctx, char *name);
+int is_known_generic(ParserContext *ctx, const char *name);
 
 /** @brief Whether `t` still names a generic parameter (`Vec<T>` inside its template). */
 int type_is_generic_dependent(ParserContext *ctx, Type *t);
@@ -1078,6 +1078,22 @@ Module *find_module(ParserContext *ctx, const char *alias);
  * the module is imported with an alias, `Vector` when its names are imported one by one.
  */
 char *module_written_name(ParserContext *ctx, const char *name);
+/**
+ * @brief The struct or enum a bare type name names in the module being parsed: its C name
+ *        when that is not `name` itself, NULL when it is. In a module parsed with a prefix
+ *        (imported with `as`, one by one or as `*`), the module's own type comes first
+ *        (`prefix__Point`), then a type of the program called so, then one the module
+ *        declares further down. A generic parameter, a primitive, `Self` and a C type keep
+ *        their names.
+ */
+char *module_type_name(ParserContext *ctx, const char *name);
+/**
+ * @brief The function a bare name names in the module being parsed: the module's own
+ *        (`prefix__helper`) before a function of the program called so; NULL when the
+ *        module has none, outside a module parsed with a prefix, or when a local or a
+ *        parameter called so hides it. Same rule as module_type_name.
+ */
+char *module_function_name(ParserContext *ctx, const char *name);
 /**
  * @brief A type as the program writes it (type_to_zen_c_string_with), with a struct or enum of
  * a module written as its importer writes it: `math::Vector`, not `_math__Vector`.

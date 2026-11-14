@@ -258,7 +258,7 @@ void record_generic_parameter_use(ParserContext *ctx, Token t)
     }
 }
 
-int is_known_generic(ParserContext *ctx, char *name)
+int is_known_generic(ParserContext *ctx, const char *name)
 {
     return find_known_generic(ctx, name, strlen(name)) != NULL;
 }
