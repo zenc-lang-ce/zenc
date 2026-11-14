@@ -54,37 +54,24 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     {
         int is_struct = (lexer_peek(l).kind == TOK_LBRACE);
         lexer_next(l);
-        int cap = 16;
-        char **names = xmalloc((size_t)cap * sizeof(char *));
-        Type **type_infos = xmalloc((size_t)cap * sizeof(Type *));
-        int count = 0;
+        zvec_Text names = {0};
+        zvec_Type type_infos = {0};
         while (1)
         {
-            if (count >= cap)
-            {
-                cap *= 2;
-                names = xrealloc(names, (size_t)cap * sizeof(char *));
-                type_infos = xrealloc(type_infos, (size_t)cap * sizeof(Type *));
-            }
             Token t = lexer_next(l);
             check_identifier(t);
             char *nm = token_strdup(t);
-            names[count] = nm;
-            type_infos[count] = NULL;
 
             // Check for optional type annotation: name: type
+            Type *type_obj = NULL;
             if (!is_struct && lexer_peek(l).kind == TOK_COLON)
             {
                 lexer_next(l); // eat :
-                Type *type_obj = parse_type_formal(ctx, l);
-                type_infos[count] = type_obj;
-                add_symbol(ctx, nm, type_obj, is_export);
+                type_obj = parse_type_formal(ctx, l);
             }
-            else
-            {
-                add_symbol(ctx, nm, NULL, is_export);
-            }
-            count++;
+            zvec_push_Text(&names, nm);
+            zvec_push_Type(&type_infos, type_obj);
+            add_symbol(ctx, nm, type_obj, is_export);
 
             Token next = lexer_next(l);
             if (next.kind == TOK_EOF)
@@ -114,9 +101,9 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         }
         ASTNode *n = ast_create(NODE_DESTRUCT_VAR);
         n->token = tk;
-        n->destruct.names = names;
-        n->destruct.type_infos = type_infos;
-        n->destruct.count = count;
+        n->destruct.names = names.data;
+        n->destruct.type_infos = type_infos.data;
+        n->destruct.count = (int)names.length;
         n->destruct.init_expr = init;
         n->destruct.is_struct_destruct = is_struct;
         return n;
