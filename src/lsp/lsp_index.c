@@ -374,16 +374,6 @@ static ASTNode *enum_named(ParserContext *ctx, const char *name)
                : NULL;
 }
 
-// Whether the struct `strct` declares `field` itself: a field mixed in with `use` has the token of
-// the struct it comes from, declared before it.
-static int declares_field(ASTNode *strct, ASTNode *field)
-{
-    Token s = strct->token;
-    Token f = field->token;
-    return s.file && f.file && strcmp(s.file, f.file) == 0 &&
-           (f.line > s.line || (f.line == s.line && f.col > s.col));
-}
-
 // `let Point{x: a} = p` and `let {x} = p`: each field where the destructuring writes it, a use of
 // that field of the value's struct.
 static void add_destructured_field_refs(LSPIndex *idx, ParserContext *ctx, ASTNode *node)
@@ -515,7 +505,8 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             ASTNode *field = node->strct.fields;
             while (field)
             {
-                if (field->kind == NODE_FIELD && declares_field(node, field))
+                // A field mixed in with `use` is declared by the struct it comes from.
+                if (field->kind == NODE_FIELD && !field->field.mixed_in_from)
                 {
                     char fh[MAX_SHORT_MSG_LEN];
                     const char *fname = field->field.name ? field->field.name : "unknown";

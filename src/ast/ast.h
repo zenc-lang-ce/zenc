@@ -566,6 +566,9 @@ struct ASTNode
         {
             char *name; // The field's type is the node's type_info.
             int bit_width;
+            // The field this one copies when the struct mixes it in with `use`; NULL when the
+            // struct declares it. The copy keeps that field's token.
+            ASTNode *mixed_in_from;
         } field;
 
         struct
