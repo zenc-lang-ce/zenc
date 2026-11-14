@@ -728,6 +728,32 @@ static const VisibleFiles *visible_files(const char *path)
     return &visible;
 }
 
+void lsp_project_visit_documents_seeing(const char *uri,
+                                        void (*visit)(const char *uri, const char *source))
+{
+    ProjectFile *seen = g_project ? lsp_project_get_file(uri) : NULL;
+    if (!seen)
+    {
+        return;
+    }
+    // The files a file imports are resolved as the parser resolves them, to their real path (/tmp
+    // is /private/tmp on macOS); the path of an open document is the one of its URI.
+    const char *resolved = z_resolve_path(seen->path, NULL, g_project->ctx->config);
+    for (TrackedDocument *document = g_tracked_documents; document; document = document->next)
+    {
+        ProjectFile *pf = lsp_project_get_file(document->uri);
+        if (!pf || pf == seen)
+        {
+            continue;
+        }
+        const VisibleFiles *visible = visible_files(pf->path);
+        if (is_visible(visible, resolved))
+        {
+            visit(document->uri, document->source);
+        }
+    }
+}
+
 // The name a top-level node declares a type with, as the parser registers it; NULL for no type.
 static const char *declared_type_name(ASTNode *node)
 {
