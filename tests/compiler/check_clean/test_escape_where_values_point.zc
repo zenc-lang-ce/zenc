@@ -1,0 +1,49 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// Escape analysis tells where a variable lives from where its value points:
+// a pointer to the heap or to static data may be returned or stored anywhere.
+import "std/mem.zc"
+
+struct Node {
+    value: i32;
+    next: Node*;
+}
+
+struct Wrapper {
+    text: char*;
+}
+
+impl Wrapper {
+    fn get(self) -> char* {
+        return self.text;
+    }
+}
+
+fn make_node(v: i32) -> Node* {
+    let n = alloc<Node>();
+    n.value = v;
+    n.next = NULL;
+    return n;
+}
+
+fn buffer(n: usize) -> char* {
+    let buf = (char*)malloc(n);
+    buf[0] = 0;
+    return buf;
+}
+
+fn first_char() -> char {
+    let w = Wrapper{text: "x"};
+    let s: char* = "a";
+    s = w.get();
+    return s[0];
+}
+
+fn main() {
+    let head = make_node(1);
+    head.next = make_node(2);
+    assert(head.next.value == 2, "the second node");
+    assert(first_char() == 'x', "the text");
+    let b = buffer(4);
+    assert(b[0] == 0, "the buffer");
+    free(b);
+}

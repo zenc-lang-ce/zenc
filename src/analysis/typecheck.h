@@ -78,6 +78,13 @@ int check_moves_only(ParserContext *ctx, ASTNode *root);
 void tc_error(TypeChecker *tc, Token t, const char *msg);
 void tc_warning(TypeChecker *tc, Token t, const char *msg);
 int tc_file_in_std(TypeChecker *tc, const char *file);
+/**
+ * @brief Where the place `place` lives, for escape analysis: the scope depth of a variable (0 for
+ *        a global); for a field or an element, that of the value holding it, or, through a
+ *        pointer, the depth the pointer points to. Anything else is a temporary of the current
+ *        scope. A type's lifetime_depth is the other half: where a value points.
+ */
+int tc_storage_depth(TypeChecker *tc, ASTNode *place);
 void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
 void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
 void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints,

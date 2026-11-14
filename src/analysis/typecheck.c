@@ -863,6 +863,13 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             }
             mark_type_as_used(tc, target_type);
         }
+        // A cast points where its operand points.
+        if (node->type_info && node->cast.expr && node->cast.expr->type_info &&
+            node->cast.expr->type_info->lifetime_depth != node->type_info->lifetime_depth)
+        {
+            node->type_info = type_clone(node->type_info);
+            node->type_info->lifetime_depth = node->cast.expr->type_info->lifetime_depth;
+        }
         break;
     case NODE_EXPR_ARRAY_LITERAL:
     {
@@ -888,6 +895,15 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         else
         {
             node->type_info = type_new_array(type_new(TYPE_UNKNOWN), count);
+        }
+        // An array points where the deepest of its elements points.
+        for (elem = node->array_literal.elements; elem; elem = elem->next)
+        {
+            if (elem->type_info &&
+                elem->type_info->lifetime_depth > node->type_info->lifetime_depth)
+            {
+                node->type_info->lifetime_depth = elem->type_info->lifetime_depth;
+            }
         }
     }
     break;

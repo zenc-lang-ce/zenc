@@ -65,8 +65,9 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
     mark_type_as_used(tc, node->var_decl.type_info);
 
     // Initialize lifetime depth for escape analysis if this is a local variable: one in a
-    // function or in a `test` block, as the depth its symbol gets says (0 is global).
-    if (node->var_decl.type_info && tc->current_depth > 0)
+    // function or in a `test` block, as the depth its symbol gets says (0 is global). A variable
+    // with a value points where the value points (below); one without is taken to point here.
+    if (node->var_decl.type_info && !node->var_decl.init_expr && tc->current_depth > 0)
     {
         node->var_decl.type_info->lifetime_depth = tc->current_depth;
     }
@@ -95,6 +96,10 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
             // If initialization exists, check compatibility
             if (node->var_decl.type_info)
             {
+                // A variable points where its value points, so a declaration cannot make its
+                // value escape; where the variable lives is its symbol's scope depth
+                // (tc_storage_depth).
+                node->var_decl.type_info->lifetime_depth = init_type->lifetime_depth;
                 check_type_compatibility(tc, node->var_decl.type_info, init_type, node->token,
                                          node->var_decl.init_expr, 0);
             }
@@ -130,12 +135,8 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
     Type *t = node->type_info;
     if (!t && node->var_decl.init_expr)
     {
+        // A clone of the value's type, which keeps where the value points.
         t = type_clone(node->var_decl.init_expr->type_info);
-        // Ensure inferred local variables get the correct scope depth for escape analysis
-        if (t && tc->current_depth > 0)
-        {
-            t->lifetime_depth = tc->current_depth;
-        }
         node->type_info = t;
         node->var_decl.type_info = t;
     }
