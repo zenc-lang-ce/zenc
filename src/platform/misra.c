@@ -108,12 +108,12 @@ static int get_type_width(Type *t)
     }
     Type *res = resolve_alias(t);
     static const int widths[] = {
-        [TYPE_I8] = 8,          [TYPE_U8] = 8,           [TYPE_CHAR] = 8,    [TYPE_C_CHAR] = 8,
-        [TYPE_C_UCHAR] = 8,     [TYPE_I16] = 16,         [TYPE_U16] = 16,    [TYPE_C_SHORT] = 16,
-        [TYPE_C_USHORT] = 16,   [TYPE_I32] = 32,         [TYPE_U32] = 32,    [TYPE_UINT] = 32,
-        [TYPE_C_INT] = 32,      [TYPE_C_UINT] = 32,      [TYPE_I64] = 64,    [TYPE_U64] = 64,
-        [TYPE_USIZE] = 64,      [TYPE_ISIZE] = 64,       [TYPE_C_LONG] = 64, [TYPE_C_ULONG] = 64,
-        [TYPE_C_LONGLONG] = 64, [TYPE_C_ULONGLONG] = 64, [TYPE_F32] = 32,    [TYPE_F64] = 64};
+        [TYPE_I8] = 8,           [TYPE_U8] = 8,      [TYPE_CHAR] = 8,     [TYPE_C_CHAR] = 8,
+        [TYPE_C_UCHAR] = 8,      [TYPE_I16] = 16,    [TYPE_U16] = 16,     [TYPE_C_SHORT] = 16,
+        [TYPE_C_USHORT] = 16,    [TYPE_I32] = 32,    [TYPE_U32] = 32,     [TYPE_C_INT] = 32,
+        [TYPE_C_UINT] = 32,      [TYPE_I64] = 64,    [TYPE_U64] = 64,     [TYPE_USIZE] = 64,
+        [TYPE_ISIZE] = 64,       [TYPE_C_LONG] = 64, [TYPE_C_ULONG] = 64, [TYPE_C_LONGLONG] = 64,
+        [TYPE_C_ULONGLONG] = 64, [TYPE_F32] = 32,    [TYPE_F64] = 64};
     if (res->kind < (int)(sizeof(widths) / sizeof(widths[0])))
     {
         return widths[res->kind];
@@ -710,7 +710,7 @@ void misra_check_struct_decl(ParserContext *ctx, ASTNode *node)
                 if (t->kind != TYPE_BOOL && t->kind != TYPE_U8 && t->kind != TYPE_U16 &&
                     t->kind != TYPE_U32 && t->kind != TYPE_U64 && t->kind != TYPE_I8 &&
                     t->kind != TYPE_I16 && t->kind != TYPE_I32 && t->kind != TYPE_I64 &&
-                    t->kind != TYPE_UINT && t->kind != TYPE_BYTE)
+                    t->kind != TYPE_BYTE)
                 {
                     zerror_at(field->token, "MISRA Rule 6.1");
                 }

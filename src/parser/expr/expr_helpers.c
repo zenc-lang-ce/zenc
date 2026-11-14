@@ -648,7 +648,7 @@ int type_is_unsigned(Type *t)
 
     return (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 ||
             t->kind == TYPE_U64 || t->kind == TYPE_USIZE || t->kind == TYPE_BYTE ||
-            t->kind == TYPE_U128 || t->kind == TYPE_UINT ||
+            t->kind == TYPE_U128 ||
             (t->kind == TYPE_STRUCT && t->name &&
              (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
               0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
@@ -681,7 +681,6 @@ static const char *scan_conversion(Type *t)
     case TYPE_C_USHORT:
         return "%hu";
     case TYPE_U32:
-    case TYPE_UINT:
     case TYPE_C_UINT:
         return "%u";
     case TYPE_I64:
