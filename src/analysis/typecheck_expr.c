@@ -180,16 +180,12 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     if (unop == OP_ADDRESS || unop == OP_ADDRESS_RVALUE)
     {
         node->type_info = type_new_ptr(operand_type);
-        // Record provenance depth for escape analysis
-        if (node->unary.operand->kind == NODE_EXPR_VAR)
+        // The address points where its operand lives.
+        if (unop == OP_ADDRESS)
         {
-            ZenSymbol *sym = tc_lookup(tc, node->unary.operand->var_ref.name);
-            if (sym)
-            {
-                node->type_info->lifetime_depth = sym->scope_depth;
-            }
+            node->type_info->lifetime_depth = tc_storage_depth(tc, node->unary.operand);
         }
-        else if (unop == OP_ADDRESS_RVALUE)
+        else
         {
             // R-values are temporaries, their life is the current code block
             if (node->unary.operand->type_info)
@@ -199,14 +195,6 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
             else
             {
                 node->type_info->lifetime_depth = tc->current_depth;
-            }
-        }
-        else
-        {
-            // For complex targets (e.g. &array[0]), inherit from the operand if it has a lifetime
-            if (operand_type)
-            {
-                node->type_info->lifetime_depth = operand_type->lifetime_depth;
             }
         }
         return;
@@ -347,8 +335,23 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
         {
             apply_implicit_struct_pointer_conversions(tc, &node->binary.right, left_type);
             right_type = node->binary.right->type_info;
-            check_type_compatibility(tc, left_type, right_type, node->binary.right->token,
+            // The value must not point into a scope shorter than the place it is stored in.
+            Type *place_type = type_clone(left_type);
+            place_type->lifetime_depth = tc_storage_depth(tc, node->binary.left);
+            check_type_compatibility(tc, place_type, right_type, node->binary.right->token,
                                      node->binary.right, 0);
+            // A variable points as deep as any value assigned to it. Its symbol gets its own
+            // copy of the type: a parameter's is the signature's.
+            if (node->binary.left->kind == NODE_EXPR_VAR && right_type)
+            {
+                ZenSymbol *var = tc_lookup(tc, node->binary.left->var_ref.name);
+                if (var && var->type_info &&
+                    right_type->lifetime_depth > var->type_info->lifetime_depth)
+                {
+                    var->type_info = type_clone(var->type_info);
+                    var->type_info->lifetime_depth = right_type->lifetime_depth;
+                }
+            }
 
             // Mark LHS as written to
             if (node->binary.left->kind == NODE_EXPR_VAR)
@@ -1302,6 +1305,23 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         check_move_for_rvalue(tc, field_init->var_decl.init_expr);
 
         field_init = field_init->next;
+    }
+
+    // A struct points where the deepest of its fields points. Its own copy of the type: the
+    // struct's Type may be shared.
+    int deepest = 0;
+    for (ASTNode *fi = node->struct_init.fields; fi; fi = fi->next)
+    {
+        ASTNode *value = fi->var_decl.init_expr;
+        if (value && value->type_info && value->type_info->lifetime_depth > deepest)
+        {
+            deepest = value->type_info->lifetime_depth;
+        }
+    }
+    if (node->type_info && deepest != node->type_info->lifetime_depth)
+    {
+        node->type_info = type_clone(node->type_info);
+        node->type_info->lifetime_depth = deepest;
     }
 
     // Fields left out of a struct literal are zero-initialised (the C designated
