@@ -898,6 +898,20 @@ Type *resolve_alias(Type *t)
     return t;
 }
 
+Type *type_seen_from(Type *t, const char *file)
+{
+    while (t && t->kind == TYPE_ALIAS && t->inner)
+    {
+        if (t->alias.is_opaque_alias && (!file || !t->alias.alias_defined_in_file ||
+                                         strcmp(t->alias.alias_defined_in_file, file) != 0))
+        {
+            break;
+        }
+        t = t->inner;
+    }
+    return t;
+}
+
 int integer_type_width(Type *t)
 {
     if (!t)
