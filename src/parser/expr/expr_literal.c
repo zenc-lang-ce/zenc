@@ -493,7 +493,7 @@ ASTNode *parse_int_literal(ParserContext *ctx, Token t)
         // Apply type from suffix
         if (strcasecmp(endptr, "u") == 0)
         {
-            node->type_info->kind = TYPE_UINT;
+            node->type_info->kind = TYPE_U32;
         }
         else if (strcasecmp(endptr, "l") == 0)
         {

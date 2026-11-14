@@ -840,11 +840,11 @@ int is_integer_type(Type *t)
          t->kind == TYPE_I16 || t->kind == TYPE_U16 || t->kind == TYPE_I32 || t->kind == TYPE_U32 ||
          t->kind == TYPE_I64 || t->kind == TYPE_U64 || t->kind == TYPE_USIZE ||
          t->kind == TYPE_ISIZE || t->kind == TYPE_BYTE || t->kind == TYPE_RUNE ||
-         t->kind == TYPE_UINT || t->kind == TYPE_I128 || t->kind == TYPE_U128 ||
-         t->kind == TYPE_BITINT || t->kind == TYPE_UBITINT || t->kind == TYPE_C_INT ||
-         t->kind == TYPE_C_UINT || t->kind == TYPE_C_LONG || t->kind == TYPE_C_ULONG ||
-         t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_SHORT ||
-         t->kind == TYPE_C_USHORT || t->kind == TYPE_C_CHAR || t->kind == TYPE_C_UCHAR ||
+         t->kind == TYPE_I128 || t->kind == TYPE_U128 || t->kind == TYPE_BITINT ||
+         t->kind == TYPE_UBITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_UINT ||
+         t->kind == TYPE_C_LONG || t->kind == TYPE_C_ULONG || t->kind == TYPE_C_LONGLONG ||
+         t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_USHORT ||
+         t->kind == TYPE_C_CHAR || t->kind == TYPE_C_UCHAR ||
          (t->kind == TYPE_STRUCT && t->name &&
           (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "uint8_t") ||
            0 == strcmp(t->name, "int16_t") || 0 == strcmp(t->name, "uint16_t") ||
@@ -867,15 +867,14 @@ int is_unsigned_type(Type *t)
         return is_unsigned_type(t->inner);
     }
 
-    int res =
-        (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 || t->kind == TYPE_U64 ||
-         t->kind == TYPE_USIZE || t->kind == TYPE_UINT || t->kind == TYPE_U128 ||
-         t->kind == TYPE_UBITINT || t->kind == TYPE_C_UINT || t->kind == TYPE_C_ULONG ||
-         t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_UCHAR ||
-         (t->kind == TYPE_STRUCT && t->name &&
-          (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
-           0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
-           0 == strcmp(t->name, "size_t"))));
+    int res = (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 ||
+               t->kind == TYPE_U64 || t->kind == TYPE_USIZE || t->kind == TYPE_U128 ||
+               t->kind == TYPE_UBITINT || t->kind == TYPE_C_UINT || t->kind == TYPE_C_ULONG ||
+               t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_UCHAR ||
+               (t->kind == TYPE_STRUCT && t->name &&
+                (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
+                 0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
+                 0 == strcmp(t->name, "size_t"))));
     return res;
 }
 
@@ -920,7 +919,6 @@ int integer_type_width(Type *t)
         return 16;
     case TYPE_I32:
     case TYPE_U32:
-    case TYPE_UINT:
     case TYPE_RUNE:
     case TYPE_C_INT:
     case TYPE_C_UINT:
@@ -1340,8 +1338,6 @@ static char *type_spelling_impl(Type *t, TypeSpelling spelling, WrittenNameLooku
     case TYPE_RUNE:
         // Not `int32_t`, which `int` also is: an instance of `rune` is not one of `int`.
         return xstrdup("rune");
-    case TYPE_UINT:
-        return xstrdup("unsigned int");
 
     // Portable C Types
     case TYPE_C_INT:
@@ -1675,8 +1671,6 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         return xstrdup("unsigned __int128");
     case TYPE_RUNE:
         return xstrdup("int32_t");
-    case TYPE_UINT:
-        return xstrdup("unsigned int");
 
     // Portable C Types (Map directly to C types)
     case TYPE_C_INT:

@@ -64,7 +64,6 @@ typedef enum
     TYPE_ISIZE,  ///< `isize` (pointer size signed).
     TYPE_BYTE,   ///< `byte`.
     TYPE_RUNE,   ///< `rune`.
-    TYPE_UINT,   ///< `uint` (alias).
     // Portable C Types (FFI)
     TYPE_C_INT,       ///< `c_int` (int).
     TYPE_C_UINT,      ///< `c_uint` (unsigned int).
