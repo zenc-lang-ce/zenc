@@ -495,9 +495,12 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 return;
             }
 
-            int left_numeric = is_integer_type(left_type) || is_float_type(left_type) ||
+            // An opaque alias of a number is a number in the file that defines it.
+            Type *left_seen = type_seen_from(left_type, node->token.file);
+            Type *right_seen = type_seen_from(right_type, node->token.file);
+            int left_numeric = is_integer_type(left_seen) || is_float_type(left_seen) ||
                                left_type->kind == TYPE_VECTOR;
-            int right_numeric = is_integer_type(right_type) || is_float_type(right_type) ||
+            int right_numeric = is_integer_type(right_seen) || is_float_type(right_seen) ||
                                 right_type->kind == TYPE_VECTOR;
 
             if (!left_numeric || !right_numeric)
@@ -620,9 +623,12 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
 
             if (!type_eq(left_type, right_type))
             {
-                // Allow comparison between numeric types
-                int left_numeric = is_integer_type(left_type) || is_float_type(left_type);
-                int right_numeric = is_integer_type(right_type) || is_float_type(right_type);
+                // Allow comparison between numeric types, an opaque alias of a number
+                // among them in the file that defines it.
+                Type *left_seen = type_seen_from(left_type, node->token.file);
+                Type *right_seen = type_seen_from(right_type, node->token.file);
+                int left_numeric = is_integer_type(left_seen) || is_float_type(left_seen);
+                int right_numeric = is_integer_type(right_seen) || is_float_type(right_seen);
 
                 if (!left_numeric || !right_numeric)
                 {
@@ -949,6 +955,17 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
 
     // Fast path: exact match (the MISRA pointer checks ran above)
     if (type_eq(target, value))
+    {
+        return 1;
+    }
+
+    // In the file that defines it, an opaque alias converts to and from its underlying type. Two
+    // opaque aliases are the same type only when they are the same alias, which type_eq tells.
+    Type *target_inner = get_inner_type(target);
+    Type *value_inner = get_inner_type(value);
+    int both_opaque = target_inner->kind == TYPE_ALIAS && target_inner->alias.is_opaque_alias &&
+                      value_inner->kind == TYPE_ALIAS && value_inner->alias.is_opaque_alias;
+    if (!both_opaque && type_eq(type_seen_from(target, t.file), type_seen_from(value, t.file)))
     {
         return 1;
     }

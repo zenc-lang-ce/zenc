@@ -1,0 +1,25 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// In the file that defines it, an opaque alias converts to and from its
+// underlying type: in a return, an assignment and a call argument.
+
+opaque alias Text = Slice<char>;
+
+fn text_of(s: char*) -> Text {
+    let t = Text{data: s, len: strlen(s)};
+    return t;
+}
+
+fn as_text(s: Slice<char>) -> Text {
+    return s;
+}
+
+fn length(s: Slice<char>) -> usize {
+    return s.len;
+}
+
+fn main() {
+    let plain: Slice<char> = text_of("ab");
+    plain = text_of("abc");
+    let back = as_text(plain);
+    assert(length(back) == 3, "the length of the text");
+}
