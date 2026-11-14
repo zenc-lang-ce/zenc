@@ -1,0 +1,10 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// Dividing a float by zero is defined (infinity or NaN): a warning. Dividing an
+// integer by zero is undefined behaviour: an error.
+
+fn main() {
+    let ratio = 1.0 / 0.0;
+    let count = 4 / 0;
+    printf("%f %d\n", ratio, count);
+}
