@@ -363,6 +363,50 @@ static int tc_in_std(TypeChecker *tc, Token t)
     return tc_file_in_std(tc, t.file);
 }
 
+int tc_storage_depth(TypeChecker *tc, ASTNode *place)
+{
+    if (!place)
+    {
+        return tc->current_depth;
+    }
+    switch (place->kind)
+    {
+    case NODE_EXPR_VAR:
+    {
+        ZenSymbol *sym = tc_lookup(tc, place->var_ref.name);
+        return sym ? sym->scope_depth : tc->current_depth;
+    }
+    case NODE_EXPR_MEMBER:
+    {
+        ASTNode *holder = place->member.target;
+        Type *holder_type = get_inner_type(holder ? holder->type_info : NULL);
+        if (holder_type && holder_type->kind == TYPE_POINTER)
+        {
+            return holder->type_info->lifetime_depth;
+        }
+        return tc_storage_depth(tc, holder);
+    }
+    case NODE_EXPR_INDEX:
+    {
+        ASTNode *holder = place->index.array;
+        Type *holder_type = get_inner_type(holder ? holder->type_info : NULL);
+        if (holder_type && holder_type->kind == TYPE_ARRAY)
+        {
+            return tc_storage_depth(tc, holder);
+        }
+        return holder && holder->type_info ? holder->type_info->lifetime_depth : tc->current_depth;
+    }
+    case NODE_EXPR_UNARY:
+        if (place->unary.op == OP_DEREF && place->unary.operand && place->unary.operand->type_info)
+        {
+            return place->unary.operand->type_info->lifetime_depth;
+        }
+        return tc->current_depth;
+    default:
+        return tc->current_depth;
+    }
+}
+
 void tc_error(TypeChecker *tc, Token t, const char *msg)
 {
     if (tc->move_checks_only || tc_in_std(tc, t))

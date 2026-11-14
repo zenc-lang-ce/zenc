@@ -37,6 +37,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
 - `int` and `i32` share one generic instance.
 - `zc check` no longer reports a false escape in a `test` block: a pointer from one of its locals, stored in another local (`s = w.get()`, `Holder{value: &n}`), was taken to outlive the block, because its variables were treated as globals.
 - `zc check` applies the rule of opaque aliases that the parser already applied: in the file that defines it, an opaque alias converts to and from its underlying type in a return, an assignment or a call, and an opaque alias of a number takes `==`, `<` and arithmetic with numbers. Elsewhere it stays a type of its own.
+- Escape analysis tells where a variable lives from where its value points: a pointer to the heap returned or stored through a cast (`(char*)malloc(n)`) is no longer reported, and a pointer to a local is still reported when it escapes through a struct, an array, a cast, a copy or a later assignment.
 - A type alias is emitted once; `@fields` names a `@link_name` struct by its C name.
 - Casts are decided by whether the name is a type, as in C.
 - A compound assignment (`%=`, `|=`, `<<=`, `**=`...) to a `const` variable, a member of one or an element of one is an error of `zc`, as `=` and `+=` were, instead of C that does not compile.

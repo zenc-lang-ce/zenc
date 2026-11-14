@@ -1,0 +1,43 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// A pointer to a local escapes through any value that holds it: a struct, an
+// array, a cast, or a variable that copies it.
+
+struct Box {
+    ptr: i32*;
+}
+
+fn through_struct() -> i32* {
+    let x = 1;
+    let b = Box{ptr: &x};
+    return b.ptr;
+}
+
+fn through_array() -> i32* {
+    let x = 2;
+    let a: [i32*; 1] = [&x];
+    return a[0];
+}
+
+fn through_cast() -> void* {
+    let x = 3;
+    let p = (void*)&x;
+    return p;
+}
+
+fn through_copy() -> i32* {
+    let x = 4;
+    let p = &x;
+    let q = p;
+    return q;
+}
+
+fn main() {
+}
+
+fn through_assignment() -> i32* {
+    let x = 5;
+    let s: i32* = NULL;
+    s = &x;
+    return s;
+}

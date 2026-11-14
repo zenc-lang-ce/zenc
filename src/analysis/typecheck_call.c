@@ -402,9 +402,18 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
             if (node->call.callee && node->call.callee->kind == NODE_EXPR_MEMBER &&
                 sig->elide_from_idx == 0)
             {
-                if (node->call.callee->member.target->type_info)
+                // `self` is the receiver's address: the result may point into the receiver
+                // (where it lives) or where the receiver points.
+                ASTNode *receiver = node->call.callee->member.target;
+                if (receiver->type_info)
                 {
-                    target_depth = node->call.callee->member.target->type_info->lifetime_depth;
+                    target_depth = receiver->type_info->lifetime_depth;
+                    Type *receiver_type = get_inner_type(receiver->type_info);
+                    int lives_at = tc_storage_depth(tc, receiver);
+                    if (receiver_type->kind != TYPE_POINTER && lives_at > target_depth)
+                    {
+                        target_depth = lives_at;
+                    }
                 }
             }
             else
