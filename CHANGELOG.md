@@ -30,6 +30,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
 - A global without a value is zeroed in the C, so `ld` no longer warns about its alignment on arm64 macOS.
 - Names that are C or C++ keywords are written under another name.
 - `match` works through a pointer subject.
+- A `ref` binding in a `match` on a dereferenced pointer (`match *p`, `match *self`) points to the value the pointer designates: writes through it are no longer made to a copy and lost.
 - CLI: `-I`, `-O` and other options read their value correctly; `-g` passes `-g` to the C compiler; options can come before the command (`zc -g build app.zc`).
 - C headers: `import "x.h"` reads the names the header declares, and `zc check` accepts a struct literal of a type from a header.
 - With `--cpp`, an f-string interpolation is evaluated once.
