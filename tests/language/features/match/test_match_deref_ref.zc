@@ -1,0 +1,61 @@
+// language/features/match: a `ref` binding in a match on a dereferenced pointer (`*p`) points
+// to the value the pointer designates, so writes through it change that value.
+struct Counter {
+    count: int;
+}
+
+enum Holder {
+    One(Counter)
+}
+
+impl Holder {
+    fn bump(self) {
+        match *self {
+            Holder::One(ref c) => { c.count = c.count + 10; }
+        }
+    }
+}
+
+fn count_of(h: Holder) -> int {
+    match h {
+        Holder::One(c) => { return c.count; }
+    }
+    return -1;
+}
+
+fn bump_param(h: Holder*) {
+    match *h {
+        Holder::One(ref c) => { c.count = c.count + 1; }
+    }
+}
+
+test "ref in a match on *p writes to the value p points to" {
+    let local = Holder::One(Counter { count: 0 });
+    let p: Holder* = &local;
+    match *p {
+        Holder::One(ref c) => { c.count = 3; }
+    }
+    assert(count_of(local) == 3, "the write through ref was lost");
+}
+
+test "ref in a match on *param writes to the caller's value" {
+    let local = Holder::One(Counter { count: 0 });
+    bump_param(&local);
+    assert(count_of(local) == 1, "the write through ref was lost");
+}
+
+test "ref in a match on *self writes to the receiver" {
+    let local = Holder::One(Counter { count: 0 });
+    local.bump();
+    assert(count_of(local) == 10, "the write through ref was lost");
+}
+
+test "ref in a match on **pp writes to the value at the end" {
+    let local = Holder::One(Counter { count: 0 });
+    let p: Holder* = &local;
+    let pp: Holder** = &p;
+    match **pp {
+        Holder::One(ref c) => { c.count = 7; }
+    }
+    assert(count_of(local) == 7, "the write through ref was lost");
+}
