@@ -1,6 +1,7 @@
 // closures: test_closure_many_captures
 // A lambda can capture more than 32 outer variables: the capture lists are
-// sized to fit them instead of having a fixed size of 32.
+// sized to fit them instead of having a fixed size of 32, also the list of the
+// captures written between `fn[` and `]`.
 
 test "a lambda captures 40 variables" {
     let v0 = 0;
@@ -50,4 +51,59 @@ test "a lambda captures 40 variables" {
                v30 + v31 + v32 + v33 + v34 + v35 + v36 + v37 + v38 + v39;
     };
     assert sum() == 780;
+}
+
+test "a lambda lists 40 captures by name" {
+    let c0 = 0;
+    let c1 = 1;
+    let c2 = 2;
+    let c3 = 3;
+    let c4 = 4;
+    let c5 = 5;
+    let c6 = 6;
+    let c7 = 7;
+    let c8 = 8;
+    let c9 = 9;
+    let c10 = 10;
+    let c11 = 11;
+    let c12 = 12;
+    let c13 = 13;
+    let c14 = 14;
+    let c15 = 15;
+    let c16 = 16;
+    let c17 = 17;
+    let c18 = 18;
+    let c19 = 19;
+    let c20 = 20;
+    let c21 = 21;
+    let c22 = 22;
+    let c23 = 23;
+    let c24 = 24;
+    let c25 = 25;
+    let c26 = 26;
+    let c27 = 27;
+    let c28 = 28;
+    let c29 = 29;
+    let c30 = 30;
+    let c31 = 31;
+    let c32 = 32;
+    let c33 = 33;
+    let c34 = 34;
+    let c35 = 35;
+    let c36 = 36;
+    let c37 = 37;
+    let c38 = 38;
+    let c39 = 39;
+    let sum = fn[
+        c0, c1, c2, c3, c4, c5, c6, c7, c8, c9,
+        c10, c11, c12, c13, c14, c15, c16, c17, c18, c19,
+        c20, c21, c22, c23, c24, c25, c26, c27, c28, c29,
+        c30, c31, c32, c33, c34, c35, c36, c37, c38, c39
+    ]() -> int {
+        return c0 + c1 + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 +
+               c10 + c11 + c12 + c13 + c14 + c15 + c16 + c17 + c18 + c19 +
+               c20 + c21 + c22 + c23 + c24 + c25 + c26 + c27 + c28 + c29 +
+               c30 + c31 + c32 + c33 + c34 + c35 + c36 + c37 + c38 + c39;
+    };
+    assert(sum() == 780, "every capture listed by name has its value");
 }

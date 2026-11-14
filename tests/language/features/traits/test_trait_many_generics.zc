@@ -1,0 +1,22 @@
+// traits: test_trait_many_generics
+// A trait with more generic parameters than the parser first makes room for (8).
+import "std/io.zc"
+
+trait Many<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11> {
+    fn count(self) -> int;
+}
+
+struct Counter {
+    n: int;
+}
+
+impl Counter {
+    fn count(self) -> int {
+        return self.n;
+    }
+}
+
+test "test_trait_many_generics" {
+    let c = Counter { n: 12 };
+    assert(c.count() == 12, "a trait with 12 generic parameters parses");
+}

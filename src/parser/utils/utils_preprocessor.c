@@ -266,9 +266,8 @@ void try_parse_macro_const(ParserContext *ctx, const char *content)
             if (*pm == '(')
             {
                 pm++;
-                char *params[32];
-                int param_count = 0;
-                while (*pm && *pm != ')' && param_count < 32)
+                zvec_Text params = {0};
+                while (*pm && *pm != ')')
                 {
                     while (isspace(*pm) || *pm == ',')
                     {
@@ -284,10 +283,10 @@ void try_parse_macro_const(ParserContext *ctx, const char *content)
                         pm++;
                     }
                     ptrdiff_t len = pm - p_start;
-                    params[param_count] = xmalloc((size_t)(len + 1));
-                    strncpy(params[param_count], p_start, (size_t)(len));
-                    params[param_count][len] = 0;
-                    param_count++;
+                    char *param = xmalloc((size_t)(len + 1));
+                    strncpy(param, p_start, (size_t)(len));
+                    param[len] = 0;
+                    zvec_push_Text(&params, param);
                 }
                 while (*pm && *pm != ')')
                 {
@@ -329,10 +328,10 @@ void try_parse_macro_const(ParserContext *ctx, const char *content)
                                 pb++;
                             }
                             ptrdiff_t id_len = pb - id_start;
-                            for (int i = 0; i < param_count; i++)
+                            for (size_t i = 0; i < params.length; i++)
                             {
-                                if (id_len == (int)strlen(params[i]) &&
-                                    strncmp(id_start, params[i], (size_t)(id_len)) == 0)
+                                if (id_len == (int)strlen(params.data[i]) &&
+                                    strncmp(id_start, params.data[i], (size_t)(id_len)) == 0)
                                 {
                                     used_op |= (1u << i);
                                     if (!is_concat)
@@ -368,10 +367,10 @@ void try_parse_macro_const(ParserContext *ctx, const char *content)
                         }
                         int follows_concat = (pafter[0] == '#' && pafter[1] == '#');
 
-                        for (int i = 0; i < param_count; i++)
+                        for (size_t i = 0; i < params.length; i++)
                         {
-                            if (id_len == (int)strlen(params[i]) &&
-                                strncmp(id_start, params[i], (size_t)(id_len)) == 0)
+                            if (id_len == (int)strlen(params.data[i]) &&
+                                strncmp(id_start, params.data[i], (size_t)(id_len)) == 0)
                             {
                                 if (follows_concat)
                                 {
@@ -390,7 +389,7 @@ void try_parse_macro_const(ParserContext *ctx, const char *content)
                     }
                 }
 
-                for (int i = 0; i < param_count; i++)
+                for (size_t i = 0; i < params.length; i++)
                 {
                     if ((used_op & (1 << i)) && (used_norm & (1 << i)))
                     {
@@ -398,10 +397,10 @@ void try_parse_macro_const(ParserContext *ctx, const char *content)
                         snprintf(msg, sizeof(msg),
                                  "MISRA Rule 20.12: parameter '%s' used as both operand to #/## "
                                  "and normal token",
-                                 params[i]);
+                                 params.data[i]);
                         zerror_at(name, "%s", msg);
                     }
-                    zfree(params[i]);
+                    zfree(params.data[i]);
                 }
             }
         }

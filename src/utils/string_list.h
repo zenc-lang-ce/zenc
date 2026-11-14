@@ -9,8 +9,8 @@
 /**
  * @brief Growable list of distinct strings in the libc heap.
  *
- * Unlike zvec, which allocates from the arena, it survives arena rewinds (e.g. the LSP's
- * read-only requests). Zero-initialize it and release it with string_list_free().
+ * Unlike the arena-backed zvecs of the parser (parser.h), it survives arena rewinds (e.g. the
+ * LSP's read-only requests). Zero-initialize it and release it with string_list_free().
  */
 typedef struct
 {

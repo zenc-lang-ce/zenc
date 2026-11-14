@@ -413,8 +413,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             body[0] = 0;
 
             // Track Vec<String> fields for forget calls
-            char *vec_fields[32];
-            int vec_field_count = 0;
+            zvec_Text vec_fields = {0};
 
             // Build field assignments
             ASTNode *f = strct->strct.fields;
@@ -478,10 +477,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                     else if (is_vec_of_string(f->type_info))
                     {
                         // Track this field for forget() call later
-                        if (vec_field_count < 32)
-                        {
-                            vec_fields[vec_field_count++] = fn;
-                        }
+                        zvec_push_Text(&vec_fields, fn);
                         sprintf(/* TODO: check buffer size */
                                 assign,
                                 "let _f_%s = Vec<String>::new();\n"
@@ -538,9 +534,9 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                     char init[128];
                     // Check if this is a Vec<String> field - clone it to avoid double-free
                     int is_vec_field = 0;
-                    for (int vi = 0; vi < vec_field_count; vi++)
+                    for (size_t vi = 0; vi < vec_fields.length; vi++)
                     {
-                        if (strcmp(vec_fields[vi], f->field.name) == 0)
+                        if (strcmp(vec_fields.data[vi], f->field.name) == 0)
                         {
                             is_vec_field = 1;
                             break;
