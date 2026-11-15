@@ -1,18 +1,8 @@
 // language/features/functions: functions: test_purity
-import "std/io.zc"
-fn impure_func() {
-    println("I am impure");
-}
-
-@pure
-fn pure_func() {
-    // This should FAIL
-    impure_func();
-}
-
+// A @pure function may call another @pure function. Calling one that is not
+// @pure is an error: tests/compiler/diagnostics_output/pure_calls_impure.zc.
 @pure
 fn another_pure_func() {
-    // This should PASS
 }
 
 @pure

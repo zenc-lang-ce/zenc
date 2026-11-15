@@ -1255,6 +1255,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             node = ast_create(NODE_EXPR_CALL);
             node->token = t;
             ASTNode *callee = ast_create(NODE_EXPR_VAR);
+            callee->token = t;
             callee->var_ref.name = acc;
             callee->var_ref.variant = variant;
             callee->var_ref.instance = instance;
