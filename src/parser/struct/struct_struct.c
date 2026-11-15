@@ -208,6 +208,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
                     ASTNode *nf = ast_create(NODE_FIELD);
                     nf->token = f->token; // Declared in the struct it comes from.
                     nf->field.name = xstrdup(f->field.name);
+                    nf->field.mixed_in_from = f;
                     nf->type_info = f->type_info;
 
                     if (!h)
