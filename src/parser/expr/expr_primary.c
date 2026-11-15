@@ -1139,96 +1139,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     ASTNode *def = copy_default_value(ctx, sig, i, t);
                     Type *expected = sig->arg_types[i];
+                    // A trait parameter takes a trait object, built as for a written argument.
                     if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
                     {
-                        Type *arg_type = def->type_info
-                                             ? def->type_info
-                                             : ((def->kind == NODE_EXPR_VAR)
-                                                    ? find_symbol_type_info(ctx, def->var_ref.name)
-                                                    : NULL);
-
-                        if (!arg_type && def->kind == NODE_EXPR_UNARY &&
-                            def->unary.op == OP_ADDRESS)
-                        {
-                            if (def->unary.operand->kind == NODE_EXPR_VAR)
-                            {
-                                Type *inner =
-                                    find_symbol_type_info(ctx, def->unary.operand->var_ref.name);
-                                if (inner && inner->kind == TYPE_STRUCT)
-                                {
-                                    if (check_impl(ctx, type_def_name(expected),
-                                                   type_def_name(inner)))
-                                    {
-                                        ASTNode *init = ast_create(NODE_EXPR_STRUCT_INIT);
-                                        init->struct_init.struct_name = xstrdup(expected->name);
-
-                                        Type *trait_type = type_new(TYPE_STRUCT);
-                                        trait_type->name = xstrdup(expected->name);
-                                        init->type_info = trait_type;
-
-                                        ASTNode *f_self = ast_create(NODE_FIELD_INIT);
-                                        f_self->var_decl.name = xstrdup("self");
-                                        f_self->var_decl.init_expr = def;
-
-                                        char *vtable_name = mangle_vtable_symbol(
-                                            type_def_name(inner), type_def_name(expected));
-
-                                        ASTNode *vtable_var = ast_create(NODE_EXPR_VAR);
-                                        vtable_var->var_ref.name = xstrdup(vtable_name);
-
-                                        ASTNode *vtable_ref = ast_create(NODE_EXPR_UNARY);
-                                        vtable_ref->unary.op = OP_ADDRESS;
-                                        vtable_ref->unary.operand = vtable_var;
-
-                                        ASTNode *f_vtable = ast_create(NODE_FIELD_INIT);
-                                        f_vtable->var_decl.name = xstrdup("vtable");
-                                        f_vtable->var_decl.init_expr = vtable_ref;
-
-                                        f_self->next = f_vtable;
-                                        init->struct_init.fields = f_self;
-
-                                        def = init;
-                                    }
-                                }
-                            }
-                        }
-                        else if (arg_type && arg_type->kind == TYPE_POINTER && arg_type->inner &&
-                                 arg_type->inner->kind == TYPE_STRUCT)
-                        {
-                            if (check_impl(ctx, type_def_name(expected),
-                                           type_def_name(arg_type->inner)))
-                            {
-                                ASTNode *init = ast_create(NODE_EXPR_STRUCT_INIT);
-                                init->struct_init.struct_name = xstrdup(expected->name);
-
-                                Type *trait_type = type_new(TYPE_STRUCT);
-                                trait_type->name = xstrdup(expected->name);
-                                init->type_info = trait_type;
-
-                                ASTNode *f_self = ast_create(NODE_FIELD_INIT);
-                                f_self->var_decl.name = xstrdup("self");
-                                f_self->var_decl.init_expr = def;
-
-                                char *vtable_name = mangle_vtable_symbol(
-                                    type_def_name(arg_type->inner), type_def_name(expected));
-
-                                ASTNode *vtable_var = ast_create(NODE_EXPR_VAR);
-                                vtable_var->var_ref.name = xstrdup(vtable_name);
-
-                                ASTNode *vtable_ref = ast_create(NODE_EXPR_UNARY);
-                                vtable_ref->unary.op = OP_ADDRESS;
-                                vtable_ref->unary.operand = vtable_var;
-
-                                ASTNode *f_vtable = ast_create(NODE_FIELD_INIT);
-                                f_vtable->var_decl.name = xstrdup("vtable");
-                                f_vtable->var_decl.init_expr = vtable_ref;
-
-                                f_self->next = f_vtable;
-                                init->struct_init.fields = f_self;
-
-                                def = init;
-                            }
-                        }
+                        def = transform_to_trait_object(ctx, type_def_name(expected), def);
                     }
 
                     if (!head)
