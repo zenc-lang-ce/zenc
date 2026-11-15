@@ -10,6 +10,11 @@ This new release brings breaking changes to the language:
 - Returning an array literal as a slice (`fn f() -> [float] { return [1.0, 2.0]; }`) is an error, as it already is for a local array: its elements live on the function's stack. Return a fixed-size array (`float[2]`) or a `Vec<T>`. Before, the literal was copied to the heap and never freed.
 - `Enum_Variant` and `Enum_Variant_Tag` (`Result_Ok`, `Result_Ok_Tag`) no longer stand for `Enum::Variant` and its tag: write `Result::Ok`.
 
+## 0.5.3 (WIP)
+
+### Fixes
+- `zc check` gives a literal without a suffix the type its context expects everywhere, not only in a `let` or a `def`: in a `return`, an argument, a field of a struct literal, an assignment and the elements of an array literal. `return 0;` in a function returning `f64`, `Point{x: 1}` with an `f32` field and `let grid: f32[2] = [0, 1];` are no longer type mismatches, and neither is a negated literal (`let x: f64 = -1;`). An array literal of such literals passed as a slice of floats (`sum([0, 3])` for a `[f64]`) builds, instead of C that does not compile. MISRA Rule 10.4 is no longer reported for a literal that fits the unsigned type of a field, an argument or an assigned place (`len: 0` for a `usize`).
+
 ## 0.5.2
 This is mainly a bug-fix release but it also brings some improvements and new features.
 

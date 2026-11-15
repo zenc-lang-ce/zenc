@@ -130,9 +130,9 @@ static int is_reassigned(ASTNode *decl, Type *t)
 }
 
 // The initial value `*value` of a declaration whose type is `declared` (NULL when it is inferred).
-// A value with no type of its own takes the declared one, and one whose type comes from its
-// context adopts it (adopt_context_type); any other value keeps its type and is compared with the
-// declared one.
+// A value with no type of its own takes the declared one, and a lambda the declared function
+// type (adopt_context_type); any other value keeps its type and is compared with the declared one,
+// where a constant without a suffix takes it (check_type_compatibility).
 static void check_initial_value(TypeChecker *tc, Type *declared, ASTNode **value, Token t,
                                 int depth)
 {
