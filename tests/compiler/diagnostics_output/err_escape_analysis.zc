@@ -1,7 +1,8 @@
 // ARGS: check
 // Escape analysis: a pointer to a local cannot leave the scope of the local,
 // whether returned directly, through an array, a struct field, a call or a
-// method that returns what it was given, or assigned to an outer variable.
+// method that returns what it was given, or assigned to an outer variable,
+// also when the assignment that makes it point there comes later in a loop.
 // The valid cases at the end must not be reported.
 
 struct PtrBox {
@@ -61,6 +62,15 @@ fn escape_through_variable() -> int* {
     let x = 10;
     let p = identity(&x);
     return p;
+}
+
+fn escape_in_a_later_iteration(out: int**) {
+    let x = 1;
+    let q: int* = NULL;
+    for i in 0..2 {
+        *out = q;
+        q = &x;
+    }
 }
 
 fn valid_cases(arg_p: int*) -> int* {

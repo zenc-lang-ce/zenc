@@ -269,6 +269,24 @@ static void misra_check_constant_wrap(TypeChecker *tc, ASTNode *node, Type *targ
     misra_check_unsigned_wrap(tc->pctx, op, lval, rval, res, target, node->token);
 }
 
+// The variable whose own storage an assignment to `place` writes: `v`, or `v` for a field or an
+// element of it, at any depth. NULL when the place is reached through a pointer (`*p`, `p.f`
+// with a pointer `p`), which writes where the pointer points.
+static ASTNode *written_variable(ASTNode *place)
+{
+    while (place && (place->kind == NODE_EXPR_MEMBER || place->kind == NODE_EXPR_INDEX))
+    {
+        ASTNode *holder =
+            place->kind == NODE_EXPR_MEMBER ? place->member.target : place->index.array;
+        if (!holder || is_pointer_type(holder->type_info))
+        {
+            return NULL;
+        }
+        place = holder;
+    }
+    return place && place->kind == NODE_EXPR_VAR ? place : NULL;
+}
+
 void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
 {
     OperatorKind binop = node->binary.op;
@@ -407,11 +425,13 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
             place_type->lifetime_depth = tc_storage_depth(tc, node->binary.left);
             check_type_compatibility(tc, place_type, right_type, node->binary.right->token,
                                      node->binary.right, 0);
-            // A variable points as deep as any value assigned to it. Its symbol gets its own
-            // copy of the type: a parameter's is the signature's.
-            if (node->binary.left->kind == NODE_EXPR_VAR && right_type)
+            // A variable points as deep as any value assigned to it, also to a field or an
+            // element of it that is part of it (not reached through a pointer). Its symbol gets
+            // its own copy of the type: a parameter's is the signature's.
+            ASTNode *written = written_variable(node->binary.left);
+            if (written && right_type)
             {
-                ZenSymbol *var = tc_lookup(tc, node->binary.left->var_ref.name);
+                ZenSymbol *var = tc_lookup(tc, written->var_ref.name);
                 if (var && var->type_info &&
                     right_type->lifetime_depth > var->type_info->lifetime_depth)
                 {
@@ -1083,7 +1103,7 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
                                    "invalid when that scope ends.",
                                    "Consider copying the value instead of taking a reference.",
                                    NULL};
-            tc_error_with_hints(tc, t, msg, hints);
+            tc_escape_error(tc, t, msg, hints);
             return 0;
         }
     }

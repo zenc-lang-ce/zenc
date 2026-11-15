@@ -468,6 +468,25 @@ void tc_warning(TypeChecker *tc, Token t, const char *msg)
     tc->warning_count++;
 }
 
+void tc_escape_error(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
+{
+    for (int i = 0; i < tc->escapes_reported_count; i++)
+    {
+        if (tc->escapes_reported[i] == t.start)
+        {
+            return;
+        }
+    }
+    tc->escapes_reported = xrealloc(
+        tc->escapes_reported, sizeof(const char *) * (size_t)(tc->escapes_reported_count + 1));
+    tc->escapes_reported[tc->escapes_reported_count++] = t.start;
+
+    int prev_rechecking = tc->rechecking;
+    tc->rechecking = 0;
+    tc_error_with_hints(tc, t, msg, hints);
+    tc->rechecking = prev_rechecking;
+}
+
 void tc_unreachable_code(TypeChecker *tc, Token t)
 {
     if (tc->pctx->config->misra_mode)

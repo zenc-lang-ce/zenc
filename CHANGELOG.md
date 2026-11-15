@@ -31,6 +31,7 @@ This new release brings breaking changes to the language:
 - `zc check` accepts calling a field that holds a function pointer with the arguments written (`api.error(api, "...")`): the struct is no longer taken as a receiver as for a method, which shifted every argument ("expected 'char*', but found 'ZApi*'"). Too few or too many arguments name the field.
 - `zc check` accepts a string literal that initializes an array of characters it fits in, with its NUL (`let name: char[8] = "abc";`, a `char[N]` field), as C does; one that does not fit is an error that says how many bytes it needs.
 - `zc check` treats a `string` as the `char*` it is in every place: a `char[N]` passes where a `string` is expected, a `string` converts to and from `c_char*` (what `strstr` and `strchr` return), and `++`/`--` work on it.
+- Escape analysis follows a pointer variable through its assignments: a cursor read through a pointer, moved along the text and stored back (`let ptr = *p; ptr = &ptr[1]; *p = ptr;`) is no longer "pointer assigned to a location that outlives it". Before, any variable assigned to later in its block was taken to point into its own block. A pointer that escapes only in a later iteration of a loop is still reported.
 - `zc check` accepts comparing a pointer with a `void*` (`p == v`), as it already accepted assigning one to the other: it is no longer "Cannot compare '==' with incompatible types".
 
 ## 0.5.2

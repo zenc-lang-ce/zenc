@@ -43,7 +43,10 @@ typedef struct TypeChecker
     struct MoveState *loop_continue_state;
     struct MoveState *loop_start_state;
     int in_loop_pass2;
-    LoopFrame *current_loop; ///< Innermost loop being checked; NULL outside loops.
+    LoopFrame *current_loop;       ///< Innermost loop being checked; NULL outside loops.
+    const char **escapes_reported; ///< Where an escape was reported (Token.start), so a loop's
+                                   ///< second pass does not report it again.
+    int escapes_reported_count;
 
     // Configuration
     int rechecking; ///< Checking code a second time (a loop's second pass, the expressions of an
@@ -80,6 +83,12 @@ void tc_warning(TypeChecker *tc, Token t, const char *msg);
  * @brief Reports code that no path reaches: a warning, or an error under MISRA (Rule 2.1).
  */
 void tc_unreachable_code(TypeChecker *tc, Token t);
+
+/**
+ * @brief Reports a pointer that escapes, once per place: also in a loop's second pass, which
+ *        reads what the end of the body assigned and so can find an escape the first could not.
+ */
+void tc_escape_error(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
 int tc_file_in_std(TypeChecker *tc, const char *file);
 /**
  * @brief Where the place `place` lives, for escape analysis: the scope depth of a variable (0 for
