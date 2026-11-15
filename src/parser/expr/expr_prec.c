@@ -1588,8 +1588,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
         }
 
         int next_prec = (int)(prec + 1);
-        const OperatorInfo *op_info =
-            op.kind == TOK_OP ? operator_info(binary_operator_from_text(op.start, op.len)) : NULL;
+        const OperatorInfo *op_info = operator_info(binary_operator_of_token(op));
         if (op_info && op_info->right_associative)
         {
             next_prec = (int)(prec);

@@ -1220,6 +1220,7 @@ Type *parse_type_obj(ParserContext *ctx, Lexer *l);
 
 // expr/ declarations
 ASTNode *parse_primary(ParserContext *ctx, Lexer *l);
+OperatorKind binary_operator_of_token(Token t);
 Precedence get_token_precedence(Token t);
 
 #endif // PARSER_H
