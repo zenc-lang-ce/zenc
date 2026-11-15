@@ -13,16 +13,4 @@ warning: Match is not exhaustive: missing variant 'None' (an error from 0.6; `zc
    |     ^ here
    |
    = note: Add a case for it, or a default '_' case
-warning: Non-exhaustive match: Missing variant 'None'
-  --> tests/compiler/diagnostics_output/warn_match_missing_variant.zc:16:5
-   |
-16 |     match o {
-   |     ^ here
-   |
-warning: Non-exhaustive match: Missing variant 'Blue'
-  --> tests/compiler/diagnostics_output/warn_match_missing_variant.zc:9:5
-   |
-9  |     match c {
-   |     ^ here
-   |
 [exit 0]

@@ -983,22 +983,6 @@ skip_callee_gen:
                     const char *hints[] = {"add import \"std/io.zc\"", NULL};
                     zerror_with_hints(node->call.callee->token, msg, hints);
                 }
-
-                // A function pointer, or a variant without a payload (`Enum::Variant()`, whose
-                // value check_expr_var typed as the enum), is not a missing function.
-                Type *callee_type = node->call.callee->type_info
-                                        ? get_inner_type(node->call.callee->type_info)
-                                        : NULL;
-                int is_value = callee_type && (callee_type->kind == TYPE_FUNCTION ||
-                                               callee_type->kind == TYPE_ENUM);
-                if (!should_suppress_undef_warning(ctx, name) && !is_value)
-                {
-                    Token t = node->call.callee->token;
-                    char msg[MAX_SHORT_MSG_LEN];
-                    snprintf(msg, sizeof(msg), "Undefined function '%s'", name);
-                    const char *hint = get_missing_function_hint(ctx, name);
-                    zwarn_diag(DIAG_INTEROP_UNDEF_FUNC, t, msg, hint);
-                }
             }
         }
 

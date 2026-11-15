@@ -18,7 +18,7 @@ error: Undefined function 'compte'
 14 |     let _typo_function = compte(1);
    |                          ^ here
    |
-   = help: Check if the function is defined or imported
+   = help: Did you mean 'compute'?
 error: Undefined function 'missing_fn'
   --> tests/compiler/diagnostics_output/err_undefined_names.zc:15:5
    |

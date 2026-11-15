@@ -222,12 +222,6 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
         has_wildcard = has_wildcard || case_is_wildcard(chk);
     }
 
-    const char *missing = match_missing_variant(ctx, node, node->match_stmt.expr->type_info);
-    if (missing && strcmp(missing, "_") != 0)
-    {
-        zwarn_at(node->token, "Non-exhaustive match: Missing variant '%s'", missing);
-    }
-
     ASTNode *c = node->match_stmt.cases;
     int first = 1;
     while (c)

@@ -72,7 +72,6 @@ typedef struct TypeChecker
  */
 int check_program(ParserContext *ctx, ASTNode *root);
 
-
 // Error helpers available to move_check.c
 void tc_error(TypeChecker *tc, Token t, const char *msg);
 void tc_warning(TypeChecker *tc, Token t, const char *msg);

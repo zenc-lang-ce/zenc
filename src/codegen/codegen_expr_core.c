@@ -14,64 +14,6 @@
 #include "zprep_plugin.h"
 #include "codegen_internal.h"
 
-const char *get_missing_function_hint(ParserContext *ctx, const char *name)
-{
-    if (strcmp(name, "malloc") == 0 || strcmp(name, "free") == 0 || strcmp(name, "calloc") == 0 ||
-        strcmp(name, "realloc") == 0)
-    {
-        return "Include <stdlib.h> or use 'use std::mem'";
-    }
-    if (strcmp(name, "printf") == 0 || strcmp(name, "scanf") == 0 || strcmp(name, "fprintf") == 0 ||
-        strcmp(name, "sprintf") == 0 || strcmp(name, "snprintf") == 0)
-    {
-        return "Include <stdio.h> or use 'use std::io'";
-    }
-    if (strcmp(name, "memset") == 0 || strcmp(name, "memcpy") == 0 || strcmp(name, "strlen") == 0 ||
-        strcmp(name, "strcpy") == 0 || strcmp(name, "strcmp") == 0 || strcmp(name, "strncmp") == 0)
-    {
-        return "Include <string.h>";
-    }
-
-    int best_dist = 4;
-    static char best_buf[MAX_SHORT_MSG_LEN];
-    const char *best = NULL;
-
-    FuncSig *sig = ctx->func_registry;
-    while (sig)
-    {
-        int dist = levenshtein(name, sig->name);
-        if (dist < best_dist)
-        {
-            best_dist = dist;
-            best = sig->name;
-        }
-        sig = sig->next;
-    }
-
-    StructRef *ref = ctx->parsed_funcs_list;
-    while (ref)
-    {
-        if (ref->node && ref->node->kind == NODE_FUNCTION)
-        {
-            int dist = levenshtein(name, ref->node->func.name);
-            if (dist < best_dist)
-            {
-                best_dist = dist;
-                best = ref->node->func.name;
-            }
-        }
-        ref = ref->next;
-    }
-
-    if (best)
-    {
-        snprintf(best_buf, sizeof(best_buf), "Did you mean '%s'?", best);
-        return best_buf;
-    }
-
-    return NULL;
-}
-
 // Emit literal expression (int, float, string, char)
 static void codegen_literal_expr(ParserContext *ctx, ASTNode *node)
 {
@@ -205,16 +147,6 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
                 return;
             }
         }
-    }
-
-    // The parser leaves a suggestion only on a name it could not resolve.
-    if (node->var_ref.suggestion && !ctx->silent_warnings && !find_func(ctx, node->var_ref.name))
-    {
-        char msg[MAX_SHORT_MSG_LEN];
-        char help[MAX_SHORT_MSG_LEN];
-        snprintf(msg, sizeof(msg), "Undefined variable '%s'", node->var_ref.name);
-        snprintf(help, sizeof(help), "Did you mean '%s'?", node->var_ref.suggestion);
-        zwarn_at(node->token, "%s\n   = help: %s", msg, help);
     }
 
     const char *name = node->var_ref.name;
