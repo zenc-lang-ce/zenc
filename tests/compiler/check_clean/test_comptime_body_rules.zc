@@ -1,0 +1,13 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A comptime block runs in the comptime interpreter, with its rules: there `+`
+// joins two strings. Only the code it yields is checked as program code.
+
+comptime {
+    let prefix = "GREETING";
+    let name = prefix + "_LEN";
+    yield("def " + name + " = 5;");
+}
+
+test "comptime joins strings" {
+    assert(GREETING_LEN == 5, "the yielded constant");
+}

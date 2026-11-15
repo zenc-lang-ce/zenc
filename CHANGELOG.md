@@ -17,6 +17,7 @@ This new release brings breaking changes to the language:
 - `zc check` converts an integer to a float without a cast, as `zc build` already did: `let a: f64 = count;` with an `i32` count is no longer a type mismatch. It warns when the float cannot hold every value of the integer (`i64` to `f64`, `u32` to `f32`). A float to an integer still needs a cast, since it drops the fraction.
 - Unreachable code is a warning (`-Wno-logic` turns it off) instead of a `zc check` error, which `zc build` did not report; under `--misra` it is still an error (Rule 2.1). The code after a label is reachable (a `goto`, also `goto *ptr`, can jump there). Code after an `if`/`else` or a `match` whose branches all return, or after a `loop` without a `break`, is now reported too.
 - `zc check` accepts the SIMD types of `std/simd.zc` and other `@vector` structs, as `zc build` already did: `+`, `-`, `*`, `/`, `&`, `|`, `^`, `~`, negation and indexing on a vector, and the positional literal `f32x4{1.0, 2.0, 3.0, 4.0}`. Bitwise operators on a vector of floats (`f32x4 & f32x4`) are an error in `zc check` too, instead of C that does not compile.
+- `zc check` judges a `comptime` block as `zc build` does: by running it in the comptime interpreter, whose rules allow `"a" + "b"` (it joins the strings). Before, it also checked the block with the rules of program code and rejected it. The code the block yields is still checked like any other.
 
 ## 0.5.2
 This is mainly a bug-fix release but it also brings some improvements and new features.

@@ -1166,18 +1166,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         break;
     case NODE_COMPTIME:
     {
-        // Register comptime builtins for the body
-        register_comptime_builtins(tc->pctx);
-
-        // Type-check the comptime body
-        ASTNode *stmt = node->comptime.body;
-        while (stmt)
-        {
-            check_node(tc, stmt, depth + 1);
-            stmt = stmt->next;
-        }
-
-        // Interpret the comptime body
+        // The body runs in the comptime interpreter, with its own rules (`+` joins strings) and
+        // its own errors; only the code it yields is program code to check.
         char *output =
             interpret_comptime(tc->pctx, node->comptime.body, tc->pctx->current_filename);
         if (!output)

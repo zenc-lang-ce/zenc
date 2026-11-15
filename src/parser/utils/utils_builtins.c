@@ -42,21 +42,3 @@ void register_builtins(ParserContext *ctx)
 
     ctx->hook_check_standard_macro_name = check_standard_macro_name;
 }
-
-void register_comptime_builtins(ParserContext *ctx)
-{
-    Type *void_t = type_new(TYPE_VOID);
-    add_symbol(ctx, "yield", void_t, 0);
-    add_symbol(ctx, "code", void_t, 0);
-    add_symbol(ctx, "compile_warn", void_t, 0);
-    add_symbol(ctx, "compile_error", void_t, 0);
-
-    Type *string_t = type_new(TYPE_STRING);
-    add_symbol(ctx, "__COMPTIME_TARGET__", string_t, 0);
-    add_symbol(ctx, "__COMPTIME_FILE__", string_t, 0);
-
-    register_extern_symbol(ctx, "yield");
-    register_extern_symbol(ctx, "code");
-    register_extern_symbol(ctx, "compile_warn");
-    register_extern_symbol(ctx, "compile_error");
-}

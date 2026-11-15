@@ -945,7 +945,6 @@ void add_to_global_list(ParserContext *ctx, ASTNode *node);
  * (c_function_return_type, c_variable_type).
  */
 void register_builtins(ParserContext *ctx);
-void register_comptime_builtins(ParserContext *ctx);
 void register_tuple(ParserContext *ctx, Type *tuple);
 ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, Type *tuple, ASTNode *expr);
 /** @brief Whether a tuple literal comes next: `(` and a comma before its `)`. */
