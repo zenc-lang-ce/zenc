@@ -1702,26 +1702,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             check_move_usage(ctx, rhs, op);
         }
 
-        if (op.kind == TOK_LANGLE)
-        {
-            bin->binary.op = OP_LT;
-        }
-        else if (op.kind == TOK_RANGLE)
-        {
-            bin->binary.op = OP_GT;
-        }
-        else if (op.kind == TOK_AND)
-        {
-            bin->binary.op = OP_AND;
-        }
-        else if (op.kind == TOK_OR)
-        {
-            bin->binary.op = OP_OR;
-        }
-        else
-        {
-            bin->binary.op = binary_operator_from_text(op.start, op.len);
-        }
+        bin->binary.op = binary_operator_of_token(op);
 
         if (is_comparison_operator(bin->binary.op))
         {
