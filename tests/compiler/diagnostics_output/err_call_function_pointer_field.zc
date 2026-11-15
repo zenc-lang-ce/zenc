@@ -1,0 +1,14 @@
+// ARGS: check
+// A call through a function pointer field checks its arguments against the
+// field's type: their number and types.
+
+struct Api {
+    report: fn*(Api*, int) -> int,
+}
+fn twice(a: Api*, x: int) -> int { return x * 2; }
+fn main() {
+    let api = Api{report: twice};
+    let _few = api.report(&api);
+    let _many = api.report(&api, 1, 2);
+    let _wrong = api.report(1, 2);
+}

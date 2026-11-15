@@ -1,0 +1,33 @@
+   Compiling tests/compiler/diagnostics_output/err_call_function_pointer_field.zc...
+warning: Unused parameter 'a' in function 'twice'
+  --> tests/compiler/diagnostics_output/err_call_function_pointer_field.zc:8:10
+   |
+8  | fn twice(a: Api*, x: int) -> int { return x * 2; }
+   |          ^ here
+   |
+   = note: Consider prefixing with '_' if intentionally unused
+error: Too few arguments: 'report' expects at least 2, got 1
+  --> tests/compiler/diagnostics_output/err_call_function_pointer_field.zc:11:16
+   |
+11 |     let _few = api.report(&api);
+   |                ^ here
+   |
+   = help: Check the function signature for required parameters
+error: Too many arguments: 'report' expects 2, got 3
+  --> tests/compiler/diagnostics_output/err_call_function_pointer_field.zc:12:17
+   |
+12 |     let _many = api.report(&api, 1, 2);
+   |                 ^ here
+   |
+   = help: Remove extra arguments or check if you meant to call a different function
+error: Type mismatch: expected 'Api*', but found 'i32'
+  --> tests/compiler/diagnostics_output/err_call_function_pointer_field.zc:13:29
+   |
+13 |     let _wrong = api.report(1, 2);
+   |                             ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+     error: semantic analysis found 3 errors
+       Check failed with 3 errors
+[exit 1]

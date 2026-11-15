@@ -28,6 +28,7 @@ This new release brings breaking changes to the language:
 - Errors about the function a call names point at the call: "Pure function cannot call non-pure function" had no line.
 - `zc check` accepts a default value for a trait parameter (`fn show(s: Shape = &g_circle)`): it is no longer "Unknown struct 'Shape'". The default becomes a trait object the same way a written argument does.
 - `zc check` reports a variable no scope declares, as it did a function: `let y = cont + 1;` is "Undefined variable 'cont'" with "Did you mean 'count'?", instead of passing the check and failing in the C compiler. Names of C (an included header, `stdin`) are still accepted. `&&label`, the address of a label for `goto *ptr`, is a `void*`.
+- `zc check` accepts calling a field that holds a function pointer with the arguments written (`api.error(api, "...")`): the struct is no longer taken as a receiver as for a method, which shifted every argument ("expected 'char*', but found 'ZApi*'"). Too few or too many arguments name the field.
 - `zc check` accepts comparing a pointer with a `void*` (`p == v`), as it already accepted assigning one to the other: it is no longer "Cannot compare '==' with incompatible types".
 
 ## 0.5.2
