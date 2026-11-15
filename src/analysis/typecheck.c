@@ -1105,7 +1105,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             }
         }
 
-        if (tc->move_checks_only)
+        if (tc->rechecking)
         {
             // No-op
         }
@@ -1150,8 +1150,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         misra_check_fstring(tc->pctx, node->token);
         // The `{...}` expressions were parsed and typed when the string was; check them
         // only for moves (use after move, consumed values).
-        int prev_move_checks_only = tc->move_checks_only;
-        tc->move_checks_only = 1;
+        int prev_rechecking = tc->rechecking;
+        tc->rechecking = 1;
         ASTNode *part = node->fstring.parts;
         while (part)
         {
@@ -1161,7 +1161,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             }
             part = part->next;
         }
-        tc->move_checks_only = prev_move_checks_only;
+        tc->rechecking = prev_rechecking;
         break;
     }
     case NODE_PREPROC_DIRECTIVE:
@@ -1401,6 +1401,8 @@ int check_program(ParserContext *ctx, ASTNode *root)
 {
     TypeChecker tc = {0};
     tc.pctx = ctx;
+    // `zc build` reports type errors as warnings in 0.5, except under --misra (use_typecheck).
+    tc.type_errors_as_warnings = !ctx->config->mode_check && !ctx->config->use_typecheck;
     ctx->current_scope = ctx->global_scope;
 
     if (!ctx->move_state)
@@ -1421,7 +1423,9 @@ int check_program(ParserContext *ctx, ASTNode *root)
         ctx->move_state = NULL;
     }
 
-    if (tc.pctx->config->misra_mode)
+    // The whole-program MISRA audits ran in `zc check` only; in 0.5 `zc build` keeps not running
+    // them.
+    if (tc.pctx->config->misra_mode && !tc.type_errors_as_warnings)
     {
         misra_audit_unused_symbols(tc.pctx);
         misra_audit_block_scope(tc.pctx);
@@ -1430,6 +1434,10 @@ int check_program(ParserContext *ctx, ASTNode *root)
 
     if (ctx->compiler->error_count > 0)
     {
+        if (tc.type_errors_as_warnings)
+        {
+            return 1; // A build reports its errors as it always did, without this summary.
+        }
         fprintf(stderr,
                 COLOR_BOLD COLOR_RED "     error" COLOR_RESET
                                      ": semantic analysis found %d error%s\n",
@@ -1438,29 +1446,4 @@ int check_program(ParserContext *ctx, ASTNode *root)
     }
 
     return 0;
-}
-
-int check_moves_only(ParserContext *ctx, ASTNode *root)
-{
-    TypeChecker tc = {0};
-    tc.pctx = ctx;
-    tc.move_checks_only = 1;
-    ctx->current_scope = ctx->global_scope;
-
-    if (!ctx->move_state)
-    {
-        ctx->move_state = move_state_create(NULL);
-    }
-
-    check_node(&tc, root, 0);
-    check_implicit_std_imports(&tc);
-    check_instantiations(&tc);
-
-    if (ctx->move_state)
-    {
-        move_state_free(ctx->move_state);
-        ctx->move_state = NULL;
-    }
-
-    return ctx->compiler->error_count;
 }

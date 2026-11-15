@@ -21,15 +21,6 @@ struct Token;
 int check_program(struct ParserContext *ctx, struct ASTNode *root);
 
 /**
- * @brief Move-semantics-only checking pass.
- *
- * @param ctx Parser context with a fully parsed AST.
- * @param root Root AST node.
- * @return 0 on success, non-zero if move errors found.
- */
-int check_moves_only(struct ParserContext *ctx, struct ASTNode *root);
-
-/**
  * @brief Resolve a typedef alias to its base type.
  */
 struct Type *resolve_alias(struct Type *t);

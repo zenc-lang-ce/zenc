@@ -113,7 +113,7 @@ static void report_pruned_functions(const ZenCompiler *compiler, const ParserCon
 static int compile_program(ZenCompiler *compiler)
 {
     // The counts are per compilation: the build fails when error_count is not 0 (see
-    // check_moves_only), so a previous compilation of the same compiler must not leave any.
+    // check_program), so a previous compilation of the same compiler must not leave any.
     compiler->error_count = 0;
     compiler->warning_count = 0;
 
@@ -281,18 +281,12 @@ static int compile_program(ZenCompiler *compiler)
         {
             return 1;
         }
-
-        if (!compiler->config.use_typecheck && !compiler->config.mode_check)
-        {
-            if (check_moves_only(&ctx, root) != 0)
-            {
-                return 1;
-            }
-        }
     }
 
+    // `zc check` and `zc build` run the same typechecker; in 0.5 a build reports type errors as
+    // warnings (check_program).
     int tc_result = 0;
-    if (compiler->config.use_typecheck || compiler->config.mode_check)
+    if (!compiler->config.mode_doc || compiler->config.use_typecheck)
     {
         if (compiler->config.verbose)
         {

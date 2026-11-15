@@ -1,4 +1,11 @@
    Compiling tests/compiler/diagnostics_output/err_print_codegen.zc...
+warning: Undefined function 'println' (an error from 0.6; `zc check` reports it now)
+  --> tests/compiler/diagnostics_output/err_print_codegen.zc:13:5
+   |
+13 |     println(name);
+   |     ^ here
+   |
+   = note: Check if the function is defined or imported
 error: a string on its own no longer prints
   --> tests/compiler/diagnostics_output/err_print_codegen.zc:9:14
    |

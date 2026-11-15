@@ -818,8 +818,8 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
     // Pass 2: Re-run with next_iter_state to catch use-after-move across iterations
     if (next_iter_state)
     {
-        int prev_move_checks_only = tc->move_checks_only;
-        tc->move_checks_only = 1; // suppress type errors
+        int prev_rechecking = tc->rechecking;
+        tc->rechecking = 1; // the first pass reported the type errors
         tc->in_loop_pass2 = 1;
 
         tc->pctx->move_state = move_state_clone(next_iter_state);
@@ -863,7 +863,7 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
             move_state_free(tc->loop_continue_state);
         }
 
-        tc->move_checks_only = prev_move_checks_only;
+        tc->rechecking = prev_rechecking;
     }
 
     // Compute final move state exiting the loop
