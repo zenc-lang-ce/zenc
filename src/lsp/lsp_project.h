@@ -14,6 +14,13 @@ struct cJSON;
 /**
  * @brief Represents a tracked file in the LSP project.
  */
+/// A file that a file imports.
+typedef struct
+{
+    char *path;  ///< Resolved as the parser resolves it.
+    char *alias; ///< `geo` of `import "geo.zc" as geo`; NULL without one, or with `as *`.
+} FileImport;
+
 typedef struct ProjectFile
 {
     char *path;      ///< Absolute file path: what identifies the file.
@@ -34,8 +41,8 @@ typedef struct ProjectFile
     /// of the program, or one that only files it does not import declare. A C header may still
     /// declare them.
     TypeUsage *unknown_types;
-    /// The files its text imports, resolved as the parser resolves them, in the order written.
-    char **imports;
+    /// The files its text imports, in the order written.
+    FileImport *imports;
     int import_count;
     struct ProjectFile *next;
 } ProjectFile;
@@ -83,6 +90,10 @@ ProjectFile *lsp_project_get_file(const char *uri);
 
 // Find a file in the project by its path, as tokens name it (Token.file); NULL if not there.
 ProjectFile *lsp_project_get_file_by_path(const char *path);
+
+// The module that `pf` imports as `alias` (`import "geo.zc" as geo`), as the last parse of `pf`
+// read its imports; NULL if no import has that alias or the server has not read the module.
+ProjectFile *lsp_project_aliased_module(const ProjectFile *pf, const char *alias);
 
 // The declaration of the type `name` (a struct, an enum, a trait or an alias, by the name the
 // parser gives it) that the file `path` sees: its own, or one of a file it imports, directly or

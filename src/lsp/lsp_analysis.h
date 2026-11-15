@@ -20,7 +20,9 @@ void lsp_close_file(const char *uri);
 // lsp_handle_message sends. NULL answers `null`.
 struct cJSON *lsp_goto_definition(const char *uri, int line, int col);
 struct cJSON *lsp_hover(const char *uri, int line, int col);
-struct cJSON *lsp_completion(const char *uri, int line, int col);
+// `trigger` is the character that opened the completion on its own (`.`, `:`), NULL when it was
+// asked for.
+struct cJSON *lsp_completion(const char *uri, int line, int col, const char *trigger);
 struct cJSON *lsp_document_symbol(const char *uri);
 struct cJSON *lsp_workspace_symbol(const char *query);
 struct cJSON *lsp_references(const char *uri, int line, int col);

@@ -624,9 +624,9 @@ static ParseMarks parse_marks(void)
 // Bumped whenever a file's imports are read again: the visible files kept for a file are stale.
 static unsigned g_imports_generation = 0;
 
-// Reads the files `pf` imports from its text (`import "a.zc"`, `import { f } from "a.zc"`) and
-// resolves them as the parser does. Its AST does not list them all: a file another one imported
-// before leaves no node where it is imported again.
+// Reads the files `pf` imports from its text (`import "a.zc"`, `import { f } from "a.zc"`,
+// `import "a.zc" as a`) and resolves them as the parser does. Its AST does not list them all: a
+// file another one imported before leaves no node where it is imported again.
 static void read_imports(ProjectFile *pf)
 {
     g_imports_generation++;
@@ -665,10 +665,30 @@ static void read_imports(ProjectFile *pf)
         if (pf->import_count == capacity)
         {
             capacity = capacity ? capacity * 2 : 8;
-            pf->imports = xrealloc(pf->imports, (size_t)capacity * sizeof(char *));
+            pf->imports = xrealloc(pf->imports, (size_t)capacity * sizeof(FileImport));
         }
-        pf->imports[pf->import_count++] = resolved;
+        // `as geo` after the path, read on a copy: without a `;`, the next token may start the
+        // next import.
+        Lexer after = l;
+        Token as = lexer_next(&after);
+        Token alias = lexer_next(&after);
+        int has_alias = as.kind == TOK_IDENT && as.len == 2 && strncmp(as.start, "as", 2) == 0 &&
+                        alias.kind == TOK_IDENT;
+        pf->imports[pf->import_count++] =
+            (FileImport){resolved, has_alias ? token_strdup(alias) : NULL};
     }
+}
+
+ProjectFile *lsp_project_aliased_module(const ProjectFile *pf, const char *alias)
+{
+    for (int i = 0; pf && alias && i < pf->import_count; i++)
+    {
+        if (pf->imports[i].alias && strcmp(pf->imports[i].alias, alias) == 0)
+        {
+            return lsp_project_get_file_by_path(pf->imports[i].path);
+        }
+    }
+    return NULL;
 }
 
 #define VISIBLE_FILES_MAX 256
@@ -706,7 +726,7 @@ static void collect_visible_files(VisibleFiles *visible, const char *path, int d
     visible->files[visible->count++] = pf;
     for (int i = 0; pf && i < pf->import_count; i++)
     {
-        collect_visible_files(visible, pf->imports[i], depth + 1);
+        collect_visible_files(visible, pf->imports[i].path, depth + 1);
     }
 }
 
