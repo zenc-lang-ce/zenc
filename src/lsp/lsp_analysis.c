@@ -2776,7 +2776,7 @@ static int is_renamable(DeclarationKind kind)
 {
     return kind == DECLARATION_FUNCTION || kind == DECLARATION_VARIABLE ||
            kind == DECLARATION_CONSTANT || kind == DECLARATION_PARAMETER ||
-           kind == DECLARATION_STRUCT || kind == DECLARATION_FIELD;
+           kind == DECLARATION_STRUCT || kind == DECLARATION_FIELD || kind == DECLARATION_ENUM;
 }
 
 // The text that renames to `new_name` the symbol at `r`. In `let Point{x} = p` the field's name is
