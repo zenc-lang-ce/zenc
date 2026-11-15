@@ -219,9 +219,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
     const char *op = node->binary.op;
     Type *contextual_type = node->type_info;
 
-    if (strcmp(op, "=") == 0 ||
-        (strlen(op) > 1 && op[strlen(op) - 1] == '=' && strcmp(op, "==") != 0 &&
-         strcmp(op, "!=") != 0 && strcmp(op, "<=") != 0 && strcmp(op, ">=") != 0))
+    if (is_assignment_op(op))
     {
         if (!tc->is_stmt_context)
         {
