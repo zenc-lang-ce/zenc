@@ -290,12 +290,10 @@ int main(int argc, char **argv)
         else if (strcmp(arg, "--check") == 0 || strcmp(arg, "-c") == 0)
         {
             cfg->mode_check = 1;
-            cfg->use_typecheck = 1;
         }
         else if (strcmp(arg, "--no-check") == 0)
         {
             cfg->mode_check = 0;
-            cfg->use_typecheck = 0;
         }
         else if (strcmp(arg, "--profile") == 0)
         {
@@ -324,8 +322,7 @@ int main(int argc, char **argv)
                 cfg->profile = ZC_PROFILE_MISRA_C2012;
                 cfg->misra_mode = 1;
                 cfg->misra_output = 1;
-                cfg->use_typecheck = 1;
-                zvec_push_Str(&cfg->cfg_defines, xstrdup("misra"));
+                    zvec_push_Str(&cfg->cfg_defines, xstrdup("misra"));
                 zvec_push_Str(&cfg->cfg_defines, xstrdup("ZC_MISRA"));
             }
             else
@@ -340,7 +337,6 @@ int main(int argc, char **argv)
             cfg->profile = ZC_PROFILE_MISRA_C2012;
             cfg->misra_mode = 1;
             cfg->misra_output = 1;
-            cfg->use_typecheck = 1;
             zvec_push_Str(&cfg->cfg_defines, xstrdup("misra"));
             zvec_push_Str(&cfg->cfg_defines, xstrdup("ZC_MISRA"));
         }

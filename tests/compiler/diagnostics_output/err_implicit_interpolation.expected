@@ -34,4 +34,5 @@ error: '{{' and '}}' only escape braces in f"..." strings
    |             ^ here
    |
    = help: add the 'f' prefix to keep them as escapes: f"..."
+     error: semantic analysis found 5 errors
 [exit 1]

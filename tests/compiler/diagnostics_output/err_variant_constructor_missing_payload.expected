@@ -6,4 +6,5 @@ error: Too few arguments: 'Shape__Circle' expects at least 1, got 0
    |            ^ here
    |
    = help: Check the function signature for required parameters
+     error: semantic analysis found 1 error
 [exit 1]

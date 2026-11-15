@@ -32,4 +32,5 @@ warning: Variable 'limit' shadows a previous declaration
    |         ^ here
    |
    = note: This can lead to confusion
+     error: semantic analysis found 2 errors
 [exit 1]

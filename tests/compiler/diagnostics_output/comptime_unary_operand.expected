@@ -5,4 +5,5 @@ error: comptime: operator '~' requires an integer operand
 2  |     let _inverted = ~"abc";
    |                     ^ here
    |
+     error: semantic analysis found 1 error
 [exit 1]

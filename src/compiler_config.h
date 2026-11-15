@@ -60,7 +60,6 @@ typedef struct CompilerConfig
     int use_cuda;
     int use_objc;
     int mode_lsp;
-    int use_typecheck;
     int warn_as_errors;
     int no_suppress_warnings;
     int prune_unused; ///< --prune-unused: a whole program leaves out what nothing reaches.

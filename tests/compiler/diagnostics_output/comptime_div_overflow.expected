@@ -5,4 +5,5 @@ error: comptime: integer overflow in '/'
 3  |     let _quotient = min / -1;
    |                         ^ here
    |
+     error: semantic analysis found 1 error
 [exit 1]

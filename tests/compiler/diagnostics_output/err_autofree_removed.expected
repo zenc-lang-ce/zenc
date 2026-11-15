@@ -5,4 +5,5 @@ error: 'autofree' was removed; declare the variable normally and add 'defer free
 3  |     autofree let p = malloc(16);
    |     ^ here
    |
+     error: semantic analysis found 1 error
 [exit 1]

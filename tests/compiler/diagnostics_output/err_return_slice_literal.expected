@@ -7,4 +7,5 @@ error: cannot return a slice of a local array
    |
    = help: its elements live on this function's stack, which is gone after the return
    = help: return a fixed-size array (`-> float[3]`) or a `Vec<T>`
+     error: semantic analysis found 1 error
 [exit 1]

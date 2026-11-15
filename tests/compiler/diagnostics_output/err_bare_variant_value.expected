@@ -27,17 +27,18 @@ warning: Unused variable 's'
    |         ^ here
    |
    = note: Consider removing it or prefixing with '_'
-warning: Undefined variable 'Dot' (an error from 0.6; `zc check` reports it now)
+error: Undefined variable 'Dot'
   --> tests/compiler/diagnostics_output/err_bare_variant_value.zc:5:20
    |
 5  |     let s: Shape = Dot;
    |                    ^ here
    |
-warning: Undefined function 'Circle' (an error from 0.6; `zc check` reports it now)
+error: Undefined function 'Circle'
   --> tests/compiler/diagnostics_output/err_bare_variant_value.zc:6:13
    |
 6  |     let c = Circle(1.0);
    |             ^ here
    |
-   = note: Check if the function is defined or imported
+   = help: Check if the function is defined or imported
+     error: semantic analysis found 4 errors
 [exit 1]

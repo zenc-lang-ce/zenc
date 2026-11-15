@@ -5,4 +5,5 @@ error: 'await' was removed; async/await is no longer supported
 5  |     await work();
    |     ^ here
    |
+     error: semantic analysis found 1 error
 [exit 1]

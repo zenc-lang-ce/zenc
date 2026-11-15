@@ -267,7 +267,7 @@ static int compile_program(ZenCompiler *compiler)
     // (Handled during parsing phase — NODE_LINK is collected there)
 
     // Semantic Analysis & Validation
-    if (!compiler->config.mode_doc || compiler->config.use_typecheck)
+    if (!compiler->config.mode_doc)
     {
         propagate_drop_traits(&ctx);
         fix_type_refs_has_drop(&ctx);
@@ -286,7 +286,7 @@ static int compile_program(ZenCompiler *compiler)
     // `zc check` and `zc build` run the same typechecker; in 0.5 a build reports type errors as
     // warnings (check_program).
     int tc_result = 0;
-    if (!compiler->config.mode_doc || compiler->config.use_typecheck)
+    if (!compiler->config.mode_doc)
     {
         if (compiler->config.verbose)
         {

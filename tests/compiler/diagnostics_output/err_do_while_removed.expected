@@ -5,4 +5,5 @@ error: 'do ... while' was removed; use 'while'
 4  |     do {
    |     ^ here
    |
+     error: semantic analysis found 1 error
 [exit 1]

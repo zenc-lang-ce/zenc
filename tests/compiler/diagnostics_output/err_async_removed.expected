@@ -5,4 +5,5 @@ error: 'async' was removed; call the function directly or use std/thread.zc
 2  | async fn fetch() -> int {
    | ^ here
    |
+     error: semantic analysis found 1 error
 [exit 1]

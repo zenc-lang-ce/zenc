@@ -17,9 +17,7 @@ CUDA and Objective-C dialects; json, dot, ast-dump and lisp for tooling).
 ### How the phases run
 
 - `zc check`, `zc build` and `zc run` run the same typechecker
-  (`check_program`). In `zc check` a type error (`tc_error`) is an error; in
-  `zc build` and `zc run` it is a warning until 0.6 (an error with `--misra`).
-  Move errors, control-flow errors and MISRA checks stop both. The
+  (`check_program`), and its errors (`tc_error`) stop all three. The
   typechecker also **rewrites the AST** before codegen: index operators become
   calls, implicit `&`/`*` nodes are inserted, `comptime` blocks are expanded,
   and so on.
@@ -27,8 +25,7 @@ CUDA and Objective-C dialects; json, dot, ast-dump and lisp for tooling).
 
 So:
 
-- A check that reports through `tc_error` stops `zc check` and warns in a
-  build (it stops a build from 0.6).
+- A check that reports through `tc_error` stops `zc check` and a build alike.
 - A change to `check_node`, or to anything it calls, can change the C a build
   emits.
 - To verify a fix, run the program with `zc run`, not only `zc check`: the

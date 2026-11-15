@@ -5,4 +5,5 @@ error: comptime: shift amount out of range (0 to 63)
 2  |     let _too_far = 1 << 64;
    |                      ^ here
    |
+     error: semantic analysis found 1 error
 [exit 1]

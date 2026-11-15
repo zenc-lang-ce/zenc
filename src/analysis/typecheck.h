@@ -51,8 +51,6 @@ typedef struct TypeChecker
     // Configuration
     int rechecking; ///< Checking code a second time (a loop's second pass, the expressions of an
                     ///< f-string): only moves are reported.
-    int type_errors_as_warnings; ///< `zc build` in 0.5: a type error is a warning; from 0.6 it
-                                 ///< stops the build as in `zc check`.
 
     // Tracking
     int is_assign_lhs;      ///< If true, currently evaluating LHS of assignment.
