@@ -581,11 +581,9 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     // Propagate return type from function signature
     if (sig && sig->ret_type)
     {
-        if (!node->type_info)
-        {
-            // Deep clone return type to ensure caller doesn't modify callee's metadata
-            node->type_info = type_clone(sig->ret_type);
-        }
+        // The call's own copy: its depth is set below, and the parser may have left the
+        // signature's return type itself here, which every call and `return` shares.
+        node->type_info = type_clone(node->type_info ? node->type_info : sig->ret_type);
 
         // Apply Lifetime Elision
         if (sig->elide_from_idx != -1 && node->type_info->kind == TYPE_POINTER)
