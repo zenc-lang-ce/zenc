@@ -694,6 +694,12 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
             Type *target_type = get_inner_type(node->member.target->type_info);
+            // `p.field` reads through the pointer (deref_to_one_pointer left at most one).
+            int through_pointer = target_type->kind == TYPE_POINTER && target_type->inner;
+            if (through_pointer)
+            {
+                target_type = get_inner_type(target_type->inner);
+            }
             Type *tuple = tuple_of(node->member.target->type_info);
             Type *element = tuple ? tuple_element_type(tuple, node->member.field) : NULL;
             if (element)
@@ -701,7 +707,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 node->type_info = type_clone(element);
                 node->type_info->lifetime_depth = node->member.target->type_info->lifetime_depth;
             }
-            else if (target_type->kind == TYPE_STRUCT && target_type->name)
+            else if ((target_type->kind == TYPE_STRUCT || target_type->kind == TYPE_ENUM) &&
+                     target_type->name)
             {
                 if (tc->pctx->config->misra_mode)
                 {
@@ -713,7 +720,15 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     }
                 }
                 ASTNode *struct_def = find_struct_def(tc->pctx, type_def_name(target_type));
-                if (struct_def)
+                if (struct_def && struct_def->kind == NODE_ENUM)
+                {
+                    // The member of an enum value is its tag, a constant of a C `enum`: an int.
+                    if (strcmp(node->member.field, "tag") == 0)
+                    {
+                        node->type_info = type_new(TYPE_C_INT);
+                    }
+                }
+                else if (struct_def)
                 {
                     ASTNode *field = struct_def->strct.fields;
                     while (field)
@@ -723,7 +738,9 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                         {
                             // Propagate lifetime from struct container to the member access result
                             node->type_info = type_clone(field->type_info);
-                            if (node->type_info && node->member.target->type_info)
+                            // Through a pointer the field is not in the container: it keeps
+                            // its own depth (where escape analysis looks is its own question).
+                            if (node->type_info && !through_pointer)
                             {
                                 // Depth must be at least that of the container.
                                 // (If field itself is static/global, it will be 0, but container's

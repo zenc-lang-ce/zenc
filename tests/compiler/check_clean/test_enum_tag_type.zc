@@ -1,0 +1,32 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// The tag of an enum value is an integer (a C enum constant): it indexes an
+// array, also read through a pointer and for a generic or payload-free enum.
+// A field read through a pointer (`self` in a method) has its type too.
+enum Color { Red, Green, Blue }
+enum Maybe<T> { Nothing, Just(T) }
+enum Shape { Empty, Circle(int) }
+
+struct Pair { a: int; b: f64; }
+
+impl Pair {
+    fn neg(self) -> Pair {
+        return Pair{a: -.a, b: -self.b};
+    }
+}
+
+fn tag_through(p: Shape*) -> int {
+    let a: int[2] = [7, 8];
+    return a[p.tag];
+}
+
+test "tags index arrays" {
+    let a: int[3] = [10, 20, 30];
+    let c = Color::Blue;
+    let m = Maybe<int>::Just(4);
+    let s = Shape::Circle(1);
+    assert(a[c.tag] == 30, "simple enum");
+    assert(a[m.tag] == 20, "generic enum");
+    assert(tag_through(&s) == 8, "through a pointer");
+    let p = Pair{a: 1, b: 2.0};
+    assert(p.neg().a == -1 && p.neg().b == -2.0, "negated fields read through self");
+}
