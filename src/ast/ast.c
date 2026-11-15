@@ -958,6 +958,29 @@ Type *common_integer_type(Type *a, Type *b)
     return (is_unsigned_type(resolve_alias(b)) && !is_unsigned_type(resolve_alias(a))) ? b : a;
 }
 
+// The operators that assign, as the lexer produces them. `?\?=` is `??=` (`??=` alone is a
+// trigraph).
+static const char *const ASSIGNMENT_OPS[] = {
+    "=", "+=", "-=", "*=", "/=", "%=", "|=", "&=", "^=", "<<=", ">>=", "**=", "?\?=",
+};
+
+int is_assignment_op_text(const char *op, size_t len)
+{
+    for (size_t i = 0; i < sizeof(ASSIGNMENT_OPS) / sizeof(ASSIGNMENT_OPS[0]); i++)
+    {
+        if (strlen(ASSIGNMENT_OPS[i]) == len && strncmp(ASSIGNMENT_OPS[i], op, len) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int is_assignment_op(const char *op)
+{
+    return op && is_assignment_op_text(op, strlen(op));
+}
+
 // An integer literal written without a suffix (`15`), whose type adapts to the other operand.
 static int is_plain_int_literal(ASTNode *n)
 {

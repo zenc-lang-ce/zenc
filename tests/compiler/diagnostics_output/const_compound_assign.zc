@@ -1,0 +1,7 @@
+// ARGS: transpile
+// A compound assignment to a const variable is rejected by zc, like `=` and `+=`.
+
+fn main() {
+    let x: const int = 10;
+    x %= 3;
+}

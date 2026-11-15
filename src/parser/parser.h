@@ -14,6 +14,14 @@
 #include "../utils/mangle.h"
 #include "../utils/string_list.h"
 
+// Growable lists the parser fills as it reads. They are generated after arena.h, so they
+// allocate from the arena like the AST that keeps them; never call their zvec_free_*.
+// (`zvec_Str`, in compiler_config.h, uses the libc heap.)
+ZVEC_GENERATE_IMPL(char *, Text)
+ZVEC_GENERATE_IMPL(int, Int)
+ZVEC_GENERATE_IMPL(Type *, Type)
+ZVEC_GENERATE_IMPL(Token, Token)
+
 // Operator precedence for expression parsing
 
 /**
@@ -894,7 +902,7 @@ void record_generic_parameter_use(ParserContext *ctx, Token t);
 /**
  * @brief Checks if a name is a known generic parameter.
  */
-int is_known_generic(ParserContext *ctx, char *name);
+int is_known_generic(ParserContext *ctx, const char *name);
 
 /** @brief Whether `t` still names a generic parameter (`Vec<T>` inside its template). */
 int type_is_generic_dependent(ParserContext *ctx, Type *t);
@@ -1014,6 +1022,12 @@ char *token_get_string_content(Token t);
  */
 int token_string_content_offset(Token t, int *end_offset);
 ASTNode *find_struct_def(ParserContext *ctx, const char *name);
+/**
+ * @brief The field `field_name` of the struct that `struct_type` is or points to; NULL when it
+ *        has no such field. A field mixed in with `use` has the token of the struct it comes
+ *        from.
+ */
+ASTNode *find_struct_field(ParserContext *ctx, Type *struct_type, const char *field_name);
 ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char *link_name,
                         int is_export);
 void push_pending_body(ParserContext *ctx, PendingBody *pending);
@@ -1078,6 +1092,40 @@ Module *find_module(ParserContext *ctx, const char *alias);
  * the module is imported with an alias, `Vector` when its names are imported one by one.
  */
 char *module_written_name(ParserContext *ctx, const char *name);
+/**
+ * @brief The struct or enum a bare type name names in the module being parsed: its C name
+ *        when that is not `name` itself, NULL when it is. In a module parsed with a prefix
+ *        (imported with `as`, one by one or as `*`), the module's own type comes first
+ *        (`prefix__Point`), then a type of the program called so, then one the module
+ *        declares further down. A generic parameter, a primitive, `Self` and a C type keep
+ *        their names.
+ */
+char *module_type_name(ParserContext *ctx, const char *name);
+/**
+ * @brief The name the type written `name` is declared under, when that is not `name`
+ *        itself; NULL when it is. A type imported one by one (or with `as *`) is the
+ *        module's (`base__Vector` for the `MathVec` of `import { Vector as MathVec }`); in
+ *        a module parsed with a prefix, module_type_name decides. Every place that reads a
+ *        type's bare name asks here: a type, `Type::member`, `Enum.Variant`, a struct
+ *        literal, a `match` pattern, the target of an `impl`.
+ */
+char *type_declaration_name(ParserContext *ctx, const char *name);
+/**
+ * @brief The name `scope::name` is declared under, `scope` being the path before it: the
+ *        first name as written, or the name the path read so far is declared under. For a
+ *        module imported as `m`, `m::Point` is `base__Point` (a C header's names and extern
+ *        ones keep theirs, registered as extern symbols); otherwise `scope__name`.
+ *        Together with type_declaration_name for the first name, it is how every path to a
+ *        type is read: a type, `m::Type::member`, a `match` pattern.
+ */
+char *qualified_type_name(ParserContext *ctx, const char *scope, const char *name);
+/**
+ * @brief The function a bare name names in the module being parsed: the module's own
+ *        (`prefix__helper`) before a function of the program called so; NULL when the
+ *        module has none, outside a module parsed with a prefix, or when a local or a
+ *        parameter called so hides it. Same rule as module_type_name.
+ */
+char *module_function_name(ParserContext *ctx, const char *name);
 /**
  * @brief A type as the program writes it (type_to_zen_c_string_with), with a struct or enum of
  * a module written as its importer writes it: `math::Vector`, not `_math__Vector`.
