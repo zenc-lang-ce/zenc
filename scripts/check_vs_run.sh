@@ -1,8 +1,8 @@
 #!/bin/bash
 # Metric for making the typechecker the single semantics: among the tests that
 # compile and pass with `zc run`, how many does `zc check` (the full
-# typechecker) reject, and with which errors. The goal is 0, so the
-# typechecker can run in every build. A change must not make it go up.
+# typechecker) reject, and with which errors. It is 0 since 0.5.3, and the CI
+# keeps it there (make test-check-vs-run): it exits 1 when a test is rejected.
 #
 # Usage (from the repository root): scripts/check_vs_run.sh [-v] [ZC] [test.zc...]
 #   ZC defaults to ./zc. Without test files it uses tests/scripts/list_tests.sh.
@@ -63,3 +63,4 @@ if [ $VERBOSE -eq 1 ] && [ -f "$WORK/rejected.txt" ]; then
     echo "Rejected tests:"
     sort "$WORK/rejected.txt" | sed 's/^/  /'
 fi
+[ "$rejected" -eq 0 ]

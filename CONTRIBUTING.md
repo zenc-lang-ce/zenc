@@ -171,7 +171,7 @@ Which checks a change needs, besides its tests (each one is explained below):
 | --- | --- |
 | Anything in `src/` | `make test`, `compare_compilers.sh` and `measure_all.sh` against `main` |
 | Codegen (`src/codegen/`) | also `cpp_cmp.sh` |
-| The typechecker (`src/analysis/`) | also `check_vs_run.sh`, and add the program to `check_clean` |
+| The typechecker (`src/analysis/`) | also `make test-check-vs-run`, and add the program to `check_clean` |
 | Any C file, before pushing | `validate_gcc14.sh` with the files you changed |
 | Code you believe is dead, before removing it | `trace_all.sh` |
 
@@ -199,10 +199,10 @@ temporary directory instead. Each script's header explains its arguments.
     `../awesome-zenc` next to the checkout). For a change meant for `main`,
     the only differences should be the ones the fix intends.
   - `scripts/cpp_cmp.sh ../zc-ref/zc ./zc`: the same for the C++ of `--cpp`.
-- **Typechecker changes:** `scripts/check_vs_run.sh [-v] ./zc` counts the
-  tests that pass with `zc run` but that `zc check` rejects, grouped by error.
-  It measures how far the typechecker is from being the single semantics: it
-  must not go up.
+- **Typechecker changes:** `make test-check-vs-run` (`scripts/check_vs_run.sh
+  -v`) lists the tests that pass with `zc run` but that `zc check` rejects,
+  grouped by error. There are none, and the CI fails if one appears: `zc
+  check` and a build follow one semantics.
 - **Run the CI's Linux checks before pushing a change in C.** macOS's clang
   misses warnings that fail the CI (`-Wformat-truncation`,
   `-Wsuggest-attribute=const`, `-Wnull-dereference`, the static analyzer).
