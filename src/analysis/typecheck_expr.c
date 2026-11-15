@@ -69,6 +69,33 @@ static Type *operand_scalar(TypeChecker *tc, Type *t, Token at)
     return vector ? vector->inner : type_seen_from(t, at.file);
 }
 
+static int is_string_literal(ASTNode *node)
+{
+    return node->kind == NODE_EXPR_LITERAL &&
+           (node->literal.kind == LITERAL_STRING || node->literal.kind == LITERAL_RAW_STRING);
+}
+
+// An array of bytes C lets a string literal initialize: of char, signed or unsigned.
+static int is_byte_array(Type *t)
+{
+    if (!t || t->kind != TYPE_ARRAY || !t->inner)
+    {
+        return 0;
+    }
+    switch (resolve_alias(t->inner)->kind)
+    {
+    case TYPE_CHAR:
+    case TYPE_C_CHAR:
+    case TYPE_C_UCHAR:
+    case TYPE_I8:
+    case TYPE_U8:
+    case TYPE_BYTE:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 // `void*`, the generic pointer: it converts to and from any pointer, and compares with one.
 static int is_void_pointer(Type *t)
 {
@@ -1100,6 +1127,24 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     if (is_void_pointer(resolved_target) || is_void_pointer(resolved_value))
     {
         return 1;
+    }
+
+    // A string literal fills an array of characters it fits in, with its terminating NUL, as in
+    // C (`let name: char[8] = "abc";`).
+    if (value_node && is_string_literal(value_node) && is_byte_array(resolved_target))
+    {
+        char *text = string_literal_text(value_node);
+        size_t needed = strlen(text) + 1;
+        if (resolved_target->array_size > 0 && needed <= (size_t)resolved_target->array_size)
+        {
+            return 1;
+        }
+        char msg[MAX_SHORT_MSG_LEN];
+        snprintf(msg, sizeof(msg), "A string of %zu bytes (with its NUL) does not fit in '%s'",
+                 needed, type_to_string(target));
+        const char *hints[] = {"Make the array larger, or the string shorter", NULL};
+        tc_error_with_hints(tc, t, msg, hints);
+        return 0;
     }
 
     // Array decay: Array[T] -> T*

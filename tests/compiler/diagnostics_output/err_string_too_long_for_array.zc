@@ -1,0 +1,12 @@
+// ARGS: check
+// A string literal must fit in the array of characters it initializes, with
+// its terminating NUL.
+
+struct Named {
+    name: char[4];
+}
+
+fn main() {
+    let _short: char[3] = "abc";
+    let _n = Named{name: "toolong"};
+}
