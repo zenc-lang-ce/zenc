@@ -1,0 +1,17 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A shift amount below the width of what is shifted is fine: up to 127 for a
+// 128-bit integer, and up to 31 for a type narrower than int, which C shifts
+// as an int.
+
+@cfg(not(__TINYC__))
+test "shift amounts within the width" {
+    let h: u128 = 1;
+    let w: u64 = 1;
+    let b: u8 = 1;
+    let high: u128 = h << 100;
+    let top: u64 = w << 63;
+    let wide: i32 = b << 8;
+    assert((high >> 100) == 1, "u128 shift by 100");
+    assert((top >> 63) == 1, "u64 shift by 63");
+    assert(wide == 256, "u8 shifted as an int");
+}

@@ -665,35 +665,33 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
     // Bitwise operators: &, |, ^, <<, >>
     if (op_class == OPERATOR_BITWISE || op_class == OPERATOR_SHIFT)
     {
-        // MISRA Rule 12.2: Shift amount validation for << and >>
-        if (tc->pctx->config->misra_mode && op_class == OPERATOR_SHIFT)
+        // A constant shift amount must be below the width of what is shifted, as C requires: C
+        // shifts a type narrower than int as an int. MISRA Rule 12.2 counts the type's own width.
+        long long shift_amt;
+        int width = integer_type_width(get_inner_type(left_type));
+        int promoted = !tc->pctx->config->misra_mode && width > 0 && width < 32;
+        if (promoted)
         {
-            long long shift_amt;
-            if (eval_const_int_expr(node->binary.right, tc->pctx, &shift_amt))
+            width = 32;
+        }
+        if (op_class == OPERATOR_SHIFT && width > 0 &&
+            eval_const_int_expr(node->binary.right, tc->pctx, &shift_amt) &&
+            (shift_amt < 0 || shift_amt >= width))
+        {
+            if (tc->pctx->config->misra_mode)
             {
-                int width = integer_type_width(left_type);
                 misra_check_shift_amount(tc->pctx, shift_amt, width, node->token);
             }
-        }
-        else if (op_class == OPERATOR_SHIFT && node->binary.right &&
-                 node->binary.right->kind == NODE_EXPR_LITERAL &&
-                 node->binary.right->literal.kind == LITERAL_INT)
-        {
-            // Legacy/Non-MISRA warnings
-            unsigned long long shift_amt = node->binary.right->literal.int_val;
-            if (shift_amt >= 64)
+            else
             {
-                const char *hints[] = {"Shift amount exceeds bit width, result is undefined", NULL};
-                tc_error_with_hints(tc, node->binary.right->token, "Shift amount too large", hints);
-            }
-            else if (shift_amt >= 32 && left_type &&
-                     (left_type->kind == TYPE_I32 || left_type->kind == TYPE_U32 ||
-                      left_type->kind == TYPE_C_INT || left_type->kind == TYPE_C_UINT))
-            {
-                const char *hints[] = {
-                    "Shift amount >= 32 is undefined behavior for 32-bit integers", NULL};
-                tc_error_with_hints(tc, node->binary.right->token,
-                                    "Shift amount exceeds 32-bit type width", hints);
+                char msg[MAX_SHORT_MSG_LEN];
+                snprintf(msg, sizeof(msg), "Shift amount %lld is out of range for '%s' (%s%d bits)",
+                         shift_amt, type_to_string(left_type), promoted ? "shifted as int, " : "",
+                         width);
+                const char *hints[] = {"Shifting by a negative amount or by the width of the type "
+                                       "or more is undefined behavior",
+                                       NULL};
+                tc_error_with_hints(tc, node->binary.right->token, msg, hints);
             }
         }
 
