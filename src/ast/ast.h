@@ -963,10 +963,4 @@ Type *get_inner_type(Type *t);
  */
 ASTNode *deref_to_one_pointer(ASTNode *expr);
 
-typedef struct TraitReg
-{
-    char *name;
-    struct TraitReg *next;
-} TraitReg;
-
 #endif

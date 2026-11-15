@@ -1238,8 +1238,8 @@ static void test_did_change()
     free(resp2);
 }
 
-// Reads messages until the diagnostics published for test_recursion.zc, and returns them.
-static char *wait_for_recursion_diagnostics(void)
+// Reads messages until the diagnostics published for the file named `file_name`, and returns them.
+static char *wait_for_diagnostics(const char *file_name)
 {
     for (int i = 0; i < 50; i++)
     {
@@ -1248,7 +1248,7 @@ static char *wait_for_recursion_diagnostics(void)
         {
             return NULL;
         }
-        if (strstr(msg, "publishDiagnostics") && strstr(msg, "test_recursion.zc"))
+        if (strstr(msg, "publishDiagnostics") && strstr(msg, file_name))
         {
             return msg;
         }
@@ -1267,7 +1267,7 @@ static void test_type_errors_keep_recursion_depth(void)
                  "{\"textDocument\": {\"uri\": \"file:///tmp/test_recursion.zc\", "
                  "\"languageId\": \"zenc\", \"version\": 1, "
                  "\"text\": \"fn f(x: (int int)) {}\\n\"}}}");
-    free(wait_for_recursion_diagnostics());
+    free(wait_for_diagnostics("/test_recursion.zc"));
 
     char request[512];
     for (int version = 2; version < 1102; version++)
@@ -1280,14 +1280,14 @@ static void test_type_errors_keep_recursion_depth(void)
             version);
         send_request(request);
         // Read each answer, or the server blocks once the pipe is full
-        free(wait_for_recursion_diagnostics());
+        free(wait_for_diagnostics("/test_recursion.zc"));
     }
 
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didChange\", \"params\": "
                  "{\"textDocument\": {\"uri\": \"file:///tmp/test_recursion.zc\", "
                  "\"version\": 2000}, \"contentChanges\": "
                  "[{\"text\": \"fn g(x: int) -> int {\\n    return x;\\n}\\n\"}]}}");
-    char *diagnostics = wait_for_recursion_diagnostics();
+    char *diagnostics = wait_for_diagnostics("/test_recursion.zc");
     if (!diagnostics || strstr(diagnostics, "Recursion limit exceeded"))
     {
         fail("Valid code reported 'Recursion limit exceeded' after many type errors");
@@ -2876,6 +2876,32 @@ static void test_import_type_action(void)
     printf("PASS: test_import_type_action\n");
 }
 
+static void test_imported_trait_after_read_request(void)
+{
+    printf("Running test_imported_trait_after_read_request...\n");
+    // A read-only request (hover) rewinds the arena and forgot every trait registered until then.
+    // A file that imports a trait does not parse it again on the next edit (it was imported
+    // before), so `k: Kept` was warned about as an unknown type.
+    mkdir(C_TEST_DIR, 0755);
+    open_document(C_TEST_DIR "/kept_trait.zc", "trait Kept { fn size(self) -> int; }\n");
+    const char *path = C_TEST_DIR "/kept_trait_user.zc";
+    const char *text = "import \"./kept_trait.zc\";\n"           // Line 0
+                       "fn measure(k: Kept) -> int { return 0; }\n"; // Line 1
+    open_document(path, text);
+    free(wait_for_diagnostics("/kept_trait_user.zc"));
+    // On the `import`: a read-only request (a hover on some names is not).
+    cJSON_Delete(position_request(1601, "textDocument/hover", path, 0, 0));
+    change_document(path, 2, text);
+    char *diagnostics = wait_for_diagnostics("/kept_trait_user.zc");
+    if (!diagnostics || strstr(diagnostics, "Unknown type 'Kept'"))
+    {
+        printf("Diagnostics after the edit: %s\n", diagnostics ? diagnostics : "(none)");
+        fail("A trait imported before stays known after a read-only request");
+    }
+    free(diagnostics);
+    printf("PASS: test_imported_trait_after_read_request\n");
+}
+
 static void test_member_hover(void)
 {
     printf("Running test_member_hover...\n");
@@ -4347,6 +4373,9 @@ int main()
 
     start_lsp_server();
     test_initialize();
+    // Early: once the arena outgrows the project, an edit rebuilds it and registers every trait
+    // again, which would hide the trait the read-only request forgot.
+    test_imported_trait_after_read_request();
     test_hover();
     test_hover_signature();
     test_unclosed_include_keeps_server_alive();
