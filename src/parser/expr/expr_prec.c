@@ -400,19 +400,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
         }
 
-        char *method = NULL;
-        if (is_token(t, "-"))
-        {
-            method = "neg";
-        }
-        if (is_token(t, "!") || t.kind == TOK_NOT)
-        {
-            method = "not";
-        }
-        if (is_token(t, "~"))
-        {
-            method = "bitnot";
-        }
+        const OperatorInfo *unary_info =
+            operator_info(t.kind == TOK_NOT ? OP_NOT : unary_operator_from_text(t.start, t.len));
+        const char *method = unary_info ? unary_info->method : NULL;
 
         if (method && operand->type_info)
         {
@@ -1594,7 +1584,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
         }
 
         int next_prec = (int)(prec + 1);
-        if (op.kind == TOK_OP && (is_token(op, "**") || is_token(op, "**=")))
+        const OperatorInfo *op_info = operator_info(binary_operator_of_token(op));
+        if (op_info && op_info->right_associative)
         {
             next_prec = (int)(prec);
         }
@@ -1828,20 +1819,16 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
         }
 
-        size_t op_len = strlen(bin->binary.op);
-
         // `x op= y` becomes `x = x op y`.
-        if (op_len > 1 && is_assignment_op(bin->binary.op))
+        const OperatorInfo *assign_info =
+            operator_info(binary_operator_from_text(bin->binary.op, strlen(bin->binary.op)));
+        if (assign_info && assign_info->compound != OP_NONE)
         {
             ASTNode *op_node = ast_create(NODE_EXPR_BINARY);
             op_node->binary.left = lhs;
             op_node->binary.right = rhs;
 
-            // Extract the base operator (remove last char '=')
-            size_t inner_op_len = op_len - 1;
-            char *inner_op = xmalloc((size_t)(inner_op_len + 1));
-            strncpy(inner_op, bin->binary.op, (size_t)(inner_op_len));
-            inner_op[inner_op_len] = '\0';
+            char *inner_op = xstrdup(operator_info(assign_info->compound)->spelling);
             op_node->binary.op = inner_op;
 
             // Inherit type info temporarily
@@ -1850,7 +1837,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 op_node->type_info = lhs->type_info;
             }
 
-            const char *inner_method = get_operator_method(inner_op);
+            const char *inner_method = operator_info(assign_info->compound)->method;
             if (inner_method)
             {
                 Type *lt = lhs->type_info;
@@ -1986,7 +1973,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
         }
 
-        const char *method = get_operator_method(bin->binary.op);
+        const char *method = binary_operator_method(bin->binary.op);
 
         if (method && lhs)
         {

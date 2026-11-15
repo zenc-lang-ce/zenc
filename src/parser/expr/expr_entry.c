@@ -30,6 +30,33 @@ ASTNode *parse_constant_expression(ParserContext *ctx, Lexer *l)
     return n;
 }
 
+// The binary operator `t` writes, or OP_NONE. The lexer gives some operators a kind of their own
+// (`<`, `??`, `|>`, `and`); the others are TOK_OP, told apart by their text.
+OperatorKind binary_operator_of_token(Token t)
+{
+    switch (t.kind)
+    {
+    case TOK_LANGLE:
+        return OP_LT;
+    case TOK_RANGLE:
+        return OP_GT;
+    case TOK_AND:
+        return OP_AND;
+    case TOK_OR:
+        return OP_OR;
+    case TOK_QQ:
+        return OP_COALESCE;
+    case TOK_QQ_EQ:
+        return OP_COALESCE_ASSIGN;
+    case TOK_PIPE:
+        return OP_PIPE;
+    case TOK_OP:
+        return binary_operator_from_text(t.start, t.len);
+    default:
+        return OP_NONE;
+    }
+}
+
 Precedence get_token_precedence(Token t)
 {
     if (t.kind == TOK_INT || t.kind == TOK_FLOAT || t.kind == TOK_STRING || t.kind == TOK_IDENT ||
@@ -53,122 +80,15 @@ Precedence get_token_precedence(Token t)
         return PREC_CALL;
     }
 
-    if (t.kind == TOK_QQ)
+    OperatorKind op = binary_operator_of_token(t);
+    if (op != OP_NONE)
     {
-        return PREC_OR;
+        return (Precedence)operator_info(op)->precedence;
     }
 
-    if (t.kind == TOK_AND)
-    {
-        return PREC_AND;
-    }
-
-    if (t.kind == TOK_OR)
-    {
-        return PREC_OR;
-    }
-
-    if (t.kind == TOK_QQ_EQ)
-    {
-        return PREC_ASSIGNMENT;
-    }
-
-    if (t.kind == TOK_PIPE)
-    {
-        return PREC_TERM;
-    }
-
-    if (t.kind == TOK_LANGLE || t.kind == TOK_RANGLE)
-    {
-        return PREC_COMPARISON;
-    }
-
-    if (t.kind == TOK_OP)
-    {
-        if (is_assignment_op_text(t.start, t.len))
-        {
-            return PREC_ASSIGNMENT;
-        }
-
-        if (is_token(t, "||") || is_token(t, "or"))
-        {
-            return PREC_OR;
-        }
-
-        if (is_token(t, "&&") || is_token(t, "and"))
-        {
-            return PREC_AND;
-        }
-
-        if (is_token(t, "|"))
-        {
-            return PREC_TERM;
-        }
-
-        if (is_token(t, "^"))
-        {
-            return PREC_TERM;
-        }
-
-        if (is_token(t, "&"))
-        {
-            return PREC_TERM;
-        }
-
-        if (is_token(t, "<<") || is_token(t, ">>"))
-        {
-            return PREC_TERM;
-        }
-
-        if (is_token(t, "==") || is_token(t, "!="))
-        {
-            return PREC_EQUALITY;
-        }
-
-        if (is_token(t, "<") || is_token(t, ">") || is_token(t, "<=") || is_token(t, ">="))
-        {
-            return PREC_COMPARISON;
-        }
-
-        if (is_token(t, "+") || is_token(t, "-"))
-        {
-            return PREC_TERM;
-        }
-
-        if (is_token(t, "*") || is_token(t, "/") || is_token(t, "%"))
-        {
-            return PREC_FACTOR;
-        }
-
-        if (is_token(t, "**"))
-        {
-            return PREC_POWER;
-        }
-
-        if (is_token(t, "."))
-        {
-            return PREC_CALL;
-        }
-
-        if (is_token(t, "|>"))
-        {
-            return PREC_TERM;
-        }
-    }
-
-    if (t.kind == TOK_LBRACKET || t.kind == TOK_LPAREN)
+    if ((t.kind == TOK_OP && is_token(t, ".")) || t.kind == TOK_LBRACKET || t.kind == TOK_LPAREN)
     {
         return PREC_CALL;
-    }
-
-    if (is_token(t, "??"))
-    {
-        return PREC_OR;
-    }
-
-    if (is_token(t, "\?\?="))
-    {
-        return PREC_ASSIGNMENT;
     }
 
     return PREC_NONE;
