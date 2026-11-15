@@ -134,23 +134,19 @@ static ASTNode *new_member_node(ParserContext *ctx, ASTNode *target, Token field
     node->member.field = token_strdup(field);
     node->member.is_pointer_access = is_pointer_access;
 
+    // The field it reads, for the language server: where it is declared.
+    ASTNode *declared = find_struct_field(ctx, target->type_info, node->member.field);
+    if (declared)
+    {
+        node->definition_token = declared->token;
+    }
+
     int is_ptr = 0;
     char *alloc_name = NULL;
     char *sname = resolve_struct_name_from_type(ctx, target->type_info, &is_ptr, &alloc_name);
     if (sname)
     {
         ASTNode *def = find_struct_def(ctx, sname);
-        // The field it reads, for the language server: where it is declared.
-        for (ASTNode *f = def && def->kind == NODE_STRUCT ? def->strct.fields : NULL; f;
-             f = f->next)
-        {
-            if (f->kind == NODE_FIELD && f->field.name &&
-                strcmp(f->field.name, node->member.field) == 0)
-            {
-                node->definition_token = f->token;
-                break;
-            }
-        }
         if (def && def->kind == NODE_STRUCT && def->strct.is_opaque)
         {
             if (!def->strct.defined_in_file ||
@@ -1787,9 +1783,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
         }
 
-        if (strcmp(bin->binary.op, "=") == 0 || strcmp(bin->binary.op, "+=") == 0 ||
-            strcmp(bin->binary.op, "-=") == 0 || strcmp(bin->binary.op, "*=") == 0 ||
-            strcmp(bin->binary.op, "/=") == 0)
+        if (is_assignment_op(bin->binary.op))
         {
 
             if (lhs->kind == NODE_EXPR_VAR)
@@ -1834,25 +1828,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
         }
 
-        int is_compound = 0;
         size_t op_len = strlen(bin->binary.op);
 
-        // Check if operator ends with '=' but is not ==, !=, <=, >=
-        if (op_len > 1 && bin->binary.op[op_len - 1] == '=')
-        {
-            char c = bin->binary.op[0];
-            if (c != '=' && c != '!' && c != '<' && c != '>')
-            {
-                is_compound = 1;
-            }
-            // Special handle for <<= and >>=
-            if (strcmp(bin->binary.op, "<<=") == 0 || strcmp(bin->binary.op, ">>=") == 0)
-            {
-                is_compound = 1;
-            }
-        }
-
-        if (is_compound)
+        // `x op= y` becomes `x = x op y`.
+        if (op_len > 1 && is_assignment_op(bin->binary.op))
         {
             ASTNode *op_node = ast_create(NODE_EXPR_BINARY);
             op_node->binary.left = lhs;

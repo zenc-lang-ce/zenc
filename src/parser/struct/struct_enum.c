@@ -39,6 +39,18 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     int v = 0;
     char *ename = token_strdup(n); // Store enum name
 
+    // In a module parsed with a prefix (imported with an alias, one by one or as `*`), the enum
+    // is named with the prefix. The variants and their constructors are registered below under
+    // that name, the one the type and its uses carry.
+    char *written_name = NULL;
+    if (ctx->imports.current_module_prefix && !gp)
+    { // Don't prefix generic templates
+        written_name = module_written_name(ctx, ename);
+        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, ename);
+        zfree(ename);
+        ename = prefixed_name;
+    }
+
     while (1)
     {
         skip_comments(l);
@@ -184,16 +196,6 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
         {
             lexer_next(l);
         }
-    }
-
-    // Auto-prefix enum name if in module context
-    char *written_name = NULL;
-    if (ctx->imports.current_module_prefix && !gp)
-    { // Don't prefix generic templates
-        written_name = module_written_name(ctx, ename);
-        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, ename);
-        zfree(ename);
-        ename = prefixed_name;
     }
 
     ASTNode *node = ast_create(NODE_ENUM);
