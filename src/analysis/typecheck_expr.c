@@ -69,6 +69,13 @@ static Type *operand_scalar(TypeChecker *tc, Type *t, Token at)
     return vector ? vector->inner : type_seen_from(t, at.file);
 }
 
+// `void*`, the generic pointer: it converts to and from any pointer, and compares with one.
+static int is_void_pointer(Type *t)
+{
+    t = resolve_alias(t);
+    return t && t->kind == TYPE_POINTER && t->inner && resolve_alias(t->inner)->kind == TYPE_VOID;
+}
+
 void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
 {
     check_node(tc, node->unary.operand, depth + 1);
@@ -634,8 +641,13 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 Type *right_seen = type_seen_from(right_type, node->token.file);
                 int left_numeric = is_integer_type(left_seen) || is_float_type(left_seen);
                 int right_numeric = is_integer_type(right_seen) || is_float_type(right_seen);
+                Type *left_resolved = resolve_alias(left_type);
+                Type *right_resolved = resolve_alias(right_type);
+                int pointer_and_void_pointer =
+                    (is_void_pointer(left_type) && right_resolved->kind == TYPE_POINTER) ||
+                    (is_void_pointer(right_type) && left_resolved->kind == TYPE_POINTER);
 
-                if (!left_numeric || !right_numeric)
+                if ((!left_numeric || !right_numeric) && !pointer_and_void_pointer)
                 {
                     if ((left_type && left_type->kind == TYPE_UNKNOWN) ||
                         (right_type && right_type->kind == TYPE_UNKNOWN))
@@ -1076,14 +1088,7 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         return 1;
     }
 
-    // void* is generic pointer
-    if (resolved_target->kind == TYPE_POINTER && resolved_target->inner &&
-        resolved_target->inner->kind == TYPE_VOID)
-    {
-        return 1;
-    }
-    if (resolved_value->kind == TYPE_POINTER && resolved_value->inner &&
-        resolve_alias(resolved_value->inner)->kind == TYPE_VOID)
+    if (is_void_pointer(resolved_target) || is_void_pointer(resolved_value))
     {
         return 1;
     }
