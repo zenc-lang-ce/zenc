@@ -156,19 +156,15 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
             return;
         }
 
-        Type *resolved = resolve_alias(operand_type);
-        if (resolved->kind != TYPE_POINTER && resolved->kind != TYPE_STRING)
+        Type *pointee = pointee_of(operand_type);
+        if (!is_pointer_type(operand_type))
         {
             const char *hints[] = {"Only pointers can be dereferenced", NULL};
             tc_error_with_hints(tc, node->token, "Cannot dereference non-pointer type", hints);
         }
-        else if (resolved->kind == TYPE_STRING)
+        else if (pointee)
         {
-            node->type_info = type_new(TYPE_CHAR);
-        }
-        else if (resolved->inner)
-        {
-            node->type_info = resolved->inner;
+            node->type_info = pointee;
             CompilerConfig *cfg = &tc->pctx->compiler->config;
             if (cfg->misra_mode)
             {
@@ -220,7 +216,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
             }
         }
         if (!is_integer_type(operand_type) && !is_float_type(operand_type) &&
-            operand_type->kind != TYPE_POINTER)
+            !is_pointer_type(operand_type))
         {
             tc_error(tc, node->token, "Increment/decrement requires a numeric or pointer operand");
         }
@@ -545,13 +541,12 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
             Type *rhs_resolved = resolve_alias(right_type);
 
             // Pointer Arithmetic
-            if (lhs_resolved->kind == TYPE_POINTER || lhs_resolved->kind == TYPE_STRING)
+            if (is_pointer_type(lhs_resolved))
             {
                 misra_check_pointer_arithmetic(tc->pctx, lhs_resolved, node->token);
 
                 // Ptr - Ptr -> isize
-                if (binop == OP_SUB &&
-                    (rhs_resolved->kind == TYPE_POINTER || rhs_resolved->kind == TYPE_STRING))
+                if (binop == OP_SUB && is_pointer_type(rhs_resolved))
                 {
                     node->type_info = type_new(TYPE_ISIZE);
                     return;
@@ -565,8 +560,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
             // Int + Ptr -> Ptr
-            if (binop == OP_ADD && is_integer_type(lhs_resolved) &&
-                (rhs_resolved->kind == TYPE_POINTER || rhs_resolved->kind == TYPE_STRING))
+            if (binop == OP_ADD && is_integer_type(lhs_resolved) && is_pointer_type(rhs_resolved))
             {
                 misra_check_pointer_arithmetic(tc->pctx, rhs_resolved, node->token);
                 node->type_info = right_type;
@@ -1147,22 +1141,20 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         return 0;
     }
 
-    // Array decay: Array[T] -> T*
+    // Array decay: Array[T] -> T* (a `string` is a char*).
     // This allows passing a fixed-size array where a pointer is expected.
-    if (resolved_target->kind == TYPE_POINTER && resolved_value->kind == TYPE_ARRAY)
+    Type *target_pointee = pointee_of(resolved_target);
+    if (target_pointee && resolved_value->kind == TYPE_ARRAY && resolved_value->inner)
     {
-        if (resolved_target->inner && resolved_value->inner)
+        // Recursive check for inner types (e.g. char* <- char[10])
+        if (type_eq(target_pointee, resolved_value->inner))
         {
-            // Recursive check for inner types (e.g. char* <- char[10])
-            if (type_eq(resolved_target->inner, resolved_value->inner))
-            {
-                return 1;
-            }
-            // Allow char* <- char[N] explicitly if type_eq is too strict
-            if (is_char_type(resolved_target->inner) && is_char_type(resolved_value->inner))
-            {
-                return 1;
-            }
+            return 1;
+        }
+        // Allow char* <- char[N] explicitly if type_eq is too strict
+        if (is_char_type(target_pointee) && is_char_type(resolved_value->inner))
+        {
+            return 1;
         }
     }
 

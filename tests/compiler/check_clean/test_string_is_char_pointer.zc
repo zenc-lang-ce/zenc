@@ -1,0 +1,17 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A string is a char*: a char array decays to one, a c_char* converts to and
+// from one, and ++, --, - and * work on it as on any pointer.
+include <string.h>
+fn length(s: string) -> usize { return strlen(s); }
+test "a string is a char pointer" {
+    let buf: char[20] = "hello";
+    let n = length(buf);
+    let text: string = "a needle here";
+    let ptr: string = text;
+    ptr = strstr(ptr, "needle");
+    let idx = strchr(text, 'n') - text;
+    let h = text;
+    h++;
+    let c: c_char* = text;
+    assert(n == 5 && ptr != NULL && idx == 2 && h[0] == ' ' && c[0] == 'a', "char pointers");
+}

@@ -746,8 +746,9 @@ static int is_char_ptr(Type *t)
     {
         return 0;
     }
-    // Handle both primitive char* and legacy struct char*.
-    if (TYPE_POINTER == t->kind && t->inner && TYPE_CHAR == t->inner->kind)
+    // Handle both primitive char* and legacy struct char*. `c_char` is C's char too.
+    if (TYPE_POINTER == t->kind && t->inner &&
+        (TYPE_CHAR == t->inner->kind || TYPE_C_CHAR == t->inner->kind))
     {
         return 1;
     }
@@ -2389,4 +2390,24 @@ char *string_literal_text(ASTNode *literal)
         return xstrdup(text);
     }
     return unescape_c_string(text);
+}
+
+int is_pointer_type(Type *t)
+{
+    t = resolve_alias(t);
+    return t && (t->kind == TYPE_POINTER || t->kind == TYPE_STRING);
+}
+
+Type *pointee_of(Type *t)
+{
+    t = resolve_alias(t);
+    if (!t)
+    {
+        return NULL;
+    }
+    if (t->kind == TYPE_POINTER)
+    {
+        return t->inner;
+    }
+    return t->kind == TYPE_STRING ? type_new(TYPE_CHAR) : NULL;
 }
