@@ -25,7 +25,8 @@ Instructions for AI coding agents working on the Zen C compiler. They build on
   program, then find where the wrong value is produced. Fix it there, not
   where it is read. Then try variants of the program (another name, another
   literal, another position): if one still fails in the same way, the fix
-  covers a case, not the bug.
+  covers a case, not the bug. Then count the places in the compiler that
+  apply the same rule: if the fix touches one of several, it covers a case.
 - **Choose the fix that simplifies the compiler** (see "Rules" in
   CONTRIBUTING.md). If you see two ways, say which one simplifies and
   recommend it.

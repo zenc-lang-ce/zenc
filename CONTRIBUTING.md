@@ -68,14 +68,22 @@ them; code that does not follow them yet is not a precedent.
   existing one. Examples: `mangle_method_symbol` for method symbols,
   `ast_children` to walk a node's children, `should_suppress_undef_warning`
   for calls to undeclared C functions. If you find two copies of the same
-  rule, merge them.
+  rule, merge them. If a rule only holds because each caller remembers to
+  apply it, put it behind one entry point that every caller goes through;
+  adding the call to one more caller fixes a case, not the rule. Do not pass
+  a decision by writing it into a node for a later step to respect (a
+  `type_info` set before the node is checked): every reader then has to
+  cooperate, and the one that does not is the next bug.
 - **Fix the cause, not the reported input.** An issue shows one input; the
   bug is the rule in the compiler that handles it wrong. Find where the wrong
   state is produced, and check the fix against variants of the input: another
   name, another literal, another position, `zc run` as well as `zc check`. If
   a variant still fails in the same way, the fix covers a case, not the bug.
   Signs of a patch: the fix tests for a name or a literal that appears in the
-  issue, or the PR leaves inputs that fail in the same way out of scope.
+  issue, the PR leaves inputs that fail in the same way out of scope, it adds
+  the same call to one more place, or it changes a reader so that it respects
+  something another step left. Passing tests and lower metrics show that a
+  fix works, not that it fixes the cause.
 - **Prefer the fix that simplifies the compiler.** Between fixes for the same
   bug, choose the one that leaves less code and fewer special cases: fix a
   wrong value where it is produced instead of patching every reader. A patch
