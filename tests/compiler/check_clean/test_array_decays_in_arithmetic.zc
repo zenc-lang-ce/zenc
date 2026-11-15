@@ -4,7 +4,7 @@
 include <string.h>
 test "arrays decay in pointer arithmetic" {
     let letters: char[8] = "abcdefg";
-    let found = strchr(&letters[0], 'd') - letters;
+    let found: isize = strchr(&letters[0], 'd') - letters;
     let second: char* = letters + 1;
     let from_end: char* = 2 + letters;
     assert(found == 3 && second[0] == 'b' && from_end[0] == 'c', "array arithmetic");
