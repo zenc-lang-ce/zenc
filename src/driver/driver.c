@@ -40,19 +40,19 @@ int driver_run(ZenCompiler *compiler)
     // Backend detection for @cfg purposes
     if (z_path_match_compiler(compiler->config.cc, "tcc"))
     {
-        zvec_push_Str(&compiler->config.cfg_defines, xstrdup("__TINYC__"));
+        add_cfg_define(compiler, "__TINYC__");
     }
     else if (z_path_match_compiler(compiler->config.cc, "clang"))
     {
-        zvec_push_Str(&compiler->config.cfg_defines, xstrdup("__clang__"));
+        add_cfg_define(compiler, "__clang__");
     }
     else if (z_path_match_compiler(compiler->config.cc, "zig"))
     {
-        zvec_push_Str(&compiler->config.cfg_defines, xstrdup("__ZIG__"));
+        add_cfg_define(compiler, "__ZIG__");
     }
     else if (z_path_match_compiler(compiler->config.cc, "filcc"))
     {
-        zvec_push_Str(&compiler->config.cfg_defines, xstrdup("__FILCC__"));
+        add_cfg_define(compiler, "__FILCC__");
     }
 
     // The host OS for @cfg(...), by the name that `__COMPTIME_TARGET__` and the `//>` build
