@@ -54,6 +54,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
 - The lists the parser reads have no fixed size any more. Four of them overflowed when they got more entries than their initial size, which crashed the compiler or corrupted what it compiled: the fields of `let Point{...} = p` (16), the `use` of a struct (8), the generic parameters of a trait (8) and the captures of `fn[a, b, ...]` (32). Others stopped with an error: the parameters of a lambda (16), the type arguments of a generic call (8) and the operands of `asm` (16). `@derive` dropped the traits after the 32nd, and a `#define` of a C header the parameters after the 32nd.
 - `#line` is emitted when the file changes on the same line, and again when a newline was written since the last one; a `for` loop restores the lexer after its lookahead.
 - The C is written in binary mode on Windows.
+- `@cfg(macos)` is defined on macOS, the name `__COMPTIME_TARGET__` and the `//> macos:` directives use; before, only `@cfg(apple)` was, and code under `@cfg(macos)` was left out without a warning. `apple` stays defined.
 - Language server:
   - Completes what the program declares by the name it declares, `__` or not.
   - Hover and go to definition work on type names, inside f-string interpolations, and on both parts of a path: the type and the function of `Vec<int>::new()`.
