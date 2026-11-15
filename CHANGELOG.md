@@ -34,6 +34,7 @@ This new release brings breaking changes to the language:
 - Escape analysis follows a pointer variable through its assignments: a cursor read through a pointer, moved along the text and stored back (`let ptr = *p; ptr = &ptr[1]; *p = ptr;`) is no longer "pointer assigned to a location that outlives it". Before, any variable assigned to later in its block was taken to point into its own block. A pointer that escapes only in a later iteration of a loop is still reported.
 - A recursive call to a function that returns the pointer it was given no longer turns that function's later `return` into an escape: the depth worked out for one call changed the function's own return type.
 - A variable a lambda captures by value is the closure's own copy, which the body may change: `zc check` accepts `fn() -> int { n += 1; return n; }`, a closure that keeps state between calls, as `zc build` already compiled it. The original variable does not change. Before, `zc check` said "Cannot assign to immutable variable".
+- In pointer arithmetic, `zc check` takes an array as the pointer to its first element, as C does: `strchr(buf, c) - buf` and `buf + 1` with `buf: char[N]` are no longer "requires numeric operands".
 - `zc check` accepts comparing a pointer with a `void*` (`p == v`), as it already accepted assigning one to the other: it is no longer "Cannot compare '==' with incompatible types".
 
 ## 0.5.2

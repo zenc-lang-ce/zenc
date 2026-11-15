@@ -69,6 +69,24 @@ static Type *operand_scalar(TypeChecker *tc, Type *t, Token at)
     return vector ? vector->inner : type_seen_from(t, at.file);
 }
 
+// The pointer `t` is in arithmetic: itself if it is a pointer (or a string), the pointer to its
+// first element if it is an array, which decays to it as in C. NULL for anything else.
+static Type *decayed_pointer(Type *t)
+{
+    if (is_pointer_type(t))
+    {
+        return t;
+    }
+    Type *resolved = resolve_alias(t);
+    if (resolved && resolved->kind == TYPE_ARRAY && resolved->inner)
+    {
+        Type *pointer = type_new_ptr(resolved->inner);
+        pointer->lifetime_depth = t->lifetime_depth;
+        return pointer;
+    }
+    return NULL;
+}
+
 static int is_string_literal(ASTNode *node)
 {
     return node->kind == NODE_EXPR_LITERAL &&
@@ -560,13 +578,15 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
             Type *lhs_resolved = resolve_alias(left_type);
             Type *rhs_resolved = resolve_alias(right_type);
 
-            // Pointer Arithmetic
-            if (is_pointer_type(lhs_resolved))
+            // Pointer Arithmetic. An array is the pointer to its first element it decays to.
+            Type *lhs_pointer = decayed_pointer(left_type);
+            Type *rhs_pointer = decayed_pointer(right_type);
+            if (lhs_pointer)
             {
                 misra_check_pointer_arithmetic(tc->pctx, lhs_resolved, node->token);
 
                 // Ptr - Ptr -> isize
-                if (binop == OP_SUB && is_pointer_type(rhs_resolved))
+                if (binop == OP_SUB && rhs_pointer)
                 {
                     node->type_info = type_new(TYPE_ISIZE);
                     return;
@@ -575,15 +595,15 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 // Ptr - Int -> Ptr
                 if ((binop == OP_ADD || binop == OP_SUB) && is_integer_type(rhs_resolved))
                 {
-                    node->type_info = left_type;
+                    node->type_info = lhs_pointer;
                     return;
                 }
             }
             // Int + Ptr -> Ptr
-            if (binop == OP_ADD && is_integer_type(lhs_resolved) && is_pointer_type(rhs_resolved))
+            if (binop == OP_ADD && is_integer_type(lhs_resolved) && rhs_pointer)
             {
                 misra_check_pointer_arithmetic(tc->pctx, rhs_resolved, node->token);
-                node->type_info = right_type;
+                node->type_info = rhs_pointer;
                 return;
             }
 
