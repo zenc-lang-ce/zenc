@@ -49,6 +49,10 @@ static const OperatorInfo OPERATORS[] = {
     {OP_ADDRESS,          "&",      1, OPERATOR_OTHER,      0,               0, NULL,     OP_NONE},
     {OP_PRE_INC,          "++",     1, OPERATOR_OTHER,      0,               0, NULL,     OP_NONE},
     {OP_PRE_DEC,          "--",     1, OPERATOR_OTHER,      0,               0, NULL,     OP_NONE},
+    {OP_POST_INC,         "_post++", 1, OPERATOR_OTHER,     0,               0, NULL,     OP_NONE},
+    {OP_POST_DEC,         "_post--", 1, OPERATOR_OTHER,     0,               0, NULL,     OP_NONE},
+    {OP_ADDRESS_RVALUE,   "&_rval", 1, OPERATOR_OTHER,      0,               0, NULL,     OP_NONE},
+    {OP_PREFIX_AND_AND,   "&&",     1, OPERATOR_OTHER,      0,               0, NULL,     OP_NONE},
 };
 // clang-format on
 
@@ -94,6 +98,22 @@ OperatorKind unary_operator_from_text(const char *text, size_t len)
     return operator_from_text(text, len, 1);
 }
 
+OperatorKind binary_operator_of(const char *op)
+{
+    return op ? binary_operator_from_text(op, strlen(op)) : OP_NONE;
+}
+
+OperatorKind unary_operator_of(const char *op)
+{
+    return op ? unary_operator_from_text(op, strlen(op)) : OP_NONE;
+}
+
+OperatorClass binary_operator_class(const char *op)
+{
+    const OperatorInfo *info = operator_info(binary_operator_of(op));
+    return info ? info->operator_class : OPERATOR_OTHER;
+}
+
 int is_assignment_op_text(const char *op, size_t len)
 {
     const OperatorInfo *info = operator_info(binary_operator_from_text(op, len));
@@ -107,12 +127,11 @@ int is_assignment_op(const char *op)
 
 int is_comparison_op(const char *op)
 {
-    const OperatorInfo *info = op ? operator_info(binary_operator_from_text(op, strlen(op))) : NULL;
-    return info && info->operator_class == OPERATOR_COMPARISON;
+    return binary_operator_class(op) == OPERATOR_COMPARISON;
 }
 
 const char *binary_operator_method(const char *op)
 {
-    const OperatorInfo *info = op ? operator_info(binary_operator_from_text(op, strlen(op))) : NULL;
+    const OperatorInfo *info = operator_info(binary_operator_of(op));
     return info ? info->method : NULL;
 }

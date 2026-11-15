@@ -38,9 +38,10 @@ int tc_expr_has_side_effects(ASTNode *node)
 
     case NODE_EXPR_UNARY:
         // Increment/Decrement are side effects (prefix and postfix)
-        if (node->unary.op &&
-            (strcmp(node->unary.op, "++") == 0 || strcmp(node->unary.op, "--") == 0 ||
-             strcmp(node->unary.op, "_post++") == 0 || strcmp(node->unary.op, "_post--") == 0))
+        if (node->unary.op && (unary_operator_of(node->unary.op) == OP_PRE_INC ||
+                               unary_operator_of(node->unary.op) == OP_PRE_DEC ||
+                               unary_operator_of(node->unary.op) == OP_POST_INC ||
+                               unary_operator_of(node->unary.op) == OP_POST_DEC))
         {
             return 1;
         }
@@ -145,9 +146,10 @@ void collect_symbols(ASTNode *node, SymbolSet *reads, SymbolSet *writes)
         break;
 
     case NODE_EXPR_UNARY:
-        if (node->unary.op &&
-            (strcmp(node->unary.op, "++") == 0 || strcmp(node->unary.op, "--") == 0 ||
-             strcmp(node->unary.op, "_post++") == 0 || strcmp(node->unary.op, "_post--") == 0))
+        if (node->unary.op && (unary_operator_of(node->unary.op) == OP_PRE_INC ||
+                               unary_operator_of(node->unary.op) == OP_PRE_DEC ||
+                               unary_operator_of(node->unary.op) == OP_POST_INC ||
+                               unary_operator_of(node->unary.op) == OP_POST_DEC))
         {
             if (node->unary.operand->kind == NODE_EXPR_VAR)
             {
