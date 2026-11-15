@@ -194,6 +194,10 @@ temporary directory instead. Each script's header explains its arguments.
   tests that pass with `zc run` but that `zc check` rejects, grouped by error.
   It measures how far the typechecker is from being the single semantics: it
   must not go up.
+- **Architecture metrics:** `scripts/architecture_metrics.sh [--run [ZC]]`
+  counts what the "Rules" above ask to remove (lookups and diagnostics in the
+  backend, semantics in the parser, names compared as text). A change should
+  not make a count go up. `--run` adds `check_vs_run.sh`.
 - **Run the CI's Linux checks before pushing a change in C.** macOS's clang
   misses warnings that fail the CI (`-Wformat-truncation`,
   `-Wsuggest-attribute=const`, `-Wnull-dereference`, the static analyzer).
