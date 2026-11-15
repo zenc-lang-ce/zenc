@@ -22,6 +22,7 @@ This new release brings breaking changes to the language:
 - `zc check` judges a constant shift amount by the width of what is shifted: `u128 << 100` is no longer "Shift amount too large", and a type narrower than `int` is shifted as an `int`, as C does (`u8 << 8` is fine). An amount at or above the width is reported for every type, also when it is a named constant or negative (`i64 << 64`, `x << BIG`, `x >> -1`), with the type and its width in the message.
 - Errors about the function a call names point at the call: "Pure function cannot call non-pure function" had no line.
 - `zc check` accepts a default value for a trait parameter (`fn show(s: Shape = &g_circle)`): it is no longer "Unknown struct 'Shape'". The default becomes a trait object the same way a written argument does.
+- `zc check` reports a variable no scope declares, as it did a function: `let y = cont + 1;` is "Undefined variable 'cont'" with "Did you mean 'count'?", instead of passing the check and failing in the C compiler. Names of C (an included header, `stdin`) are still accepted. `&&label`, the address of a label for `goto *ptr`, is a `void*`.
 - `zc check` accepts comparing a pointer with a `void*` (`p == v`), as it already accepted assigning one to the other: it is no longer "Cannot compare '==' with incompatible types".
 
 ## 0.5.2

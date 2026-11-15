@@ -78,6 +78,15 @@ static int is_void_pointer(Type *t)
 
 void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
 {
+    // `&&label` (GNU C) is the address of a label, a void*: its operand names a label, not a value.
+    if (node->unary.op == OP_PREFIX_AND_AND)
+    {
+        Type *void_pointer = type_new(TYPE_POINTER);
+        void_pointer->inner = type_new(TYPE_VOID);
+        node->type_info = void_pointer;
+        return;
+    }
+
     check_node(tc, node->unary.operand, depth + 1);
 
     Type *operand_type = node->unary.operand->type_info;
@@ -1186,6 +1195,28 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     return 0;
 }
 
+// A name no scope declares and that is not of C: an undefined variable or, where a call calls
+// it, an undefined function.
+static void report_undefined_name(TypeChecker *tc, ASTNode *node)
+{
+    const char *name = node->var_ref.name;
+    char msg[MAX_SHORT_MSG_LEN];
+    char help[MAX_SHORT_MSG_LEN];
+    const char *hints[] = {NULL, NULL};
+    snprintf(msg, sizeof(msg), "Undefined %s '%s'%s", tc->is_callee ? "function" : "variable", name,
+             tc->pctx->config->misra_mode ? " (MISRA Rule 17.3)" : "");
+    if (node->var_ref.suggestion)
+    {
+        snprintf(help, sizeof(help), "Did you mean '%s'?", node->var_ref.suggestion);
+        hints[0] = help;
+    }
+    else if (tc->is_callee)
+    {
+        hints[0] = "Check if the function is defined or imported";
+    }
+    tc_error_with_hints(tc, node->token, msg, hints);
+}
+
 void check_expr_var(TypeChecker *tc, ASTNode *node)
 {
     // A variant is written with its enum (`Color::Red`), and the parser records it in
@@ -1270,12 +1301,9 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
             {
                 node->type_info = c_type;
             }
-            else if (tc->pctx->config->misra_mode && !is_c_name)
+            else if (!is_c_name && !sym && !find_symbol_in_all(tc->pctx, node->var_ref.name))
             {
-                char msg[MAX_SHORT_MSG_LEN];
-                snprintf(msg, sizeof(msg), "Undefined variable '%s' (MISRA Rule 17.3)",
-                         node->var_ref.name);
-                tc_error(tc, node->token, msg);
+                report_undefined_name(tc, node);
             }
         }
     }

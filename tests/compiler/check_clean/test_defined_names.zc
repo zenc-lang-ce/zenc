@@ -1,0 +1,24 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// Names that are defined, even without a declaration in Zen C: a function
+// pointer, a lambda, a variant without payload called with `()`, functions and
+// variables of an included C header, and C functions the program calls
+// undeclared.
+include <stdio.h>
+include <stdlib.h>
+
+enum E { A, B(int) }
+
+fn twice(x: int) -> int {
+    return x * 2;
+}
+
+test "defined names" {
+    let f: fn*(int) -> int = twice;
+    let g = fn(x: int) -> int { return x + 1; };
+    let e = E::A();
+    let n = abs(-3);
+    let out = stdout;
+    printf("");
+    assert(f(2) == 4 && g(2) == 3 && n == 3, "calls through names that are defined");
+    assert(e.tag == 0 && out != NULL, "a variant and a C variable");
+}

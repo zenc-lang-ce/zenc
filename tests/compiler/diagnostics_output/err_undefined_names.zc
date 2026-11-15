@@ -1,0 +1,17 @@
+// ARGS: check
+// A name no scope declares and that is not of C is an error: an undefined
+// variable, or an undefined function where a call calls it, with the closest
+// declared name as a hint when there is one.
+
+fn compute(x: int) -> int {
+    return x;
+}
+
+fn main() {
+    let count = 1;
+    let _typo_variable = cont + 1;
+    let _unknown_variable = zzqq;
+    let _typo_function = compte(1);
+    missing_fn(count);
+    nosuch::thing(1);
+}
