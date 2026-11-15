@@ -1,6 +1,6 @@
 // A module that calls its own functions: from a function, from a method, before the
 // function is declared, and through a function value. A local of the same name hides them.
-// It also uses its own type `Point`, which the program has too.
+// It also uses its own types: `Point`, which the program has too, and the enum `Side`.
 
 fn twice(x: int) -> int {
     return x * 2;
@@ -74,6 +74,19 @@ fn own_point(y: int, z: int) -> int {
     let side = Side::Right;
     if side == Side::Right {
         return built.measure() + literal.measure();
+    }
+    return 0;
+}
+
+fn side_number() -> int {
+    let side: Side = Side::Right;
+    match side {
+        Side::Left => {
+            return 1;
+        },
+        Side::Right => {
+            return 2;
+        },
     }
     return 0;
 }

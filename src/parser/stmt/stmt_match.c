@@ -91,6 +91,8 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
         {
             Token p = lexer_next(l);
             char *written_scope = NULL;
+            // The scope by the name it is declared under: `m::Shape` is `base__Shape`.
+            char *scope_name = NULL;
             char *written_name = token_strdup(p);
             Token name_token = p;
             Token scope_token = TOKEN_UNKNOWN;
@@ -108,11 +110,15 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                         size_t scope_size = strlen(written_scope) + strlen(written_name) + 3;
                         char *joined = xmalloc(scope_size);
                         snprintf(joined, scope_size, "%s::%s", written_scope, written_name);
+                        Module *mod = find_module(ctx, written_scope);
+                        scope_name = mod ? module_member_name(ctx, mod, written_name)
+                                         : mangle_module_symbol(scope_name, written_name);
                         written_scope = joined;
                     }
                     else
                     {
                         written_scope = written_name;
+                        scope_name = written_name;
                     }
                     written_name = token_strdup(suffix);
                     scope_token = name_token;
@@ -145,6 +151,17 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 }
             }
 
+            // A scope of one name (`Side::Right`) is a type, read as any type name is: one
+            // imported one by one, or in a module its own type.
+            if (scope_name && scope_name == written_scope)
+            {
+                char *declared = type_declaration_name(ctx, scope_name);
+                if (declared)
+                {
+                    scope_name = declared;
+                }
+            }
+
             char *range_start = NULL;
             char *range_end = NULL;
             int range_is_inclusive = 0;
@@ -154,8 +171,8 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 range_is_inclusive = (lexer_peek(l).kind == TOK_DOTDOT_EQ);
                 lexer_next(l); // eat operator
                 Token end_tok = lexer_next(l);
-                range_start = written_scope ? mangle_module_symbol(written_scope, written_name)
-                                            : written_name;
+                range_start =
+                    scope_name ? mangle_module_symbol(scope_name, written_name) : written_name;
                 range_end = token_strdup(end_tok);
             }
 
@@ -174,7 +191,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
             else if (p.kind == TOK_IDENT)
             {
                 alternative->kind = PATTERN_NAME;
-                alternative->name.scope = written_scope;
+                alternative->name.scope = scope_name;
                 alternative->name.name = written_name;
                 alternative->name_token = name_token;
                 alternative->scope_token = scope_token;

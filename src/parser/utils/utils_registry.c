@@ -729,6 +729,35 @@ char *module_type_name(ParserContext *ctx, const char *name)
     return mangle_module_symbol(ctx->imports.current_module_prefix, name);
 }
 
+char *type_declaration_name(ParserContext *ctx, const char *name)
+{
+    // Imported one by one, or with `as *`: the module's type, by the name the import gives it.
+    if (!ctx->imports.current_module_prefix)
+    {
+        SelectiveImport *imported = find_selective_import(ctx, name);
+        if (imported)
+        {
+            return mangle_module_symbol(imported->source_module, imported->symbol);
+        }
+    }
+    return module_type_name(ctx, name);
+}
+
+char *module_member_name(ParserContext *ctx, Module *mod, const char *name)
+{
+    // A C header's names are C's own.
+    if (mod->is_c_header)
+    {
+        register_extern_symbol(ctx, name);
+        return xstrdup(name);
+    }
+    if (is_extern_symbol(ctx, name))
+    {
+        return xstrdup(name);
+    }
+    return mangle_module_symbol(mod->base_name, name);
+}
+
 char *module_function_name(ParserContext *ctx, const char *name)
 {
     ZenSymbol *local = find_symbol_entry(ctx, name);

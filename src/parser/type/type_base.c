@@ -140,21 +140,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             char *merged;
             if (mod)
             {
-                // Module-qualified type
-                if (mod->is_c_header)
-                {
-                    // C header: Use type name directly without prefix
-                    // To prevent name mangling, we might consider changing
-                    // this to also use the prefix.
-                    merged = xstrdup(resolved_suffix);
-
-                    register_extern_symbol(ctx, merged);
-                }
-                else
-                {
-                    // Zen module: Use module base name as prefix
-                    merged = mangle_module_symbol(mod->base_name, resolved_suffix);
-                }
+                merged = module_member_name(ctx, mod, resolved_suffix);
             }
             else
             {
@@ -270,22 +256,8 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             return ty;
         }
 
-        // Selective imports ONLY apply when we're NOT in a module context
-        if (!ctx->imports.current_module_prefix)
-        {
-            SelectiveImport *si = find_selective_import(ctx, name);
-            if (si)
-            {
-                // This is a selectively imported symbol
-                // Resolve to the actual struct name which was prefixed during module
-                // parsing
-                zfree(name);
-                name = mangle_module_symbol(si->source_module, si->symbol);
-            }
-        }
-
-        // In a module parsed with a prefix, a bare type name names the module's own type.
-        char *type_name = module_type_name(ctx, name);
+        // A type imported one by one, or in a module the module's own type.
+        char *type_name = type_declaration_name(ctx, name);
         if (type_name)
         {
             zfree(name);

@@ -1,0 +1,12 @@
+// A module whose enums a program imports one by one (test_selective_enum_variants.zc).
+
+enum Corner {
+    Top,
+    Bottom,
+}
+
+enum Figure {
+    Dot,
+    Circle(int),
+    Rect(int, int),
+}

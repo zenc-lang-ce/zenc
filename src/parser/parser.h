@@ -1088,6 +1088,19 @@ char *module_written_name(ParserContext *ctx, const char *name);
  */
 char *module_type_name(ParserContext *ctx, const char *name);
 /**
+ * @brief The name the type written `name` is declared under, when that is not `name`
+ *        itself; NULL when it is. A type imported one by one (or with `as *`) is the
+ *        module's (`base__Vector` for the `MathVec` of `import { Vector as MathVec }`); in
+ *        a module parsed with a prefix, module_type_name decides. Every place that reads a
+ *        type's name (a type, `Type::member`, a struct literal, a `match` pattern) asks here.
+ */
+char *type_declaration_name(ParserContext *ctx, const char *name);
+/**
+ * @brief The name of `name` in the module `mod` that `m::name` names: `base__name`, or
+ *        `name` itself for a C header (registered as an extern symbol) and for an extern one.
+ */
+char *module_member_name(ParserContext *ctx, Module *mod, const char *name);
+/**
  * @brief The function a bare name names in the module being parsed: the module's own
  *        (`prefix__helper`) before a function of the program called so; NULL when the
  *        module has none, outside a module parsed with a prefix, or when a local or a

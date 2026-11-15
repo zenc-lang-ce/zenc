@@ -1,0 +1,39 @@
+// language/modules: the enums of a module imported one by one, or under another name, are used
+// by that name: their variants build values, compare and name the cases of a `match`.
+import { Corner, Figure as Shape } from "./test_modules/_selective_shapes.zc";
+
+fn area(f: Shape) -> int {
+    match f {
+        Shape::Dot => {
+            return 0;
+        },
+        Shape::Circle(r) => {
+            return r * r;
+        },
+        Shape::Rect(w, h) => {
+            return w * h;
+        },
+    }
+    return -1;
+}
+
+test "a variant without a payload of an enum imported one by one" {
+    let corner: Corner = Corner::Bottom;
+    assert(corner == Corner::Bottom, "a comparison with a variant");
+    let number = 0;
+    match corner {
+        Corner::Top => {
+            number = 1;
+        },
+        Corner::Bottom => {
+            number = 2;
+        },
+    }
+    assert(number == 2, "a match on the enum");
+}
+
+test "the variants of an enum imported under another name" {
+    assert(area(Shape::Dot) == 0, "a variant without a payload as an argument");
+    assert(area(Shape::Circle(3)) == 9, "a variant with a payload");
+    assert(area(Shape::Rect(2, 5)) == 10, "a variant with two values");
+}

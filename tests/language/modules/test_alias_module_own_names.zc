@@ -19,8 +19,24 @@ test "a module imported with an alias calls its own functions" {
 
 test "a module imported with an alias uses its own types" {
     assert(own::own_point(2, 3) == 7, "the module's own `Point`");
+    assert(own::side_number() == 2, "the module's own enum, in a match");
     let p = Point { x: 4 };
     assert(p.x == 4, "the program's own `Point` is another type");
+}
+
+test "the program uses the module's enum through the alias" {
+    let side: own::Side = own::Side::Left;
+    let number = 0;
+    match side {
+        own::Side::Left => {
+            number = 1;
+        },
+        own::Side::Right => {
+            number = 2;
+        },
+    }
+    assert(number == 1, "a match on the module's enum");
+    assert(side == own::Side::Left, "a comparison with a variant");
 }
 
 test "a module of the standard library imported with an alias" {
