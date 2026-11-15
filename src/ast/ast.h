@@ -257,7 +257,8 @@ typedef enum
 typedef struct MatchPattern
 {
     PatternKind kind;
-    QualifiedName name; ///< PATTERN_NAME: the name, as written.
+    QualifiedName name; ///< PATTERN_NAME: the name; its scope by the name the type is declared
+                        ///< under (`base__Shape` for `m::Shape`, see type_declaration_name).
     Token name_token;   ///< PATTERN_NAME: where the name is written, for the language server.
     Token scope_token;  ///< PATTERN_NAME: where the last part of its scope is (`Color` of
                         ///< `Color::Red`).
