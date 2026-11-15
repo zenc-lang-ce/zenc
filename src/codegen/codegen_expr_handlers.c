@@ -104,7 +104,21 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
                     }
                     else
                     {
-                        if (ctx->config->use_cpp)
+                        ASTNode *value = f->var_decl.init_expr;
+                        Type *field_type = f->type_info ? resolve_alias(f->type_info) : NULL;
+                        if (ctx->config->use_cpp && field_type && field_type->kind == TYPE_ARRAY &&
+                            value->kind == NODE_EXPR_LITERAL &&
+                            (value->literal.kind == LITERAL_STRING ||
+                             value->literal.kind == LITERAL_RAW_STRING))
+                        {
+                            // C++ assigns no array, nor casts to one: a string fills a char
+                            // array field by copy, cut to the field's size.
+                            const char *field = c_name(ctx, f->var_decl.name);
+                            EMIT(ctx, "strncpy(_s.%s, ", field);
+                            codegen_expression(ctx, value);
+                            EMIT(ctx, ", sizeof(_s.%s))", field);
+                        }
+                        else if (ctx->config->use_cpp)
                         {
                             const char *field = c_name(ctx, f->var_decl.name);
                             EMIT(ctx, "_s.%s = (__typeof__(_s.%s))(", field, field);
