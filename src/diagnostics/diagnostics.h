@@ -81,6 +81,7 @@ void warn_unused_variable(Token t, const char *var_name);
 void warn_unused_parameter(Token t, const char *param_name, const char *func_name);
 void warn_shadowing(Token t, const char *var_name);
 void warn_comparison_always_true(Token t, const char *reason);
+void warn_unreachable_code(Token t);
 void warn_comparison_always_false(Token t, const char *reason);
 void warn_array_bounds(Token t, int index, int size);
 void warn_slice_bounds(Token t, int bound, int size);

@@ -11,6 +11,14 @@
 
 struct MoveState; // Forward declaration
 
+/// A loop being checked, so that a `break` can say it leaves it.
+typedef struct LoopFrame
+{
+    const char *label;       ///< The loop's label, or NULL.
+    int has_break;           ///< A `break` leaves this loop: the code after it is reachable.
+    struct LoopFrame *outer; ///< The enclosing loop in the same function.
+} LoopFrame;
+
 // Type Checker Context
 // Holds the state during the semantic analysis pass.
 // Unlike the parser, this focuses on semantic validity (types, definitions).
@@ -35,6 +43,7 @@ typedef struct TypeChecker
     struct MoveState *loop_continue_state;
     struct MoveState *loop_start_state;
     int in_loop_pass2;
+    LoopFrame *current_loop; ///< Innermost loop being checked; NULL outside loops.
 
     // Configuration
     int move_checks_only; ///< If true, only report move semantics violations (no type errors).
@@ -77,6 +86,11 @@ int check_moves_only(ParserContext *ctx, ASTNode *root);
 // Error helpers available to move_check.c
 void tc_error(TypeChecker *tc, Token t, const char *msg);
 void tc_warning(TypeChecker *tc, Token t, const char *msg);
+
+/**
+ * @brief Reports code that no path reaches: a warning, or an error under MISRA (Rule 2.1).
+ */
+void tc_unreachable_code(TypeChecker *tc, Token t);
 int tc_file_in_std(TypeChecker *tc, const char *file);
 /**
  * @brief Where the place `place` lives, for escape analysis: the scope depth of a variable (0 for

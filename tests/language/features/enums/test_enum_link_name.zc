@@ -17,7 +17,6 @@ impl Color {
             Color::Red => { return true; },
             _ => { return false; },
         }
-        return false;
     }
 
     fn green(n: int) -> Color {

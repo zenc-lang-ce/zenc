@@ -1571,6 +1571,8 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
 
     int prev_unreachable = tc->is_unreachable;
     tc->is_unreachable = 0;
+    LoopFrame *prev_loop = tc->current_loop; // A `break` cannot leave the lambda.
+    tc->current_loop = NULL;
 
     // A `return` in the body is the lambda's, not the enclosing function's.
     ASTNode *prev_returns_from = tc->returns_from;
@@ -1593,6 +1595,7 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
 
     tc->returns_from = prev_returns_from;
     tc->is_unreachable = prev_unreachable;
+    tc->current_loop = prev_loop;
     tc_exit_scope(tc);
 }
 

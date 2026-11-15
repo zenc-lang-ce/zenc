@@ -29,7 +29,6 @@ fn area(s: Shape) -> int {
         Shape::Box(b) => { return b.w * b.h; },
         _ => { return 0; },
     }
-    return 0;
 }
 
 test "field of a struct with link_name" {

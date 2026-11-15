@@ -7,7 +7,6 @@ fn is_nothing(m: Maybe<int>) -> bool {
         Maybe::Nothing => { return true; },
         _ => { return false; },
     }
-    return false;
 }
 
 test "variable without a declared type gets the enum of a generic variant" {

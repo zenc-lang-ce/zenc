@@ -1084,6 +1084,15 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             misra_check_iteration_termination(tc->pctx, node->token);
         }
         tc->loop_break_count++;
+        for (LoopFrame *loop = tc->current_loop; loop; loop = loop->outer)
+        {
+            const char *target = node->break_stmt.target_label;
+            if (!target || (loop->label && strcmp(loop->label, target) == 0))
+            {
+                loop->has_break = 1;
+                break;
+            }
+        }
 
         if (tc->move_checks_only)
         {
