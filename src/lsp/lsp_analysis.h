@@ -13,7 +13,10 @@ struct cJSON;
 
 // The diagnostics of the open documents: collected while a document is checked and published.
 void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d);
-void lsp_check_file(const char *uri, const char *src);
+// A document opened or edited: analyze it, keep its text and, when the text is not the one the
+// server had, analyze again the open documents that import it, directly or not.
+void lsp_change_file(const char *uri, const char *src);
+// A document closed: back to the file on disk, and its diagnostics cleared.
 void lsp_close_file(const char *uri);
 
 // The handlers of the requests: each returns the `result` of its response, which
