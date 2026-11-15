@@ -1644,7 +1644,9 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
         tc_add_symbol(tc, pname, ptype, node->token, 0);
     }
 
-    // Add captured variables to the scope to ensure visibility and immutability inside the lambda.
+    // Add captured variables to the scope of the lambda. One captured by value is the closure's own
+    // copy, which the body may change (the closure keeps it between calls); the original does not
+    // change. One captured by reference is the original.
     if (node->lambda.captured_vars)
     {
         int saved_silent = tc->pctx->silent_warnings;
@@ -1652,16 +1654,13 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
         for (int i = 0; i < node->lambda.capture_count; i++)
         {
             char *var_name = node->lambda.captured_vars[i];
-            int mode = node->lambda.capture_modes ? node->lambda.capture_modes[i]
-                                                  : node->lambda.default_capture_mode;
 
             // Lookup original symbol to get its type
             ZenSymbol *orig_sym = tc_lookup(tc, var_name);
             if (orig_sym)
             {
-                // Shadow the original variable in the lambda scope
-                // Value captures are immutable.
-                tc_add_symbol(tc, var_name, orig_sym->type_info, node->token, (mode == 0));
+                // Shadow the original variable in the lambda scope.
+                tc_add_symbol(tc, var_name, orig_sym->type_info, node->token, 0);
             }
         }
         tc->pctx->silent_warnings = saved_silent;
