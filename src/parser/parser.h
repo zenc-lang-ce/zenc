@@ -671,11 +671,6 @@ int type_needs_drop(ParserContext *ctx, Type *t);
 int type_will_drop(ParserContext *ctx, Type *t);
 void fix_type_refs_has_drop(ParserContext *ctx);
 
-/**
- * @brief Propagates inner types for vector types (SIMD).
- */
-void propagate_vector_inner_types(ParserContext *ctx);
-
 // Token helpers
 
 /**
@@ -1019,6 +1014,15 @@ char *token_get_string_content(Token t);
  */
 int token_string_content_offset(Token t, int *end_offset);
 ASTNode *find_struct_def(ParserContext *ctx, const char *name);
+/**
+ * @brief The vector type `t` names: the type of the `@vector` struct it refers to, with its lane
+ *        count (`array_size`) and element type (`inner`). NULL if `t` is not a vector.
+ */
+Type *vector_type_of(ParserContext *ctx, Type *t);
+/**
+ * @brief The vector type of the struct called `name`; NULL if it is not a `@vector` struct.
+ */
+Type *vector_type_named(ParserContext *ctx, const char *name);
 /**
  * @brief Whether `enum_name` names an enum with no payload in any variant: C emits it as a plain
  *        `enum`, an integer, not as a tag and a union.

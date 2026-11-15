@@ -742,9 +742,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 // Vector positional init: e.g. f32x4{1.0, 2.0, 3.0, 4.0}
                 // First token is not an ident (it's a literal/expr), check if this is a vector type
-                ASTNode *vec_def = find_struct_def(ctx, acc);
-                if (vec_def && vec_def->kind == NODE_STRUCT && vec_def->type_info &&
-                    vec_def->type_info->kind == TYPE_VECTOR)
+                if (vector_type_named(ctx, acc))
                 {
                     is_struct_init = 1;
                 }
@@ -854,8 +852,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                 // Check if this is a vector type for positional init
                 int is_vector_init = 0;
-                if (def && def->kind == NODE_STRUCT && def->type_info &&
-                    def->type_info->kind == TYPE_VECTOR)
+                if (def && def->kind == NODE_STRUCT && vector_type_of(ctx, def->type_info))
                 {
                     // Peek ahead: if first value is not followed by ':',
                     // this is positional vector init like f32x4{1.0, 2.0, 3.0, 4.0}
@@ -2032,23 +2029,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     idx_node->type_info = arr_type->inner;
                 }
-                else if (arr_type && arr_type->name &&
-                         (arr_type->kind == TYPE_VECTOR || arr_type->kind == TYPE_STRUCT ||
-                          arr_type->kind == TYPE_ARRAY))
+                else if (vector_type_of(ctx, arr_type))
                 {
-                    // Look up struct def to check if it's a vector type
-                    ASTNode *def = find_struct_def(ctx, type_def_name(arr_type));
-                    if (def && def->kind == NODE_STRUCT && def->type_info &&
-                        def->type_info->kind == TYPE_VECTOR && def->strct.fields &&
-                        def->strct.fields->type_info)
-                    {
-                        arr_type->inner = def->strct.fields->type_info;
-                        idx_node->type_info = def->strct.fields->type_info;
-                    }
-                    else
-                    {
-                        idx_node->type_info = type_new(TYPE_I32);
-                    }
+                    idx_node->type_info = vector_type_of(ctx, arr_type)->inner;
                 }
                 else
                 {

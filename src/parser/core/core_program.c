@@ -230,6 +230,7 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                     {
                         s->type_info->kind = TYPE_VECTOR;
                         s->type_info->array_size = attrs.vector_size;
+                        s->type_info->inner = s->strct.fields ? s->strct.fields->type_info : NULL;
                     }
                 }
             }

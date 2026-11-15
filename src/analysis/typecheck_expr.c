@@ -61,6 +61,14 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
     }
 }
 
+// What an arithmetic or bitwise operator works on: the element of a vector (it applies lane by
+// lane), or, for an opaque alias of a number, that number in the file that defines it.
+static Type *operand_scalar(TypeChecker *tc, Type *t, Token at)
+{
+    Type *vector = vector_type_of(tc->pctx, t);
+    return vector ? vector->inner : type_seen_from(t, at.file);
+}
+
 void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
 {
     check_node(tc, node->unary.operand, depth + 1);
@@ -83,7 +91,8 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     // Numeric negation: -
     if (unop == OP_NEG)
     {
-        if (!is_integer_type(operand_type) && !is_float_type(operand_type))
+        Type *scalar = operand_scalar(tc, operand_type, node->token);
+        if (!is_integer_type(scalar) && !is_float_type(scalar))
         {
             const char *hints[] = {"Negation requires a numeric operand", NULL};
             tc_error_with_hints(tc, node->token, "Cannot negate non-numeric type", hints);
@@ -129,7 +138,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     // Bitwise NOT: ~
     if (unop == OP_BIT_NOT)
     {
-        if (!is_integer_type(operand_type))
+        if (!is_integer_type(operand_scalar(tc, operand_type, node->token)))
         {
             const char *hints[] = {"Bitwise NOT requires an integer operand", NULL};
             tc_error_with_hints(tc, node->token, "Cannot apply ~ to non-integer type", hints);
@@ -521,13 +530,12 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 return;
             }
 
-            // An opaque alias of a number is a number in the file that defines it.
-            Type *left_seen = type_seen_from(left_type, node->token.file);
-            Type *right_seen = type_seen_from(right_type, node->token.file);
-            int left_numeric = is_integer_type(left_seen) || is_float_type(left_seen) ||
-                               left_type->kind == TYPE_VECTOR;
-            int right_numeric = is_integer_type(right_seen) || is_float_type(right_seen) ||
-                                right_type->kind == TYPE_VECTOR;
+            Type *left_scalar = operand_scalar(tc, left_type, node->token);
+            Type *right_scalar = operand_scalar(tc, right_type, node->token);
+            Type *left_vector = vector_type_of(tc->pctx, left_type);
+            Type *right_vector = vector_type_of(tc->pctx, right_type);
+            int left_numeric = is_integer_type(left_scalar) || is_float_type(left_scalar);
+            int right_numeric = is_integer_type(right_scalar) || is_float_type(right_scalar);
 
             if (!left_numeric || !right_numeric)
             {
@@ -544,9 +552,9 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                     NULL};
                 tc_error_with_hints(tc, node->token, msg, hints);
             }
-            else if (left_type->kind == TYPE_VECTOR || right_type->kind == TYPE_VECTOR)
+            else if (left_vector || right_vector)
             {
-                if (left_type->kind != right_type->kind || !type_eq(left_type, right_type))
+                if (left_vector != right_vector)
                 {
                     tc_error(tc, node->token,
                              "Vector operation requires operands of same vector type");
@@ -691,19 +699,21 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
 
         if (left_type && right_type)
         {
-            if ((!is_integer_type(left_type) && left_type->kind != TYPE_VECTOR) ||
-                (!is_integer_type(right_type) && right_type->kind != TYPE_VECTOR))
+            Type *left_vector = vector_type_of(tc->pctx, left_type);
+            Type *right_vector = vector_type_of(tc->pctx, right_type);
+            if (!is_integer_type(operand_scalar(tc, left_type, node->token)) ||
+                !is_integer_type(operand_scalar(tc, right_type, node->token)))
             {
                 char msg[MAX_SHORT_MSG_LEN];
                 snprintf(msg, sizeof(msg),
-                         "Bitwise operator '%s' requires integer or vector operands", op);
-                const char *hints[] = {"Bitwise operators only work on integer or vector types",
-                                       NULL};
+                         "Bitwise operator '%s' requires integers or vectors of integers", op);
+                const char *hints[] = {
+                    "Bitwise operators only work on integers and vectors of integers", NULL};
                 tc_error_with_hints(tc, node->token, msg, hints);
             }
-            else if (left_type->kind == TYPE_VECTOR || right_type->kind == TYPE_VECTOR)
+            else if (left_vector || right_vector)
             {
-                if (left_type->kind != right_type->kind || !type_eq(left_type, right_type))
+                if (left_vector != right_vector)
                 {
                     tc_error(tc, node->token, "Vector bitwise operation requires same vector type");
                 }
@@ -1350,6 +1360,9 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         return;
     }
 
+    // The values of a vector literal are its lanes, whatever their names (`{v: x}` fills all).
+    Type *vector = vector_type_named(tc->pctx, struct_name);
+
     // Iterate provided fields
     ASTNode *field_init = node->struct_init.fields;
     while (field_init)
@@ -1371,9 +1384,9 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         }
 
         // Find corresponding field in definition
-        ASTNode *def_field = def ? def->strct.fields : NULL;
-        Type *expected_type = NULL;
-        int found = 0;
+        ASTNode *def_field = (def && !vector) ? def->strct.fields : NULL;
+        Type *expected_type = vector ? vector->inner : NULL;
+        int found = vector != NULL;
 
         while (def_field)
         {

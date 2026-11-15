@@ -634,18 +634,12 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 node->type_info = type_clone(slice_element(t));
                 node->type_info->lifetime_depth = node->index.array->type_info->lifetime_depth;
             }
-            else if (t->kind == TYPE_ARRAY || t->kind == TYPE_POINTER || t->kind == TYPE_VECTOR)
+            else if (t->kind == TYPE_ARRAY || t->kind == TYPE_POINTER ||
+                     vector_type_of(tc->pctx, t))
             {
-                if (t->kind == TYPE_VECTOR && !t->inner && t->name)
-                {
-                    ASTNode *def = find_struct_def(tc->pctx, type_def_name(t));
-                    if (def && def->kind == NODE_STRUCT && def->strct.fields)
-                    {
-                        t->inner = def->strct.fields->type_info;
-                    }
-                }
+                Type *vector = vector_type_of(tc->pctx, t);
                 // Propagate lifetime from array/slice to the indexed element
-                node->type_info = type_clone(t->inner);
+                node->type_info = type_clone(vector ? vector->inner : t->inner);
                 if (node->type_info && node->index.array->type_info)
                 {
                     node->type_info->lifetime_depth = node->index.array->type_info->lifetime_depth;

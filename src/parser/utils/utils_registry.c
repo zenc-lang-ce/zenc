@@ -453,6 +453,26 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
     register_in_all_symbols(ctx, sym);
 }
 
+Type *vector_type_named(ParserContext *ctx, const char *name)
+{
+    ASTNode *def = name ? find_struct_def(ctx, name) : NULL;
+    if (!def || def->kind != NODE_STRUCT || !def->type_info || def->type_info->kind != TYPE_VECTOR)
+    {
+        return NULL;
+    }
+    return def->type_info;
+}
+
+Type *vector_type_of(ParserContext *ctx, Type *t)
+{
+    t = resolve_alias(t);
+    if (!t || !t->name || (t->kind != TYPE_STRUCT && t->kind != TYPE_VECTOR))
+    {
+        return NULL;
+    }
+    return vector_type_named(ctx, type_def_name(t));
+}
+
 ASTNode *find_struct_def(ParserContext *ctx, const char *name)
 {
     if (ctx)
