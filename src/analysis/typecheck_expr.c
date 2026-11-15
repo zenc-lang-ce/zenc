@@ -882,6 +882,30 @@ static int check_array_as_slice(TypeChecker *tc, Type *target, Type *value, Toke
     return 1;
 }
 
+// Warns when an integer of type `value`, the expression `value_node`, may not be held exactly by
+// the float type `target`, so large values are rounded, as an integer narrowing changes them. A
+// constant is judged by its value, as for integer targets.
+static void warn_inexact_integer_to_float(TypeChecker *tc, Type *target, Type *value,
+                                          ASTNode *value_node, Token t)
+{
+    long long constant;
+    int exact = (value_node && eval_const_int_expr(value_node, tc->pctx, &constant))
+                    ? float_holds_integer(target, constant)
+                    : float_holds_integer_type(target, value);
+    if (exact)
+    {
+        return;
+    }
+    char *t_str = zen_c_type_spelling(tc->pctx, target);
+    char *v_str = zen_c_type_spelling(tc->pctx, value);
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "Implicit conversion from '%s' to '%s' rounds values above 2^%d",
+             v_str, t_str, float_significand_bits(target));
+    tc_warning(tc, t, msg);
+    zfree(t_str);
+    zfree(v_str);
+}
+
 // Whether the integer constant `value` keeps its value in the integer type `t`.
 // A type of 64 bits or more, or of unknown width, takes any constant: the folded
 // value is a long long, which cannot tell -1 from 0xFFFFFFFFFFFFFFFF.
@@ -1104,6 +1128,21 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     // Float compatibility
     if (is_float_type(resolved_target) && is_float_type(resolved_value))
     {
+        return 1;
+    }
+
+    // An integer converts to a float, as in C. A float to an integer does not: it drops the
+    // fraction, so it needs a cast.
+    if (is_float_type(resolved_target) && is_integer_type(resolved_value))
+    {
+        if (tc->pctx->config->misra_mode)
+        {
+            misra_check_implicit_conversion(tc->pctx, target, value, value_node, t);
+        }
+        else
+        {
+            warn_inexact_integer_to_float(tc, target, value, value_node, t);
+        }
         return 1;
     }
 

@@ -15,11 +15,11 @@ test "int to float" {
     assert(true, "int to float ok");
 }
 
-// --- Float to int ---
+// --- Float to int: it drops the fraction, so it takes a cast ---
 test "float to int" {
     let x: f64 = 3.14;
-    let _y: i32 = x;
-    assert(true, "float to int ok");
+    let _y: i32 = (i32)x;
+    assert(_y == 3, "float to int ok");
 }
 
 // --- Pointer to void* ---

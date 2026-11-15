@@ -921,6 +921,19 @@ Type *integer_operation_type(struct ASTNode *left, struct ASTNode *right);
 int is_signed_type(Type *t);
 int is_boolean_type(Type *t);
 int is_float_type(Type *t);
+/**
+ * @brief The bits of the significand of the float type `t` (24 in an `f32`, 53 in an `f64`):
+ * every integer whose magnitude fits in them is exact in `t`.
+ */
+int float_significand_bits(Type *t);
+/**
+ * @brief Whether the float type `float_type` holds every value of the integer type `integer_type`
+ * exactly: the integer's magnitude fits in the float's significand (24 bits in an `f32`, 53 in an
+ * `f64`). An integer of unknown width counts as held.
+ */
+int float_holds_integer_type(Type *float_type, Type *integer_type);
+/** @brief Whether the float type `float_type` holds the integer `value` exactly. */
+int float_holds_integer(Type *float_type, long long value);
 int is_composite_expression(ASTNode *node);
 /**
  * @brief The spelling of a type inside a C name (`Vec__int32_t`, `Tuple__int32_t__bool`):

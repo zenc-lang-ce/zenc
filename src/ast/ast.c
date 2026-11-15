@@ -979,6 +979,28 @@ int is_float_type(Type *t)
     return res;
 }
 
+int float_significand_bits(Type *t)
+{
+    return resolve_alias(t)->kind == TYPE_F32 ? 24 : 53;
+}
+
+int float_holds_integer_type(Type *float_type, Type *integer_type)
+{
+    int width = integer_type_width(resolve_alias(integer_type));
+    if (width <= 0)
+    {
+        return 1;
+    }
+    int magnitude = is_unsigned_type(integer_type) ? width : width - 1;
+    return magnitude <= float_significand_bits(float_type);
+}
+
+int float_holds_integer(Type *float_type, long long value)
+{
+    long long limit = 1LL << float_significand_bits(float_type);
+    return value >= -limit && value <= limit;
+}
+
 int is_incomplete_type(struct ParserContext *ctx, Type *t)
 {
     if (!t || t->kind != TYPE_STRUCT || !t->name)

@@ -86,3 +86,41 @@ UTEST(type_tuple, differs_from_one_whose_element_is_another_integer)
     // type_eq lets an int stand for a u8, but the two tuples are different C structs.
     ASSERT_FALSE(type_eq(int_and_point_pointer(TYPE_I32), int_and_point_pointer(TYPE_U8)));
 }
+
+UTEST(float_holds_integer_type, an_integer_that_fits_the_significand)
+{
+    ASSERT_TRUE(float_holds_integer_type(type_new(TYPE_F64), type_new(TYPE_I32)));
+    ASSERT_TRUE(float_holds_integer_type(type_new(TYPE_F64), type_new(TYPE_U32)));
+    ASSERT_TRUE(float_holds_integer_type(type_new(TYPE_F32), type_new(TYPE_I16)));
+    ASSERT_TRUE(float_holds_integer_type(type_new(TYPE_F32), type_new(TYPE_U16)));
+}
+
+UTEST(float_holds_integer_type, not_an_integer_wider_than_the_significand)
+{
+    ASSERT_FALSE(float_holds_integer_type(type_new(TYPE_F64), type_new(TYPE_I64)));
+    ASSERT_FALSE(float_holds_integer_type(type_new(TYPE_F64), type_new(TYPE_U64)));
+    ASSERT_FALSE(float_holds_integer_type(type_new(TYPE_F32), type_new(TYPE_I32)));
+    ASSERT_FALSE(float_holds_integer_type(type_new(TYPE_F32), type_new(TYPE_U32)));
+}
+
+UTEST(float_holds_integer_type, sees_through_an_alias)
+{
+    Type *alias = type_new(TYPE_ALIAS);
+    alias->inner = type_new(TYPE_I64);
+    ASSERT_FALSE(float_holds_integer_type(type_new(TYPE_F64), alias));
+}
+
+UTEST(float_holds_integer, a_value_up_to_two_to_the_significand)
+{
+    ASSERT_TRUE(float_holds_integer(type_new(TYPE_F32), 0));
+    ASSERT_TRUE(float_holds_integer(type_new(TYPE_F32), 16777216));
+    ASSERT_TRUE(float_holds_integer(type_new(TYPE_F32), -16777216));
+    ASSERT_TRUE(float_holds_integer(type_new(TYPE_F64), 9007199254740992LL));
+}
+
+UTEST(float_holds_integer, not_a_value_past_two_to_the_significand)
+{
+    ASSERT_FALSE(float_holds_integer(type_new(TYPE_F32), 16777217));
+    ASSERT_FALSE(float_holds_integer(type_new(TYPE_F32), -16777217));
+    ASSERT_FALSE(float_holds_integer(type_new(TYPE_F64), 9007199254740993LL));
+}
