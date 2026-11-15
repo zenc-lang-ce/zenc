@@ -1,30 +1,23 @@
    Compiling tests/compiler/diagnostics_output/err_print_codegen.zc...
 warning: Undefined function 'println' (an error from 0.6; `zc check` reports it now)
-  --> tests/compiler/diagnostics_output/err_print_codegen.zc:13:5
+  --> tests/compiler/diagnostics_output/err_print_codegen.zc:14:5
    |
-13 |     println(name);
+14 |     println(name);
    |     ^ here
    |
    = note: Check if the function is defined or imported
 error: a string on its own no longer prints
-  --> tests/compiler/diagnostics_output/err_print_codegen.zc:9:14
+  --> tests/compiler/diagnostics_output/err_print_codegen.zc:10:14
    |
-9  |         1 => "one",
+10 |         1 => "one",
    |              ^ here
    |
    = help: print it with println("..."), from std/io.zc
 error: a string on its own no longer prints
-  --> tests/compiler/diagnostics_output/err_print_codegen.zc:10:14
+  --> tests/compiler/diagnostics_output/err_print_codegen.zc:11:14
    |
-10 |         _ => "other",
+11 |         _ => "other",
    |              ^ here
    |
    = help: print it with println("..."), from std/io.zc
-error: 'println' is a function of std/io.zc, which is not imported
-  --> tests/compiler/diagnostics_output/err_print_codegen.zc:13:5
-   |
-13 |     println(name);
-   |     ^ here
-   |
-   = help: add import "std/io.zc"
 [exit 1]
