@@ -1,4 +1,4 @@
-// A module whose enums a program imports one by one (test_selective_enum_variants.zc).
+// A module whose types a program imports one by one (test_selective_import_types.zc).
 
 enum Corner {
     Top,
@@ -9,4 +9,9 @@ enum Figure {
     Dot,
     Circle(int),
     Rect(int, int),
+}
+
+struct Tile {
+    x: int;
+    y: int;
 }

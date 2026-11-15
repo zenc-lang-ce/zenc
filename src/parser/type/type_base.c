@@ -120,9 +120,11 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             name = type_impl_name(ctx->current_impl_target);
         }
 
-        // Handle Namespace :: (A::B -> A_B)
+        // A path: `m::Vector` of a module imported as `m`, `A::B`.
+        int is_qualified = 0;
         while (lexer_peek(l).kind == TOK_DCOLON)
         {
+            is_qualified = 1;
             lexer_next(l); // eat ::
             Token next = lexer_next(l);
             if (next.kind != TOK_IDENT)
@@ -135,19 +137,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             // Map aliases (I32 -> int32_t, string -> char*) using centralized logic
             const char *resolved_suffix = normalize_type_name(suffix);
 
-            // Check if 'name' is a module alias (e.g., m::Vector)
-            Module *mod = find_module(ctx, name);
-            char *merged;
-            if (mod)
-            {
-                merged = module_member_name(ctx, mod, resolved_suffix);
-            }
-            else
-            {
-                // Regular namespace or enum variant
-                merged = mangle_module_symbol(name, resolved_suffix);
-            }
-
+            char *merged = qualified_type_name(ctx, name, resolved_suffix);
             zfree(name);
 
             name = merged;
@@ -256,8 +246,8 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             return ty;
         }
 
-        // A type imported one by one, or in a module the module's own type.
-        char *type_name = type_declaration_name(ctx, name);
+        // A bare name: a type imported one by one, or in a module the module's own type.
+        char *type_name = is_qualified ? NULL : type_declaration_name(ctx, name);
         if (type_name)
         {
             zfree(name);

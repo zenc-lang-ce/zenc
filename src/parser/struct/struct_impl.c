@@ -197,8 +197,9 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             }
             register_generic(ctx, gt);
         }
-        // In a module, its own type first (`impl Drop for Arena` of a module imported with `as`).
-        char *type_name = module_type_name(ctx, name2);
+        // A type imported one by one, or in a module its own type (`impl Drop for Arena` of a
+        // module imported with `as`).
+        char *type_name = type_declaration_name(ctx, name2);
         if (type_name)
         {
             zfree(name2);
@@ -328,8 +329,8 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
     {
         // Regular impl Struct (impl Box or impl Box<T>)
 
-        // In a module, its own type first.
-        char *type_name = module_type_name(ctx, name1);
+        // A type imported one by one, or in a module its own type.
+        char *type_name = type_declaration_name(ctx, name1);
         if (type_name)
         {
             zfree(name1);

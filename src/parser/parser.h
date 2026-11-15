@@ -1092,14 +1092,19 @@ char *module_type_name(ParserContext *ctx, const char *name);
  *        itself; NULL when it is. A type imported one by one (or with `as *`) is the
  *        module's (`base__Vector` for the `MathVec` of `import { Vector as MathVec }`); in
  *        a module parsed with a prefix, module_type_name decides. Every place that reads a
- *        type's name (a type, `Type::member`, a struct literal, a `match` pattern) asks here.
+ *        type's bare name asks here: a type, `Type::member`, `Enum.Variant`, a struct
+ *        literal, a `match` pattern, the target of an `impl`.
  */
 char *type_declaration_name(ParserContext *ctx, const char *name);
 /**
- * @brief The name of `name` in the module `mod` that `m::name` names: `base__name`, or
- *        `name` itself for a C header (registered as an extern symbol) and for an extern one.
+ * @brief The name `scope::name` is declared under, `scope` being the path before it: the
+ *        first name as written, or the name the path read so far is declared under. For a
+ *        module imported as `m`, `m::Point` is `base__Point` (a C header's names and extern
+ *        ones keep theirs, registered as extern symbols); otherwise `scope__name`.
+ *        Together with type_declaration_name for the first name, it is how every path to a
+ *        type is read: a type, `m::Type::member`, a `match` pattern.
  */
-char *module_member_name(ParserContext *ctx, Module *mod, const char *name);
+char *qualified_type_name(ParserContext *ctx, const char *scope, const char *name);
 /**
  * @brief The function a bare name names in the module being parsed: the module's own
  *        (`prefix__helper`) before a function of the program called so; NULL when the

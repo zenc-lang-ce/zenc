@@ -375,6 +375,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         // The declaration of that member when it is a method of a generic impl: the method of
         // an instance (`Vec<int>::new`) is not a function until it is instantiated.
         Token member_declaration = TOKEN_UNKNOWN;
+        // Whether acc is still the first name, as written: only that one is read by the rule
+        // of a bare type name.
+        int acc_is_bare = 1;
         while (1)
         {
             if (lexer_peek(l).kind == TOK_EOF)
@@ -408,26 +411,26 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 owner_member = owner ? token_strdup(suffix) : NULL;
                 generic_type = NULL;
 
-                Module *mod = find_module(ctx, acc);
-                if (mod)
+                if (find_module(ctx, acc))
                 {
+                    // `m::Point`: the module's type, a member of it follows.
                     char *member = token_strdup(suffix);
+                    char *qualified = qualified_type_name(ctx, acc, member);
                     zfree(acc);
-                    acc = module_member_name(ctx, mod, member);
+                    acc = qualified;
                 }
                 else
                 {
-                    // A type imported one by one, or in a module its own type. A name imported
-                    // one by one that is not a type (a function) is the module's too.
-                    char *type_name = type_declaration_name(ctx, acc);
-                    ASTNode *def = find_struct_def(ctx, type_name ? type_name : acc);
-                    int imported =
-                        !ctx->imports.current_module_prefix && find_selective_import(ctx, acc);
-                    if (type_name && (def || imported))
+                    // A bare name: a type imported one by one, or in a module its own type, when
+                    // a type is declared by that name (a body sees every declaration).
+                    char *type_name = acc_is_bare ? type_declaration_name(ctx, acc) : NULL;
+                    if (type_name &&
+                        (find_struct_def(ctx, type_name) || find_type_alias_node(ctx, type_name)))
                     {
                         zfree(acc);
                         acc = type_name;
                     }
+                    ASTNode *def = find_struct_def(ctx, acc);
                     if (def)
                     {
                         // `Point::new`: the type's name, as any other type name read.
@@ -602,6 +605,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     acc = tmp;
                 }
                 changed = 1;
+                acc_is_bare = 0;
             }
 
             if (lexer_peek(l).kind == TOK_LANGLE && tokens_could_be_generic_args(l))
@@ -702,6 +706,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     }
 
                     changed = 1;
+                    acc_is_bare = 0;
                 }
             }
             if (!changed)

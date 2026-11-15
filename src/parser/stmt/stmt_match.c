@@ -91,8 +91,10 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
         {
             Token p = lexer_next(l);
             char *written_scope = NULL;
-            // The scope by the name it is declared under: `m::Shape` is `base__Shape`.
+            // The scope by the name it is declared under (`m::Shape` is `base__Shape`), read as
+            // any path to a type is.
             char *scope_name = NULL;
+            int scope_parts = 0;
             char *written_name = token_strdup(p);
             Token name_token = p;
             Token scope_token = TOKEN_UNKNOWN;
@@ -110,9 +112,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                         size_t scope_size = strlen(written_scope) + strlen(written_name) + 3;
                         char *joined = xmalloc(scope_size);
                         snprintf(joined, scope_size, "%s::%s", written_scope, written_name);
-                        Module *mod = find_module(ctx, written_scope);
-                        scope_name = mod ? module_member_name(ctx, mod, written_name)
-                                         : mangle_module_symbol(scope_name, written_name);
+                        scope_name = qualified_type_name(ctx, scope_name, written_name);
                         written_scope = joined;
                     }
                     else
@@ -120,6 +120,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                         written_scope = written_name;
                         scope_name = written_name;
                     }
+                    scope_parts++;
                     written_name = token_strdup(suffix);
                     scope_token = name_token;
                     name_token = suffix;
@@ -151,9 +152,9 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 }
             }
 
-            // A scope of one name (`Side::Right`) is a type, read as any type name is: one
-            // imported one by one, or in a module its own type.
-            if (scope_name && scope_name == written_scope)
+            // A scope of one name (`Side::Right`) is a bare type name: one imported one by
+            // one, or in a module its own type.
+            if (scope_parts == 1)
             {
                 char *declared = type_declaration_name(ctx, scope_name);
                 if (declared)

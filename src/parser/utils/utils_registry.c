@@ -743,7 +743,7 @@ char *type_declaration_name(ParserContext *ctx, const char *name)
     return module_type_name(ctx, name);
 }
 
-char *module_member_name(ParserContext *ctx, Module *mod, const char *name)
+static char *module_member_name(ParserContext *ctx, Module *mod, const char *name)
 {
     // A C header's names are C's own.
     if (mod->is_c_header)
@@ -756,6 +756,12 @@ char *module_member_name(ParserContext *ctx, Module *mod, const char *name)
         return xstrdup(name);
     }
     return mangle_module_symbol(mod->base_name, name);
+}
+
+char *qualified_type_name(ParserContext *ctx, const char *scope, const char *name)
+{
+    Module *mod = find_module(ctx, scope);
+    return mod ? module_member_name(ctx, mod, name) : mangle_module_symbol(scope, name);
 }
 
 char *module_function_name(ParserContext *ctx, const char *name)
