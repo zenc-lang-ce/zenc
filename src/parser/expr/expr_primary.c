@@ -732,23 +732,16 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     lexer_next(l); // eat <
 
-                    Type **arg_types = xmalloc(sizeof(Type *) * 8);
-                    int count = 0;
+                    zvec_Type arg_types = {0};
 
                     while (1)
                     {
-                        if (count >= 8)
-                        {
-                            zpanic_at(lexer_peek(l), "Too many generic arguments (max 8)");
-                            break;
-                        }
                         Type *formal_type = parse_type_formal(ctx, l);
                         if (!formal_type)
                         {
                             return NULL;
                         }
-                        arg_types[count] = formal_type;
-                        count++;
+                        zvec_push_Type(&arg_types, formal_type);
 
                         if (lexer_peek(l).kind == TOK_COMMA)
                         {
@@ -781,8 +774,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         register_type_usage(ctx, acc, segment_token);
                         generic_type = type_new(TYPE_STRUCT);
                         generic_type->name = acc;
-                        generic_type->args = arg_types;
-                        generic_type->count = count;
+                        generic_type->args = arg_types.data;
+                        generic_type->count = (int)arg_types.length;
                         instantiate_type(ctx, generic_type, t);
                         acc = type_mangle_spelling(generic_type);
                     }
@@ -790,8 +783,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     {
                         // Function Template
                         instance.name = acc;
-                        instance.args = arg_types;
-                        instance.count = count;
+                        instance.args = arg_types.data;
+                        instance.count = (int)arg_types.length;
                         char *m = instantiate_function(ctx, instance);
                         if (!m)
                         {
@@ -1590,15 +1583,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
         Lexer lookahead = *l;
         int is_lambda = 0;
-        Token *params = xmalloc(sizeof(Token) * 16);
-        Type **param_types = xmalloc(sizeof(Type *) * 16);
-        int nparams = 0;
+        zvec_Token params = {0};
+        zvec_Type param_types = {0};
 
         while (1)
         {
             if (lexer_peek(&lookahead).kind != TOK_IDENT)
             {
-                if (nparams == 0 && lexer_peek(&lookahead).kind == TOK_RPAREN)
+                if (params.length == 0 && lexer_peek(&lookahead).kind == TOK_RPAREN)
                 {
                     lexer_next(&lookahead);
                     if (lexer_peek(&lookahead).kind == TOK_FAT_ARROW)
@@ -1609,14 +1601,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 }
                 break;
             }
-            if (nparams >= 16)
-            {
-                zpanic_at(lexer_peek(&lookahead), "Too many lambda parameters (max 16)");
-                break;
-            }
-            params[nparams] = lexer_next(&lookahead);
-            param_types[nparams] = NULL;
-            lookahead.pos = lookahead.pos;
+            zvec_push_Token(&params, lexer_next(&lookahead));
+            zvec_push_Type(&param_types, NULL);
 
             if (lexer_peek(&lookahead).kind == TOK_COLON)
             {
@@ -1631,7 +1617,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     lexer_next(&lookahead);
                 }
             }
-            nparams++;
 
             Token sep = lexer_peek(&lookahead);
             if (sep.kind == TOK_COMMA)
@@ -1658,16 +1643,16 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         if (is_lambda)
         {
             Lexer actual_parse = *l;
-            if (nparams > 0)
+            if (params.length > 0)
             {
-                for (int i = 0; i < nparams; i++)
+                for (size_t i = 0; i < params.length; i++)
                 {
                     lexer_next(&actual_parse);
                     if (lexer_peek(&actual_parse).kind == TOK_COLON)
                     {
                         lexer_next(&actual_parse);
-                        param_types[i] = parse_type_formal(ctx, &actual_parse);
-                        if (!param_types[i])
+                        param_types.data[i] = parse_type_formal(ctx, &actual_parse);
+                        if (!param_types.data[i])
                         {
                             return NULL;
                         }
@@ -1687,14 +1672,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
             *l = actual_parse;
 
-            ASTNode *node_multi = parse_arrow_lambda_multi(ctx, l, params, param_types, nparams, 0);
-            zfree(param_types);
-            return node_multi;
-        }
-        else
-        {
-            zfree(params);
-            zfree(param_types);
+            return parse_arrow_lambda_multi(ctx, l, params.data, param_types.data,
+                                            (int)params.length, 0);
         }
 
         int saved = l->pos;
@@ -1865,33 +1844,26 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             lexer_next(l); // consume ']'
 
                             lexer_next(l); // consume '('
-                            Token *params = xmalloc(sizeof(Token) * 16);
-                            Type **param_types = xmalloc(sizeof(Type *) * 16);
-                            int nparams = 0;
+                            zvec_Token params = {0};
+                            zvec_Type param_types = {0};
                             while (1)
                             {
                                 if (lexer_peek(l).kind != TOK_IDENT)
                                 {
                                     break;
                                 }
-                                if (nparams >= 16)
-                                {
-                                    zpanic_at(lexer_peek(l), "Too many parameters (max 16)");
-                                    break;
-                                }
-                                params[nparams] = lexer_next(l);
-                                param_types[nparams] = NULL;
-
+                                zvec_push_Token(&params, lexer_next(l));
+                                Type *param_type = NULL;
                                 if (lexer_peek(l).kind == TOK_COLON)
                                 {
                                     lexer_next(l);
-                                    param_types[nparams] = parse_type_formal(ctx, l);
-                                    if (!param_types[nparams])
+                                    param_type = parse_type_formal(ctx, l);
+                                    if (!param_type)
                                     {
                                         return NULL;
                                     }
                                 }
-                                nparams++;
+                                zvec_push_Type(&param_types, param_type);
 
                                 Token sep = lexer_peek(l);
                                 if (sep.kind == TOK_COMMA)
@@ -1916,10 +1888,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 return NULL;
                             }
 
-                            ASTNode *node_multi = parse_arrow_lambda_multi(
-                                ctx, l, params, param_types, nparams, default_capture_mode);
-                            zfree(param_types);
-                            return node_multi;
+                            return parse_arrow_lambda_multi(ctx, l, params.data, param_types.data,
+                                                            (int)params.length,
+                                                            default_capture_mode);
                         }
                     }
                 }

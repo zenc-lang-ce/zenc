@@ -1,0 +1,79 @@
+// destructuring: test_destructuring_many_fields
+// A destructuring with more fields than the parser first makes room for (16).
+import "std/io.zc"
+
+struct Wide {
+    f0: int;
+    f1: int;
+    f2: int;
+    f3: int;
+    f4: int;
+    f5: int;
+    f6: int;
+    f7: int;
+    f8: int;
+    f9: int;
+    f10: int;
+    f11: int;
+    f12: int;
+    f13: int;
+    f14: int;
+    f15: int;
+    f16: int;
+    f17: int;
+    f18: int;
+    f19: int;
+    f20: int;
+    f21: int;
+    f22: int;
+    f23: int;
+    f24: int;
+    f25: int;
+    f26: int;
+    f27: int;
+    f28: int;
+    f29: int;
+    f30: int;
+    f31: int;
+    f32: int;
+    f33: int;
+    f34: int;
+    f35: int;
+    f36: int;
+    f37: int;
+    f38: int;
+    f39: int;
+}
+
+fn make() -> Wide {
+    return Wide {
+        f0: 0, f1: 1, f2: 2, f3: 3, f4: 4, f5: 5, f6: 6, f7: 7,
+        f8: 8, f9: 9, f10: 10, f11: 11, f12: 12, f13: 13, f14: 14, f15: 15,
+        f16: 16, f17: 17, f18: 18, f19: 19, f20: 20, f21: 21, f22: 22, f23: 23,
+        f24: 24, f25: 25, f26: 26, f27: 27, f28: 28, f29: 29, f30: 30, f31: 31,
+        f32: 32, f33: 33, f34: 34, f35: 35, f36: 36, f37: 37, f38: 38, f39: 39
+    };
+}
+
+test "test_destructuring_many_fields" {
+    let w = make();
+    let Wide{
+        f0, f1, f2, f3, f4, f5, f6, f7, f8, f9,
+        f10, f11, f12, f13, f14, f15, f16, f17, f18, f19,
+        f20, f21, f22, f23, f24, f25, f26, f27, f28, f29,
+        f30, f31, f32, f33, f34, f35, f36, f37, f38, f39
+    } = w;
+    let total = f0 + f1 + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13 + f14 + f15 + f16 + f17 + f18 + f19 +
+                f20 + f21 + f22 + f23 + f24 + f25 + f26 + f27 + f28 + f29 + f30 + f31 + f32 + f33 + f34 + f35 + f36 + f37 + f38 + f39;
+    assert(total == 780, "every shorthand field gets its value");
+    let Wide{
+        f0: v0, f1: v1, f2: v2, f3: v3, f4: v4, f5: v5, f6: v6, f7: v7,
+        f8: v8, f9: v9, f10: v10, f11: v11, f12: v12, f13: v13, f14: v14, f15: v15,
+        f16: v16, f17: v17, f18: v18, f19: v19, f20: v20, f21: v21, f22: v22, f23: v23,
+        f24: v24, f25: v25, f26: v26, f27: v27, f28: v28, f29: v29, f30: v30, f31: v31,
+        f32: v32, f33: v33, f34: v34, f35: v35, f36: v36, f37: v37, f38: v38, f39: v39
+    } = w;
+    let renamed = v0 + v1 + v2 + v3 + v4 + v5 + v6 + v7 + v8 + v9 + v10 + v11 + v12 + v13 + v14 + v15 + v16 + v17 + v18 + v19 +
+                  v20 + v21 + v22 + v23 + v24 + v25 + v26 + v27 + v28 + v29 + v30 + v31 + v32 + v33 + v34 + v35 + v36 + v37 + v38 + v39;
+    assert(renamed == 780, "every renamed field gets its value");
+}
