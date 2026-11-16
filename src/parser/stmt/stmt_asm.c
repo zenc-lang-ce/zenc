@@ -237,16 +237,12 @@ ASTNode *parse_asm(ParserContext *ctx, Lexer *l)
         }
     }
 
-    char **outputs = NULL;
-    char **output_modes = NULL;
-    int output_count = 0;
+    zvec_Text outputs = {0};
+    zvec_Text output_modes = {0};
 
     if (lexer_peek(l).kind == TOK_COLON)
     {
         lexer_next(l);
-
-        outputs = xmalloc(sizeof(char *) * 16);
-        output_modes = xmalloc(sizeof(char *) * 16);
 
         while (1)
         {
@@ -292,14 +288,8 @@ ASTNode *parse_asm(ParserContext *ctx, Lexer *l)
                 }
                 lexer_next(l);
 
-                if (output_count >= 16)
-                {
-                    zpanic_at(lexer_peek(l), "Too many asm outputs (max 16)");
-                    break;
-                }
-                outputs[output_count] = token_strdup(var);
-                output_modes[output_count] = mode;
-                output_count++;
+                zvec_push_Text(&outputs, token_strdup(var));
+                zvec_push_Text(&output_modes, mode);
             }
             else
             {
@@ -308,14 +298,11 @@ ASTNode *parse_asm(ParserContext *ctx, Lexer *l)
         }
     }
 
-    char **inputs = NULL;
-    int input_count = 0;
+    zvec_Text inputs = {0};
 
     if (lexer_peek(l).kind == TOK_COLON)
     {
         lexer_next(l);
-
-        inputs = xmalloc(sizeof(char *) * 16);
 
         while (1)
         {
@@ -360,13 +347,7 @@ ASTNode *parse_asm(ParserContext *ctx, Lexer *l)
                 }
                 lexer_next(l);
 
-                if (input_count >= 16)
-                {
-                    zpanic_at(lexer_peek(l), "Too many asm inputs (max 16)");
-                    break;
-                }
-                inputs[input_count] = token_strdup(var);
-                input_count++;
+                zvec_push_Text(&inputs, token_strdup(var));
             }
             else
             {
@@ -375,14 +356,11 @@ ASTNode *parse_asm(ParserContext *ctx, Lexer *l)
         }
     }
 
-    char **clobbers = NULL;
-    int clobber_count = 0;
+    zvec_Text clobbers = {0};
 
     if (lexer_peek(l).kind == TOK_COLON)
     {
         lexer_next(l);
-
-        clobbers = xmalloc(sizeof(char *) * 16);
 
         while (1)
         {
@@ -424,12 +402,7 @@ ASTNode *parse_asm(ParserContext *ctx, Lexer *l)
                 char *c = xmalloc(clob.len);
                 strncpy(c, clob.start + 1, (size_t)((int)(clob.len) - 2));
                 c[(int)(clob.len) - 2] = 0;
-                if (clobber_count >= 16)
-                {
-                    zpanic_at(lexer_peek(l), "Too many asm clobbers (max 16)");
-                    break;
-                }
-                clobbers[clobber_count++] = c;
+                zvec_push_Text(&clobbers, c);
             }
             else
             {
@@ -450,13 +423,13 @@ ASTNode *parse_asm(ParserContext *ctx, Lexer *l)
     n->token = t;
     n->asm_stmt.code = code;
     n->asm_stmt.is_volatile = is_volatile;
-    n->asm_stmt.outputs = outputs;
-    n->asm_stmt.output_modes = output_modes;
-    n->asm_stmt.inputs = inputs;
-    n->asm_stmt.clobbers = clobbers;
-    n->asm_stmt.output_count = output_count;
-    n->asm_stmt.input_count = input_count;
-    n->asm_stmt.clobber_count = clobber_count;
+    n->asm_stmt.outputs = outputs.data;
+    n->asm_stmt.output_modes = output_modes.data;
+    n->asm_stmt.inputs = inputs.data;
+    n->asm_stmt.clobbers = clobbers.data;
+    n->asm_stmt.output_count = (int)outputs.length;
+    n->asm_stmt.input_count = (int)inputs.length;
+    n->asm_stmt.clobber_count = (int)clobbers.length;
 
     return n;
 }

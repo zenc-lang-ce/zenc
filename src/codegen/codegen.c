@@ -99,7 +99,7 @@ void codegen_expression_bare(ParserContext *ctx, ASTNode *node)
         }
     }
 
-    if (node->kind == NODE_EXPR_UNARY && node->unary.op)
+    if (node->kind == NODE_EXPR_UNARY)
     {
         if (node->unary.op == OP_POST_INC)
         {

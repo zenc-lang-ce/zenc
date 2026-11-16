@@ -255,7 +255,8 @@ typedef enum
 typedef struct MatchPattern
 {
     PatternKind kind;
-    QualifiedName name; ///< PATTERN_NAME: the name, as written.
+    QualifiedName name; ///< PATTERN_NAME: the name; its scope by the name the type is declared
+                        ///< under (`base__Shape` for `m::Shape`, see type_declaration_name).
     Token name_token;   ///< PATTERN_NAME: where the name is written, for the language server.
     Token scope_token;  ///< PATTERN_NAME: where the last part of its scope is (`Color` of
                         ///< `Color::Red`).
@@ -567,6 +568,9 @@ struct ASTNode
         {
             char *name; // The field's type is the node's type_info.
             int bit_width;
+            // The field this one copies when the struct mixes it in with `use`; NULL when the
+            // struct declares it. The copy keeps that field's token.
+            ASTNode *mixed_in_from;
         } field;
 
         struct
@@ -651,6 +655,10 @@ struct ASTNode
             int is_struct_destruct;
             char *struct_name;  // "Point" (or NULL if unchecked/inferred).
             char **field_names; // NULL if same as 'names', otherwise mapped.
+            // A struct's: where each field and each name is written. In `Point{x}` the two are
+            // the same token, in `Point{x: a}` they are not.
+            Token *field_tokens;
+            Token *name_tokens;
             int is_guard;
             char *guard_variant; // "Some", "Ok".
             ASTNode *else_block;
@@ -948,11 +956,5 @@ Type *get_inner_type(Type *t);
  * a pointer.
  */
 ASTNode *deref_to_one_pointer(ASTNode *expr);
-
-typedef struct TraitReg
-{
-    char *name;
-    struct TraitReg *next;
-} TraitReg;
 
 #endif
