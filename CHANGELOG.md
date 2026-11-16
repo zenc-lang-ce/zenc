@@ -30,6 +30,19 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
 - A global without a value is zeroed in the C, so `ld` no longer warns about its alignment on arm64 macOS.
 - Names that are C or C++ keywords are written under another name.
 - `match` works through a pointer subject.
+- `.` reaches a field or a method through every pointer level: `pp.value` and `pp.get()` with `pp: P**`. ([#264](https://github.com/zenc-lang-ce/zenc/pull/264))
+- `?.` on a pointer to a pointer is an error that says to write `(*pp)?.value`, instead of C that does not compile. ([#279](https://github.com/zenc-lang-ce/zenc/pull/279))
+- A call to a method the type does not have is an error of `zc`, instead of C that does not compile: `file.ok().read_to_string()` gives "No method 'read_to_string' on 'Option<File>'". ([#314](https://github.com/zenc-lang-ce/zenc/pull/314))
+- A method of a struct mixed in with `use` can be called on a temporary: `make().value()`. ([#323](https://github.com/zenc-lang-ce/zenc/pull/323))
+- `module::f()` and `Type::f()` no longer call a function of another type whose name starts the same: `geo::create()` called `GeoBuilder::create()`. ([#191](https://github.com/zenc-lang-ce/zenc/pull/191))
+- An alias of an array type (`alias Row = int[3];`) compiles. ([#281](https://github.com/zenc-lang-ce/zenc/pull/281))
+- `?` works on a `Result` or an enum whose type's name ends in `__`. ([#320](https://github.com/zenc-lang-ce/zenc/pull/320))
+- `sizeof((a, b))` with two variables is the size of the tuple, instead of C that does not compile. ([#164](https://github.com/zenc-lang-ce/zenc/pull/164))
+- `const x = 5;` inside a function is an error that points to `def` and `let x: const Type`, as it already was at the top level. ([#309](https://github.com/zenc-lang-ce/zenc/pull/309))
+- `impl<T> A for Cell<T>` followed by `impl B for Cell` no longer crashes the compiler and the language server. ([#280](https://github.com/zenc-lang-ce/zenc/pull/280))
+- `include <stdio.h` without its `>` is an error instead of a crash of the compiler and the language server. ([#282](https://github.com/zenc-lang-ce/zenc/pull/282))
+- The `//>` build directives of an imported module are applied, so a library carries its own `include:`, `link:` and `lib:`. Before, only those of the compiled file were. ([#322](https://github.com/zenc-lang-ce/zenc/pull/322))
+- With `--cpp`, a parameter whose `@ctype` is a C++ template (`@ctype("const std::map<int, std::vector<int>>&")`) is declared as written. ([#321](https://github.com/zenc-lang-ce/zenc/pull/321))
 - CLI: `-I`, `-O` and other options read their value correctly; `-g` passes `-g` to the C compiler; options can come before the command (`zc -g build app.zc`).
 - C headers: `import "x.h"` reads the names the header declares, and `zc check` accepts a struct literal of a type from a header.
 - A module imported with an alias (`as m`, a selective import or `as *`) uses its own functions and types by their names, the variants of its enums too: `import "std/string.zc" as str` and `import "std/arena.zc" as arena` build, and such a name no longer goes to a function or a type of the program with the same name. The program that imports it names its enums in a `match` (`m::Shape::Circle(r) =>`), and a type imported one by one is read by its module everywhere: its enum builds, compares and matches its variants, and the program can write an `impl` for it.
@@ -51,6 +64,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - A token that does not start a struct field is reported.
   - A variable used as the message of `assert` or `expect` counts as used.
   - Implicit `std` imports report the module path.
+  - A type is shown as the program writes it, in errors, hover, `zc-doc` and the REPL: `Vec<i32>` instead of `Vec__int32_t`, `(i32, bool)` instead of `Tuple__int32_t__bool`, and `geo::Vector` instead of `_geo__Vector` for a type of a module imported `as geo`. ([#273](https://github.com/zenc-lang-ce/zenc/pull/273), [#274](https://github.com/zenc-lang-ce/zenc/pull/274))
   - An integer constant is checked against the range of its target: `take(20)` for a `u8` no longer warns, and `let big: u8 = 300;` does.
   - An error inside an f-string interpolation points at the expression and prints its line.
   - A MISRA diagnostic about a struct field points at the field.
@@ -103,6 +117,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
   - A type name goes to the declaration the file sees: its own or one of a file it imports. The server parses the whole workspace with one context, so a type of the same name in a file it does not import (`Header` of `std/net/http.zc`) could win: hover, go to definition and the members after `.` showed that one.
   - Rename works on an enum: it edits its declaration, the types, `impl`, the patterns of `match` and the variants of expressions (`Mode::On`). Before it answered nothing. References no longer list twice the enum of a variant without a payload in an expression.
   - A trait imported from another file is no longer warned about as an unknown type (`h: Header`) after a hover or another read-only request: those requests forgot every trait registered until then, and the file that imports it does not parse it again.
+- `zc-doc` titles a declaration by the name the program uses (`geo::Vector`, `split__name`) and writes the parameters of methods: `fn len(self) -> i32;` instead of `fn len(...);`. ([#275](https://github.com/zenc-lang-ce/zenc/pull/275))
 - `zc-format` no longer needs the language server: it is built with `ZC_LSP=0` too.
 - REPL: Backspace and Escape work in reverse search.
 
