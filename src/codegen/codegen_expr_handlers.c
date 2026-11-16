@@ -304,20 +304,6 @@ static void emit_coalesce(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, "); })");
 }
 
-// `a ??= b`: assigns `b` to `a` when `a` is null or zero.
-static void emit_coalesce_assign(ParserContext *ctx, ASTNode *node)
-{
-    EMIT(ctx, "({ if (!(");
-    codegen_expression(ctx, node->binary.left);
-    EMIT(ctx, ")) ");
-    codegen_expression(ctx, node->binary.left);
-    EMIT(ctx, " = (");
-    codegen_expression(ctx, node->binary.right);
-    EMIT(ctx, "); ");
-    codegen_expression(ctx, node->binary.left);
-    EMIT(ctx, "; })");
-}
-
 // `==` and `!=`: a struct compares through its `eq` (or `neq`), anything else as in C.
 static void emit_equality(ParserContext *ctx, ASTNode *node)
 {
@@ -504,20 +490,6 @@ static void emit_pow(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, ")))");
 }
 
-// `a **= b`, through _zc_pow.
-static void emit_pow_assign(ParserContext *ctx, ASTNode *node)
-{
-    EMIT(ctx, "({ ");
-    codegen_expression(ctx, node->binary.left);
-    EMIT(ctx, " = _zc_pow((double)(");
-    codegen_expression(ctx, node->binary.left);
-    EMIT(ctx, "), (double)(");
-    codegen_expression(ctx, node->binary.right);
-    EMIT(ctx, ")); ");
-    codegen_expression(ctx, node->binary.left);
-    EMIT(ctx, "; })");
-}
-
 // The other binary operators and assignments, written as in C; an assignment drops the old
 // value of a variable with Drop, and copies a fixed-size array.
 static void emit_plain_binary(ParserContext *ctx, ASTNode *node)
@@ -642,18 +614,12 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
     case OP_COALESCE:
         emit_coalesce(ctx, node);
         break;
-    case OP_COALESCE_ASSIGN:
-        emit_coalesce_assign(ctx, node);
-        break;
     case OP_EQ:
     case OP_NE:
         emit_equality(ctx, node);
         break;
     case OP_POW:
         emit_pow(ctx, node);
-        break;
-    case OP_POW_ASSIGN:
-        emit_pow_assign(ctx, node);
         break;
     default:
         emit_plain_binary(ctx, node);
