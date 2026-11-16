@@ -30,6 +30,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
 - A global without a value is zeroed in the C, so `ld` no longer warns about its alignment on arm64 macOS.
 - Names that are C or C++ keywords are written under another name.
 - `match` works through a pointer subject.
+- A `ref` binding in a `match` on a dereferenced pointer (`match *p`, `match *self`) points to the value the pointer designates: writes through it are no longer made to a copy and lost. ([#352](https://github.com/zenc-lang-ce/zenc/pull/352))
 - `.` reaches a field or a method through every pointer level: `pp.value` and `pp.get()` with `pp: P**`. ([#264](https://github.com/zenc-lang-ce/zenc/pull/264))
 - `?.` on a pointer to a pointer is an error that says to write `(*pp)?.value`, instead of C that does not compile. ([#279](https://github.com/zenc-lang-ce/zenc/pull/279))
 - A call to a method the type does not have is an error of `zc`, instead of C that does not compile: `file.ok().read_to_string()` gives "No method 'read_to_string' on 'Option<File>'". ([#314](https://github.com/zenc-lang-ce/zenc/pull/314))
