@@ -1,6 +1,7 @@
 // compiler/check_clean: `zc check` must accept this file with no errors.
 // Escape analysis tells where a variable lives from where its value points:
-// a pointer to the heap or to static data may be returned or stored anywhere.
+// a pointer to the heap or to static data may be returned or stored anywhere,
+// also after walking it with assignments that only read the variable itself.
 import "std/mem.zc"
 
 struct Node {
@@ -25,6 +26,14 @@ fn make_node(v: i32) -> Node* {
     return n;
 }
 
+fn last_node(head: Node*) -> Node* {
+    let curr = head.next;
+    while curr != NULL && curr.next != NULL {
+        curr = curr.next;
+    }
+    return curr;
+}
+
 fn buffer(n: usize) -> char* {
     let buf = (char*)malloc(n);
     buf[0] = 0;
@@ -42,6 +51,7 @@ fn main() {
     let head = make_node(1);
     head.next = make_node(2);
     assert(head.next.value == 2, "the second node");
+    assert(last_node(head).value == 2, "the last node");
     assert(first_char() == 'x', "the text");
     let b = buffer(4);
     assert(b[0] == 0, "the buffer");
