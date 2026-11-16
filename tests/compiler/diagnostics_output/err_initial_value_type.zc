@@ -1,0 +1,27 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// The value of a `let` or a `def` is checked against the declared type, not
+// given that type: these values do not convert, and the C would not compile. A
+// float does not convert to an integer, as in an assignment. A `def` without a
+// type has the type of its value. An expression of literals is still computed in
+// `int`, as the C computes it, so a shift by 40 is reported.
+
+struct Point {
+    x: i32;
+}
+
+def LIMIT: int = "hello";
+def SCALE = 2.5;
+
+fn origin() -> Point {
+    return Point{x: 0};
+}
+
+fn main() {
+    def LOCAL: Point = 5;
+    let _count: i32 = origin();
+    let _p: Point = 7;
+    let _whole: i32 = 3.7;
+    let _scaled: i32 = SCALE;
+    let _wide: i64 = 1 << 40;
+}
