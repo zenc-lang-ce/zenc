@@ -104,6 +104,10 @@ char *declared_c_type(ParserContext *ctx, ASTNode *decl);
  */
 int is_fixed_size_array(Type *t);
 /**
+ * @brief Whether `expr` names the variable `name`, in a lambda it holds or an f-string too.
+ */
+int expr_names_var(ASTNode *expr, const char *name);
+/**
  * @brief The C initializer that zeroes a value of type `t` (`{0}`, `0`, `0.0`, `false`...), or
  *        NULL for a type it has none for (a pointer, an enum, a closure...).
  */

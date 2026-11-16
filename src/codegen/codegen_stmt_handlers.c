@@ -587,19 +587,7 @@ static int defer_typed_local_drop(ParserContext *ctx, ASTNode *node, Type *t)
 static char *emit_shadowed_init(ParserContext *ctx, ASTNode *node)
 {
     ASTNode *init = node->var_decl.init_expr;
-    if (!init)
-    {
-        return NULL;
-    }
-    char **refs = NULL;
-    int ref_count = 0;
-    find_var_refs(init, &refs, &ref_count);
-    int names_itself = 0;
-    for (int i = 0; i < ref_count && !names_itself; i++)
-    {
-        names_itself = strcmp(refs[i], node->var_decl.name) == 0;
-    }
-    if (!names_itself)
+    if (!expr_names_var(init, node->var_decl.name))
     {
         return NULL;
     }

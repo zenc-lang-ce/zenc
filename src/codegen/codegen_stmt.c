@@ -15,6 +15,55 @@
 #include "codegen_internal.h"
 #include "zprep_plugin.h"
 
+// A bound or the step of a `for` range: an expression, or the step's text, and the temporary
+// it was evaluated into, if any.
+typedef struct
+{
+    ASTNode *expr;
+    const char *text;
+    char *temp;
+} RangePart;
+
+static void emit_range_part(ParserContext *ctx, RangePart *part)
+{
+    if (part->temp)
+    {
+        EMIT(ctx, "%s", part->temp);
+    }
+    else if (part->expr)
+    {
+        codegen_expression(ctx, part->expr);
+    }
+    else
+    {
+        EMIT(ctx, "%s", part->text);
+    }
+}
+
+// Evaluates `part` into a temporary of its own type, when `names_var`.
+static void emit_range_temp(ParserContext *ctx, RangePart *part, int names_var)
+{
+    if (!names_var)
+    {
+        return;
+    }
+    char *temp = xmalloc(32);
+    snprintf(temp, 32, "_z_range_%d", ctx->cg.tmp_counter++);
+    if (z_path_match_compiler(ctx->config->cc, "tcc"))
+    {
+        EMIT(ctx, "__typeof__((");
+        emit_range_part(ctx, part);
+        EMIT(ctx, ")) %s = ", temp);
+    }
+    else
+    {
+        EMIT(ctx, "ZC_AUTO %s = ", temp);
+    }
+    emit_range_part(ctx, part);
+    EMIT(ctx, "; ");
+    part->temp = temp;
+}
+
 // Enters a loop: emits its label, if any, and records where its defers start, so `break` and
 // `continue` know how many to run.
 void codegen_loop_enter(ParserContext *ctx, const char *label)
@@ -231,20 +280,41 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     }
     case NODE_FOR_RANGE:
     {
+        // C puts the loop variable in scope at the end of its declarator, so a name `i` in the
+        // header of `for (T i = <start>; i < <end>; i += <step>)` is the loop variable, not the
+        // one it shadows (`for i in 0..i`). A bound or a step that names it is evaluated into a
+        // temporary first, in a block around the loop, while `i` still names the shadowed one.
+        const char *var = node->for_range.var_name;
+        const char *step = node->for_range.step;
+        RangePart start = {node->for_range.start, NULL, NULL};
+        RangePart end = {node->for_range.end, NULL, NULL};
+        RangePart step_part = {NULL, step, NULL};
+        int start_names_var = expr_names_var(start.expr, var);
+        int end_names_var = expr_names_var(end.expr, var);
+        int step_names_var = step && strcmp(step, var) == 0;
+        int hoist = start_names_var || end_names_var || step_names_var;
+
         codegen_loop_enter(ctx, node->for_range.loop_label);
+        if (hoist)
+        {
+            EMIT(ctx, "{ ");
+            emit_range_temp(ctx, &start, start_names_var);
+            emit_range_temp(ctx, &end, end_names_var);
+            emit_range_temp(ctx, &step_part, step_names_var);
+        }
 
         EMIT(ctx, "for (");
         if (z_path_match_compiler(ctx->config->cc, "tcc"))
         {
             EMIT(ctx, "__typeof__((");
-            codegen_expression(ctx, node->for_range.start);
+            emit_range_part(ctx, &start);
             EMIT(ctx, ")) %s = ", c_name(ctx, node->for_range.var_name));
         }
         else
         {
             EMIT(ctx, "ZC_AUTO %s = ", c_name(ctx, node->for_range.var_name));
         }
-        codegen_expression(ctx, node->for_range.start);
+        emit_range_part(ctx, &start);
         if (node->for_range.step && node->for_range.step[0] == '-')
         {
             if (node->for_range.is_inclusive)
@@ -267,11 +337,13 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, "; %s < ", c_name(ctx, node->for_range.var_name));
             }
         }
-        codegen_expression(ctx, node->for_range.end);
+        emit_range_part(ctx, &end);
         EMIT(ctx, "; %s", c_name(ctx, node->for_range.var_name));
         if (node->for_range.step)
         {
-            EMIT(ctx, " += %s) ", node->for_range.step);
+            EMIT(ctx, " += ");
+            emit_range_part(ctx, &step_part);
+            EMIT(ctx, ") ");
         }
         else
         {
@@ -279,6 +351,10 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         }
         codegen_loop_body(ctx, node->for_range.body, node->for_range.loop_label, 0);
         codegen_loop_exit(ctx, node->for_range.loop_label);
+        if (hoist)
+        {
+            EMIT(ctx, "}\n");
+        }
         break;
     }
 

@@ -75,6 +75,25 @@ int is_fixed_size_array(Type *t)
     return t && t->kind == TYPE_ARRAY && t->array_size > 0;
 }
 
+int expr_names_var(ASTNode *expr, const char *name)
+{
+    if (!expr)
+    {
+        return 0;
+    }
+    char **refs = NULL;
+    int ref_count = 0;
+    find_var_refs(expr, &refs, &ref_count);
+    for (int i = 0; i < ref_count; i++)
+    {
+        if (strcmp(refs[i], name) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 const char *zero_initializer(ParserContext *ctx, Type *t)
 {
     if (!t)
