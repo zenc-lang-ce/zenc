@@ -608,18 +608,28 @@ static char *emit_shadowed_init(ParserContext *ctx, ASTNode *node)
     snprintf(temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
     if (is_fixed_size_array(init->type_info))
     {
-        // C cannot copy an array by value: the temporary points to its first element, and the
-        // declaration copies the elements from there.
-        char *ptr = c_type_spelling(ctx, type_new_ptr(resolve_alias(init->type_info)->inner));
-        emit_var_decl_type(ctx, ptr, temp);
-        EMIT(ctx, " = ");
+        // C cannot copy an array by value: the temporary is an array of the same type, which an
+        // array literal initializes and any other array is copied into, and the declaration
+        // copies the elements from there.
+        emit_var_decl_type(ctx, c_type_spelling(ctx, init->type_info), temp);
+        if (init->kind == NODE_EXPR_ARRAY_LITERAL)
+        {
+            EMIT(ctx, " = ");
+            codegen_expression(ctx, init);
+        }
+        else
+        {
+            EMIT(ctx, "; memcpy(%s, ", temp);
+            codegen_expression(ctx, init);
+            EMIT(ctx, ", sizeof(%s))", temp);
+        }
     }
     else
     {
         emit_auto_type(ctx, init, node->token);
         EMIT(ctx, " %s = ", temp);
+        codegen_expression(ctx, init);
     }
-    codegen_expression(ctx, init);
     EMIT(ctx, "; ");
     int moved = is_fixed_size_array(init->type_info) && type_needs_drop(ctx, init->type_info)
                     ? emit_moved_out(ctx, init)
@@ -702,11 +712,12 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             add_symbol_local(ctx, node->var_decl.name, node->type_info);
 
             ASTNode *init = node->var_decl.init_expr;
-            if (init && init->kind != NODE_EXPR_ARRAY_LITERAL &&
+            if (init && (temp || init->kind != NODE_EXPR_ARRAY_LITERAL) &&
                 is_fixed_size_array(node->type_info) && is_fixed_size_array(init->type_info))
             {
-                // C cannot initialize an array from another array: copy its bytes. An array of
-                // values that need dropping is moved, so its source is marked as moved out.
+                // C cannot initialize an array from another array, or from the temporary an
+                // array literal was evaluated into: copy its bytes. An array of values that
+                // need dropping is moved, so its source is marked as moved out.
                 const char *name = c_name(ctx, node->var_decl.name);
                 EMIT(ctx, "; memcpy(%s, ", name);
                 emit_var_init(ctx, node, temp);
