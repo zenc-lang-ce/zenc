@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/comptime_div_overflow.zc...
+error: comptime: integer overflow in '/'
+  --> tests/compiler/diagnostics_output/comptime_div_overflow.zc:3:25
+   |
+3  |     let _quotient = min / -1;
+   |                         ^ here
+   |
+[exit 1]
