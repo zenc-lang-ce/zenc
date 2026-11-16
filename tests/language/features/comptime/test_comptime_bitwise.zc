@@ -1,0 +1,40 @@
+// comptime: the bitwise and shift operators, which comptime computes as constant folding does.
+// Each `def` exists only if its value is the expected one, so a wrong result fails to build.
+comptime {
+    let flags = 1 << 3;
+    let half = 256 >> 4;
+    let mask = flags | 5;
+    let low = mask & 6;
+    let toggled = low ^ 15;
+    let inverted = ~0;
+    if (flags == 8) {
+        yield("def SHL_OK = 1;");
+    }
+    if (half == 16) {
+        yield("def SHR_OK = 1;");
+    }
+    if (mask == 13) {
+        yield("def OR_OK = 1;");
+    }
+    if (low == 4) {
+        yield("def AND_OK = 1;");
+    }
+    if (toggled == 11) {
+        yield("def XOR_OK = 1;");
+    }
+    if (inverted == -1) {
+        yield("def NOT_OK = 1;");
+    }
+}
+
+test "comptime_shifts" {
+    assert(SHL_OK == 1, "1 << 3 should be 8 at comptime");
+    assert(SHR_OK == 1, "256 >> 4 should be 16 at comptime");
+}
+
+test "comptime_bitwise" {
+    assert(OR_OK == 1, "8 | 5 should be 13 at comptime");
+    assert(AND_OK == 1, "13 & 6 should be 4 at comptime");
+    assert(XOR_OK == 1, "4 ^ 15 should be 11 at comptime");
+    assert(NOT_OK == 1, "~0 should be -1 at comptime");
+}

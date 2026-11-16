@@ -576,6 +576,34 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name)
     return NULL;
 }
 
+int is_simple_enum(ParserContext *ctx, const char *enum_name)
+{
+    if (!ctx || !enum_name)
+    {
+        return 0;
+    }
+    const char *clean = enum_name;
+    if (strncmp(clean, "struct ", 7) == 0)
+    {
+        clean += 7;
+    }
+    ASTNode *def = find_struct_def(ctx, clean);
+    if (!def || def->kind != NODE_ENUM)
+    {
+        return 0;
+    }
+    ASTNode *v = def->enm.variants;
+    while (v)
+    {
+        if (v->variant.payload)
+        {
+            return 0;
+        }
+        v = v->next;
+    }
+    return 1;
+}
+
 #undef CACHE_RESULT
 
 ASTNode *find_trait_def(ParserContext *ctx, const char *name)
@@ -596,6 +624,31 @@ ASTNode *find_trait_def(ParserContext *ctx, const char *name)
         r = r->next;
     }
     return NULL;
+}
+
+int is_trait(ParserContext *ctx, const char *name)
+{
+    if (!name)
+    {
+        return 0;
+    }
+    if (strncmp(name, "struct ", 7) == 0)
+    {
+        name += 7;
+    }
+    else if (strncmp(name, "union ", 6) == 0)
+    {
+        name += 6;
+    }
+    char base[MAX_MANGLED_NAME_LEN];
+    size_t length = strcspn(name, "*");
+    if (length >= sizeof(base))
+    {
+        return 0; // Longer than any name the program declares
+    }
+    memcpy(base, name, length);
+    base[length] = 0;
+    return find_trait_def(ctx, base) != NULL;
 }
 
 ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name)
@@ -678,6 +731,100 @@ char *module_written_name(ParserContext *ctx, const char *name)
     char *written = xmalloc(size);
     snprintf(written, size, "%s::%s", alias, name);
     return written;
+}
+
+// The name the module being parsed registered its own `name` under (`prefix__name`), when
+// `declares` finds it; NULL outside a module parsed with a prefix or when the module has none.
+static char *module_own_name(ParserContext *ctx, const char *name,
+                             int (*declares)(ParserContext *, const char *))
+{
+    if (!ctx->imports.current_module_prefix)
+    {
+        return NULL;
+    }
+    char *own = mangle_module_symbol(ctx->imports.current_module_prefix, name);
+    if (declares(ctx, own))
+    {
+        return own;
+    }
+    zfree(own);
+    return NULL;
+}
+
+static int declares_type(ParserContext *ctx, const char *name)
+{
+    return find_struct_def(ctx, name) != NULL;
+}
+
+static int declares_function(ParserContext *ctx, const char *name)
+{
+    return find_func(ctx, name) != NULL;
+}
+
+char *module_type_name(ParserContext *ctx, const char *name)
+{
+    // Names no module declares: a generic parameter, a primitive, `Self`, a C type.
+    if (is_known_generic(ctx, name) || is_primitive_type_name(name) ||
+        strcasecmp(name, "Self") == 0 || is_extern_symbol(ctx, name))
+    {
+        return NULL;
+    }
+    char *own = module_own_name(ctx, name, declares_type);
+    if (own || !ctx->imports.current_module_prefix)
+    {
+        return own;
+    }
+    if (find_struct_def(ctx, name) || find_type_alias(ctx, name))
+    {
+        return NULL;
+    }
+    // Not declared yet anywhere: a type the module declares further down (`next: Node*`).
+    return mangle_module_symbol(ctx->imports.current_module_prefix, name);
+}
+
+char *type_declaration_name(ParserContext *ctx, const char *name)
+{
+    // Imported one by one, or with `as *`: the module's type, by the name the import gives it.
+    if (!ctx->imports.current_module_prefix)
+    {
+        SelectiveImport *imported = find_selective_import(ctx, name);
+        if (imported)
+        {
+            return mangle_module_symbol(imported->source_module, imported->symbol);
+        }
+    }
+    return module_type_name(ctx, name);
+}
+
+static char *module_member_name(ParserContext *ctx, Module *mod, const char *name)
+{
+    // A C header's names are C's own.
+    if (mod->is_c_header)
+    {
+        register_extern_symbol(ctx, name);
+        return xstrdup(name);
+    }
+    if (is_extern_symbol(ctx, name))
+    {
+        return xstrdup(name);
+    }
+    return mangle_module_symbol(mod->base_name, name);
+}
+
+char *qualified_type_name(ParserContext *ctx, const char *scope, const char *name)
+{
+    Module *mod = find_module(ctx, scope);
+    return mod ? module_member_name(ctx, mod, name) : mangle_module_symbol(scope, name);
+}
+
+char *module_function_name(ParserContext *ctx, const char *name)
+{
+    ZenSymbol *local = find_symbol_entry(ctx, name);
+    if (local && local->is_local)
+    {
+        return NULL;
+    }
+    return module_own_name(ctx, name, declares_function);
 }
 
 // The name programs write for the struct or enum `name`, kept when its C name got a module

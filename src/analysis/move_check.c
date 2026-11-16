@@ -79,8 +79,7 @@ char *get_node_path(ASTNode *node, int depth, ParserContext *ctx)
         // pointer, and checking turns the target `pp` of `pp.items` into `*pp`
         // (deref_to_one_pointer).
         ASTNode *target = node->member.target;
-        while (target && target->kind == NODE_EXPR_UNARY && target->unary.op &&
-               strcmp(target->unary.op, "*") == 0)
+        while (target && target->kind == NODE_EXPR_UNARY && target->unary.op == OP_DEREF)
         {
             target = target->unary.operand;
         }
@@ -232,7 +231,6 @@ int is_type_copy(ParserContext *ctx, Type *t)
     {
         switch (t->kind)
         {
-        case TYPE_INT:
         case TYPE_I8:
         case TYPE_I16:
         case TYPE_I32:

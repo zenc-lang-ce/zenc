@@ -66,7 +66,7 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
             if (index < sig->total_args)
             {
                 Type *expected = sig->arg_types[index];
-                if (expected && expected->name && is_trait(type_def_name(expected)))
+                if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
                 {
                     ASTNode *cast = transform_to_trait_object(ctx, type_def_name(expected), arg);
                     if (cast != arg)
@@ -134,23 +134,19 @@ static ASTNode *new_member_node(ParserContext *ctx, ASTNode *target, Token field
     node->member.field = token_strdup(field);
     node->member.is_pointer_access = is_pointer_access;
 
+    // The field it reads, for the language server: where it is declared.
+    ASTNode *declared = find_struct_field(ctx, target->type_info, node->member.field);
+    if (declared)
+    {
+        node->definition_token = declared->token;
+    }
+
     int is_ptr = 0;
     char *alloc_name = NULL;
     char *sname = resolve_struct_name_from_type(ctx, target->type_info, &is_ptr, &alloc_name);
     if (sname)
     {
         ASTNode *def = find_struct_def(ctx, sname);
-        // The field it reads, for the language server: where it is declared.
-        for (ASTNode *f = def && def->kind == NODE_STRUCT ? def->strct.fields : NULL; f;
-             f = f->next)
-        {
-            if (f->kind == NODE_FIELD && f->field.name &&
-                strcmp(f->field.name, node->member.field) == 0)
-            {
-                node->definition_token = f->token;
-                break;
-            }
-        }
         if (def && def->kind == NODE_STRUCT && def->strct.is_opaque)
         {
             if (!def->strct.defined_in_file ||
@@ -227,7 +223,7 @@ static void keep_method_owner(ParserContext *ctx, ASTNode *callee, Type *target_
 // When the overload takes a pointer, a value is passed by reference; a temporary (also
 // one written as `&make()`) is materialised and dropped after the call. An operand that
 // can never match a struct parameter (a C string, a number) is reported.
-static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, const char *op,
+static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, OperatorKind op,
                                       FuncSig *sig, ASTNode *rhs)
 {
     if (sig->total_args < 2 || !sig->arg_types[1])
@@ -254,8 +250,8 @@ static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, const ch
         char msg[MAX_SHORT_MSG_LEN];
         char *expected = zen_c_type_spelling(ctx, param);
         char *found = zen_c_type_spelling(ctx, rt);
-        snprintf(msg, sizeof(msg), "Operator '%s' expects '%s' as right operand, found '%s'", op,
-                 expected, found);
+        snprintf(msg, sizeof(msg), "Operator '%s' expects '%s' as right operand, found '%s'",
+                 operator_spelling(op), expected, found);
         zpanic_with_suggestion(op_tok, msg,
                                "The overloaded operator only accepts the type of its parameter");
         return rhs;
@@ -266,12 +262,11 @@ static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, const ch
         return rhs;
     }
 
-    if (rhs->kind == NODE_EXPR_UNARY && rhs->unary.op && strcmp(rhs->unary.op, "&") == 0 &&
-        rhs->unary.operand && expr_is_rvalue(ctx, rhs->unary.operand))
+    if (rhs->kind == NODE_EXPR_UNARY && rhs->unary.op == OP_ADDRESS && rhs->unary.operand &&
+        expr_is_rvalue(ctx, rhs->unary.operand))
     {
         // `&make()`: C cannot take the address of a call result.
-        zfree(rhs->unary.op);
-        rhs->unary.op = xstrdup("&_rval");
+        rhs->unary.op = OP_ADDRESS_RVALUE;
         rhs->unary.owns_temp = 1;
         return rhs;
     }
@@ -284,7 +279,7 @@ static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, const ch
     // Need pointer, have value
     int is_rvalue = expr_is_rvalue(ctx, rhs);
     ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-    addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
+    addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
     addr->unary.owns_temp = is_rvalue;
     addr->unary.operand = rhs;
     if (rt)
@@ -374,7 +369,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
             ASTNode *inner_deref = ast_create(NODE_EXPR_UNARY);
             inner_deref->token = t;
-            inner_deref->unary.op = xstrdup("*");
+            inner_deref->unary.op = OP_DEREF;
             inner_deref->unary.operand = operand;
             if (operand->type_info && operand->type_info->kind == TYPE_POINTER)
             {
@@ -404,19 +399,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
         }
 
-        char *method = NULL;
-        if (is_token(t, "-"))
-        {
-            method = "neg";
-        }
-        if (is_token(t, "!") || t.kind == TOK_NOT)
-        {
-            method = "not";
-        }
-        if (is_token(t, "~"))
-        {
-            method = "bitnot";
-        }
+        const OperatorInfo *unary_info =
+            operator_info(t.kind == TOK_NOT ? OP_NOT : unary_operator_from_text(t.start, t.len));
+        const char *method = unary_info ? unary_info->method : NULL;
 
         if (method && operand->type_info)
         {
@@ -446,7 +431,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     {
                         int is_rvalue = expr_is_rvalue(ctx, operand);
                         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                        addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
+                        addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
                         addr->unary.operand = operand;
                         addr->type_info = type_new_ptr(ot);
                         arg = addr;
@@ -455,7 +440,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     {
                         // Function wants Value, we have Pointer -> Dereference (*)
                         ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                        deref->unary.op = xstrdup("*");
+                        deref->unary.op = OP_DEREF;
                         deref->unary.operand = operand;
                         deref->type_info = ot->inner;
                         arg = deref;
@@ -484,11 +469,11 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
         lhs->token = t;
         if (t.kind == TOK_NOT)
         {
-            lhs->unary.op = xstrdup("!");
+            lhs->unary.op = OP_NOT;
         }
         else
         {
-            lhs->unary.op = token_strdup(t);
+            lhs->unary.op = unary_operator_from_text(t.start, t.len);
         }
         lhs->unary.operand = operand;
 
@@ -649,7 +634,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             lexer_next(l); // consume ++ or --
             ASTNode *node = ast_create(NODE_EXPR_UNARY);
             node->token = op;
-            node->unary.op = (op.start[0] == '+') ? xstrdup("_post++") : xstrdup("_post--");
+            node->unary.op = (op.start[0] == '+') ? OP_POST_INC : OP_POST_DEC;
             node->unary.operand = lhs;
             node->type_info = lhs->type_info;
             lhs = node;
@@ -915,7 +900,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                     int is_rvalue = expr_is_rvalue(ctx, obj);
 
                                     ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                                    addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
+                                    addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
                                     addr->unary.operand = obj;
                                     addr->type_info = type_new_ptr(lt);
                                     self_arg = addr;
@@ -932,7 +917,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                 {
                                     // Have ptr, need value -> *obj
                                     ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                                    deref->unary.op = xstrdup("*");
+                                    deref->unary.op = OP_DEREF;
                                     deref->unary.operand = obj;
                                     if (lt && lt->kind == TYPE_POINTER && lt->inner)
                                     {
@@ -1297,7 +1282,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         {
                             ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                             addr->unary.op =
-                                expr_is_rvalue(ctx, lhs) ? xstrdup("&_rval") : xstrdup("&");
+                                expr_is_rvalue(ctx, lhs) ? OP_ADDRESS_RVALUE : OP_ADDRESS;
                             addr->unary.operand = lhs;
                             if (inner_t)
                             {
@@ -1308,7 +1293,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         else if (is_ptr && sig->arg_types[0]->kind != TYPE_POINTER)
                         {
                             ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                            deref->unary.op = xstrdup("*");
+                            deref->unary.op = OP_DEREF;
                             deref->unary.operand = lhs;
                             self_arg = deref;
                         }
@@ -1371,7 +1356,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
                 if (!node->type_info)
                 {
-                    node->type_info = type_new(TYPE_INT);
+                    node->type_info = type_new(TYPE_I32);
                 }
 
                 lhs = node;
@@ -1403,7 +1388,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         lexer_next(l); // consume )
                         // Rewrite to dereference: *ptr
                         ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                        deref->unary.op = xstrdup("*");
+                        deref->unary.op = OP_DEREF;
                         deref->unary.operand = lhs;
                         if (lhs->type_info && lhs->type_info->inner)
                         {
@@ -1432,7 +1417,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             lexer_next(l); // consume )
                             // Rewrite to dereference: *ptr
                             ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                            deref->unary.op = xstrdup("*");
+                            deref->unary.op = OP_DEREF;
                             deref->unary.operand = lhs;
                             // Try to get inner type
                             if (lhs->type_info && lhs->type_info->kind == TYPE_POINTER)
@@ -1598,7 +1583,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
         }
 
         int next_prec = (int)(prec + 1);
-        if (op.kind == TOK_OP && (is_token(op, "**") || is_token(op, "**=")))
+        const OperatorInfo *op_info = operator_info(binary_operator_of_token(op));
+        if (op_info && op_info->right_associative)
         {
             next_prec = (int)(prec);
         }
@@ -1695,7 +1681,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     clean_lhs_type += 6;
                 }
 
-                if (is_trait(clean_lhs_type) && rhs)
+                if (is_trait(ctx, clean_lhs_type) && rhs)
                 {
                     rhs = transform_to_trait_object(ctx, clean_lhs_type, rhs);
                     bin->binary.right = rhs;
@@ -1712,41 +1698,22 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             check_move_usage(ctx, rhs, op);
         }
 
-        if (op.kind == TOK_LANGLE)
-        {
-            bin->binary.op = xstrdup("<");
-        }
-        else if (op.kind == TOK_RANGLE)
-        {
-            bin->binary.op = xstrdup(">");
-        }
-        else if (op.kind == TOK_AND)
-        {
-            bin->binary.op = xstrdup("&&");
-        }
-        else if (op.kind == TOK_OR)
-        {
-            bin->binary.op = xstrdup("||");
-        }
-        else
-        {
-            bin->binary.op = token_strdup(op);
-        }
+        bin->binary.op = binary_operator_of_token(op);
 
-        if (is_comparison_op(bin->binary.op))
+        if (is_comparison_operator(bin->binary.op))
         {
             // Check for identical operands (x == x)
             if (lhs->kind == NODE_EXPR_VAR && rhs->kind == NODE_EXPR_VAR)
             {
                 if (strcmp(lhs->var_ref.name, rhs->var_ref.name) == 0)
                 {
-                    if (strcmp(bin->binary.op, "==") == 0 || strcmp(bin->binary.op, ">=") == 0 ||
-                        strcmp(bin->binary.op, "<=") == 0)
+                    if (bin->binary.op == OP_EQ || bin->binary.op == OP_GE ||
+                        bin->binary.op == OP_LE)
                     {
                         warn_comparison_always_true(op, "Comparing a variable to itself");
                     }
-                    else if (strcmp(bin->binary.op, "!=") == 0 ||
-                             strcmp(bin->binary.op, ">") == 0 || strcmp(bin->binary.op, "<") == 0)
+                    else if (bin->binary.op == OP_NE || bin->binary.op == OP_GT ||
+                             bin->binary.op == OP_LT)
                     {
                         warn_comparison_always_false(op, "Comparing a variable to itself");
                     }
@@ -1758,8 +1725,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 // Check if literals make sense (e.g. 5 > 5)
                 if (lhs->literal.int_val == rhs->literal.int_val)
                 {
-                    if (strcmp(bin->binary.op, "==") == 0 || strcmp(bin->binary.op, ">=") == 0 ||
-                        strcmp(bin->binary.op, "<=") == 0)
+                    if (bin->binary.op == OP_EQ || bin->binary.op == OP_GE ||
+                        bin->binary.op == OP_LE)
                     {
                         warn_comparison_always_true(op, "Comparing identical literals");
                     }
@@ -1775,11 +1742,11 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 if (rhs->kind == NODE_EXPR_LITERAL && rhs->literal.kind == LITERAL_INT &&
                     rhs->literal.int_val == 0)
                 {
-                    if (strcmp(bin->binary.op, ">=") == 0)
+                    if (bin->binary.op == OP_GE)
                     {
                         warn_comparison_always_true(op, "Unsigned value is always >= 0");
                     }
-                    else if (strcmp(bin->binary.op, "<") == 0)
+                    else if (bin->binary.op == OP_LT)
                     {
                         warn_comparison_always_false(op, "Unsigned value is never < 0");
                     }
@@ -1787,9 +1754,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
         }
 
-        if (strcmp(bin->binary.op, "=") == 0 || strcmp(bin->binary.op, "+=") == 0 ||
-            strcmp(bin->binary.op, "-=") == 0 || strcmp(bin->binary.op, "*=") == 0 ||
-            strcmp(bin->binary.op, "/=") == 0)
+        if (is_assignment_operator(bin->binary.op))
         {
 
             if (lhs->kind == NODE_EXPR_VAR)
@@ -1834,36 +1799,15 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
         }
 
-        int is_compound = 0;
-        size_t op_len = strlen(bin->binary.op);
-
-        // Check if operator ends with '=' but is not ==, !=, <=, >=
-        if (op_len > 1 && bin->binary.op[op_len - 1] == '=')
-        {
-            char c = bin->binary.op[0];
-            if (c != '=' && c != '!' && c != '<' && c != '>')
-            {
-                is_compound = 1;
-            }
-            // Special handle for <<= and >>=
-            if (strcmp(bin->binary.op, "<<=") == 0 || strcmp(bin->binary.op, ">>=") == 0)
-            {
-                is_compound = 1;
-            }
-        }
-
-        if (is_compound)
+        // `x op= y` becomes `x = x op y`.
+        const OperatorInfo *assign_info = operator_info(bin->binary.op);
+        if (assign_info && assign_info->compound != OP_NONE)
         {
             ASTNode *op_node = ast_create(NODE_EXPR_BINARY);
             op_node->binary.left = lhs;
             op_node->binary.right = rhs;
 
-            // Extract the base operator (remove last char '=')
-            size_t inner_op_len = op_len - 1;
-            char *inner_op = xmalloc((size_t)(inner_op_len + 1));
-            strncpy(inner_op, bin->binary.op, (size_t)(inner_op_len));
-            inner_op[inner_op_len] = '\0';
-            op_node->binary.op = inner_op;
+            op_node->binary.op = assign_info->compound;
 
             // Inherit type info temporarily
             if (lhs->type_info && rhs->type_info && type_eq(lhs->type_info, rhs->type_info))
@@ -1871,7 +1815,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 op_node->type_info = lhs->type_info;
             }
 
-            const char *inner_method = get_operator_method(inner_op);
+            const char *inner_method = operator_info(assign_info->compound)->method;
             if (inner_method)
             {
                 Type *lt = lhs->type_info;
@@ -1899,7 +1843,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             !is_lhs_ptr)
                         {
                             ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                            addr->unary.op = xstrdup("&");
+                            addr->unary.op = OP_ADDRESS;
                             addr->unary.operand = lhs;
                             addr->type_info = type_new_ptr(lt);
                             arg1 = addr;
@@ -1907,7 +1851,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         else if (is_lhs_ptr && sig->arg_types[0]->kind != TYPE_POINTER)
                         {
                             ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                            deref->unary.op = xstrdup("*");
+                            deref->unary.op = OP_DEREF;
                             deref->unary.operand = lhs;
                             arg1 = deref;
                         }
@@ -1928,13 +1872,12 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
             }
 
-            zfree(bin->binary.op);
-            bin->binary.op = xstrdup("=");
+            bin->binary.op = OP_ASSIGN;
             bin->binary.right = op_node;
         }
 
         // Index Set Overload: Call(get, idx) = val  -->  Call(set, idx, val)
-        if (strcmp(bin->binary.op, "=") == 0 && lhs->kind == NODE_EXPR_CALL)
+        if (bin->binary.op == OP_ASSIGN && lhs->kind == NODE_EXPR_CALL)
         {
             if (lhs->call.callee->kind == NODE_EXPR_VAR)
             {
@@ -2007,7 +1950,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
         }
 
-        const char *method = get_operator_method(bin->binary.op);
+        const char *method = operator_method(bin->binary.op);
 
         if (method && lhs)
         {
@@ -2020,8 +1963,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             // If we are comparing pointers with == or !=, do NOT rewrite to .eq()
             // We want pointer equality, not value equality (which requires dereferencing)
             // But strict check: Only if BOTH are pointers. If one is value, we might need rewrite.
-            if (is_lhs_ptr && struct_name &&
-                (strcmp(bin->binary.op, "==") == 0 || strcmp(bin->binary.op, "!=") == 0))
+            if (is_lhs_ptr && struct_name && (bin->binary.op == OP_EQ || bin->binary.op == OP_NE))
             {
                 int is_rhs_ptr = 0;
                 char *r_alloc = NULL;
@@ -2054,7 +1996,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                 // Without a `neq` method, `a != b` is `!a.eq(b)`.
                 int negate = 0;
-                if (!sig && strcmp(bin->binary.op, "!=") == 0)
+                if (!sig && bin->binary.op == OP_NE)
                 {
                     zfree(mangled);
                     sig = find_method_sig(ctx, struct_name, "eq", &mangled, &trait);
@@ -2082,7 +2024,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             int is_rvalue = expr_is_rvalue(ctx, lhs);
 
                             ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                            addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
+                            addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
                             addr->unary.owns_temp = is_rvalue;
                             addr->unary.operand = lhs;
                             addr->type_info = type_new_ptr(lt);
@@ -2096,7 +2038,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         {
                             // Have pointer, need value -> *lhs
                             ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                            deref->unary.op = xstrdup("*");
+                            deref->unary.op = OP_DEREF;
                             deref->unary.operand = lhs;
                             if (lt && lt->kind == TYPE_POINTER)
                             {
@@ -2120,7 +2062,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     {
                         ASTNode *not_node = ast_create(NODE_EXPR_UNARY);
                         not_node->token = t;
-                        not_node->unary.op = xstrdup("!");
+                        not_node->unary.op = OP_NOT;
                         not_node->unary.operand = call;
                         not_node->type_info = type_new(TYPE_BOOL);
                         lhs = not_node;
@@ -2194,9 +2136,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
             }
 
-            if (is_comparison_op(bin->binary.op))
+            if (is_comparison_operator(bin->binary.op))
             {
-                bin->type_info = type_new(TYPE_INT); // bool
+                bin->type_info = type_new(TYPE_I32); // bool
                 char *t1 = type_to_string(lhs->type_info);
                 char *t2 = type_to_string(rhs->type_info);
                 // Skip type check if either operand is void* (escape hatch type)
@@ -2266,7 +2208,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     {
                         zwarn_at(op, "LSP: %s", msg);
                         // Assume result is int (bool) to continue
-                        bin->type_info = type_new(TYPE_INT);
+                        bin->type_info = type_new(TYPE_I32);
                     }
                     else
                     {
@@ -2316,7 +2258,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     int is_ptr_arith = 0;
                     if (!alias_match)
                     {
-                        if (strcmp(bin->binary.op, "+") == 0 || strcmp(bin->binary.op, "-") == 0)
+                        if (bin->binary.op == OP_ADD || bin->binary.op == OP_SUB)
                         {
                             int lhs_is_ptr = (lhs->type_info->kind == TYPE_POINTER ||
                                               lhs->type_info->kind == TYPE_STRING ||
@@ -2384,7 +2326,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                         // Allow assigning 0 to pointer (NULL)
                         int is_null_assign = 0;
-                        if (strcmp(bin->binary.op, "=") == 0)
+                        if (bin->binary.op == OP_ASSIGN)
                         {
                             int lhs_is_ptr = (lhs->type_info->kind == TYPE_POINTER ||
                                               lhs->type_info->kind == TYPE_STRING ||
@@ -2401,20 +2343,16 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             // Check for arithmetic promotion (Int * Float, etc)
                             int lhs_is_num = is_integer_type(lhs->type_info) ||
                                              lhs->type_info->kind == TYPE_F32 ||
-                                             lhs->type_info->kind == TYPE_F64 ||
-                                             lhs->type_info->kind == TYPE_FLOAT;
+                                             lhs->type_info->kind == TYPE_F64;
                             int rhs_is_num = is_integer_type(rhs->type_info) ||
                                              rhs->type_info->kind == TYPE_F32 ||
-                                             rhs->type_info->kind == TYPE_F64 ||
-                                             rhs->type_info->kind == TYPE_FLOAT;
+                                             rhs->type_info->kind == TYPE_F64;
 
                             int valid_arith = 0;
                             if (lhs_is_num && rhs_is_num)
                             {
-                                if (strcmp(bin->binary.op, "+") == 0 ||
-                                    strcmp(bin->binary.op, "-") == 0 ||
-                                    strcmp(bin->binary.op, "*") == 0 ||
-                                    strcmp(bin->binary.op, "/") == 0)
+                                if (bin->binary.op == OP_ADD || bin->binary.op == OP_SUB ||
+                                    bin->binary.op == OP_MUL || bin->binary.op == OP_DIV)
                                 {
                                     valid_arith = 1;
                                     // Result is the float type if one is float
@@ -2426,13 +2364,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                                              : rhs->type_info;
                                     }
                                     else if (lhs->type_info->kind == TYPE_F32 ||
-                                             rhs->type_info->kind == TYPE_F32 ||
-                                             lhs->type_info->kind == TYPE_FLOAT ||
-                                             rhs->type_info->kind == TYPE_FLOAT)
+                                             rhs->type_info->kind == TYPE_F32)
                                     {
                                         // Pick the float type. If both float, pick lhs.
-                                        if (lhs->type_info->kind == TYPE_F32 ||
-                                            lhs->type_info->kind == TYPE_FLOAT)
+                                        if (lhs->type_info->kind == TYPE_F32)
                                         {
                                             bin->type_info = lhs->type_info;
                                         }
@@ -2453,7 +2388,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                 char msg[MAX_SHORT_MSG_LEN];
                                 snprintf(msg, sizeof(msg),
                                          "Type mismatch in binary operation '%s'", /* safe */
-                                         bin->binary.op);
+                                         operator_spelling(bin->binary.op));
 
                                 char suggestion[MAX_MANGLED_NAME_LEN];
                                 sprintf(/* safe */

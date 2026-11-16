@@ -1,4 +1,4 @@
-// language/features/operators: compound assignment operators (+= -= *= /= %=)
+// language/features/operators: compound assignment operators (+= -= *= /= %= |= &= ^= <<= >>= **=)
 
 test "compound_add_int" {
     let x = 10;
@@ -36,4 +36,38 @@ test "compound_chain" {
     x *= 3;
     x -= 4;
     expect_eq(x, 5, "chained compound assigns should work left-to-right");
+}
+
+test "compound_bitwise_int" {
+    let x = 12;
+    x |= 3;
+    expect_eq(x, 15, "int |= should or and assign");
+    x &= 6;
+    expect_eq(x, 6, "int &= should and and assign");
+    x ^= 5;
+    expect_eq(x, 3, "int ^= should xor and assign");
+}
+
+test "compound_shift_int" {
+    let x = 3;
+    x <<= 2;
+    expect_eq(x, 12, "int <<= should shift left and assign");
+    x >>= 1;
+    expect_eq(x, 6, "int >>= should shift right and assign");
+}
+
+test "compound_pow_int" {
+    let x = 3;
+    x **= 2;
+    expect_eq(x, 9, "int **= should raise to the power and assign");
+}
+
+struct Counter { n: int; }
+
+test "compound_on_field" {
+    let c = Counter { n: 20 };
+    c.n %= 6;
+    expect_eq(c.n, 2, "%= on a field should modulo and assign");
+    c.n <<= 3;
+    expect_eq(c.n, 16, "<<= on a field should shift and assign");
 }

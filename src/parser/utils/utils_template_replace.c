@@ -145,11 +145,11 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c)
 
     if (strcmp(c, "int") == 0)
     {
-        return type_new(TYPE_INT);
+        return type_new(TYPE_I32);
     }
     if (strcmp(c, "float") == 0)
     {
-        return type_new(TYPE_FLOAT);
+        return type_new(TYPE_F32);
     }
     if (strcmp(c, "void") == 0)
     {
@@ -221,7 +221,7 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c)
     }
     if (strcmp(c, "uint") == 0)
     {
-        return type_new(TYPE_UINT);
+        return type_new(TYPE_U32);
     }
 
     if (strcmp(c, "byte") == 0)
@@ -451,10 +451,10 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
     case NODE_EXPR_BINARY:
         new_node->binary.left = copy_ast_replacing(ctx, n->binary.left, b, os, ns);
         new_node->binary.right = copy_ast_replacing(ctx, n->binary.right, b, os, ns);
-        new_node->binary.op = n->binary.op ? xstrdup(n->binary.op) : NULL;
+        new_node->binary.op = n->binary.op;
         break;
     case NODE_EXPR_UNARY:
-        new_node->unary.op = n->unary.op ? xstrdup(n->unary.op) : NULL;
+        new_node->unary.op = n->unary.op;
         new_node->unary.operand = copy_ast_replacing(ctx, n->unary.operand, b, os, ns);
         break;
     case NODE_EXPR_CALL:

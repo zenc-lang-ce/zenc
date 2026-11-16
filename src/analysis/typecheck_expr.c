@@ -40,7 +40,7 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
             mark_symbol_moved(tc->pctx, sym, rvalue);
         }
     }
-    else if (rvalue->kind == NODE_EXPR_UNARY && strcmp(rvalue->unary.op, "*") == 0)
+    else if (rvalue->kind == NODE_EXPR_UNARY && rvalue->unary.op == OP_DEREF)
     {
         const char *hints[] = {"This type owns resources and cannot be implicitly copied",
                                "Consider borrowing value via references or implementing Copy",
@@ -66,7 +66,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     check_node(tc, node->unary.operand, depth + 1);
 
     Type *operand_type = node->unary.operand->type_info;
-    const char *op = node->unary.op;
+    OperatorKind unop = node->unary.op;
 
     if (!operand_type)
     {
@@ -74,14 +74,14 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     // Logical NOT: !
-    if (strcmp(op, "!") == 0)
+    if (unop == OP_NOT)
     {
         node->type_info = type_new(TYPE_BOOL);
         return;
     }
 
     // Numeric negation: -
-    if (strcmp(op, "-") == 0)
+    if (unop == OP_NEG)
     {
         if (!is_integer_type(operand_type) && !is_float_type(operand_type))
         {
@@ -96,7 +96,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     // Dereference: *
-    if (strcmp(op, "*") == 0)
+    if (unop == OP_DEREF)
     {
         if (operand_type->kind == TYPE_UNKNOWN)
         {
@@ -127,7 +127,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     // Bitwise NOT: ~
-    if (strcmp(op, "~") == 0)
+    if (unop == OP_BIT_NOT)
     {
         if (!is_integer_type(operand_type))
         {
@@ -142,8 +142,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
         return;
     }
 
-    if (strcmp(op, "++") == 0 || strcmp(op, "--") == 0 || strcmp(op, "_post++") == 0 ||
-        strcmp(op, "_post--") == 0)
+    if (unop == OP_PRE_INC || unop == OP_PRE_DEC || unop == OP_POST_INC || unop == OP_POST_DEC)
     {
         misra_check_inc_dec_result_used(tc->pctx, node->token);
         // Track as a write
@@ -156,7 +155,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
             }
         }
         else if (node->unary.operand->kind == NODE_EXPR_UNARY &&
-                 strcmp(node->unary.operand->unary.op, "*") == 0)
+                 node->unary.operand->unary.op == OP_DEREF)
         {
             ASTNode *inner = node->unary.operand->unary.operand;
             if (inner->kind == NODE_EXPR_VAR)
@@ -178,19 +177,15 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     // Address-of: &
-    if (strcmp(op, "&") == 0 || strcmp(op, "&_rval") == 0)
+    if (unop == OP_ADDRESS || unop == OP_ADDRESS_RVALUE)
     {
         node->type_info = type_new_ptr(operand_type);
-        // Record provenance depth for escape analysis
-        if (node->unary.operand->kind == NODE_EXPR_VAR)
+        // The address points where its operand lives.
+        if (unop == OP_ADDRESS)
         {
-            ZenSymbol *sym = tc_lookup(tc, node->unary.operand->var_ref.name);
-            if (sym)
-            {
-                node->type_info->lifetime_depth = sym->scope_depth;
-            }
+            node->type_info->lifetime_depth = tc_storage_depth(tc, node->unary.operand);
         }
-        else if (strcmp(op, "&_rval") == 0)
+        else
         {
             // R-values are temporaries, their life is the current code block
             if (node->unary.operand->type_info)
@@ -202,26 +197,18 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
                 node->type_info->lifetime_depth = tc->current_depth;
             }
         }
-        else
-        {
-            // For complex targets (e.g. &array[0]), inherit from the operand if it has a lifetime
-            if (operand_type)
-            {
-                node->type_info->lifetime_depth = operand_type->lifetime_depth;
-            }
-        }
         return;
     }
 }
 
 void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
 {
-    const char *op = node->binary.op;
+    OperatorKind binop = node->binary.op;
+    const char *op = operator_spelling(binop);
+    OperatorClass op_class = operator_class(binop);
     Type *contextual_type = node->type_info;
 
-    if (strcmp(op, "=") == 0 ||
-        (strlen(op) > 1 && op[strlen(op) - 1] == '=' && strcmp(op, "==") != 0 &&
-         strcmp(op, "!=") != 0 && strcmp(op, "<=") != 0 && strcmp(op, ">=") != 0))
+    if (is_assignment_operator(binop))
     {
         if (!tc->is_stmt_context)
         {
@@ -308,11 +295,11 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
         tc->is_stmt_context = old_stmt_ctx;
 
         // Rule 13.2: Side effect collision detection for binary operators
-        if (strcmp(op, "&&") != 0 && strcmp(op, "||") != 0 && strcmp(op, ",") != 0)
+        if (binop != OP_AND && binop != OP_OR)
         {
             check_side_effect_collision(tc, node->binary.left, node->binary.right, node->token);
         }
-        else if (tc->pctx->config->misra_mode && (strcmp(op, "&&") == 0 || strcmp(op, "||") == 0))
+        else if (tc->pctx->config->misra_mode && (binop == OP_AND || binop == OP_OR))
         {
             // Rule 13.5: The RHS of && or || shall not contain persistent side effects
             SymbolSet r_reads = {0}, r_writes = {0};
@@ -326,7 +313,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     // Rule 19.1: Check for self-assignment (x = x)
-    if (tc->pctx->config->misra_mode && strcmp(op, "=") == 0)
+    if (tc->pctx->config->misra_mode && binop == OP_ASSIGN)
     {
         misra_check_assignment_overlap(tc->pctx, node->binary.left, node->binary.right,
                                        node->token);
@@ -341,15 +328,30 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
     Type *right_type = node->binary.right->type_info;
 
     // Assignment Logic for Moves (and type compatibility)
-    if (strcmp(op, "=") == 0)
+    if (binop == OP_ASSIGN)
     {
         // Check type compatibility for assignment
         if (left_type && right_type)
         {
             apply_implicit_struct_pointer_conversions(tc, &node->binary.right, left_type);
             right_type = node->binary.right->type_info;
-            check_type_compatibility(tc, left_type, right_type, node->binary.right->token,
+            // The value must not point into a scope shorter than the place it is stored in.
+            Type *place_type = type_clone(left_type);
+            place_type->lifetime_depth = tc_storage_depth(tc, node->binary.left);
+            check_type_compatibility(tc, place_type, right_type, node->binary.right->token,
                                      node->binary.right, 0);
+            // A variable points as deep as any value assigned to it. Its symbol gets its own
+            // copy of the type: a parameter's is the signature's.
+            if (node->binary.left->kind == NODE_EXPR_VAR && right_type)
+            {
+                ZenSymbol *var = tc_lookup(tc, node->binary.left->var_ref.name);
+                if (var && var->type_info &&
+                    right_type->lifetime_depth > var->type_info->lifetime_depth)
+                {
+                    var->type_info = type_clone(var->type_info);
+                    var->type_info->lifetime_depth = right_type->lifetime_depth;
+                }
+            }
 
             // Mark LHS as written to
             if (node->binary.left->kind == NODE_EXPR_VAR)
@@ -361,7 +363,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
             else if (node->binary.left->kind == NODE_EXPR_UNARY &&
-                     strcmp(node->binary.left->unary.op, "*") == 0)
+                     node->binary.left->unary.op == OP_DEREF)
             {
                 ASTNode *inner = node->binary.left->unary.operand;
                 if (inner->kind == NODE_EXPR_VAR)
@@ -440,26 +442,29 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     // Arithmetic operators: +, -, *, /, %
-    if (strcmp(op, "+") == 0 || strcmp(op, "-") == 0 || strcmp(op, "*") == 0 ||
-        strcmp(op, "/") == 0 || strcmp(op, "%") == 0)
+    if (binop == OP_ADD || binop == OP_SUB || binop == OP_MUL || binop == OP_DIV || binop == OP_MOD)
     {
-        // Division by zero detection for / and %
-        if ((strcmp(op, "/") == 0 || strcmp(op, "%") == 0) && node->binary.right &&
+        // Division by a literal zero (`0` or `0.0`). The operation decides: with a float operand
+        // C divides as floats, also by an integer `0`, and the result is defined (IEEE 754:
+        // infinity or NaN, as `1.0 / 0.0` spells infinity); between integers it is undefined.
+        if ((binop == OP_DIV || binop == OP_MOD) && node->binary.right &&
             node->binary.right->kind == NODE_EXPR_LITERAL)
         {
-            LiteralKind kind = node->binary.right->literal.kind;
-            if (kind == LITERAL_INT && node->binary.right->literal.int_val == 0)
+            ASTNode *divisor = node->binary.right;
+            int is_zero = (divisor->literal.kind == LITERAL_INT && divisor->literal.int_val == 0) ||
+                          (divisor->literal.kind == LITERAL_FLOAT &&
+                           divisor->literal.float_val >= -0.0 && divisor->literal.float_val <= 0.0);
+            int is_float_operation = (left_type && is_float_type(resolve_alias(left_type))) ||
+                                     (right_type && is_float_type(resolve_alias(right_type)));
+            if (is_zero && is_float_operation)
+            {
+                tc_warning(tc, divisor->token,
+                           "Float division by zero: the result is infinity or NaN");
+            }
+            else if (is_zero)
             {
                 const char *hints[] = {"Division by zero is undefined behavior", NULL};
-                tc_error_with_hints(tc, node->binary.right->token, "Division by zero detected",
-                                    hints);
-            }
-            else if (kind == LITERAL_FLOAT && node->binary.right->literal.float_val >= -0.0 &&
-                     node->binary.right->literal.float_val <= 0.0)
-            {
-                const char *hints[] = {"Division by zero results in infinity or NaN", NULL};
-                tc_error_with_hints(tc, node->binary.right->token, "Division by zero detected",
-                                    hints);
+                tc_error_with_hints(tc, divisor->token, "Division by zero detected", hints);
             }
         }
 
@@ -474,7 +479,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 misra_check_pointer_arithmetic(tc->pctx, lhs_resolved, node->token);
 
                 // Ptr - Ptr -> isize
-                if (strcmp(op, "-") == 0 &&
+                if (binop == OP_SUB &&
                     (rhs_resolved->kind == TYPE_POINTER || rhs_resolved->kind == TYPE_STRING))
                 {
                     node->type_info = type_new(TYPE_ISIZE);
@@ -482,14 +487,14 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 }
                 // Ptr + Int -> Ptr
                 // Ptr - Int -> Ptr
-                if ((strcmp(op, "+") == 0 || strcmp(op, "-") == 0) && is_integer_type(rhs_resolved))
+                if ((binop == OP_ADD || binop == OP_SUB) && is_integer_type(rhs_resolved))
                 {
                     node->type_info = left_type;
                     return;
                 }
             }
             // Int + Ptr -> Ptr
-            if (strcmp(op, "+") == 0 && is_integer_type(lhs_resolved) &&
+            if (binop == OP_ADD && is_integer_type(lhs_resolved) &&
                 (rhs_resolved->kind == TYPE_POINTER || rhs_resolved->kind == TYPE_STRING))
             {
                 misra_check_pointer_arithmetic(tc->pctx, rhs_resolved, node->token);
@@ -497,9 +502,12 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 return;
             }
 
-            int left_numeric = is_integer_type(left_type) || is_float_type(left_type) ||
+            // An opaque alias of a number is a number in the file that defines it.
+            Type *left_seen = type_seen_from(left_type, node->token.file);
+            Type *right_seen = type_seen_from(right_type, node->token.file);
+            int left_numeric = is_integer_type(left_seen) || is_float_type(left_seen) ||
                                left_type->kind == TYPE_VECTOR;
-            int right_numeric = is_integer_type(right_type) || is_float_type(right_type) ||
+            int right_numeric = is_integer_type(right_seen) || is_float_type(right_seen) ||
                                 right_type->kind == TYPE_VECTOR;
 
             if (!left_numeric || !right_numeric)
@@ -545,29 +553,29 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                         eval_const_int_expr(node->binary.right, tc->pctx, &rval))
                     {
                         long long res = 0;
-                        if (strcmp(op, "+") == 0)
+                        if (binop == OP_ADD)
                         {
                             res = lval + rval;
                         }
-                        else if (strcmp(op, "-") == 0)
+                        else if (binop == OP_SUB)
                         {
                             res = lval - rval;
                         }
-                        else if (strcmp(op, "*") == 0)
+                        else if (binop == OP_MUL)
                         {
                             res = lval * rval;
                         }
 
-                        if (strcmp(op, "+") == 0 || strcmp(op, "-") == 0 || strcmp(op, "*") == 0)
+                        if (binop == OP_ADD || binop == OP_SUB || binop == OP_MUL)
                         {
-                            misra_check_unsigned_wrap(tc->pctx, op, lval, rval, res, target_type,
+                            misra_check_unsigned_wrap(tc->pctx, binop, lval, rval, res, target_type,
                                                       node->token);
                         }
                     }
                 }
 
                 // Rule 10.2: Character arithmetic
-                misra_check_char_arithmetic(tc->pctx, left_type, right_type, op, node->token);
+                misra_check_char_arithmetic(tc->pctx, left_type, right_type, binop, node->token);
 
                 // Result type: Only infer if not already set by context
                 if (!node->type_info)
@@ -592,8 +600,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     // Comparison operators: ==, !=, <, >, <=, >=
-    if (strcmp(op, "==") == 0 || strcmp(op, "!=") == 0 || strcmp(op, "<") == 0 ||
-        strcmp(op, ">") == 0 || strcmp(op, "<=") == 0 || strcmp(op, ">=") == 0)
+    if (op_class == OPERATOR_COMPARISON)
     {
         // Result is always bool
         node->type_info = type_new(TYPE_BOOL);
@@ -606,8 +613,8 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                                                   node->token);
 
             // Rule 18.3: Relational operators on pointers (>, <, >=, <=)
-            if (tc->pctx->config->misra_mode && (strcmp(op, "<") == 0 || strcmp(op, ">") == 0 ||
-                                                 strcmp(op, "<=") == 0 || strcmp(op, ">=") == 0))
+            if (tc->pctx->config->misra_mode &&
+                (binop == OP_LT || binop == OP_GT || binop == OP_LE || binop == OP_GE))
             {
                 Type *l_resolved = resolve_alias(left_type);
                 Type *r_resolved = resolve_alias(right_type);
@@ -623,9 +630,12 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
 
             if (!type_eq(left_type, right_type))
             {
-                // Allow comparison between numeric types
-                int left_numeric = is_integer_type(left_type) || is_float_type(left_type);
-                int right_numeric = is_integer_type(right_type) || is_float_type(right_type);
+                // Allow comparison between numeric types, an opaque alias of a number
+                // among them in the file that defines it.
+                Type *left_seen = type_seen_from(left_type, node->token.file);
+                Type *right_seen = type_seen_from(right_type, node->token.file);
+                int left_numeric = is_integer_type(left_seen) || is_float_type(left_seen);
+                int right_numeric = is_integer_type(right_seen) || is_float_type(right_seen);
 
                 if (!left_numeric || !right_numeric)
                 {
@@ -647,7 +657,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     // Logical operators: &&, ||
-    if (strcmp(op, "&&") == 0 || strcmp(op, "||") == 0)
+    if (op_class == OPERATOR_LOGICAL)
     {
         node->type_info = type_new(TYPE_BOOL);
         // Could validate that operands are boolean-like, but C is lax here
@@ -655,11 +665,10 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     // Bitwise operators: &, |, ^, <<, >>
-    if (strcmp(op, "&") == 0 || strcmp(op, "|") == 0 || strcmp(op, "^") == 0 ||
-        strcmp(op, "<<") == 0 || strcmp(op, ">>") == 0)
+    if (op_class == OPERATOR_BITWISE || op_class == OPERATOR_SHIFT)
     {
         // MISRA Rule 12.2: Shift amount validation for << and >>
-        if (tc->pctx->config->misra_mode && (strcmp(op, "<<") == 0 || strcmp(op, ">>") == 0))
+        if (tc->pctx->config->misra_mode && op_class == OPERATOR_SHIFT)
         {
             long long shift_amt;
             if (eval_const_int_expr(node->binary.right, tc->pctx, &shift_amt))
@@ -668,7 +677,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 misra_check_shift_amount(tc->pctx, shift_amt, width, node->token);
             }
         }
-        else if ((strcmp(op, "<<") == 0 || strcmp(op, ">>") == 0) && node->binary.right &&
+        else if (op_class == OPERATOR_SHIFT && node->binary.right &&
                  node->binary.right->kind == NODE_EXPR_LITERAL &&
                  node->binary.right->literal.kind == LITERAL_INT)
         {
@@ -680,8 +689,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 tc_error_with_hints(tc, node->binary.right->token, "Shift amount too large", hints);
             }
             else if (shift_amt >= 32 && left_type &&
-                     (left_type->kind == TYPE_INT || left_type->kind == TYPE_UINT ||
-                      left_type->kind == TYPE_I32 || left_type->kind == TYPE_U32 ||
+                     (left_type->kind == TYPE_I32 || left_type->kind == TYPE_U32 ||
                       left_type->kind == TYPE_C_INT || left_type->kind == TYPE_C_UINT))
             {
                 const char *hints[] = {
@@ -718,7 +726,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                     misra_check_bitwise_operand(tc->pctx, left_type, node->token);
                     misra_check_bitwise_operand(tc->pctx, right_type, node->token);
                     // Rule 10.4: Balancing for &, |, ^
-                    if (strcmp(op, "&") == 0 || strcmp(op, "|") == 0 || strcmp(op, "^") == 0)
+                    if (op_class == OPERATOR_BITWISE)
                     {
                         misra_check_binary_op_essential_types(tc->pctx, node->binary.left,
                                                               node->binary.right, node->token);
@@ -766,7 +774,7 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
 
     {
         ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-        deref->unary.op = xstrdup("*");
+        deref->unary.op = OP_DEREF;
         deref->unary.operand = expr;
         deref->type_info = a_res->inner;
         deref->token = expr->token;
@@ -781,7 +789,7 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
     {
         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
         int is_rvalue = expr_is_rvalue(tc->pctx, expr);
-        addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
+        addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
         addr->unary.operand = expr;
         addr->type_info = e_res;
         addr->token = expr->token;
@@ -958,6 +966,17 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         return 1;
     }
 
+    // In the file that defines it, an opaque alias converts to and from its underlying type. Two
+    // opaque aliases are the same type only when they are the same alias, which type_eq tells.
+    Type *target_inner = get_inner_type(target);
+    Type *value_inner = get_inner_type(value);
+    int both_opaque = target_inner->kind == TYPE_ALIAS && target_inner->alias.is_opaque_alias &&
+                      value_inner->kind == TYPE_ALIAS && value_inner->alias.is_opaque_alias;
+    if (!both_opaque && type_eq(type_seen_from(target, t.file), type_seen_from(value, t.file)))
+    {
+        return 1;
+    }
+
     if (tc->pctx->config->misra_mode)
     {
         // Remaining pointer nesting and array param size checks are modularized
@@ -1021,7 +1040,7 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     }
 
     // Trait object compatibility: Struct -> Trait
-    if (resolved_target->name && is_trait(type_def_name(resolved_target)) &&
+    if (resolved_target->name && is_trait(tc->pctx, type_def_name(resolved_target)) &&
         resolved_value->kind == TYPE_STRUCT && resolved_value->name)
     {
         if (check_impl(tc->pctx, type_def_name(resolved_target), type_def_name(resolved_value)))
@@ -1144,6 +1163,75 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
     if (!tc->is_assign_lhs)
     {
         check_use_validity(tc, node);
+    }
+}
+
+// Whether the operator `op` makes a constant that a `target` can hold: arithmetic for any number,
+// bitwise operators and shifts for an integer.
+static int is_constant_operator(OperatorKind op, Type *target)
+{
+    OperatorClass c = operator_class(op);
+    if (c == OPERATOR_ARITHMETIC)
+    {
+        return 1;
+    }
+    return (c == OPERATOR_BITWISE || c == OPERATOR_SHIFT) && is_integer_type(target);
+}
+
+// Whether `node` is made only of untyped literals (`5`, `0.5`) under arithmetic and bitwise
+// operators, and `target` can hold it: an integer literal any integer or float type, a float
+// literal any float type.
+static int is_untyped_constant(ASTNode *node, Type *target)
+{
+    switch (node->kind)
+    {
+    case NODE_EXPR_LITERAL:
+        if (!node->literal.is_untyped)
+        {
+            return 0;
+        }
+        if (node->literal.kind == LITERAL_INT)
+        {
+            return is_integer_type(target) || is_float_type(target);
+        }
+        return node->literal.kind == LITERAL_FLOAT && is_float_type(target);
+    case NODE_EXPR_UNARY:
+        return is_constant_operator(node->unary.op, target) &&
+               is_untyped_constant(node->unary.operand, target);
+    case NODE_EXPR_BINARY:
+        return is_constant_operator(node->binary.op, target) &&
+               is_untyped_constant(node->binary.left, target) &&
+               is_untyped_constant(node->binary.right, target);
+    default:
+        return 0;
+    }
+}
+
+// A value whose type comes from its context takes the type `expected` before it is checked:
+// - an untyped constant (`5`, `-5`, `0.5`, `255 + 1`) when that type can hold it. The expression
+//   takes the type, as C converts its value to it; its literals keep the type C computes them in
+//   (`1 << 40` is still a shift of an `int`, which the checks of the operator see);
+// - a lambda, when a function type is expected (check_expr_lambda reads it: a lambda for a
+//   `fn*` is emitted without a context).
+// Any other value keeps its own type, for the caller to compare with the expected one.
+void adopt_context_type(ASTNode *value, Type *expected)
+{
+    if (!value || !expected)
+    {
+        return;
+    }
+    Type *target = get_inner_type(expected);
+    if (value->kind == NODE_LAMBDA)
+    {
+        if (target->kind == TYPE_FUNCTION)
+        {
+            value->type_info = expected;
+        }
+        return;
+    }
+    if (is_untyped_constant(value, target))
+    {
+        value->type_info = expected;
     }
 }
 
@@ -1277,7 +1365,7 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
             // Localize expected field type depth for initialization check.
             // A local struct's fields expect lifetimes compatible with the struct's own scope.
             Type *localized_expected = type_clone(expected_type);
-            if (localized_expected && tc->current_func)
+            if (localized_expected && tc->current_depth > 0)
             {
                 localized_expected->lifetime_depth = tc->current_depth;
             }
@@ -1290,6 +1378,23 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         check_move_for_rvalue(tc, field_init->var_decl.init_expr);
 
         field_init = field_init->next;
+    }
+
+    // A struct points where the deepest of its fields points. Its own copy of the type: the
+    // struct's Type may be shared.
+    int deepest = 0;
+    for (ASTNode *fi = node->struct_init.fields; fi; fi = fi->next)
+    {
+        ASTNode *value = fi->var_decl.init_expr;
+        if (value && value->type_info && value->type_info->lifetime_depth > deepest)
+        {
+            deepest = value->type_info->lifetime_depth;
+        }
+    }
+    if (node->type_info && deepest != node->type_info->lifetime_depth)
+    {
+        node->type_info = type_clone(node->type_info);
+        node->type_info->lifetime_depth = deepest;
     }
 
     // Fields left out of a struct literal are zero-initialised (the C designated

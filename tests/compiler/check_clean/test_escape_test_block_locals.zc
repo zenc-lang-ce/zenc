@@ -1,0 +1,33 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A variable in a `test` block is a local, as one in a function is: a pointer
+// taken from another local of the same block does not escape.
+
+struct Wrapper {
+    text: char*;
+}
+
+struct Holder {
+    value: i32*;
+}
+
+impl Wrapper {
+    fn get(self) -> char* {
+        return self.text;
+    }
+}
+
+test "a method result assigned to a local" {
+    let w = Wrapper{text: "x"};
+    let s: char* = "a";
+    s = w.get();
+    assert(s[0] == 'x', "the method result");
+}
+
+test "a local's address in a struct literal" {
+    let n = 3;
+    let h = Holder{value: &n};
+    assert(*h.value == 3, "the field");
+}
+
+fn main() {
+}

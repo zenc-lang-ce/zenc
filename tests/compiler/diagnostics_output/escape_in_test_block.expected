@@ -1,0 +1,12 @@
+   Compiling tests/compiler/diagnostics_output/escape_in_test_block.zc...
+error: Escape analysis error: pointer assigned to a location that outlives it
+  --> tests/compiler/diagnostics_output/escape_in_test_block.zc:9:13
+   |
+9  |         p = &m;
+   |             ^ here
+   |
+   = help: The source pointer belongs to a child scope and will become invalid when that scope ends.
+   = help: Consider copying the value instead of taking a reference.
+     error: semantic analysis found 1 error
+       Check failed with 1 errors
+[exit 1]

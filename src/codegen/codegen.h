@@ -170,7 +170,6 @@ int emit_move_invalidation(ParserContext *ctx, ASTNode *node);
 int emit_moved_out(ParserContext *ctx, ASTNode *node);
 void codegen_expression_with_move(ParserContext *ctx, ASTNode *node);
 void emit_mangled_name(ParserContext *ctx, const char *base, const char *method);
-int is_simple_enum(ParserContext *ctx, const char *enum_name);
 int is_enum_type_name(ParserContext *ctx, const char *name);
 
 // Declaration emission  (codegen_decl.c).
