@@ -144,7 +144,6 @@ int lsp_main(ZenCompiler *compiler, int argc, char **argv)
         if (g_lsp_request_is_readonly)
         {
             zarena_restore(&g_arena, arena_mark);
-            clear_registered_traits();
         }
         else if (g_project)
         {
