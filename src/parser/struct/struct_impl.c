@@ -197,12 +197,20 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             }
             register_generic(ctx, gt);
         }
+        // A type imported one by one, or in a module its own type (`impl Drop for Arena` of a
+        // module imported with `as`).
+        char *type_name = type_declaration_name(ctx, name2);
+        if (type_name)
+        {
+            zfree(name2);
+            name2 = type_name;
+        }
         Type *target = impl_target(ctx, name2);
         name2 = type_impl_name(target);
 
         // Check for common error: swapped Struct and Trait
         // impl MyStruct for MyTrait (Wrong) vs impl MyTrait for MyStruct (Correct)
-        if (!is_trait(name1) && is_trait(name2))
+        if (!is_trait(ctx, name1) && is_trait(ctx, name2))
         {
             zpanic_at(t1,
                       "Incorrect usage of impl. Did you mean 'impl %s for %s'? Syntax is 'impl "
@@ -321,12 +329,12 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
     {
         // Regular impl Struct (impl Box or impl Box<T>)
 
-        // Auto-prefix struct name if in module context
-        if (ctx->imports.current_module_prefix && !gen_param && !is_extern_symbol(ctx, name1))
+        // A type imported one by one, or in a module its own type.
+        char *type_name = type_declaration_name(ctx, name1);
+        if (type_name)
         {
-            char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name1);
             zfree(name1);
-            name1 = prefixed_name;
+            name1 = type_name;
         }
 
         Type *target = impl_target(ctx, name1);

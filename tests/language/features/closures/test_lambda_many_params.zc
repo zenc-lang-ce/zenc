@@ -1,0 +1,27 @@
+// closures: test_lambda_many_params
+// Lambdas with more parameters, and a call with more generic arguments, than the parser used to
+// make room for (16 parameters, 8 generic arguments).
+
+fn last_of<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>(_p0: T0, _p1: T1, _p2: T2, _p3: T3, _p4: T4, _p5: T5, _p6: T6, _p7: T7, _p8: T8, p9: T9) -> T9 {
+    return p9;
+}
+
+test "a fn lambda takes 20 parameters" {
+    let sum = fn(a0: int, a1: int, a2: int, a3: int, a4: int, a5: int, a6: int, a7: int, a8: int, a9: int, a10: int, a11: int, a12: int, a13: int, a14: int, a15: int, a16: int, a17: int, a18: int, a19: int) -> int { return a0 + a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19; };
+    assert(sum(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) == 210, "fn(...) with 20 parameters adds them all");
+}
+
+test "an arrow lambda takes 20 parameters" {
+    let sum = (a0: int, a1: int, a2: int, a3: int, a4: int, a5: int, a6: int, a7: int, a8: int, a9: int, a10: int, a11: int, a12: int, a13: int, a14: int, a15: int, a16: int, a17: int, a18: int, a19: int) => a0 + a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19;
+    assert(sum(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) == 210, "(...) => with 20 parameters adds them all");
+}
+
+test "a capturing arrow lambda takes 20 parameters" {
+    let base = 1000;
+    let sum = [&](a0: int, a1: int, a2: int, a3: int, a4: int, a5: int, a6: int, a7: int, a8: int, a9: int, a10: int, a11: int, a12: int, a13: int, a14: int, a15: int, a16: int, a17: int, a18: int, a19: int) => base + a0 + a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19;
+    assert(sum(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) == 1210, "[&](...) => with 20 parameters adds them all");
+}
+
+test "a generic call takes 10 type arguments" {
+    assert(last_of<int, int, int, int, int, int, int, int, int, int>(0, 1, 2, 3, 4, 5, 6, 7, 8, 9) == 9, "the tenth type argument is used");
+}

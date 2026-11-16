@@ -28,6 +28,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth);
 // Utility helpers (defined in typecheck_utils.c)
 int get_asm_register_size(Type *t);
 void collect_symbols(ASTNode *node, SymbolSet *reads, SymbolSet *writes);
+// Whether `op` is written with a `=`: the assignments and also `== != <= >=`.
+int writes_with_equals(OperatorKind op);
 void tc_enter_scope(TypeChecker *tc);
 void tc_exit_scope(TypeChecker *tc);
 ZenSymbol *tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int is_immutable);
