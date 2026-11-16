@@ -576,6 +576,34 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name)
     return NULL;
 }
 
+int is_simple_enum(ParserContext *ctx, const char *enum_name)
+{
+    if (!ctx || !enum_name)
+    {
+        return 0;
+    }
+    const char *clean = enum_name;
+    if (strncmp(clean, "struct ", 7) == 0)
+    {
+        clean += 7;
+    }
+    ASTNode *def = find_struct_def(ctx, clean);
+    if (!def || def->kind != NODE_ENUM)
+    {
+        return 0;
+    }
+    ASTNode *v = def->enm.variants;
+    while (v)
+    {
+        if (v->variant.payload)
+        {
+            return 0;
+        }
+        v = v->next;
+    }
+    return 1;
+}
+
 #undef CACHE_RESULT
 
 ASTNode *find_trait_def(ParserContext *ctx, const char *name)

@@ -1020,6 +1020,11 @@ char *token_get_string_content(Token t);
 int token_string_content_offset(Token t, int *end_offset);
 ASTNode *find_struct_def(ParserContext *ctx, const char *name);
 /**
+ * @brief Whether `enum_name` names an enum with no payload in any variant: C emits it as a plain
+ *        `enum`, an integer, not as a tag and a union.
+ */
+int is_simple_enum(ParserContext *ctx, const char *enum_name);
+/**
  * @brief The field `field_name` of the struct that `struct_type` is or points to; NULL when it
  *        has no such field. A field mixed in with `use` has the token of the struct it comes
  *        from.
