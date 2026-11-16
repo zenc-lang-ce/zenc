@@ -101,7 +101,7 @@ static void check_format_string(TypeChecker *tc, ASTNode *call)
         return;
     }
 
-    if (fmt_arg->kind != NODE_EXPR_LITERAL || fmt_arg->literal.kind != 2)
+    if (fmt_arg->kind != NODE_EXPR_LITERAL || fmt_arg->literal.kind != LITERAL_STRING)
     {
         return;
     }
@@ -201,14 +201,18 @@ static void check_format_string(TypeChecker *tc, ASTNode *call)
                 continue;
             }
 
-            Type *vt = curr_arg->type_info;
-            char *got_type = vt ? zen_c_type_spelling(tc->pctx, vt) : "?";
+            // What printf reads is the C value, and an alias is a typedef there, also an opaque
+            // one: the conversion is checked against the type under the aliases. The warning
+            // names the type as written.
+            Type *written = curr_arg->type_info;
+            char *got_type = written ? zen_c_type_spelling(tc->pctx, written) : "?";
+            Type *vt = resolve_alias(written);
 
             if (spec == 'd' || spec == 'i' || spec == 'u' || spec == 'x' || spec == 'X' ||
                 spec == 'o')
             {
-                if (vt && !is_integer_type(vt) &&
-                    !(vt->kind == TYPE_ENUM && is_simple_enum(tc->pctx, vt->name)))
+                // An enum written as a type has the kind of a struct, so its definition decides.
+                if (vt && !is_integer_type(vt) && !is_simple_enum(tc->pctx, vt->name))
                 {
                     warn_format_string(t, arg_num, "integer", got_type);
                 }
@@ -231,7 +235,8 @@ static void check_format_string(TypeChecker *tc, ASTNode *call)
             }
             else if (spec == 'p')
             {
-                if (vt && vt->kind != TYPE_POINTER && vt->kind != TYPE_ARRAY)
+                if (vt && vt->kind != TYPE_POINTER && vt->kind != TYPE_ARRAY &&
+                    vt->kind != TYPE_STRING)
                 {
                     warn_format_string(t, arg_num, "pointer", got_type);
                 }
