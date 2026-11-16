@@ -1166,9 +1166,9 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
     }
 }
 
-// Whether the operator `op` computes a constant of the type `target`: arithmetic for any number,
+// Whether the operator `op` makes a constant that a `target` can hold: arithmetic for any number,
 // bitwise operators and shifts for an integer.
-static int constant_operator(OperatorKind op, Type *target)
+static int is_constant_operator(OperatorKind op, Type *target)
 {
     OperatorClass c = operator_class(op);
     if (c == OPERATOR_ARITHMETIC)
@@ -1196,10 +1196,10 @@ static int is_untyped_constant(ASTNode *node, Type *target)
         }
         return node->literal.kind == LITERAL_FLOAT && is_float_type(target);
     case NODE_EXPR_UNARY:
-        return constant_operator(node->unary.op, target) &&
+        return is_constant_operator(node->unary.op, target) &&
                is_untyped_constant(node->unary.operand, target);
     case NODE_EXPR_BINARY:
-        return constant_operator(node->binary.op, target) &&
+        return is_constant_operator(node->binary.op, target) &&
                is_untyped_constant(node->binary.left, target) &&
                is_untyped_constant(node->binary.right, target);
     default:
@@ -1207,23 +1207,10 @@ static int is_untyped_constant(ASTNode *node, Type *target)
     }
 }
 
-static void give_type(ASTNode *node, Type *type)
-{
-    node->type_info = type;
-    if (node->kind == NODE_EXPR_UNARY)
-    {
-        give_type(node->unary.operand, type);
-    }
-    else if (node->kind == NODE_EXPR_BINARY)
-    {
-        give_type(node->binary.left, type);
-        give_type(node->binary.right, type);
-    }
-}
-
 // A value whose type comes from its context takes the type `expected` before it is checked:
-// - an untyped constant (`5`, `-5`, `0.5`, `255 + 1`) when that type can hold it: the whole
-//   expression is computed in it, as a single literal is;
+// - an untyped constant (`5`, `-5`, `0.5`, `255 + 1`) when that type can hold it. The expression
+//   takes the type, as C converts its value to it; its literals keep the type C computes them in
+//   (`1 << 40` is still a shift of an `int`, which the checks of the operator see);
 // - a lambda, when a function type is expected (check_expr_lambda reads it: a lambda for a
 //   `fn*` is emitted without a context).
 // Any other value keeps its own type, for the caller to compare with the expected one.
@@ -1244,7 +1231,7 @@ void adopt_context_type(ASTNode *value, Type *expected)
     }
     if (is_untyped_constant(value, target))
     {
-        give_type(value, expected);
+        value->type_info = expected;
     }
 }
 

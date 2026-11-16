@@ -1,36 +1,59 @@
    Compiling tests/compiler/diagnostics_output/err_initial_value_type.zc...
 error: Type mismatch: expected 'i32', but found 'string'
-  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:10:5
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:13:5
    |
-10 | def LIMIT: int = "hello";
+13 | def LIMIT: int = "hello";
    |     ^ here
    |
    = help: Check if you need an explicit cast
    = help: Ensure the types match exactly (no implicit conversions for strict types)
 error: Type mismatch: expected 'Point', but found 'i32'
-  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:17:9
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:21:9
    |
-17 |     def LOCAL: Point = 5;
+21 |     def LOCAL: Point = 5;
    |         ^ here
    |
    = help: Check if you need an explicit cast
    = help: Ensure the types match exactly (no implicit conversions for strict types)
 error: Type mismatch: expected 'i32', but found 'Point'
-  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:18:9
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:22:9
    |
-18 |     let _count: i32 = origin();
+22 |     let _count: i32 = origin();
    |         ^ here
    |
    = help: Check if you need an explicit cast
    = help: Ensure the types match exactly (no implicit conversions for strict types)
 error: Type mismatch: expected 'Point', but found 'i32'
-  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:19:9
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:23:9
    |
-19 |     let _p: Point = 7;
+23 |     let _p: Point = 7;
    |         ^ here
    |
    = help: Check if you need an explicit cast
    = help: Ensure the types match exactly (no implicit conversions for strict types)
-     error: semantic analysis found 4 errors
-       Check failed with 4 errors
+error: Type mismatch: expected 'i32', but found 'f64'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:24:9
+   |
+24 |     let _whole: i32 = 3.7;
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Type mismatch: expected 'i32', but found 'const f64'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:25:9
+   |
+25 |     let _scaled: i32 = SCALE;
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Shift amount exceeds 32-bit type width
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:26:27
+   |
+26 |     let _wide: i64 = 1 << 40;
+   |                           ^ here
+   |
+   = help: Shift amount >= 32 is undefined behavior for 32-bit integers
+     error: semantic analysis found 7 errors
+       Check failed with 7 errors
 [exit 1]
