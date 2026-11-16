@@ -786,7 +786,7 @@ static void lemit_stmt(ParserContext *ctx, ASTNode *node, int depth, int *first)
             emitter_printf(&ctx->cg.emitter, "\n");
             lemit_i(ctx, depth + 2);
             // Emit step: if it's =, emit setf directly
-            if (node->for_stmt.step->kind == NODE_EXPR_BINARY && node->for_stmt.step->binary.op &&
+            if (node->for_stmt.step->kind == NODE_EXPR_BINARY &&
                 node->for_stmt.step->binary.op == OP_ASSIGN)
             {
                 emitter_printf(&ctx->cg.emitter, "(setf ");

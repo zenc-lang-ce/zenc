@@ -79,8 +79,7 @@ char *get_node_path(ASTNode *node, int depth, ParserContext *ctx)
         // pointer, and checking turns the target `pp` of `pp.items` into `*pp`
         // (deref_to_one_pointer).
         ASTNode *target = node->member.target;
-        while (target && target->kind == NODE_EXPR_UNARY && target->unary.op &&
-               target->unary.op == OP_DEREF)
+        while (target && target->kind == NODE_EXPR_UNARY && target->unary.op == OP_DEREF)
         {
             target = target->unary.operand;
         }

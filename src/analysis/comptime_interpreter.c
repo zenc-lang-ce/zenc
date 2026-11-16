@@ -567,11 +567,11 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
 
 static CValue eval_unary(CInterp *ci, ASTNode *node)
 {
-    if (!node->unary.op)
+    OperatorKind kind = node->unary.op;
+    if (kind == OP_NONE)
     {
         return val_null;
     }
-    OperatorKind kind = node->unary.op;
     if (kind == OP_NEG)
     {
         CValue v = eval_expr(ci, node->unary.operand);
