@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/comptime_unary_operand.zc...
+error: comptime: operator '~' requires an integer operand
+  --> tests/compiler/diagnostics_output/comptime_unary_operand.zc:2:21
+   |
+2  |     let _inverted = ~"abc";
+   |                     ^ here
+   |
+[exit 1]

@@ -108,13 +108,9 @@ static int next_is_dot_variant(ParserContext *ctx, Lexer *l, const char *name, T
         return 0;
     }
 
-    // Find the type called `name`: as written (`Color`)...
-    ASTNode *def = find_struct_def(ctx, name);
-    // ...with the prefix of the current module, for a type declared inside it...
-    if (!def && ctx->imports.current_module_prefix)
-    {
-        def = find_struct_def(ctx, mangle_module_symbol(ctx->imports.current_module_prefix, name));
-    }
+    // Find the type called `name` (imported one by one, or in a module its own type)...
+    char *type_name = type_declaration_name(ctx, name);
+    ASTNode *def = find_struct_def(ctx, type_name ? type_name : name);
     // ...or, for an instance of a generic type (`Maybe<int>`), its template.
     if (!def && generic)
     {
@@ -379,6 +375,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         // The declaration of that member when it is a method of a generic impl: the method of
         // an instance (`Vec<int>::new`) is not a function until it is instantiated.
         Token member_declaration = TOKEN_UNKNOWN;
+        // Whether acc is still the first name, as written: only that one is read by the rule
+        // of a bare type name.
+        int acc_is_bare = 1;
         while (1)
         {
             if (lexer_peek(l).kind == TOK_EOF)
@@ -412,195 +411,143 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 owner_member = owner ? token_strdup(suffix) : NULL;
                 generic_type = NULL;
 
-                SelectiveImport *si =
-                    (!ctx->imports.current_module_prefix) ? find_selective_import(ctx, acc) : NULL;
-                if (si)
+                if (find_module(ctx, acc))
                 {
-                    char *tmp =
-                        xmalloc(strlen(si->source_module) + strlen(si->symbol) + suffix.len + 5);
-
-                    char *base = mangle_module_symbol(si->source_module, si->symbol);
-                    ASTNode *def = find_struct_def(ctx, base);
-                    int is_type = (def != NULL);
-
-                    if (is_type)
+                    // `m::Point`: the module's type, a member of it follows.
+                    char *member = token_strdup(suffix);
+                    char *qualified = qualified_type_name(ctx, acc, member);
+                    zfree(acc);
+                    acc = qualified;
+                }
+                else
+                {
+                    // A bare name: a type imported one by one, or in a module its own type, when
+                    // a type is declared by that name (a body sees every declaration).
+                    char *type_name = acc_is_bare ? type_declaration_name(ctx, acc) : NULL;
+                    if (type_name &&
+                        (find_struct_def(ctx, type_name) || find_type_alias_node(ctx, type_name)))
                     {
-                        // Check Enum Variant
-                        if (def->kind == NODE_ENUM)
+                        zfree(acc);
+                        acc = type_name;
+                    }
+                    ASTNode *def = find_struct_def(ctx, acc);
+                    if (def)
+                    {
+                        // `Point::new`: the type's name, as any other type name read.
+                        register_type_usage(ctx, acc, type_token);
+                    }
+
+                    int is_opaque_alias = 0;
+                    if (!def)
+                    {
+                        TypeAlias *ta = find_type_alias_node(ctx, acc);
+                        if (ta)
+                        {
+                            register_type_usage(ctx, acc, type_token);
+                            is_opaque_alias = ta->is_opaque;
+                            if (!is_opaque_alias)
+                            {
+                                Type *aliased = find_type_alias(ctx, acc);
+                                if (aliased)
+                                {
+                                    instance_of = aliased;
+                                    zfree(acc);
+                                    acc = type_mangle_spelling(aliased);
+                                    def = find_struct_def(ctx, acc);
+                                }
+                            }
+                        }
+                    }
+
+                    char *method_name = xmalloc(suffix.len + 1);
+                    strncpy(method_name, suffix.start, suffix.len);
+                    method_name[suffix.len] = 0;
+                    char *tmp = NULL;
+                    if (instance_of && instance_of->kind == TYPE_STRUCT && instance_of->count > 0 &&
+                        instance_of->name)
+                    {
+                        member_declaration =
+                            template_method_token(ctx, instance_of->name, method_name);
+                    }
+
+                    if (def || is_opaque_alias)
+                    {
+                        // Check for enum variant first
+                        int is_variant = 0;
+                        if (def && def->kind == NODE_ENUM)
                         {
                             ASTNode *v = def->enm.variants;
-                            char sbuf[128];
-                            if (suffix.len < (int)sizeof(sbuf))
-                            {
-                                strncpy(sbuf, suffix.start, suffix.len);
-                                sbuf[suffix.len] = 0;
-                            }
-                            else
-                            {
-                                // Suffix too long for sbuf
-                                sbuf[0] = 0;
-                            }
                             while (v)
                             {
-                                if (strcmp(v->variant.name, sbuf) == 0)
+                                if (strcmp(v->variant.name, method_name) == 0)
                                 {
+                                    is_variant = 1;
+                                    member_declaration = v->token;
                                     break;
                                 }
                                 v = v->next;
                             }
                         }
 
-                        char *member = xmalloc((size_t)suffix.len + 1);
-                        memcpy(member, suffix.start, (size_t)suffix.len);
-                        member[suffix.len] = 0;
-                        tmp = mangle_method_symbol(base, NULL, member);
-                    }
-                    else
-                    {
-                        char *member = xmalloc((size_t)suffix.len + 1);
-                        memcpy(member, suffix.start, (size_t)suffix.len);
-                        member[suffix.len] = 0;
-                        tmp = mangle_method_symbol(base, NULL, member);
-                    }
-
-                    zfree(acc);
-                    acc = tmp;
-                }
-                else
-                {
-                    Module *mod = find_module(ctx, acc);
-                    if (mod)
-                    {
-                        if (mod->is_c_header)
+                        if (is_variant)
                         {
-                            char *tmp = xmalloc(suffix.len + 1);
-                            strncpy(tmp, suffix.start, suffix.len);
-                            tmp[suffix.len] = 0;
-                            zfree(acc);
-                            acc = tmp;
-
-                            register_extern_symbol(ctx, acc);
+                            char *v_mangled = mangle_variant_symbol(acc, method_name);
+                            if (v_mangled)
+                            {
+                                variant.owner = def->type_info;
+                                variant.member = xstrdup(method_name);
+                                variant.token = suffix;
+                                zfree(acc);
+                                acc = v_mangled;
+                                tmp = acc;
+                            }
                         }
                         else
                         {
-                            char sbuf[MAX_TYPE_NAME_LEN];
-                            size_t sblen = suffix.len;
-                            if (sblen >= sizeof(sbuf))
-                            {
-                                sblen = sizeof(sbuf) - 1;
-                            }
-                            strncpy(sbuf, suffix.start, sblen);
-                            sbuf[sblen] = 0;
+                            char *direct = mangle_method_symbol(acc, NULL, method_name);
 
-                            if (is_extern_symbol(ctx, sbuf))
+                            if (find_func(ctx, direct))
                             {
                                 zfree(acc);
-                                acc = xstrdup(sbuf);
+                                acc = direct;
+                                tmp = acc;
                             }
                             else
                             {
-                                zfree(acc);
-                                acc = mangle_module_symbol(mod->base_name, sbuf);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        ASTNode *def = find_struct_def(ctx, acc);
-                        if (def)
-                        {
-                            // `Point::new`: the type's name, as any other type name read.
-                            register_type_usage(ctx, acc, type_token);
-                        }
-
-                        int is_opaque_alias = 0;
-                        if (!def && ctx->imports.current_module_prefix)
-                        {
-                            // Module prefix is set — try the prefixed name
-                            // (the struct was defined WITHIN this module, so it's
-                            //  registered as prefix__name, not bare name).
-                            char *prefixed =
-                                mangle_module_symbol(ctx->imports.current_module_prefix, acc);
-                            def = find_struct_def(ctx, prefixed);
-                            if (def)
-                            {
-                                zfree(acc);
-                                acc = prefixed;
-                            }
-                            else
-                            {
-                                zfree(prefixed);
-                            }
-                        }
-                        if (!def)
-                        {
-                            TypeAlias *ta = find_type_alias_node(ctx, acc);
-                            if (ta)
-                            {
-                                register_type_usage(ctx, acc, type_token);
-                                is_opaque_alias = ta->is_opaque;
-                                if (!is_opaque_alias)
+                                char *concrete = expected_instance_method(ctx, acc, method_name);
+                                if (concrete)
                                 {
-                                    Type *aliased = find_type_alias(ctx, acc);
-                                    if (aliased)
-                                    {
-                                        instance_of = aliased;
-                                        zfree(acc);
-                                        acc = type_mangle_spelling(aliased);
-                                        def = find_struct_def(ctx, acc);
-                                    }
-                                }
-                            }
-                        }
-
-                        char *method_name = xmalloc(suffix.len + 1);
-                        strncpy(method_name, suffix.start, suffix.len);
-                        method_name[suffix.len] = 0;
-                        char *tmp = NULL;
-                        if (instance_of && instance_of->kind == TYPE_STRUCT &&
-                            instance_of->count > 0 && instance_of->name)
-                        {
-                            member_declaration =
-                                template_method_token(ctx, instance_of->name, method_name);
-                        }
-
-                        if (def || is_opaque_alias)
-                        {
-                            // Check for enum variant first
-                            int is_variant = 0;
-                            if (def && def->kind == NODE_ENUM)
-                            {
-                                ASTNode *v = def->enm.variants;
-                                while (v)
-                                {
-                                    if (strcmp(v->variant.name, method_name) == 0)
-                                    {
-                                        is_variant = 1;
-                                        member_declaration = v->token;
-                                        break;
-                                    }
-                                    v = v->next;
-                                }
-                            }
-
-                            if (is_variant)
-                            {
-                                char *v_mangled = mangle_variant_symbol(acc, method_name);
-                                if (v_mangled)
-                                {
-                                    variant.owner = def->type_info;
-                                    variant.member = xstrdup(method_name);
-                                    variant.token = suffix;
                                     zfree(acc);
-                                    acc = v_mangled;
+                                    acc = concrete;
                                     tmp = acc;
+                                    zfree(method_name);
+                                    break;
                                 }
-                            }
-                            else
-                            {
-                                char *direct = mangle_method_symbol(acc, NULL, method_name);
 
-                                if (find_func(ctx, direct))
+                                // Fallback: check for trait implementations
+                                StructRef *ref = ctx->parsed_impls_list;
+                                int found_trait = 0;
+                                while (ref)
+                                {
+                                    if (ref->node && ref->node->kind == NODE_IMPL_TRAIT &&
+                                        strcmp(type_impl_name(ref->node->impl_trait.target), acc) ==
+                                            0)
+                                    {
+                                        const char *tname = ref->node->impl_trait.trait_name;
+                                        char *t_m = mangle_method_symbol(acc, tname, method_name);
+
+                                        if (find_func(ctx, t_m))
+                                        {
+                                            zfree(acc);
+                                            acc = xstrdup(t_m);
+                                            tmp = acc;
+                                            found_trait = 1;
+                                            break;
+                                        }
+                                    }
+                                    ref = ref->next;
+                                }
+                                if (!found_trait)
                                 {
                                     zfree(acc);
                                     acc = direct;
@@ -608,100 +555,57 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 }
                                 else
                                 {
-                                    char *concrete =
-                                        expected_instance_method(ctx, acc, method_name);
-                                    if (concrete)
-                                    {
-                                        zfree(acc);
-                                        acc = concrete;
-                                        tmp = acc;
-                                        zfree(method_name);
-                                        break;
-                                    }
-
-                                    // Fallback: check for trait implementations
-                                    StructRef *ref = ctx->parsed_impls_list;
-                                    int found_trait = 0;
-                                    while (ref)
-                                    {
-                                        if (ref->node && ref->node->kind == NODE_IMPL_TRAIT &&
-                                            strcmp(type_impl_name(ref->node->impl_trait.target),
-                                                   acc) == 0)
-                                        {
-                                            const char *tname = ref->node->impl_trait.trait_name;
-                                            char *t_m =
-                                                mangle_method_symbol(acc, tname, method_name);
-
-                                            if (find_func(ctx, t_m))
-                                            {
-                                                zfree(acc);
-                                                acc = xstrdup(t_m);
-                                                tmp = acc;
-                                                found_trait = 1;
-                                                break;
-                                            }
-                                        }
-                                        ref = ref->next;
-                                    }
-                                    if (!found_trait)
-                                    {
-                                        zfree(acc);
-                                        acc = direct;
-                                        tmp = acc;
-                                    }
-                                    else
-                                    {
-                                        zfree(direct);
-                                    }
+                                    zfree(direct);
                                 }
                             }
+                        }
+                    }
+                    else
+                    {
+                        // A template (`Option::Some`), or one of its instances not
+                        // declared as a struct, such as `Option<T>::Some` in a template.
+                        GenericTemplate *gt = find_generic_template(
+                            ctx,
+                            path_type && path_type->kind == TYPE_STRUCT ? path_type->name : acc);
+                        ASTNode *tpl_def = gt ? gt->struct_node : NULL;
+                        int is_variant = 0;
+                        if (tpl_def && tpl_def->kind == NODE_ENUM)
+                        {
+                            for (ASTNode *v = tpl_def->enm.variants; v; v = v->next)
+                            {
+                                if (strcmp(v->variant.name, method_name) == 0)
+                                {
+                                    is_variant = 1;
+                                    member_declaration = v->token;
+                                    break;
+                                }
+                            }
+                        }
+                        if (is_variant)
+                        {
+                            variant.owner = path_type ? path_type : type_from_name(ctx, acc);
+                            variant.member = xstrdup(method_name);
+                            variant.token = suffix;
+                            tmp = mangle_variant_symbol(acc, method_name);
+                        }
+                        else if (tpl_def)
+                        {
+                            tmp = mangle_method_symbol(acc, NULL, method_name);
                         }
                         else
                         {
-                            // A template (`Option::Some`), or one of its instances not
-                            // declared as a struct, such as `Option<T>::Some` in a template.
-                            GenericTemplate *gt = find_generic_template(
-                                ctx, path_type && path_type->kind == TYPE_STRUCT ? path_type->name
-                                                                                 : acc);
-                            ASTNode *tpl_def = gt ? gt->struct_node : NULL;
-                            int is_variant = 0;
-                            if (tpl_def && tpl_def->kind == NODE_ENUM)
-                            {
-                                for (ASTNode *v = tpl_def->enm.variants; v; v = v->next)
-                                {
-                                    if (strcmp(v->variant.name, method_name) == 0)
-                                    {
-                                        is_variant = 1;
-                                        member_declaration = v->token;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (is_variant)
-                            {
-                                variant.owner = path_type ? path_type : type_from_name(ctx, acc);
-                                variant.member = xstrdup(method_name);
-                                variant.token = suffix;
-                                tmp = mangle_variant_symbol(acc, method_name);
-                            }
-                            else if (tpl_def)
-                            {
-                                tmp = mangle_method_symbol(acc, NULL, method_name);
-                            }
-                            else
-                            {
-                                char *combined = mangle_method_symbol(acc, NULL, method_name);
-                                zfree(acc);
-                                acc = combined;
-                                tmp = acc;
-                            }
+                            char *combined = mangle_method_symbol(acc, NULL, method_name);
+                            zfree(acc);
+                            acc = combined;
+                            tmp = acc;
                         }
-                        zfree(method_name);
-                        zfree(acc);
-                        acc = tmp;
                     }
+                    zfree(method_name);
+                    zfree(acc);
+                    acc = tmp;
                 }
                 changed = 1;
+                acc_is_bare = 0;
             }
 
             if (lexer_peek(l).kind == TOK_LANGLE && tokens_could_be_generic_args(l))
@@ -732,23 +636,16 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     lexer_next(l); // eat <
 
-                    Type **arg_types = xmalloc(sizeof(Type *) * 8);
-                    int count = 0;
+                    zvec_Type arg_types = {0};
 
                     while (1)
                     {
-                        if (count >= 8)
-                        {
-                            zpanic_at(lexer_peek(l), "Too many generic arguments (max 8)");
-                            break;
-                        }
                         Type *formal_type = parse_type_formal(ctx, l);
                         if (!formal_type)
                         {
                             return NULL;
                         }
-                        arg_types[count] = formal_type;
-                        count++;
+                        zvec_push_Type(&arg_types, formal_type);
 
                         if (lexer_peek(l).kind == TOK_COMMA)
                         {
@@ -781,8 +678,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         register_type_usage(ctx, acc, segment_token);
                         generic_type = type_new(TYPE_STRUCT);
                         generic_type->name = acc;
-                        generic_type->args = arg_types;
-                        generic_type->count = count;
+                        generic_type->args = arg_types.data;
+                        generic_type->count = (int)arg_types.length;
                         instantiate_type(ctx, generic_type, t);
                         acc = type_mangle_spelling(generic_type);
                     }
@@ -790,8 +687,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     {
                         // Function Template
                         instance.name = acc;
-                        instance.args = arg_types;
-                        instance.count = count;
+                        instance.args = arg_types.data;
+                        instance.count = (int)arg_types.length;
                         char *m = instantiate_function(ctx, instance);
                         if (!m)
                         {
@@ -802,6 +699,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     }
 
                     changed = 1;
+                    acc_is_bare = 0;
                 }
             }
             if (!changed)
@@ -897,7 +795,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
                         lexer_next(l); // Eat }
 
-                        if (is_trait(acc))
+                        if (is_trait(ctx, acc))
                         {
                             return transform_to_trait_object(ctx, acc, node);
                         }
@@ -928,26 +826,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     generic_type = compat_slice_from_name(ctx, acc, t);
                 }
 #endif
-                char *struct_name = acc;
-                if (!ctx->imports.current_module_prefix)
-                {
-                    SelectiveImport *si = find_selective_import(ctx, acc);
-                    if (si)
-                    {
-                        struct_name = mangle_module_symbol(si->source_module, si->symbol);
-                    }
-                }
-                if (struct_name == acc && ctx->imports.current_module_prefix &&
-                    !is_known_generic(ctx, acc))
-                {
-                    // Only prefix module-defined types, not imported types.
-                    // Imports are registered with bare names, so if find_struct_def
-                    // succeeds on the bare name, this is an imported type — skip.
-                    if (!find_struct_def(ctx, acc) && !find_type_alias(ctx, acc))
-                    {
-                        struct_name = mangle_module_symbol(ctx->imports.current_module_prefix, acc);
-                    }
-                }
+                // A type imported one by one, or in a module its own type.
+                char *type_name = type_declaration_name(ctx, acc);
+                char *struct_name = type_name ? type_name : acc;
 
                 // Opaque Struct Check
                 ASTNode *def = find_struct_def(ctx, struct_name);
@@ -1138,6 +1019,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
         }
 
+        // A bare `helper` in a module parsed with a prefix names the module's own function.
+        char *own_function = (!variant.member && !owner) ? module_function_name(ctx, acc) : NULL;
+        if (own_function)
+        {
+            zfree(acc);
+            acc = own_function;
+        }
+
         FuncSig *sig = find_func(ctx, acc);
 
         // A variant is written with its enum: `Shape::Dot`, `Shape::Circle(1.0)`. Alone
@@ -1253,7 +1142,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     ASTNode *def = copy_default_value(ctx, sig, i, t);
                     Type *expected = sig->arg_types[i];
-                    if (expected && expected->name && is_trait(type_def_name(expected)))
+                    if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
                     {
                         Type *arg_type = def->type_info
                                              ? def->type_info
@@ -1592,15 +1481,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
         Lexer lookahead = *l;
         int is_lambda = 0;
-        Token *params = xmalloc(sizeof(Token) * 16);
-        Type **param_types = xmalloc(sizeof(Type *) * 16);
-        int nparams = 0;
+        zvec_Token params = {0};
+        zvec_Type param_types = {0};
 
         while (1)
         {
             if (lexer_peek(&lookahead).kind != TOK_IDENT)
             {
-                if (nparams == 0 && lexer_peek(&lookahead).kind == TOK_RPAREN)
+                if (params.length == 0 && lexer_peek(&lookahead).kind == TOK_RPAREN)
                 {
                     lexer_next(&lookahead);
                     if (lexer_peek(&lookahead).kind == TOK_FAT_ARROW)
@@ -1611,14 +1499,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 }
                 break;
             }
-            if (nparams >= 16)
-            {
-                zpanic_at(lexer_peek(&lookahead), "Too many lambda parameters (max 16)");
-                break;
-            }
-            params[nparams] = lexer_next(&lookahead);
-            param_types[nparams] = NULL;
-            lookahead.pos = lookahead.pos;
+            zvec_push_Token(&params, lexer_next(&lookahead));
+            zvec_push_Type(&param_types, NULL);
 
             if (lexer_peek(&lookahead).kind == TOK_COLON)
             {
@@ -1633,7 +1515,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     lexer_next(&lookahead);
                 }
             }
-            nparams++;
 
             Token sep = lexer_peek(&lookahead);
             if (sep.kind == TOK_COMMA)
@@ -1660,16 +1541,16 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         if (is_lambda)
         {
             Lexer actual_parse = *l;
-            if (nparams > 0)
+            if (params.length > 0)
             {
-                for (int i = 0; i < nparams; i++)
+                for (size_t i = 0; i < params.length; i++)
                 {
                     lexer_next(&actual_parse);
                     if (lexer_peek(&actual_parse).kind == TOK_COLON)
                     {
                         lexer_next(&actual_parse);
-                        param_types[i] = parse_type_formal(ctx, &actual_parse);
-                        if (!param_types[i])
+                        param_types.data[i] = parse_type_formal(ctx, &actual_parse);
+                        if (!param_types.data[i])
                         {
                             return NULL;
                         }
@@ -1689,14 +1570,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
             *l = actual_parse;
 
-            ASTNode *node_multi = parse_arrow_lambda_multi(ctx, l, params, param_types, nparams, 0);
-            zfree(param_types);
-            return node_multi;
-        }
-        else
-        {
-            zfree(params);
-            zfree(param_types);
+            return parse_arrow_lambda_multi(ctx, l, params.data, param_types.data,
+                                            (int)params.length, 0);
         }
 
         int saved = l->pos;
@@ -1763,7 +1638,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     ASTNode *target = parse_expr_prec(ctx, l, PREC_UNARY);
 
                     char *cast_type = type_mangle_spelling(cast_type_obj);
-                    if (is_trait(cast_type))
+                    if (is_trait(ctx, cast_type))
                     {
                         return transform_to_trait_object(ctx, cast_type, target);
                     }
@@ -1867,33 +1742,26 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             lexer_next(l); // consume ']'
 
                             lexer_next(l); // consume '('
-                            Token *params = xmalloc(sizeof(Token) * 16);
-                            Type **param_types = xmalloc(sizeof(Type *) * 16);
-                            int nparams = 0;
+                            zvec_Token params = {0};
+                            zvec_Type param_types = {0};
                             while (1)
                             {
                                 if (lexer_peek(l).kind != TOK_IDENT)
                                 {
                                     break;
                                 }
-                                if (nparams >= 16)
-                                {
-                                    zpanic_at(lexer_peek(l), "Too many parameters (max 16)");
-                                    break;
-                                }
-                                params[nparams] = lexer_next(l);
-                                param_types[nparams] = NULL;
-
+                                zvec_push_Token(&params, lexer_next(l));
+                                Type *param_type = NULL;
                                 if (lexer_peek(l).kind == TOK_COLON)
                                 {
                                     lexer_next(l);
-                                    param_types[nparams] = parse_type_formal(ctx, l);
-                                    if (!param_types[nparams])
+                                    param_type = parse_type_formal(ctx, l);
+                                    if (!param_type)
                                     {
                                         return NULL;
                                     }
                                 }
-                                nparams++;
+                                zvec_push_Type(&param_types, param_type);
 
                                 Token sep = lexer_peek(l);
                                 if (sep.kind == TOK_COMMA)
@@ -1918,10 +1786,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 return NULL;
                             }
 
-                            ASTNode *node_multi = parse_arrow_lambda_multi(
-                                ctx, l, params, param_types, nparams, default_capture_mode);
-                            zfree(param_types);
-                            return node_multi;
+                            return parse_arrow_lambda_multi(ctx, l, params.data, param_types.data,
+                                                            (int)params.length,
+                                                            default_capture_mode);
                         }
                     }
                 }
