@@ -36,6 +36,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
 - With `--cpp`, an f-string interpolation is evaluated once.
 - `comptime` computes `<< >> & | ^ ~`, which it rejected as unsupported operators, and integer operations as constant folding does: `+ - *` wrap around instead of overflowing, `LLONG_MIN / -1` (undefined before) and a shift by a negative amount or by 64 or more are errors, and so is `-` or `~` on a value that is not an integer, which `-` accepted silently.
 - `int` and `i32` share one generic instance.
+- `zc check` no longer reports a false escape in a `test` block: a pointer from one of its locals, stored in another local (`s = w.get()`, `Holder{value: &n}`), was taken to outlive the block, because its variables were treated as globals.
 - A type alias is emitted once; `@fields` names a `@link_name` struct by its C name.
 - Casts are decided by whether the name is a type, as in C.
 - A compound assignment (`%=`, `|=`, `<<=`, `**=`...) to a `const` variable, a member of one or an element of one is an error of `zc`, as `=` and `+=` were, instead of C that does not compile.

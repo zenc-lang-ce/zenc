@@ -64,8 +64,9 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
     // MISRA: Mark type as used
     mark_type_as_used(tc, node->var_decl.type_info);
 
-    // Initialize lifetime depth for escape analysis if this is a local variable
-    if (node->var_decl.type_info && tc->current_func)
+    // Initialize lifetime depth for escape analysis if this is a local variable: one in a
+    // function or in a `test` block, as the depth its symbol gets says (0 is global).
+    if (node->var_decl.type_info && tc->current_depth > 0)
     {
         node->var_decl.type_info->lifetime_depth = tc->current_depth;
     }
@@ -131,7 +132,7 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
     {
         t = type_clone(node->var_decl.init_expr->type_info);
         // Ensure inferred local variables get the correct scope depth for escape analysis
-        if (t && tc->current_func)
+        if (t && tc->current_depth > 0)
         {
             t->lifetime_depth = tc->current_depth;
         }
