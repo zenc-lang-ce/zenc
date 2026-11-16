@@ -34,6 +34,7 @@ This is mainly a bug-fix release but it also brings some improvements and new fe
 - C headers: `import "x.h"` reads the names the header declares, and `zc check` accepts a struct literal of a type from a header.
 - A module imported with an alias (`as m`, a selective import or `as *`) uses its own functions and types by their names, the variants of its enums too: `import "std/string.zc" as str` and `import "std/arena.zc" as arena` build, and such a name no longer goes to a function or a type of the program with the same name. The program that imports it names its enums in a `match` (`m::Shape::Circle(r) =>`), and a type imported one by one is read by its module everywhere: its enum builds, compares and matches its variants, and the program can write an `impl` for it.
 - With `--cpp`, an f-string interpolation is evaluated once.
+- `comptime` computes `<< >> & | ^ ~`, which it rejected as unsupported operators, and integer operations as constant folding does: `+ - *` wrap around instead of overflowing, `LLONG_MIN / -1` (undefined before) and a shift by a negative amount or by 64 or more are errors, and so is `-` or `~` on a value that is not an integer, which `-` accepted silently.
 - `int` and `i32` share one generic instance.
 - A type alias is emitted once; `@fields` names a `@link_name` struct by its C name.
 - Casts are decided by whether the name is a type, as in C.

@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/comptime_shift_range.zc...
+error: comptime: shift amount out of range (0 to 63)
+  --> tests/compiler/diagnostics_output/comptime_shift_range.zc:2:22
+   |
+2  |     let _too_far = 1 << 64;
+   |                      ^ here
+   |
+[exit 1]

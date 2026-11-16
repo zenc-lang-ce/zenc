@@ -1,0 +1,10 @@
+// ARGS: transpile
+// LLONG_MIN / -1 overflows at comptime and is an error, as in constant folding.
+
+comptime {
+    let min = -9223372036854775807 - 1;
+    let _quotient = min / -1;
+}
+
+fn main() {
+}

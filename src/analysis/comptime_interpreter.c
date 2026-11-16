@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "comptime_interpreter.h"
+#include "const_fold.h"
 #include "../diagnostics/diagnostics.h"
 #include <string.h>
 #include <stdlib.h>
@@ -496,73 +497,44 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
         return val_null;
     }
 
-    int64_t a = left.as.i, b = right.as.i;
+    long long folded = 0;
+    FoldResult result = fold_int_binary(kind, (long long)left.as.i, (long long)right.as.i, &folded);
     CValue r = {VAL_INT, {0}};
-
-    if (op_class == OPERATOR_COMPARISON)
+    switch (result)
     {
-        r.kind = VAL_BOOL;
-    }
-    switch (kind)
-    {
-    case OP_ADD:
-        r.as.i = a + b;
-        break;
-    case OP_SUB:
-        r.as.i = a - b;
-        break;
-    case OP_MUL:
-        r.as.i = a * b;
-        break;
-    case OP_DIV:
-        if (b == 0)
+    case FOLD_OK:
+        if (op_class == OPERATOR_COMPARISON)
         {
-            zerror_at(node->token, "comptime: division by zero");
-            ci->error_happened = 1;
-            val_free(&left);
-            val_free(&right);
-            return val_null;
+            r.kind = VAL_BOOL;
+            r.as.b = folded != 0;
         }
-        r.as.i = a / b;
-        break;
-    case OP_MOD:
-        if (b == 0)
+        else
         {
-            zerror_at(node->token, "comptime: modulo by zero");
-            ci->error_happened = 1;
-            val_free(&left);
-            val_free(&right);
-            return val_null;
+            r.as.i = (int64_t)folded;
         }
-        r.as.i = a % b;
         break;
-    case OP_EQ:
-        r.as.b = (a == b);
+    case FOLD_DIVISION_BY_ZERO:
+        zerror_at(node->token,
+                  kind == OP_DIV ? "comptime: division by zero" : "comptime: modulo by zero");
+        ci->error_happened = 1;
         break;
-    case OP_NE:
-        r.as.b = (a != b);
+    case FOLD_OVERFLOW:
+        zerror_at(node->token, "comptime: integer overflow in '%s'", op);
+        ci->error_happened = 1;
         break;
-    case OP_LT:
-        r.as.b = (a < b);
+    case FOLD_SHIFT_RANGE:
+        zerror_at(node->token, "comptime: shift amount out of range (0 to 63)");
+        ci->error_happened = 1;
         break;
-    case OP_GT:
-        r.as.b = (a > b);
-        break;
-    case OP_LE:
-        r.as.b = (a <= b);
-        break;
-    case OP_GE:
-        r.as.b = (a >= b);
-        break;
+    case FOLD_UNSUPPORTED:
     default:
         zerror_at(node->token, "comptime: unsupported binary operator '%s'", op);
         ci->error_happened = 1;
         break;
     }
-
     val_free(&left);
     val_free(&right);
-    return r;
+    return ci->error_happened ? val_null : r;
 }
 
 static CValue eval_unary(CInterp *ci, ASTNode *node)
@@ -571,17 +543,6 @@ static CValue eval_unary(CInterp *ci, ASTNode *node)
     if (kind == OP_NONE)
     {
         return val_null;
-    }
-    if (kind == OP_NEG)
-    {
-        CValue v = eval_expr(ci, node->unary.operand);
-        if (ci->error_happened || v.kind != VAL_INT)
-        {
-            val_free(&v);
-            return val_null;
-        }
-        v.as.i = -v.as.i;
-        return v;
     }
     if (kind == OP_NOT)
     {
@@ -601,10 +562,32 @@ static CValue eval_unary(CInterp *ci, ASTNode *node)
         }
         return v;
     }
-    zerror_at(node->token, "comptime: unsupported unary operator '%s'",
-              operator_spelling(node->unary.op));
-    ci->error_happened = 1;
-    return val_null;
+
+    // The other unary operators are integer operators: fold_int_unary computes them, as constant
+    // folding does, and says which ones it knows.
+    CValue v = eval_expr(ci, node->unary.operand);
+    if (ci->error_happened)
+    {
+        val_free(&v);
+        return val_null;
+    }
+    const char *op = operator_spelling(kind);
+    if (v.kind != VAL_INT)
+    {
+        zerror_at(node->token, "comptime: operator '%s' requires an integer operand", op);
+        ci->error_happened = 1;
+        val_free(&v);
+        return val_null;
+    }
+    long long folded = 0;
+    if (fold_int_unary(kind, (long long)v.as.i, &folded) != FOLD_OK)
+    {
+        zerror_at(node->token, "comptime: unsupported unary operator '%s'", op);
+        ci->error_happened = 1;
+        return val_null;
+    }
+    v.as.i = (int64_t)folded;
+    return v;
 }
 
 static CValue eval_call(CInterp *ci, ASTNode *node)
