@@ -1,0 +1,12 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// A literal with the `u` suffix is a `u32`, the type `uint` names.
+
+struct Point {
+    x: i32;
+}
+
+fn main() {
+    let a = 5u;
+    let _p: Point = a;
+}

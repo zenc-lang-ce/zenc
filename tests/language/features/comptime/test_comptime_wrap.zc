@@ -1,0 +1,21 @@
+// comptime: `+ - *` wrap around on overflow, as constant folding does.
+// Each `def` exists only if its value is the expected one, so a wrong result fails to build.
+comptime {
+    let max = 9223372036854775807;
+    let min = -9223372036854775807 - 1;
+    if (max + 1 == min) {
+        yield("def ADD_WRAPS = 1;");
+    }
+    if (min - 1 == max) {
+        yield("def SUB_WRAPS = 1;");
+    }
+    if (max * 2 == -2) {
+        yield("def MUL_WRAPS = 1;");
+    }
+}
+
+test "comptime_wrap" {
+    assert(ADD_WRAPS == 1, "max + 1 should wrap to min at comptime");
+    assert(SUB_WRAPS == 1, "min - 1 should wrap to max at comptime");
+    assert(MUL_WRAPS == 1, "max * 2 should wrap to -2 at comptime");
+}

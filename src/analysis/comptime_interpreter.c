@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "comptime_interpreter.h"
+#include "const_fold.h"
 #include "../diagnostics/diagnostics.h"
 #include <string.h>
 #include <stdlib.h>
@@ -408,15 +409,17 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
         return val_null;
     }
 
-    const char *op = node->binary.op;
-    if (!op)
+    OperatorKind kind = node->binary.op;
+    if (kind == OP_NONE)
     {
         val_free(&left);
         return val_null;
     }
+    const char *op = operator_spelling(kind);
+    OperatorClass op_class = operator_class(kind);
 
     // Handle string concat with +
-    if (left.kind == VAL_STRING && strcmp(op, "+") == 0)
+    if (left.kind == VAL_STRING && kind == OP_ADD)
     {
         CValue right = eval_expr(ci, node->binary.right);
         if (ci->error_happened)
@@ -452,11 +455,7 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
     }
 
     // Logical operators work on bools; arithmetic/comparison on ints
-    int is_logic = (strcmp(op, "&&") == 0 || strcmp(op, "||") == 0);
-    int is_compare = (strcmp(op, "==") == 0 || strcmp(op, "!=") == 0 || strcmp(op, "<") == 0 ||
-                      strcmp(op, ">") == 0 || strcmp(op, "<=") == 0 || strcmp(op, ">=") == 0);
-
-    if (is_logic)
+    if (op_class == OPERATOR_LOGICAL)
     {
         int a = 0, b = 0;
         if (left.kind == VAL_BOOL)
@@ -477,7 +476,7 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
         }
         val_free(&left);
         val_free(&right);
-        CValue r = {VAL_BOOL, {.b = (strcmp(op, "&&") == 0) ? (a && b) : (a || b)}};
+        CValue r = {VAL_BOOL, {.b = (kind == OP_AND) ? (a && b) : (a || b)}};
         return r;
     }
 
@@ -498,112 +497,54 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
         return val_null;
     }
 
-    int64_t a = left.as.i, b = right.as.i;
+    long long folded = 0;
+    FoldResult result = fold_int_binary(kind, (long long)left.as.i, (long long)right.as.i, &folded);
     CValue r = {VAL_INT, {0}};
-
-    if (strcmp(op, "+") == 0)
+    switch (result)
     {
-        r.as.i = a + b;
-    }
-    else if (strcmp(op, "-") == 0)
-    {
-        r.as.i = a - b;
-    }
-    else if (strcmp(op, "*") == 0)
-    {
-        r.as.i = a * b;
-    }
-    else if (strcmp(op, "/") == 0)
-    {
-        if (b == 0)
+    case FOLD_OK:
+        if (op_class == OPERATOR_COMPARISON)
         {
-            zerror_at(node->token, "comptime: division by zero");
-            ci->error_happened = 1;
-            val_free(&left);
-            val_free(&right);
-            return val_null;
+            r.kind = VAL_BOOL;
+            r.as.b = folded != 0;
         }
-        r.as.i = a / b;
-    }
-    else if (strcmp(op, "%") == 0)
-    {
-        if (b == 0)
+        else
         {
-            zerror_at(node->token, "comptime: modulo by zero");
-            ci->error_happened = 1;
-            val_free(&left);
-            val_free(&right);
-            return val_null;
+            r.as.i = (int64_t)folded;
         }
-        r.as.i = a % b;
-    }
-    else if (is_compare)
-    {
-        r.kind = VAL_BOOL;
-        if (strcmp(op, "==") == 0)
-        {
-            r.as.b = (a == b);
-        }
-        else if (strcmp(op, "!=") == 0)
-        {
-            r.as.b = (a != b);
-        }
-        else if (strcmp(op, "<") == 0)
-        {
-            r.as.b = (a < b);
-        }
-        else if (strcmp(op, ">") == 0)
-        {
-            r.as.b = (a > b);
-        }
-        else if (strcmp(op, "<=") == 0)
-        {
-            r.as.b = (a <= b);
-        }
-        else if (strcmp(op, ">=") == 0)
-        {
-            r.as.b = (a >= b);
-        }
-    }
-    else if (strcmp(op, "&&") == 0)
-    {
-        r.kind = VAL_BOOL;
-        r.as.b = (a && b);
-    }
-    else if (strcmp(op, "||") == 0)
-    {
-        r.kind = VAL_BOOL;
-        r.as.b = (a || b);
-    }
-    else
-    {
+        break;
+    case FOLD_DIVISION_BY_ZERO:
+        zerror_at(node->token,
+                  kind == OP_DIV ? "comptime: division by zero" : "comptime: modulo by zero");
+        ci->error_happened = 1;
+        break;
+    case FOLD_OVERFLOW:
+        zerror_at(node->token, "comptime: integer overflow in '%s'", op);
+        ci->error_happened = 1;
+        break;
+    case FOLD_SHIFT_RANGE:
+        zerror_at(node->token, "comptime: shift amount out of range (0 to 63)");
+        ci->error_happened = 1;
+        break;
+    case FOLD_UNSUPPORTED:
+    default:
         zerror_at(node->token, "comptime: unsupported binary operator '%s'", op);
         ci->error_happened = 1;
+        break;
     }
-
     val_free(&left);
     val_free(&right);
-    return r;
+    return ci->error_happened ? val_null : r;
 }
 
 static CValue eval_unary(CInterp *ci, ASTNode *node)
 {
-    if (!node->unary.op)
+    OperatorKind kind = node->unary.op;
+    if (kind == OP_NONE)
     {
         return val_null;
     }
-    if (strcmp(node->unary.op, "-") == 0)
-    {
-        CValue v = eval_expr(ci, node->unary.operand);
-        if (ci->error_happened || v.kind != VAL_INT)
-        {
-            val_free(&v);
-            return val_null;
-        }
-        v.as.i = -v.as.i;
-        return v;
-    }
-    if (strcmp(node->unary.op, "!") == 0)
+    if (kind == OP_NOT)
     {
         CValue v = eval_expr(ci, node->unary.operand);
         if (ci->error_happened)
@@ -621,9 +562,32 @@ static CValue eval_unary(CInterp *ci, ASTNode *node)
         }
         return v;
     }
-    zerror_at(node->token, "comptime: unsupported unary operator '%s'", node->unary.op);
-    ci->error_happened = 1;
-    return val_null;
+
+    // The other unary operators are integer operators: fold_int_unary computes them, as constant
+    // folding does, and says which ones it knows.
+    CValue v = eval_expr(ci, node->unary.operand);
+    if (ci->error_happened)
+    {
+        val_free(&v);
+        return val_null;
+    }
+    const char *op = operator_spelling(kind);
+    if (v.kind != VAL_INT)
+    {
+        zerror_at(node->token, "comptime: operator '%s' requires an integer operand", op);
+        ci->error_happened = 1;
+        val_free(&v);
+        return val_null;
+    }
+    long long folded = 0;
+    if (fold_int_unary(kind, (long long)v.as.i, &folded) != FOLD_OK)
+    {
+        zerror_at(node->token, "comptime: unsupported unary operator '%s'", op);
+        ci->error_happened = 1;
+        return val_null;
+    }
+    v.as.i = (int64_t)folded;
+    return v;
 }
 
 static CValue eval_call(CInterp *ci, ASTNode *node)
@@ -673,7 +637,7 @@ static CValue call_builtin(CInterp *ci, const char *name, ASTNode *args)
         {
             arg = eval_expr(ci, args);
         }
-        else if (args->kind == NODE_EXPR_BINARY && strcmp(args->binary.op, "+") == 0)
+        else if (args->kind == NODE_EXPR_BINARY && args->binary.op == OP_ADD)
         {
             arg = eval_expr(ci, args); // string concat
         }
@@ -1071,7 +1035,7 @@ static void exec_stmt(CInterp *ci, ASTNode *node)
         exec_let(ci, node);
         break;
     case NODE_EXPR_BINARY:
-        if (node->binary.op && strcmp(node->binary.op, "=") == 0)
+        if (node->binary.op == OP_ASSIGN)
         {
             exec_assign(ci, node);
         }

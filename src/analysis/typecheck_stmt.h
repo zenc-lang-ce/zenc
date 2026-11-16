@@ -6,6 +6,7 @@
 
 void check_block(TypeChecker *tc, ASTNode *block, int depth);
 void check_var_decl(TypeChecker *tc, ASTNode *node, int depth);
+void check_def(TypeChecker *tc, ASTNode *node, int depth);
 void check_function(TypeChecker *tc, ASTNode *node, int depth);
 void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth);
 void tc_check_trait(TypeChecker *tc, ASTNode *node, int depth);

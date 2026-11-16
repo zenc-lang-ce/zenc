@@ -9,70 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Local trait registry — avoids dependency on g_parser_ctx.
-static TraitReg *registered_traits_local = NULL;
-
-void register_trait(const char *name)
-{
-    TraitReg *r = xmalloc(sizeof(TraitReg));
-    r->name = xstrdup(name);
-    r->next = registered_traits_local;
-    registered_traits_local = r;
-}
-
-void clear_registered_traits(void)
-{
-    // The TraitReg nodes are arena-allocated, so the arena reset/restore in the
-    // fuzz harness and the LSP reclaims them. The list head must be cleared
-    // there too, otherwise it dangles into reused arena memory and is_trait()
-    // walks a cyclic list forever.
-    registered_traits_local = NULL;
-}
-
-int is_trait(const char *name)
-{
-    if (!name)
-    {
-        return 0;
-    }
-
-    // Strip trailing stars for pointer types (e.g., IAnimal*)
-    char *base = xstrdup(name);
-
-    // Strip "struct " or "union " if present
-    if (strncmp(base, "struct ", 7) == 0)
-    {
-        char *nb = xstrdup(base + 7);
-        zfree(base);
-        base = nb;
-    }
-    else if (strncmp(base, "union ", 6) == 0)
-    {
-        char *nb = xstrdup(base + 6);
-        zfree(base);
-        base = nb;
-    }
-
-    char *p = (char *)strchr(base, '*');
-    if (p)
-    {
-        *p = '\0';
-    }
-
-    TraitReg *r = registered_traits_local;
-    while (r)
-    {
-        if (0 == strcmp(r->name, base))
-        {
-            zfree(base);
-            return 1;
-        }
-        r = r->next;
-    }
-    zfree(base);
-    return 0;
-}
-
 ASTNode *ast_create(NodeType type)
 {
     ASTNode *node = xmalloc(sizeof(ASTNode));
@@ -836,16 +772,15 @@ int is_integer_type(Type *t)
     }
 
     int res =
-        (t->kind == TYPE_INT || t->kind == TYPE_CHAR || t->kind == TYPE_BOOL ||
-         t->kind == TYPE_I8 || t->kind == TYPE_U8 || t->kind == TYPE_I16 || t->kind == TYPE_U16 ||
-         t->kind == TYPE_I32 || t->kind == TYPE_U32 || t->kind == TYPE_I64 || t->kind == TYPE_U64 ||
-         t->kind == TYPE_USIZE || t->kind == TYPE_ISIZE || t->kind == TYPE_BYTE ||
-         t->kind == TYPE_RUNE || t->kind == TYPE_UINT || t->kind == TYPE_I128 ||
-         t->kind == TYPE_U128 || t->kind == TYPE_BITINT || t->kind == TYPE_UBITINT ||
-         t->kind == TYPE_C_INT || t->kind == TYPE_C_UINT || t->kind == TYPE_C_LONG ||
-         t->kind == TYPE_C_ULONG || t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_ULONGLONG ||
-         t->kind == TYPE_C_SHORT || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_CHAR ||
-         t->kind == TYPE_C_UCHAR ||
+        (t->kind == TYPE_CHAR || t->kind == TYPE_BOOL || t->kind == TYPE_I8 || t->kind == TYPE_U8 ||
+         t->kind == TYPE_I16 || t->kind == TYPE_U16 || t->kind == TYPE_I32 || t->kind == TYPE_U32 ||
+         t->kind == TYPE_I64 || t->kind == TYPE_U64 || t->kind == TYPE_USIZE ||
+         t->kind == TYPE_ISIZE || t->kind == TYPE_BYTE || t->kind == TYPE_RUNE ||
+         t->kind == TYPE_I128 || t->kind == TYPE_U128 || t->kind == TYPE_BITINT ||
+         t->kind == TYPE_UBITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_UINT ||
+         t->kind == TYPE_C_LONG || t->kind == TYPE_C_ULONG || t->kind == TYPE_C_LONGLONG ||
+         t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_USHORT ||
+         t->kind == TYPE_C_CHAR || t->kind == TYPE_C_UCHAR ||
          (t->kind == TYPE_STRUCT && t->name &&
           (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "uint8_t") ||
            0 == strcmp(t->name, "int16_t") || 0 == strcmp(t->name, "uint16_t") ||
@@ -868,15 +803,14 @@ int is_unsigned_type(Type *t)
         return is_unsigned_type(t->inner);
     }
 
-    int res =
-        (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 || t->kind == TYPE_U64 ||
-         t->kind == TYPE_USIZE || t->kind == TYPE_UINT || t->kind == TYPE_U128 ||
-         t->kind == TYPE_UBITINT || t->kind == TYPE_C_UINT || t->kind == TYPE_C_ULONG ||
-         t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_UCHAR ||
-         (t->kind == TYPE_STRUCT && t->name &&
-          (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
-           0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
-           0 == strcmp(t->name, "size_t"))));
+    int res = (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 ||
+               t->kind == TYPE_U64 || t->kind == TYPE_USIZE || t->kind == TYPE_U128 ||
+               t->kind == TYPE_UBITINT || t->kind == TYPE_C_UINT || t->kind == TYPE_C_ULONG ||
+               t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_UCHAR ||
+               (t->kind == TYPE_STRUCT && t->name &&
+                (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
+                 0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
+                 0 == strcmp(t->name, "size_t"))));
     return res;
 }
 
@@ -895,6 +829,20 @@ Type *resolve_alias(Type *t)
 {
     while (t && t->kind == TYPE_ALIAS && t->inner)
     {
+        t = t->inner;
+    }
+    return t;
+}
+
+Type *type_seen_from(Type *t, const char *file)
+{
+    while (t && t->kind == TYPE_ALIAS && t->inner)
+    {
+        if (t->alias.is_opaque_alias && (!file || !t->alias.alias_defined_in_file ||
+                                         strcmp(t->alias.alias_defined_in_file, file) != 0))
+        {
+            break;
+        }
         t = t->inner;
     }
     return t;
@@ -921,8 +869,6 @@ int integer_type_width(Type *t)
         return 16;
     case TYPE_I32:
     case TYPE_U32:
-    case TYPE_INT:
-    case TYPE_UINT:
     case TYPE_RUNE:
     case TYPE_C_INT:
     case TYPE_C_UINT:
@@ -958,11 +904,12 @@ Type *common_integer_type(Type *a, Type *b)
     return (is_unsigned_type(resolve_alias(b)) && !is_unsigned_type(resolve_alias(a))) ? b : a;
 }
 
-// An integer literal written without a suffix (`15`), whose type adapts to the other operand.
+// An integer literal written without a suffix (`15`) whose value fits in an i32, its default
+// type: its type adapts to the other operand. A larger one (`3000000000`) is an i64 and does not.
 static int is_plain_int_literal(ASTNode *n)
 {
-    return n && n->kind == NODE_EXPR_LITERAL && n->literal.kind == LITERAL_INT && n->type_info &&
-           n->type_info->kind == TYPE_INT;
+    return n && n->kind == NODE_EXPR_LITERAL && n->literal.kind == LITERAL_INT &&
+           n->literal.is_untyped && n->literal.int_val <= (unsigned long long)INT32_MAX;
 }
 
 Type *integer_operation_type(ASTNode *left, ASTNode *right)
@@ -990,15 +937,14 @@ int is_signed_type(Type *t)
         return is_signed_type(t->inner);
     }
 
-    int res =
-        (t->kind == TYPE_I8 || t->kind == TYPE_I16 || t->kind == TYPE_I32 || t->kind == TYPE_I64 ||
-         t->kind == TYPE_ISIZE || t->kind == TYPE_INT || t->kind == TYPE_I128 ||
-         t->kind == TYPE_BITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_LONG ||
-         t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_CHAR ||
-         (t->kind == TYPE_STRUCT && t->name &&
-          (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "int16_t") ||
-           0 == strcmp(t->name, "int32_t") || 0 == strcmp(t->name, "int64_t") ||
-           0 == strcmp(t->name, "ssize_t") || 0 == strcmp(t->name, "ptrdiff_t"))));
+    int res = (t->kind == TYPE_I8 || t->kind == TYPE_I16 || t->kind == TYPE_I32 ||
+               t->kind == TYPE_I64 || t->kind == TYPE_ISIZE || t->kind == TYPE_I128 ||
+               t->kind == TYPE_BITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_LONG ||
+               t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_CHAR ||
+               (t->kind == TYPE_STRUCT && t->name &&
+                (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "int16_t") ||
+                 0 == strcmp(t->name, "int32_t") || 0 == strcmp(t->name, "int64_t") ||
+                 0 == strcmp(t->name, "ssize_t") || 0 == strcmp(t->name, "ptrdiff_t"))));
     return res;
 }
 
@@ -1029,7 +975,7 @@ int is_float_type(Type *t)
         return is_float_type(t->inner);
     }
 
-    int res = (t->kind == TYPE_FLOAT || t->kind == TYPE_F32 || t->kind == TYPE_F64);
+    int res = (t->kind == TYPE_F32 || t->kind == TYPE_F64);
     return res;
 }
 
@@ -1342,8 +1288,6 @@ static char *type_spelling_impl(Type *t, TypeSpelling spelling, WrittenNameLooku
     case TYPE_RUNE:
         // Not `int32_t`, which `int` also is: an instance of `rune` is not one of `int`.
         return xstrdup("rune");
-    case TYPE_UINT:
-        return xstrdup("unsigned int");
 
     // Portable C Types
     case TYPE_C_INT:
@@ -1367,11 +1311,6 @@ static char *type_spelling_impl(Type *t, TypeSpelling spelling, WrittenNameLooku
     case TYPE_C_UCHAR:
         return xstrdup("c_uchar");
 
-    case TYPE_INT:
-        // `int` is `i32`: its C names are i32's (`Vec__int32_t`), so both make one instance.
-        return xstrdup(spelling == SPELLING_C ? "int32_t" : "int");
-    case TYPE_FLOAT:
-        return xstrdup("float");
     case TYPE_BITINT:
     {
         char *res = xmalloc(32);
@@ -1682,8 +1621,6 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         return xstrdup("unsigned __int128");
     case TYPE_RUNE:
         return xstrdup("int32_t");
-    case TYPE_UINT:
-        return xstrdup("unsigned int");
 
     // Portable C Types (Map directly to C types)
     case TYPE_C_INT:
@@ -1707,12 +1644,6 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
     case TYPE_C_UCHAR:
         return xstrdup(misra_mode ? "uint8_t" : "unsigned char");
 
-    case TYPE_INT:
-        // 'int' in Zen C maps to 'i32' now for portability.
-        // FFI should use c_int.
-        return xstrdup("int32_t");
-    case TYPE_FLOAT:
-        return xstrdup("float");
     case TYPE_BITINT:
     {
         char *res = xmalloc(32);
@@ -1906,7 +1837,7 @@ ASTNode *deref_to_one_pointer(ASTNode *expr)
     while (pointee && pointee->kind == TYPE_POINTER)
     {
         ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-        deref->unary.op = xstrdup("*");
+        deref->unary.op = OP_DEREF;
         deref->unary.operand = expr;
         deref->type_info = t->inner;
         deref->token = expr->token;
@@ -2149,18 +2080,16 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
 
     if (node->kind == NODE_EXPR_BINARY)
     {
-        if (strcmp(node->binary.op, "??") == 0)
+        if (node->binary.op == OP_COALESCE)
         {
             return infer_type(ctx, node->binary.left);
         }
 
-        const char *op = node->binary.op;
+        OperatorClass op_class = operator_class(node->binary.op);
         char *left_type = infer_type(ctx, node->binary.left);
         char *right_type = infer_type(ctx, node->binary.right);
 
-        int is_logical = (strcmp(op, "&&") == 0 || strcmp(op, "||") == 0 || strcmp(op, "==") == 0 ||
-                          strcmp(op, "!=") == 0 || strcmp(op, "<") == 0 || strcmp(op, ">") == 0 ||
-                          strcmp(op, "<=") == 0 || strcmp(op, ">=") == 0);
+        int is_logical = op_class == OPERATOR_LOGICAL || op_class == OPERATOR_COMPARISON;
 
         if (is_logical)
         {
@@ -2233,7 +2162,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
 
     if (node->kind == NODE_EXPR_UNARY)
     {
-        if (strcmp(node->unary.op, "&") == 0)
+        if (node->unary.op == OP_ADDRESS)
         {
             char *inner = infer_type(ctx, node->unary.operand);
             if (inner)
@@ -2243,7 +2172,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
                 return buf;
             }
         }
-        if (strcmp(node->unary.op, "*") == 0)
+        if (node->unary.op == OP_DEREF)
         {
             char *inner = infer_type(ctx, node->unary.operand);
             if (inner)

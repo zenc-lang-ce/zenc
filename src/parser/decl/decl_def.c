@@ -79,10 +79,19 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
                         {
                             zfree(s->type_info);
                         }
-                        s->type_info = type_new(is_wide ? TYPE_I64 : TYPE_INT);
+                        s->type_info = type_new(is_wide ? TYPE_I64 : TYPE_I32);
+                        s->is_untyped = !is_wide;
                         s->type_info->is_const = 1;
                     }
                 }
+            }
+            // Any other value without a type gives the `def` its type, as it gives a `let` its
+            // own: a float or a string literal, a struct literal.
+            if (sym_entry && sym_entry->type_info->kind == TYPE_UNKNOWN && i && i->type_info &&
+                i->type_info->kind != TYPE_UNKNOWN)
+            {
+                sym_entry->type_info = type_clone(i->type_info);
+                sym_entry->type_info->is_const = 1;
             }
         }
     }

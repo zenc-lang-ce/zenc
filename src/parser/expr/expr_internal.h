@@ -34,7 +34,6 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig);
  *   `Handle<B>`).
  */
 void check_argument_type(ParserContext *ctx, Type *expected, ASTNode *arg);
-void check_format_string(ParserContext *ctx, ASTNode *call, Token t);
 
 // From expr_entry.c
 void analyze_lambda_captures(ParserContext *ctx, ASTNode *lambda);
@@ -65,9 +64,7 @@ int type_is_unsigned(Type *t);
 char *infer_scan_format(ParserContext *ctx, ASTNode **args, int ac);
 
 // From expr_field.c
-int is_comparison_op(const char *op);
 Type *get_field_type(ParserContext *ctx, Type *struct_type, const char *field_name);
-const char *get_operator_method(const char *op);
 
 // From expr_prec.c references
 void validate_named_arguments(Token call_token, const char *func_name, char **arg_names,

@@ -1,0 +1,71 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// A pointer to a local escapes through any value that holds it: a struct, an
+// array, a cast, or a variable that copies it. Also when it is stored after the
+// declaration, in the variable, a field or an element, and when the read comes
+// before the store in the text, as in a loop.
+
+struct Holder {
+    ptr: i32*;
+}
+
+fn through_struct() -> i32* {
+    let x = 1;
+    let b = Holder{ptr: &x};
+    return b.ptr;
+}
+
+fn through_array() -> i32* {
+    let x = 2;
+    let a: [i32*; 1] = [&x];
+    return a[0];
+}
+
+fn through_cast() -> void* {
+    let x = 3;
+    let p = (void*)&x;
+    return p;
+}
+
+fn through_copy() -> i32* {
+    let x = 4;
+    let p = &x;
+    let q = p;
+    return q;
+}
+
+fn through_assignment() -> i32* {
+    let x = 5;
+    let s: i32* = NULL;
+    s = &x;
+    return s;
+}
+
+fn through_field_store() -> i32* {
+    let x = 6;
+    let h = Holder{ptr: NULL};
+    h.ptr = &x;
+    return h.ptr;
+}
+
+fn through_element_store() -> i32* {
+    let x = 7;
+    let a: [i32*; 1] = [NULL];
+    a[0] = &x;
+    return a[0];
+}
+
+fn through_later_iteration() -> i32* {
+    let x = 8;
+    let p: i32* = NULL;
+    for i in 0..3 {
+        if i == 2 {
+            return p;
+        }
+        p = &x;
+    }
+    return NULL;
+}
+
+fn main() {
+}

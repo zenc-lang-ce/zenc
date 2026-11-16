@@ -120,9 +120,11 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             name = type_impl_name(ctx->current_impl_target);
         }
 
-        // Handle Namespace :: (A::B -> A_B)
+        // A path: `m::Vector` of a module imported as `m`, `A::B`.
+        int is_qualified = 0;
         while (lexer_peek(l).kind == TOK_DCOLON)
         {
+            is_qualified = 1;
             lexer_next(l); // eat ::
             Token next = lexer_next(l);
             if (next.kind != TOK_IDENT)
@@ -135,33 +137,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             // Map aliases (I32 -> int32_t, string -> char*) using centralized logic
             const char *resolved_suffix = normalize_type_name(suffix);
 
-            // Check if 'name' is a module alias (e.g., m::Vector)
-            Module *mod = find_module(ctx, name);
-            char *merged;
-            if (mod)
-            {
-                // Module-qualified type
-                if (mod->is_c_header)
-                {
-                    // C header: Use type name directly without prefix
-                    // To prevent name mangling, we might consider changing
-                    // this to also use the prefix.
-                    merged = xstrdup(resolved_suffix);
-
-                    register_extern_symbol(ctx, merged);
-                }
-                else
-                {
-                    // Zen module: Use module base name as prefix
-                    merged = mangle_module_symbol(mod->base_name, resolved_suffix);
-                }
-            }
-            else
-            {
-                // Regular namespace or enum variant
-                merged = mangle_module_symbol(name, resolved_suffix);
-            }
-
+            char *merged = qualified_type_name(ctx, name, resolved_suffix);
             zfree(name);
 
             name = merged;
@@ -270,41 +246,12 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             return ty;
         }
 
-        // Selective imports ONLY apply when we're NOT in a module context
-        if (!ctx->imports.current_module_prefix)
+        // A bare name: a type imported one by one, or in a module the module's own type.
+        char *type_name = is_qualified ? NULL : type_declaration_name(ctx, name);
+        if (type_name)
         {
-            SelectiveImport *si = find_selective_import(ctx, name);
-            if (si)
-            {
-                // This is a selectively imported symbol
-                // Resolve to the actual struct name which was prefixed during module
-                // parsing
-                zfree(name);
-                name = mangle_module_symbol(si->source_module, si->symbol);
-            }
-        }
-
-        // If we're IN a module and no selective import matched, apply module prefix
-        // to types defined WITHIN this module. Types imported from other modules
-        // (identifiable by existing as bare-named structs/aliases) are not prefixed.
-        if (ctx->imports.current_module_prefix && !is_known_generic(ctx, name) &&
-            !is_primitive_type_name(name) && strcasecmp(name, "Self") != 0 &&
-            !is_extern_symbol(ctx, name))
-        {
-            // Check if this is a type imported from another module (registered
-            // without prefix). If so, don't prefix — the bare name already resolves.
-            int is_imported_type =
-                (find_struct_def(ctx, name) != NULL) || (find_type_alias(ctx, name) != NULL);
-
-            if (!is_imported_type)
-            {
-                // Auto-prefix struct name if in module context (unless it's a known
-                // primitive/generic or an imported type)
-                char *prefixed_name =
-                    mangle_module_symbol(ctx->imports.current_module_prefix, name);
-                zfree(name);
-                name = prefixed_name;
-            }
+            zfree(name);
+            name = type_name;
         }
 
         if (is_known_generic(ctx, name))
