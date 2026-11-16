@@ -444,23 +444,27 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
     // Arithmetic operators: +, -, *, /, %
     if (binop == OP_ADD || binop == OP_SUB || binop == OP_MUL || binop == OP_DIV || binop == OP_MOD)
     {
-        // Division by zero detection for / and %
+        // Division by a literal zero (`0` or `0.0`). The operation decides: with a float operand
+        // C divides as floats, also by an integer `0`, and the result is defined (IEEE 754:
+        // infinity or NaN, as `1.0 / 0.0` spells infinity); between integers it is undefined.
         if ((binop == OP_DIV || binop == OP_MOD) && node->binary.right &&
             node->binary.right->kind == NODE_EXPR_LITERAL)
         {
-            LiteralKind kind = node->binary.right->literal.kind;
-            if (kind == LITERAL_INT && node->binary.right->literal.int_val == 0)
+            ASTNode *divisor = node->binary.right;
+            int is_zero = (divisor->literal.kind == LITERAL_INT && divisor->literal.int_val == 0) ||
+                          (divisor->literal.kind == LITERAL_FLOAT &&
+                           divisor->literal.float_val >= -0.0 && divisor->literal.float_val <= 0.0);
+            int is_float_operation = (left_type && is_float_type(resolve_alias(left_type))) ||
+                                     (right_type && is_float_type(resolve_alias(right_type)));
+            if (is_zero && is_float_operation)
+            {
+                tc_warning(tc, divisor->token,
+                           "Float division by zero: the result is infinity or NaN");
+            }
+            else if (is_zero)
             {
                 const char *hints[] = {"Division by zero is undefined behavior", NULL};
-                tc_error_with_hints(tc, node->binary.right->token, "Division by zero detected",
-                                    hints);
-            }
-            else if (kind == LITERAL_FLOAT && node->binary.right->literal.float_val >= -0.0 &&
-                     node->binary.right->literal.float_val <= 0.0)
-            {
-                // Defined for floats (IEEE 754): infinity or NaN, as `1.0 / 0.0` spells infinity.
-                tc_warning(tc, node->binary.right->token,
-                           "Float division by zero: the result is infinity or NaN");
+                tc_error_with_hints(tc, divisor->token, "Division by zero detected", hints);
             }
         }
 
