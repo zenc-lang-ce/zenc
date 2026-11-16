@@ -532,16 +532,9 @@ static CValue eval_binary(CInterp *ci, ASTNode *node)
         ci->error_happened = 1;
         break;
     }
-    if (ci->error_happened)
-    {
-        val_free(&left);
-        val_free(&right);
-        return val_null;
-    }
-
     val_free(&left);
     val_free(&right);
-    return r;
+    return ci->error_happened ? val_null : r;
 }
 
 static CValue eval_unary(CInterp *ci, ASTNode *node)
@@ -569,22 +562,32 @@ static CValue eval_unary(CInterp *ci, ASTNode *node)
         }
         return v;
     }
-    if (kind == OP_NEG || kind == OP_PLUS || kind == OP_BIT_NOT)
+
+    // The other unary operators are integer operators: fold_int_unary computes them, as constant
+    // folding does, and says which ones it knows.
+    CValue v = eval_expr(ci, node->unary.operand);
+    if (ci->error_happened)
     {
-        CValue v = eval_expr(ci, node->unary.operand);
-        if (ci->error_happened || v.kind != VAL_INT)
-        {
-            val_free(&v);
-            return val_null;
-        }
-        long long folded = 0;
-        fold_int_unary(kind, (long long)v.as.i, &folded);
-        v.as.i = (int64_t)folded;
-        return v;
+        val_free(&v);
+        return val_null;
     }
-    zerror_at(node->token, "comptime: unsupported unary operator '%s'", operator_spelling(kind));
-    ci->error_happened = 1;
-    return val_null;
+    const char *op = operator_spelling(kind);
+    if (v.kind != VAL_INT)
+    {
+        zerror_at(node->token, "comptime: operator '%s' requires an integer operand", op);
+        ci->error_happened = 1;
+        val_free(&v);
+        return val_null;
+    }
+    long long folded = 0;
+    if (fold_int_unary(kind, (long long)v.as.i, &folded) != FOLD_OK)
+    {
+        zerror_at(node->token, "comptime: unsupported unary operator '%s'", op);
+        ci->error_happened = 1;
+        return val_null;
+    }
+    v.as.i = (int64_t)folded;
+    return v;
 }
 
 static CValue eval_call(CInterp *ci, ASTNode *node)
