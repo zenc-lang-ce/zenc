@@ -109,7 +109,7 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
     (void)ctx;
     DeclarationAttributes res;
     memset(&res, 0, sizeof(res));
-    res.derived_traits = xmalloc(sizeof(char *) * 32);
+    zvec_Text derived_traits = {0};
 
     // The attributes that only set a flag.
     struct
@@ -409,10 +409,7 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                     }
                     char *trait = token_strdup(inner_t);
                     check_derivable_trait(inner_t, trait);
-                    if (res.derived_count < 32)
-                    {
-                        res.derived_traits[res.derived_count++] = trait;
-                    }
+                    zvec_push_Text(&derived_traits, trait);
                     if (lexer_peek(l).kind == TOK_COMMA)
                     {
                         lexer_next(l);
@@ -490,5 +487,7 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
 
         t = lexer_peek(l);
     }
+    res.derived_traits = derived_traits.data;
+    res.derived_count = (int)derived_traits.length;
     return res;
 }
