@@ -130,7 +130,18 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     {
     case NODE_FOR:
     {
+        // The initializer is declared in the `for` header, not by handle_node_var_decl. One that
+        // names the variable it declares (`for (let i = i; ...)`) is evaluated into a temporary
+        // first, in a block around the loop, as the bounds of a range are.
+        ASTNode *init = node->for_stmt.init;
+        char *init_temp = NULL;
         codegen_loop_enter(ctx, node->for_stmt.loop_label);
+        if (init && init->kind == NODE_VAR_DECL &&
+            expr_names_var(init->var_decl.init_expr, init->var_decl.name))
+        {
+            EMIT(ctx, "{ ");
+            init_temp = emit_init_temp(ctx, init->var_decl.init_expr);
+        }
         EMIT(ctx, "for (");
         if (node->for_stmt.init)
         {
@@ -141,14 +152,14 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 if (declared)
                 {
                     EMIT(ctx, "%s %s = (%s)(", declared, c_name(ctx, v->var_decl.name), declared);
-                    codegen_expression(ctx, v->var_decl.init_expr);
+                    emit_expr_or_temp(ctx, v->var_decl.init_expr, init_temp);
                     EMIT(ctx, ")");
                 }
                 else
                 {
                     emit_auto_type(ctx, v->var_decl.init_expr, v->token);
                     EMIT(ctx, " %s = ", c_name(ctx, v->var_decl.name));
-                    codegen_expression(ctx, v->var_decl.init_expr);
+                    emit_expr_or_temp(ctx, v->var_decl.init_expr, init_temp);
                 }
             }
             else
@@ -169,6 +180,10 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, ") ");
         codegen_loop_body(ctx, node->for_stmt.body, node->for_stmt.loop_label, 1);
         codegen_loop_exit(ctx, node->for_stmt.loop_label);
+        if (init_temp)
+        {
+            EMIT(ctx, "}\n");
+        }
         break;
     }
     case NODE_BREAK:
