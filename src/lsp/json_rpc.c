@@ -198,7 +198,7 @@ static cJSON *initialize(const cJSON *params)
         "\"documentFormattingProvider\":true,"
         "\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\"]},"
         "\"completionProvider\":{"
-        "\"triggerCharacters\":[\".\"]},"
+        "\"triggerCharacters\":[\".\",\":\"]},"
         "\"semanticTokensProvider\":{\"full\":true}"
         "}}";
 
@@ -304,8 +304,7 @@ void lsp_handle_message(const char *json_str)
         }
         if (uri && cJSON_IsString(text))
         {
-            lsp_check_file(uri, text->valuestring);
-            lsp_project_track_document(uri, text->valuestring);
+            lsp_change_file(uri, text->valuestring);
         }
     }
     else if (strcmp(method, "textDocument/didClose") == 0)
@@ -330,7 +329,11 @@ void lsp_handle_message(const char *json_str)
     }
     else if (strcmp(method, "textDocument/completion") == 0)
     {
-        result = uri ? lsp_completion(uri, line, col) : NULL;
+        cJSON *trigger =
+            cJSON_GetObjectItem(cJSON_GetObjectItem(params, "context"), "triggerCharacter");
+        result = uri ? lsp_completion(uri, line, col,
+                                      cJSON_IsString(trigger) ? trigger->valuestring : NULL)
+                     : NULL;
     }
     else if (strcmp(method, "textDocument/documentSymbol") == 0)
     {
