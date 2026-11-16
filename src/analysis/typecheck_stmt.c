@@ -54,6 +54,81 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
     tc_exit_scope(tc);
 }
 
+// The variable an assignment writes into: `v`, or, with `parts`, also a field or an element of
+// it at any depth. NULL when it writes elsewhere (`*p = ...`, a call's result).
+static const char *assigned_variable(ASTNode *target, int parts)
+{
+    while (parts && target && (target->kind == NODE_EXPR_MEMBER || target->kind == NODE_EXPR_INDEX))
+    {
+        target = target->kind == NODE_EXPR_MEMBER ? target->member.target : target->index.array;
+    }
+    return target && target->kind == NODE_EXPR_VAR ? target->var_ref.name : NULL;
+}
+
+// Whether `value` reads nothing but the variable `name`: it takes no address and names no other
+// variable or function. Such a value (`curr.next`, `p + 1`) points at most where `name` already
+// does. An f-string or a lambda does not count: their pieces are not all children.
+static int reads_only(ASTNode *value, const char *name)
+{
+    for (; value; value = value->next)
+    {
+        if ((value->kind == NODE_EXPR_UNARY &&
+             (value->unary.op == OP_ADDRESS || value->unary.op == OP_ADDRESS_RVALUE)) ||
+            (value->kind == NODE_EXPR_VAR && strcmp(value->var_ref.name, name) != 0) ||
+            value->kind == NODE_EXPR_FSTRING || value->kind == NODE_LAMBDA)
+        {
+            return 0;
+        }
+        ASTChildren children = ast_children(value);
+        for (int i = 0; i < children.count; i++)
+        {
+            if (!reads_only(*children.slots[i], name))
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+// Whether a statement of the list that starts at `node`, or one nested in it, assigns to the
+// variable `name`, or, with `parts`, to a field or an element of it, a value that may point
+// somewhere new: one that reads only the variable itself (`curr = curr.next`) does not count. By
+// name: a variable that shadows it counts too, which only makes the caller more cautious.
+static int is_assigned_in(ASTNode *node, const char *name, int parts)
+{
+    for (; node; node = node->next)
+    {
+        if (node->kind == NODE_EXPR_BINARY && is_assignment_operator(node->binary.op))
+        {
+            const char *assigned = assigned_variable(node->binary.left, parts);
+            if (assigned && strcmp(assigned, name) == 0 && !reads_only(node->binary.right, name))
+            {
+                return 1;
+            }
+        }
+        ASTChildren children = ast_children(node);
+        for (int i = 0; i < children.count; i++)
+        {
+            if (is_assigned_in(*children.slots[i], name, parts))
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+// Whether a local variable of type `t`, declared by `decl`, may point somewhere its value did not:
+// something is assigned to it later in its block. A field or an element of it counts unless it is
+// a pointer, whose fields and elements are where it points, not part of it.
+static int is_reassigned(ASTNode *decl, Type *t)
+{
+    Type *resolved = resolve_alias(t);
+    int parts = !(resolved && (resolved->kind == TYPE_POINTER || resolved->kind == TYPE_STRING));
+    return is_assigned_in(decl->next, decl->var_decl.name, parts);
+}
+
 void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
 {
     if (node->var_decl.type_info)
@@ -64,9 +139,13 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
     // MISRA: Mark type as used
     mark_type_as_used(tc, node->var_decl.type_info);
 
-    // Initialize lifetime depth for escape analysis if this is a local variable: one in a
-    // function or in a `test` block, as the depth its symbol gets says (0 is global).
-    if (node->var_decl.type_info && tc->current_depth > 0)
+    // Escape analysis: where a local variable points (one in a function or in a `test` block, as
+    // the depth its symbol gets says; 0 is global). A variable with a value points where the
+    // value points (below). One without a value, or one that something is assigned to later in
+    // its block (is_reassigned), is taken to point here: the check runs once, in source order, so
+    // it cannot follow an assignment that comes after a read, as in a loop.
+    int in_local_scope = tc->current_depth > 0;
+    if (node->var_decl.type_info && !node->var_decl.init_expr && in_local_scope)
     {
         node->var_decl.type_info->lifetime_depth = tc->current_depth;
     }
@@ -95,6 +174,12 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
             // If initialization exists, check compatibility
             if (node->var_decl.type_info)
             {
+                // A variable points where its value points, so a declaration cannot make its
+                // value escape; where the variable lives is its symbol's scope depth
+                // (tc_storage_depth).
+                node->var_decl.type_info->lifetime_depth =
+                    in_local_scope && is_reassigned(node, decl_type) ? tc->current_depth
+                                                                     : init_type->lifetime_depth;
                 check_type_compatibility(tc, node->var_decl.type_info, init_type, node->token,
                                          node->var_decl.init_expr, 0);
             }
@@ -130,9 +215,9 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
     Type *t = node->type_info;
     if (!t && node->var_decl.init_expr)
     {
+        // A clone of the value's type, which keeps where the value points.
         t = type_clone(node->var_decl.init_expr->type_info);
-        // Ensure inferred local variables get the correct scope depth for escape analysis
-        if (t && tc->current_depth > 0)
+        if (t && in_local_scope && is_reassigned(node, t))
         {
             t->lifetime_depth = tc->current_depth;
         }
