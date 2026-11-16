@@ -347,8 +347,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 char *iter_method = "iterator";
                 ASTNode *slice_decl = NULL;
 
-                if (obj_expr->kind == NODE_EXPR_UNARY && obj_expr->unary.op &&
-                    obj_expr->unary.op == OP_ADDRESS)
+                if (obj_expr->kind == NODE_EXPR_UNARY && obj_expr->unary.op == OP_ADDRESS)
                 {
                     obj_expr = obj_expr->unary.operand;
                     iter_method = "iter_ref";
