@@ -90,7 +90,7 @@ const char *zero_initializer(ParserContext *ctx, Type *t)
     {
         return "0";
     }
-    if (k == TYPE_F32 || k == TYPE_FLOAT)
+    if (k == TYPE_F32)
     {
         return "0.0f";
     }

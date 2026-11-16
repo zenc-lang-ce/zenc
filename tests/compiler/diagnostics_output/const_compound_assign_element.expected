@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/const_compound_assign_element.zc...
+error: Cannot assign to element of const variable 'arr'
+  --> tests/compiler/diagnostics_output/const_compound_assign_element.zc:6:12
+   |
+6  |     arr[0] <<= 1;
+   |            ^ here
+   |
+[exit 1]

@@ -116,7 +116,7 @@ char *ast_to_string_recursive(ASTNode *node, int depth)
     {
         char *l = ast_to_string_recursive(node->binary.left, depth + 1);
         char *r = ast_to_string_recursive(node->binary.right, depth + 1);
-        snprintf(buf, buf_size, "(%s %s %s)", l, node->binary.op ? node->binary.op : "?", r);
+        snprintf(buf, buf_size, "(%s %s %s)", l, operator_spelling(node->binary.op), r);
         zfree(l);
         zfree(r);
         break;
@@ -124,7 +124,7 @@ char *ast_to_string_recursive(ASTNode *node, int depth)
     case NODE_EXPR_UNARY:
     {
         char *o = ast_to_string_recursive(node->unary.operand, depth + 1);
-        snprintf(buf, buf_size, "(%s%s)", node->unary.op ? node->unary.op : "?", o);
+        snprintf(buf, buf_size, "(%s%s)", operator_spelling(node->unary.op), o);
         zfree(o);
         break;
     }

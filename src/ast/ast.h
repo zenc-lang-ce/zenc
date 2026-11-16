@@ -14,6 +14,7 @@
 
 #include "token.h"
 #include "../feature_flags.h"
+#include "operators.h"
 #include <stdlib.h>
 
 typedef struct ParserContext ParserContext;
@@ -59,13 +60,10 @@ typedef enum
     TYPE_U128,   ///< `u128` type.
     TYPE_F32,    ///< `f32` type.
     TYPE_F64,    ///< `f64` type.
-    TYPE_INT,    ///< `int` (alias, usually i32).
-    TYPE_FLOAT,  ///< `float` (alias).
     TYPE_USIZE,  ///< `usize` (pointer size unsigned).
     TYPE_ISIZE,  ///< `isize` (pointer size signed).
     TYPE_BYTE,   ///< `byte`.
     TYPE_RUNE,   ///< `rune`.
-    TYPE_UINT,   ///< `uint` (alias).
     // Portable C Types (FFI)
     TYPE_C_INT,       ///< `c_int` (int).
     TYPE_C_UINT,      ///< `c_uint` (unsigned int).
@@ -257,7 +255,8 @@ typedef enum
 typedef struct MatchPattern
 {
     PatternKind kind;
-    QualifiedName name; ///< PATTERN_NAME: the name, as written.
+    QualifiedName name; ///< PATTERN_NAME: the name; its scope by the name the type is declared
+                        ///< under (`base__Shape` for `m::Shape`, see type_declaration_name).
     Token name_token;   ///< PATTERN_NAME: where the name is written, for the language server.
     Token scope_token;  ///< PATTERN_NAME: where the last part of its scope is (`Color` of
                         ///< `Color::Red`).
@@ -446,14 +445,14 @@ struct ASTNode
 
         struct
         {
-            char *op;
+            OperatorKind op;
             ASTNode *left;
             ASTNode *right;
         } binary;
 
         struct
         {
-            char *op;
+            OperatorKind op;
             ASTNode *operand;
             int owns_temp; ///< `&_rval` of a temporary that the enclosing call must drop.
             int temp_id;   ///< While emitting that call: 1 + id of the named temporary.
@@ -462,6 +461,9 @@ struct ASTNode
         struct
         {
             LiteralKind kind;
+            /// Written without a suffix (`15`, `0.5`): its type comes from where it is used.
+            /// Also a `def` without a type, folded into a literal.
+            int is_untyped;
             unsigned long long int_val;
             double float_val;
             char *string_val;
@@ -566,6 +568,9 @@ struct ASTNode
         {
             char *name; // The field's type is the node's type_info.
             int bit_width;
+            // The field this one copies when the struct mixes it in with `use`; NULL when the
+            // struct declares it. The copy keeps that field's token.
+            ASTNode *mixed_in_from;
         } field;
 
         struct
@@ -650,6 +655,10 @@ struct ASTNode
             int is_struct_destruct;
             char *struct_name;  // "Point" (or NULL if unchecked/inferred).
             char **field_names; // NULL if same as 'names', otherwise mapped.
+            // A struct's: where each field and each name is written. In `Point{x}` the two are
+            // the same token, in `Point{x: a}` they are not.
+            Token *field_tokens;
+            Token *name_tokens;
             int is_guard;
             char *guard_variant; // "Some", "Ok".
             ASTNode *else_block;
@@ -947,11 +956,5 @@ Type *get_inner_type(Type *t);
  * a pointer.
  */
 ASTNode *deref_to_one_pointer(ASTNode *expr);
-
-typedef struct TraitReg
-{
-    char *name;
-    struct TraitReg *next;
-} TraitReg;
 
 #endif

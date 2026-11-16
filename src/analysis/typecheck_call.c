@@ -30,7 +30,7 @@ static void report_missing_method(TypeChecker *tc, ASTNode *call)
     // A value of a trait calls through its table; a generic one is named for each instance.
     const char *name = type_def_name(t);
     ASTNode *def = find_struct_def(tc->pctx, name);
-    if (!def || is_trait(name) || type_is_generic_dependent(tc->pctx, t) ||
+    if (!def || is_trait(tc->pctx, name) || type_is_generic_dependent(tc->pctx, t) ||
         (def->kind == NODE_STRUCT && def->strct.is_template) ||
         (def->kind == NODE_ENUM && def->enm.is_template))
     {
@@ -356,7 +356,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         if (!sig && node->call.callee->member.target && node->call.callee->member.target->type_info)
         {
             Type *target_type = get_inner_type(node->call.callee->member.target->type_info);
-            if (target_type->name && is_trait(type_def_name(target_type)))
+            if (target_type->name && is_trait(tc->pctx, type_def_name(target_type)))
             {
                 ASTNode *trait_def = find_trait_def(tc->pctx, type_def_name(target_type));
                 if (trait_def)

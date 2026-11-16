@@ -256,7 +256,7 @@ ASTNode *find_function_definition(ParserContext *ctx, const char *name)
 void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
                      char **out_var_ref_name)
 {
-    if (node->kind == NODE_EXPR_UNARY && strcmp(node->unary.op, "&") == 0 &&
+    if (node->kind == NODE_EXPR_UNARY && node->unary.op == OP_ADDRESS &&
         node->unary.operand->kind == NODE_EXPR_VAR)
     {
         *out_var_ref_name = node->unary.operand->var_ref.name;
@@ -441,7 +441,7 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
             if (sig && sig->arg_types && res.count < sig->total_args && arg)
             {
                 Type *expected = sig->arg_types[res.count];
-                if (expected && expected->name && is_trait(type_def_name(expected)))
+                if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
                 {
                     arg = transform_to_trait_object(ctx, type_def_name(expected), arg);
                 }
@@ -495,7 +495,7 @@ ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait,
         *p = '\0';
     }
 
-    if (!is_trait(clean_trait))
+    if (!is_trait(ctx, clean_trait))
     {
         zfree(clean_trait);
         return source_expr;
@@ -520,7 +520,7 @@ ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait,
             char *code = xmalloc(512);
             char *v_mangled = mangle_vtable_symbol(clean_struct_type, clean_trait);
 
-            if (source_expr->kind == NODE_EXPR_UNARY && strcmp(source_expr->unary.op, "&") == 0)
+            if (source_expr->kind == NODE_EXPR_UNARY && source_expr->unary.op == OP_ADDRESS)
             {
                 snprintf(code, 512, "(%s){.self=(void*)&%s, .vtable=&%s}", clean_trait,
                          var_ref_name, v_mangled);
@@ -562,7 +562,7 @@ ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait,
                 }
 
                 ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                addr->unary.op = xstrdup("&");
+                addr->unary.op = OP_ADDRESS;
                 addr->unary.operand = wrapper;
                 addr->token = source_expr->token;
 
@@ -648,7 +648,7 @@ int type_is_unsigned(Type *t)
 
     return (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 ||
             t->kind == TYPE_U64 || t->kind == TYPE_USIZE || t->kind == TYPE_BYTE ||
-            t->kind == TYPE_U128 || t->kind == TYPE_UINT ||
+            t->kind == TYPE_U128 ||
             (t->kind == TYPE_STRUCT && t->name &&
              (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
               0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
@@ -681,7 +681,6 @@ static const char *scan_conversion(Type *t)
     case TYPE_C_USHORT:
         return "%hu";
     case TYPE_U32:
-    case TYPE_UINT:
     case TYPE_C_UINT:
         return "%u";
     case TYPE_I64:
@@ -699,7 +698,6 @@ static const char *scan_conversion(Type *t)
     case TYPE_USIZE:
         return "%zu";
     case TYPE_F32:
-    case TYPE_FLOAT:
         return "%f";
     case TYPE_F64:
         return "%lf";
