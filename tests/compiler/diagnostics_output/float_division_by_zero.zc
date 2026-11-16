@@ -1,10 +1,13 @@
 // ARGS: check
 // SPDX-License-Identifier: MIT
-// Dividing a float by zero is defined (infinity or NaN): a warning. Dividing an
+// Dividing a float by zero is defined (infinity or NaN): a warning, also when
+// the zero is written as an integer, since C divides as floats. Dividing an
 // integer by zero is undefined behaviour: an error.
 
 fn main() {
     let ratio = 1.0 / 0.0;
+    let x: f64 = 2.5;
+    let scaled = x / 0;
     let count = 4 / 0;
-    printf("%f %d\n", ratio, count);
+    printf("%f %f %d\n", ratio, scaled, count);
 }
