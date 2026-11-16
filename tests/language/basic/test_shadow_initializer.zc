@@ -92,3 +92,35 @@ test "a let that shadows a tuple reads its fields" {
         assert(t == 3, "the initializer read the new variable");
     }
 }
+
+test "an array literal that reads the array it shadows" {
+    let v = [1, 2, 3];
+    {
+        let v = [v[2], v[1], v[0]];
+        assert(v[0] == 3 && v[2] == 1, "the initializer read the new variable");
+    }
+    {
+        let v: int[3] = [v[2], v[1], v[0]];
+        assert(v[0] == 3 && v[2] == 1, "the initializer read the new variable");
+    }
+}
+
+test "an array literal that reads the scalar it shadows" {
+    let x = 4;
+    {
+        let x = [x, x + 1];
+        assert(x[0] == 4 && x[1] == 5, "the initializer read the new variable");
+    }
+}
+
+test "a let that shadows an array of arrays copies it" {
+    let m = [[1, 2], [3, 4]];
+    {
+        let m = m;
+        assert(m[0][1] == 2 && m[1][0] == 3, "the initializer read the new variable");
+    }
+    {
+        let m = [[m[1][1], m[1][0]], [m[0][1], m[0][0]]];
+        assert(m[0][0] == 4 && m[1][1] == 1, "the initializer read the new variable");
+    }
+}
