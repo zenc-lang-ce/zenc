@@ -1,0 +1,58 @@
+// language/control-flow: the initializer of a C-style `for` reads the variable its loop variable
+// shadows, in C too, where the loop variable is in scope in its own initializer.
+
+// Every loop stops after 20 iterations, so an initializer that reads garbage does not hang.
+let LIMIT = 20;
+
+test "an initializer that names the loop variable reads the shadowed variable" {
+    let i = 2;
+    let count = 0;
+    let sum = 0;
+    for (let i = i; i < 4; i = i + 1) {
+        count = count + 1;
+        sum = sum + i;
+        if count == LIMIT { break; }
+    }
+    expect_eq(count, 2, "for (let i = i; i < 4; ...) should run 2 times when the shadowed i is 2");
+    expect_eq(sum, 5, "for (let i = i; i < 4; ...) should visit 2 and 3");
+    expect_eq(i, 2, "the shadowed i should be unchanged");
+}
+
+test "a typed initializer that names the loop variable reads the shadowed variable" {
+    let i = 2;
+    let count = 0;
+    let sum = 0;
+    for (let i: int = i; i < 4; i = i + 1) {
+        count = count + 1;
+        sum = sum + i;
+        if count == LIMIT { break; }
+    }
+    expect_eq(count, 2, "for (let i: int = i; ...) should run 2 times when the shadowed i is 2");
+    expect_eq(sum, 5, "for (let i: int = i; ...) should visit 2 and 3");
+}
+
+test "an initializer expression that names the loop variable reads the shadowed variable" {
+    let i = 2;
+    let count = 0;
+    let first = -1;
+    for (let i = i * 2; i < 6; i = i + 1) {
+        if count == 0 { first = i; }
+        count = count + 1;
+        if count == LIMIT { break; }
+    }
+    expect_eq(first, 4, "for (let i = i * 2; ...) should start at twice the shadowed i");
+    expect_eq(count, 2, "for (let i = i * 2; i < 6; ...) should run 2 times");
+}
+
+test "a labeled loop whose initializer names the loop variable reads the shadowed variable" {
+    let i = 1;
+    let count = 0;
+    outer: for (let i = i; i < 4; i = i + 1) {
+        for j in 0..2 {
+            if i == 2 && j == 1 { continue outer; }
+            count = count + 1;
+            if count == LIMIT { break outer; }
+        }
+    }
+    expect_eq(count, 5, "the outer loop should run 3 times and skip one inner step");
+}
