@@ -1,0 +1,11 @@
+// ARGS: check
+// A variable of a test block is a local of that block, as in a function: a
+// pointer to a variable of an inner block that outlives it is still an escape.
+
+test "real escape" {
+    let p: i32* = NULL;
+    if true {
+        let m = 2;
+        p = &m;
+    }
+}
