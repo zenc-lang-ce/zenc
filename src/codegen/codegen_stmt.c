@@ -15,55 +15,6 @@
 #include "codegen_internal.h"
 #include "zprep_plugin.h"
 
-// A bound or the step of a `for` range: an expression, or the step's text, and the temporary
-// it was evaluated into, if any.
-typedef struct
-{
-    ASTNode *expr;
-    const char *text;
-    char *temp;
-} RangePart;
-
-static void emit_range_part(ParserContext *ctx, RangePart *part)
-{
-    if (part->temp)
-    {
-        EMIT(ctx, "%s", part->temp);
-    }
-    else if (part->expr)
-    {
-        codegen_expression(ctx, part->expr);
-    }
-    else
-    {
-        EMIT(ctx, "%s", part->text);
-    }
-}
-
-// Evaluates `part` into a temporary of its own type, when `names_var`.
-static void emit_range_temp(ParserContext *ctx, RangePart *part, int names_var)
-{
-    if (!names_var)
-    {
-        return;
-    }
-    char *temp = xmalloc(32);
-    snprintf(temp, 32, "_z_range_%d", ctx->cg.tmp_counter++);
-    if (z_path_match_compiler(ctx->config->cc, "tcc"))
-    {
-        EMIT(ctx, "__typeof__((");
-        emit_range_part(ctx, part);
-        EMIT(ctx, ")) %s = ", temp);
-    }
-    else
-    {
-        EMIT(ctx, "ZC_AUTO %s = ", temp);
-    }
-    emit_range_part(ctx, part);
-    EMIT(ctx, "; ");
-    part->temp = temp;
-}
-
 // Enters a loop: emits its label, if any, and records where its defers start, so `break` and
 // `continue` know how many to run.
 void codegen_loop_enter(ParserContext *ctx, const char *label)
@@ -286,35 +237,47 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         // temporary first, in a block around the loop, while `i` still names the shadowed one.
         const char *var = node->for_range.var_name;
         const char *step = node->for_range.step;
-        RangePart start = {node->for_range.start, NULL, NULL};
-        RangePart end = {node->for_range.end, NULL, NULL};
-        RangePart step_part = {NULL, step, NULL};
-        int start_names_var = expr_names_var(start.expr, var);
-        int end_names_var = expr_names_var(end.expr, var);
+        int start_names_var = expr_names_var(node->for_range.start, var);
+        int end_names_var = expr_names_var(node->for_range.end, var);
         int step_names_var = step && strcmp(step, var) == 0;
         int hoist = start_names_var || end_names_var || step_names_var;
+        char *start_temp = NULL;
+        char *end_temp = NULL;
+        char *step_temp = NULL;
 
         codegen_loop_enter(ctx, node->for_range.loop_label);
         if (hoist)
         {
             EMIT(ctx, "{ ");
-            emit_range_temp(ctx, &start, start_names_var);
-            emit_range_temp(ctx, &end, end_names_var);
-            emit_range_temp(ctx, &step_part, step_names_var);
+            if (start_names_var)
+            {
+                start_temp = emit_init_temp(ctx, node->for_range.start);
+            }
+            if (end_names_var)
+            {
+                end_temp = emit_init_temp(ctx, node->for_range.end);
+            }
+            if (step_names_var)
+            {
+                // The step is the text of one token, not an expression: here, the name.
+                step_temp = xmalloc(32);
+                snprintf(step_temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
+                EMIT(ctx, "__typeof__((%s)) %s = %s; ", step, step_temp, step);
+            }
         }
 
         EMIT(ctx, "for (");
         if (z_path_match_compiler(ctx->config->cc, "tcc"))
         {
             EMIT(ctx, "__typeof__((");
-            emit_range_part(ctx, &start);
+            emit_expr_or_temp(ctx, node->for_range.start, start_temp);
             EMIT(ctx, ")) %s = ", c_name(ctx, node->for_range.var_name));
         }
         else
         {
             EMIT(ctx, "ZC_AUTO %s = ", c_name(ctx, node->for_range.var_name));
         }
-        emit_range_part(ctx, &start);
+        emit_expr_or_temp(ctx, node->for_range.start, start_temp);
         if (node->for_range.step && node->for_range.step[0] == '-')
         {
             if (node->for_range.is_inclusive)
@@ -337,13 +300,11 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, "; %s < ", c_name(ctx, node->for_range.var_name));
             }
         }
-        emit_range_part(ctx, &end);
+        emit_expr_or_temp(ctx, node->for_range.end, end_temp);
         EMIT(ctx, "; %s", c_name(ctx, node->for_range.var_name));
         if (node->for_range.step)
         {
-            EMIT(ctx, " += ");
-            emit_range_part(ctx, &step_part);
-            EMIT(ctx, ") ");
+            EMIT(ctx, " += %s) ", step_temp ? step_temp : node->for_range.step);
         }
         else
         {

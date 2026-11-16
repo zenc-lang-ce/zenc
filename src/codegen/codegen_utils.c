@@ -94,6 +94,29 @@ int expr_names_var(ASTNode *expr, const char *name)
     return 0;
 }
 
+char *emit_init_temp(ParserContext *ctx, ASTNode *expr)
+{
+    char *temp = xmalloc(32);
+    snprintf(temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
+    emit_auto_type(ctx, expr, expr->token);
+    EMIT(ctx, " %s = ", temp);
+    codegen_expression(ctx, expr);
+    EMIT(ctx, "; ");
+    return temp;
+}
+
+void emit_expr_or_temp(ParserContext *ctx, ASTNode *expr, const char *temp)
+{
+    if (temp)
+    {
+        EMIT(ctx, "%s", temp);
+    }
+    else
+    {
+        codegen_expression(ctx, expr);
+    }
+}
+
 const char *zero_initializer(ParserContext *ctx, Type *t)
 {
     if (!t)

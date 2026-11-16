@@ -108,6 +108,16 @@ int is_fixed_size_array(Type *t);
  */
 int expr_names_var(ASTNode *expr, const char *name);
 /**
+ * @brief Emits `<type> _z_init_N = <expr>; ` and returns the temporary's name. A declaration whose
+ *        initializer names the variable it declares reads it from there: C puts a variable in
+ *        scope at the end of its declarator, so in `T x = x + 1` the `x` on the right is the new x.
+ */
+char *emit_init_temp(ParserContext *ctx, ASTNode *expr);
+/**
+ * @brief Emits `temp` if there is one, otherwise `expr`.
+ */
+void emit_expr_or_temp(ParserContext *ctx, ASTNode *expr, const char *temp);
+/**
  * @brief The C initializer that zeroes a value of type `t` (`{0}`, `0`, `0.0`, `false`...), or
  *        NULL for a type it has none for (a pointer, an enum, a closure...).
  */

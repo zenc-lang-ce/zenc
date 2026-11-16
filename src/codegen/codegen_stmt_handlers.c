@@ -592,13 +592,14 @@ static char *emit_shadowed_init(ParserContext *ctx, ASTNode *node)
         return NULL;
     }
 
-    char *temp = xmalloc(32);
-    snprintf(temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
+    char *temp;
     if (is_fixed_size_array(init->type_info))
     {
         // C cannot copy an array by value: the temporary is an array of the same type, which an
         // array literal initializes and any other array is copied into, and the declaration
         // copies the elements from there.
+        temp = xmalloc(32);
+        snprintf(temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
         emit_var_decl_type(ctx, c_type_spelling(ctx, init->type_info), temp);
         if (init->kind == NODE_EXPR_ARRAY_LITERAL)
         {
@@ -611,14 +612,12 @@ static char *emit_shadowed_init(ParserContext *ctx, ASTNode *node)
             codegen_expression(ctx, init);
             EMIT(ctx, ", sizeof(%s))", temp);
         }
+        EMIT(ctx, "; ");
     }
     else
     {
-        emit_auto_type(ctx, init, node->token);
-        EMIT(ctx, " %s = ", temp);
-        codegen_expression(ctx, init);
+        temp = emit_init_temp(ctx, init);
     }
-    EMIT(ctx, "; ");
     int moved = is_fixed_size_array(init->type_info) && type_needs_drop(ctx, init->type_info)
                     ? emit_moved_out(ctx, init)
                     : emit_move_invalidation(ctx, init);
@@ -627,19 +626,6 @@ static char *emit_shadowed_init(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, "; ");
     }
     return temp;
-}
-
-// The initializer of `node`, or the temporary emit_shadowed_init evaluated it into.
-static void emit_var_init(ParserContext *ctx, ASTNode *node, const char *temp)
-{
-    if (temp)
-    {
-        EMIT(ctx, "%s", temp);
-    }
-    else
-    {
-        codegen_expression(ctx, node->var_decl.init_expr);
-    }
 }
 
 void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
@@ -708,7 +694,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 // need dropping is moved, so its source is marked as moved out.
                 const char *name = c_name(ctx, node->var_decl.name);
                 EMIT(ctx, "; memcpy(%s, ", name);
-                emit_var_init(ctx, node, temp);
+                emit_expr_or_temp(ctx, node->var_decl.init_expr, temp);
                 EMIT(ctx, ", sizeof(%s))", name);
                 if (!temp && type_needs_drop(ctx, node->type_info))
                 {
@@ -724,13 +710,13 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 {
                     char *ct = c_type_spelling(ctx, node->type_info);
                     EMIT(ctx, "(%s)(", ct);
-                    emit_var_init(ctx, node, temp);
+                    emit_expr_or_temp(ctx, node->var_decl.init_expr, temp);
                     EMIT(ctx, ")");
                     zfree(ct);
                 }
                 else
                 {
-                    emit_var_init(ctx, node, temp);
+                    emit_expr_or_temp(ctx, node->var_decl.init_expr, temp);
                 }
             }
             else if (zero_initializer(ctx, node->type_info))
@@ -781,12 +767,12 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                     (strchr(inferred, '*') || is_enum_type_name(ctx, inferred)))
                 {
                     EMIT(ctx, "(%s)(", inferred);
-                    emit_var_init(ctx, node, temp);
+                    emit_expr_or_temp(ctx, node->var_decl.init_expr, temp);
                     EMIT(ctx, ")");
                 }
                 else
                 {
-                    emit_var_init(ctx, node, temp);
+                    emit_expr_or_temp(ctx, node->var_decl.init_expr, temp);
                 }
                 EMIT(ctx, ";\n");
 
@@ -804,7 +790,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 add_symbol_local(ctx, node->var_decl.name, NULL);
 
                 EMIT(ctx, " = ");
-                emit_var_init(ctx, node, temp);
+                emit_expr_or_temp(ctx, node->var_decl.init_expr, temp);
                 EMIT(ctx, ";\n");
                 if (!temp && node->var_decl.init_expr &&
                     emit_move_invalidation(ctx, node->var_decl.init_expr))
