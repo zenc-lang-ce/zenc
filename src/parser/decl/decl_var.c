@@ -378,25 +378,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 zpanic_at(init->token, "Slice Node has NO Type Info!");
                 return NULL;
             }
-            // Fallbacks for literals
-            else if (init->kind == NODE_EXPR_LITERAL)
-            {
-                if (init->literal.kind == LITERAL_INT)
-                {
-                    type = xstrdup("int");
-                    type_obj = type_new(TYPE_INT);
-                }
-                else if (init->literal.kind == LITERAL_FLOAT)
-                {
-                    type = xstrdup("float");
-                    type_obj = type_new(TYPE_FLOAT);
-                }
-                else if (init->literal.kind == LITERAL_STRING)
-                {
-                    type = xstrdup("string");
-                    type_obj = type_new(TYPE_STRING);
-                }
-            }
             else if (init->kind == NODE_EXPR_STRUCT_INIT)
             {
                 type = xstrdup(init->struct_init.struct_name);
@@ -421,29 +402,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         if (!t && init->kind == NODE_EXPR_VAR)
         {
             t = find_symbol_type_info(ctx, init->var_ref.name);
-        }
-
-        // Literal type construction for validation
-        Type *temp_literal_type = NULL;
-        if (!t && init->kind == NODE_EXPR_LITERAL)
-        {
-            if (init->literal.kind == LITERAL_INT)
-            {
-                temp_literal_type = type_new(TYPE_INT);
-            }
-            else if (init->literal.kind == LITERAL_FLOAT)
-            {
-                temp_literal_type = type_new(TYPE_FLOAT);
-            }
-            else if (init->literal.kind == LITERAL_STRING)
-            {
-                temp_literal_type = type_new(TYPE_STRING);
-            }
-            else if (init->literal.kind == LITERAL_CHAR)
-            {
-                temp_literal_type = type_new(TYPE_CHAR);
-            }
-            t = temp_literal_type;
         }
 
         // Parser-level type validation: catches obvious mismatches like assigning
@@ -472,11 +430,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 zfree(expected);
                 zfree(got);
             }
-        }
-
-        if (temp_literal_type)
-        {
-            zfree(temp_literal_type); // Simple free, shallow
         }
     }
 
@@ -629,24 +582,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                     }
                     next_type_obj->array_size = next_init->type_info->array_size;
                     next_type = type_mangle_spelling(next_type_obj);
-                }
-                else if (next_init->kind == NODE_EXPR_LITERAL)
-                {
-                    if (next_init->literal.kind == LITERAL_INT)
-                    {
-                        next_type = xstrdup("int");
-                        next_type_obj = type_new(TYPE_INT);
-                    }
-                    else if (next_init->literal.kind == LITERAL_FLOAT)
-                    {
-                        next_type = xstrdup("float");
-                        next_type_obj = type_new(TYPE_FLOAT);
-                    }
-                    else if (next_init->literal.kind == LITERAL_STRING)
-                    {
-                        next_type = xstrdup("string");
-                        next_type_obj = type_new(TYPE_STRING);
-                    }
                 }
             }
 

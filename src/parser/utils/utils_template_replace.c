@@ -145,11 +145,11 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c)
 
     if (strcmp(c, "int") == 0)
     {
-        return type_new(TYPE_INT);
+        return type_new(TYPE_I32);
     }
     if (strcmp(c, "float") == 0)
     {
-        return type_new(TYPE_FLOAT);
+        return type_new(TYPE_F32);
     }
     if (strcmp(c, "void") == 0)
     {
