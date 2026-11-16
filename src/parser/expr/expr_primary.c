@@ -1110,7 +1110,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     // Create Unary & (AddressOf) node wrapping the arg
                     ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                    addr->unary.op = xstrdup("&");
+                    addr->unary.op = OP_ADDRESS;
                     addr->unary.operand = args[i];
                     // Link
                     tail->next = addr;
@@ -1151,7 +1151,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                                     : NULL);
 
                         if (!arg_type && def->kind == NODE_EXPR_UNARY &&
-                            strcmp(def->unary.op, "&") == 0)
+                            def->unary.op == OP_ADDRESS)
                         {
                             if (def->unary.operand->kind == NODE_EXPR_VAR)
                             {
@@ -1180,7 +1180,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                         vtable_var->var_ref.name = xstrdup(vtable_name);
 
                                         ASTNode *vtable_ref = ast_create(NODE_EXPR_UNARY);
-                                        vtable_ref->unary.op = xstrdup("&");
+                                        vtable_ref->unary.op = OP_ADDRESS;
                                         vtable_ref->unary.operand = vtable_var;
 
                                         ASTNode *f_vtable = ast_create(NODE_FIELD_INIT);
@@ -1219,7 +1219,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 vtable_var->var_ref.name = xstrdup(vtable_name);
 
                                 ASTNode *vtable_ref = ast_create(NODE_EXPR_UNARY);
-                                vtable_ref->unary.op = xstrdup("&");
+                                vtable_ref->unary.op = OP_ADDRESS;
                                 vtable_ref->unary.operand = vtable_var;
 
                                 ASTNode *f_vtable = ast_create(NODE_FIELD_INIT);
@@ -1421,7 +1421,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     node->literal.int_val = (unsigned long long)(-value);
                     ASTNode *neg = ast_create(NODE_EXPR_UNARY);
                     neg->token = t;
-                    neg->unary.op = xstrdup("-");
+                    neg->unary.op = OP_NEG;
                     neg->unary.operand = node;
                     neg->type_info = value_type;
                     node = neg;
@@ -1972,8 +1972,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     {
                         // Needs ptr, have value -> &node (through a temporary if it has no address)
                         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                        addr->unary.op =
-                            expr_is_rvalue(ctx, node) ? xstrdup("&_rval") : xstrdup("&");
+                        addr->unary.op = expr_is_rvalue(ctx, node) ? OP_ADDRESS_RVALUE : OP_ADDRESS;
                         addr->unary.operand = node;
                         addr->type_info = type_new_ptr(st);
                         arg1 = addr;
@@ -1982,7 +1981,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     {
                         // Needs value, have ptr -> *node
                         ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                        deref->unary.op = xstrdup("*");
+                        deref->unary.op = OP_DEREF;
                         deref->unary.operand = node;
                         arg1 = deref;
                     }

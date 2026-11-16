@@ -12,6 +12,14 @@
 #include <ctype.h>
 #include <string.h>
 
+// Whether `op` is written with a `=`: the assignments and `== != <= >=`. The side-effect checks
+// below and the step of a `for` (check_loop_passes) used to test the operator's text for a `=`;
+// this keeps their rule as it was.
+int writes_with_equals(OperatorKind op)
+{
+    return is_assignment_operator(op) || op == OP_EQ || op == OP_NE || op == OP_LE || op == OP_GE;
+}
+
 // External helpers from parser
 
 int tc_expr_has_side_effects(ASTNode *node)
@@ -28,8 +36,9 @@ int tc_expr_has_side_effects(ASTNode *node)
         return 1;
 
     case NODE_EXPR_BINARY:
-        // Assignment operators are side effects
-        if (node->binary.op && strstr(node->binary.op, "="))
+        // Assignment operators are side effects. Any operator written with `=` counts, the
+        // comparisons `== != <= >=` too, as when this tested the text for a `=`.
+        if (writes_with_equals(node->binary.op))
         {
             return 1;
         }
@@ -38,10 +47,8 @@ int tc_expr_has_side_effects(ASTNode *node)
 
     case NODE_EXPR_UNARY:
         // Increment/Decrement are side effects (prefix and postfix)
-        if (node->unary.op && (unary_operator_of(node->unary.op) == OP_PRE_INC ||
-                               unary_operator_of(node->unary.op) == OP_PRE_DEC ||
-                               unary_operator_of(node->unary.op) == OP_POST_INC ||
-                               unary_operator_of(node->unary.op) == OP_POST_DEC))
+        if (node->unary.op == OP_PRE_INC || node->unary.op == OP_PRE_DEC ||
+            node->unary.op == OP_POST_INC || node->unary.op == OP_POST_DEC)
         {
             return 1;
         }
@@ -125,7 +132,7 @@ void collect_symbols(ASTNode *node, SymbolSet *reads, SymbolSet *writes)
     switch (node->kind)
     {
     case NODE_EXPR_BINARY:
-        if (node->binary.op && strstr(node->binary.op, "="))
+        if (writes_with_equals(node->binary.op))
         {
             // LHS is a write
             if (node->binary.left->kind == NODE_EXPR_VAR)
@@ -146,10 +153,8 @@ void collect_symbols(ASTNode *node, SymbolSet *reads, SymbolSet *writes)
         break;
 
     case NODE_EXPR_UNARY:
-        if (node->unary.op && (unary_operator_of(node->unary.op) == OP_PRE_INC ||
-                               unary_operator_of(node->unary.op) == OP_PRE_DEC ||
-                               unary_operator_of(node->unary.op) == OP_POST_INC ||
-                               unary_operator_of(node->unary.op) == OP_POST_DEC))
+        if (node->unary.op == OP_PRE_INC || node->unary.op == OP_PRE_DEC ||
+            node->unary.op == OP_POST_INC || node->unary.op == OP_POST_DEC)
         {
             if (node->unary.operand->kind == NODE_EXPR_VAR)
             {

@@ -650,8 +650,8 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
         {
             if (node->for_stmt.step->kind == NODE_EXPR_BINARY)
             {
-                const char *step_op = node->for_stmt.step->binary.op;
-                if (strstr(step_op, "=") && node->for_stmt.step->binary.left->type_info)
+                if (writes_with_equals(node->for_stmt.step->binary.op) &&
+                    node->for_stmt.step->binary.left->type_info)
                 {
                     misra_check_loop_counter_float(tc->pctx,
                                                    node->for_stmt.step->binary.left->type_info,
