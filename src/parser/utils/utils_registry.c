@@ -906,32 +906,29 @@ char *module_written_name(ParserContext *ctx, const char *name)
     return written;
 }
 
-// The name the module being parsed registered its own `name` under (`prefix__name`), when
-// `declares` finds it; NULL outside a module parsed with a prefix or when the module has none.
-static char *module_own_name(ParserContext *ctx, const char *name,
-                             int (*declares)(ParserContext *, const char *))
+// The C name of the module being parsed's own declaration of `name` (registered by the name it
+// writes, find_file_declaration), when `is_kind` accepts it; NULL outside a module parsed with a
+// prefix, or when the module has none above.
+static char *module_own_name(ParserContext *ctx, const char *name, int (*is_kind)(ASTNode *))
 {
     if (!ctx->imports.current_module_prefix)
     {
         return NULL;
     }
-    char *own = mangle_module_symbol(ctx->imports.current_module_prefix, name);
-    if (declares(ctx, own))
-    {
-        return own;
-    }
-    zfree(own);
-    return NULL;
+    ASTNode *decl = find_file_declaration(ctx, ctx->current_filename, name);
+    const char *c_name = decl && is_kind(decl) ? declaration_c_name(decl) : NULL;
+    return c_name ? xstrdup(c_name) : NULL;
 }
 
-static int declares_type(ParserContext *ctx, const char *name)
+static int is_type_declaration(ASTNode *decl)
 {
-    return find_struct_def(ctx, name) != NULL;
+    return decl->kind == NODE_STRUCT || decl->kind == NODE_ENUM;
 }
 
-static int declares_function(ParserContext *ctx, const char *name)
+// A function the program calls by its name: not a generic one, which is a template.
+static int is_function_declaration(ASTNode *decl)
 {
-    return find_func(ctx, name) != NULL;
+    return decl->kind == NODE_FUNCTION && decl->func.generic_param_count == 0;
 }
 
 char *module_type_name(ParserContext *ctx, const char *name)
@@ -942,7 +939,7 @@ char *module_type_name(ParserContext *ctx, const char *name)
     {
         return NULL;
     }
-    char *own = module_own_name(ctx, name, declares_type);
+    char *own = module_own_name(ctx, name, is_type_declaration);
     if (own || !ctx->imports.current_module_prefix)
     {
         return own;
@@ -1006,7 +1003,7 @@ char *module_function_name(ParserContext *ctx, const char *name)
     {
         return NULL;
     }
-    return module_own_name(ctx, name, declares_function);
+    return module_own_name(ctx, name, is_function_declaration);
 }
 
 // The name programs write for the struct or enum `name`, kept when its C name got a module
