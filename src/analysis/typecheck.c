@@ -492,7 +492,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 mcase = mcase->next;
             }
 
-            if (!has_default)
+            // A value no arm takes goes past the match: then the code after it is reachable
+            // whatever the arms do. A match on every variant of an enum has none, as one with
+            // `_`.
+            const char *missing =
+                has_default
+                    ? NULL
+                    : match_missing_variant(tc->pctx, node, node->match_stmt.expr->type_info);
+            if (missing)
             {
                 all_unreachable = 0;
                 if (match_initial_state)
@@ -500,16 +507,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     move_state_merge_into(&merged_state, match_initial_state);
                 }
 
-                const char *missing =
-                    match_missing_variant(tc->pctx, node, node->match_stmt.expr->type_info);
-                if (missing && strcmp(missing, "_") == 0 && !tc->pctx->config->misra_mode)
+                if (strcmp(missing, "_") == 0 && !tc->pctx->config->misra_mode)
                 {
                     const char *hints[] = {"Add a default '_' case to handle all possibilities",
                                            NULL};
                     tc_error_with_hints(tc, node->token,
                                         "Match may not be exhaustive (no default case)", hints);
                 }
-                else if (missing && strcmp(missing, "_") != 0)
+                else if (strcmp(missing, "_") != 0)
                 {
                     char msg[MAX_ERROR_MSG_LEN];
                     snprintf(msg, sizeof(msg), "Match is not exhaustive: missing variant '%s'",
