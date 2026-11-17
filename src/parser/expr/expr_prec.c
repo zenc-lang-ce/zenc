@@ -953,32 +953,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                     ASTNode *arg = parse_expression(ctx, l);
 
-                    // Move Semantics Logic
-                    check_move_usage(ctx, arg, arg ? arg->token : t1);
-                    if (arg && arg->kind == NODE_EXPR_VAR)
-                    {
-                        Type *inner_t = arg->type_info
-                                            ? arg->type_info
-                                            : find_symbol_type_info(ctx, arg->var_ref.name);
-                        if (!inner_t)
-                        {
-                            ZenSymbol *s = find_symbol_entry(ctx, arg->var_ref.name);
-                            if (s)
-                            {
-                                inner_t = s->type_info;
-                            }
-                        }
-
-                        if (!is_type_copy(ctx, inner_t))
-                        {
-                            ZenSymbol *s = find_symbol_entry(ctx, arg->var_ref.name);
-                            if (s)
-                            {
-                                s->is_moved = 1;
-                            }
-                        }
-                    }
-
                     if (!head)
                     {
                         head = arg;
@@ -1411,53 +1385,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
         }
         bin->binary.left = lhs;
         bin->binary.right = rhs;
-
-        // Move Semantics Logic
-        if (op.kind == TOK_OP && is_token(op, "=")) // Assignment "="
-        {
-            // 1. RHS is being read: Check validity
-            check_move_usage(ctx, rhs, op);
-
-            // 2. Mark RHS as moved (Transfer ownership) if it's a Move type
-            if (rhs->kind == NODE_EXPR_VAR)
-            {
-                Type *inner_t =
-                    rhs->type_info ? rhs->type_info : find_symbol_type_info(ctx, rhs->var_ref.name);
-                // If type info not on var, try looking up symbol
-                if (!inner_t)
-                {
-                    ZenSymbol *s = find_symbol_entry(ctx, rhs->var_ref.name);
-                    if (s)
-                    {
-                        inner_t = s->type_info;
-                    }
-                }
-
-                if (!is_type_copy(ctx, inner_t))
-                {
-                    ZenSymbol *s = find_symbol_entry(ctx, rhs->var_ref.name);
-                    if (s)
-                    {
-                        s->is_moved = 1;
-                    }
-                }
-            }
-
-            // 3. LHS is being written: Resurrect (it is now valid)
-            if (lhs->kind == NODE_EXPR_VAR)
-            {
-                ZenSymbol *s = find_symbol_entry(ctx, lhs->var_ref.name);
-                if (s)
-                {
-                    s->is_moved = 0;
-                }
-            }
-        }
-        else // All other binary ops (including +=, -=, etc. which read LHS first)
-        {
-            check_move_usage(ctx, lhs, op);
-            check_move_usage(ctx, rhs, op);
-        }
 
         bin->binary.op = binary_operator_of_token(op);
 
