@@ -241,8 +241,12 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                 }
                 if (!found)
                 {
+                    // The context's field has the variable's name; the variable, where the
+                    // lambda is written, may have another C name (local_c_name_at).
                     const char *cap = c_name(ctx, node->lambda.captured_vars[i]);
-                    EMIT(ctx, "_z_ctx_%d->%s = &%s;\n", lid, cap, cap);
+                    const char *outer =
+                        local_decl_c_name(ctx, node->token, node->lambda.captured_vars[i]);
+                    EMIT(ctx, "_z_ctx_%d->%s = &%s;\n", lid, cap, outer);
                 }
             }
             else
@@ -268,8 +272,11 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                 }
                 zfree(tstr);
 
+                // The variable as it is named where the lambda is written: a temporary node, which
+                // codegen reads and frees here.
                 ASTNode *var_node = ast_create(NODE_EXPR_VAR);
-                var_node->var_ref.name = xstrdup(node->lambda.captured_vars[i]);
+                var_node->var_ref.name =
+                    xstrdup(local_decl_flag_name(ctx, node->token, node->lambda.captured_vars[i]));
                 var_node->token = node->token;
 
                 // A capture with no type is an `int`, as its context field is.

@@ -30,6 +30,26 @@ typedef struct WaitingLambda
     ASTNode *func;   ///< The function it is written in.
 } WaitingLambda;
 
+/// The C name a local got (tc_declare_local), by where it is declared and its name: a loop's
+/// second pass finds the same one.
+typedef struct LocalCName
+{
+    const char *site; ///< The declaration's token (Token.start).
+    const char *name;
+    const char *c_name;
+    ZenSymbol *symbol; ///< Its symbol in the check under way.
+} LocalCName;
+
+/// The locals of one C function: a function, or a lambda, which is a C function of its own.
+typedef struct CFunctionLocals
+{
+    ASTNode *function;
+    LocalCName *locals;
+    int count;
+    int capacity;
+    struct CFunctionLocals *next;
+} CFunctionLocals;
+
 // Type Checker Context
 // Holds the state during the semantic analysis pass.
 // Unlike the parser, this focuses on semantic validity (types, definitions).
@@ -60,6 +80,8 @@ typedef struct TypeChecker
     int escapes_reported_count;
     WaitingLambda *waiting_lambdas; ///< Lambdas whose body waits for a call (WaitingLambda).
     int waiting_lambda_count;
+    CFunctionLocals *c_functions; ///< The locals of every C function checked (tc_declare_local).
+    CFunctionLocals *c_function;  ///< Those of the one being checked; NULL at the top level.
 
     // Configuration
     int rechecking; ///< Checking code a second time (a loop's second pass, the expressions of an

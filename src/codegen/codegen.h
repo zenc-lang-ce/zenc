@@ -92,6 +92,20 @@ const char *field_c_type(ParserContext *ctx, ASTNode *field);
  */
 char *c_type_spelling(ParserContext *ctx, Type *t);
 /** @brief A program's identifier as the generated C or C++ names it (c_safe_name). */
+/**
+ * @brief The C name of the local `name` declared at `site` (its declaration's token): the one the
+ *        typechecker gave it when it hides another (local_c_name_at), or its own (c_name).
+ */
+const char *local_decl_c_name(ParserContext *ctx, Token site, const char *name);
+/** @brief The C name of the variable a NODE_EXPR_VAR reads: its symbol's link_name, or c_name. */
+const char *var_ref_c_name(ParserContext *ctx, ASTNode *ref);
+/**
+ * @brief What the drop flag of the local `name` declared at `site` is named after
+ *        (`__z_drop_flag_<it>`): its C name when the typechecker renamed it, else its name.
+ */
+const char *local_decl_flag_name(ParserContext *ctx, Token site, const char *name);
+/** @brief The same for the variable a NODE_EXPR_VAR reads. */
+const char *var_ref_flag_name(ASTNode *ref);
 const char *c_name(ParserContext *ctx, const char *name);
 /**
  * @brief The type of `node` (a declaration or an expression) spelled in C: its type_info, as the

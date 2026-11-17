@@ -591,6 +591,148 @@ ZenSymbol *tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t,
     return sym;
 }
 
+CFunctionLocals *tc_enter_c_function(TypeChecker *tc, ASTNode *function)
+{
+    CFunctionLocals *previous = tc->c_function;
+    CFunctionLocals *f = tc->c_functions;
+    while (f && f->function != function)
+    {
+        f = f->next;
+    }
+    if (!f)
+    {
+        f = xcalloc(1, sizeof(CFunctionLocals));
+        f->function = function;
+        f->next = tc->c_functions;
+        tc->c_functions = f;
+    }
+    tc->c_function = f;
+    return previous;
+}
+
+void tc_leave_c_function(TypeChecker *tc, CFunctionLocals *previous)
+{
+    tc->c_function = previous;
+}
+
+// Whether `sym` is a local of the C function `f`.
+static int is_local_of(CFunctionLocals *f, ZenSymbol *sym)
+{
+    for (int i = 0; i < f->count; i++)
+    {
+        if (f->locals[i].symbol == sym)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Whether a local of `f` seen from the current scope has the C name `c_name`: a local declared
+// with it would hide that one in C, which C does not allow in every place (a lambda's body is
+// the block of its parameters; in C++ the body of a `for` cannot redeclare its variable).
+static int local_c_name_visible(TypeChecker *tc, CFunctionLocals *f, const char *c_name)
+{
+    for (Scope *scope = tc->pctx->current_scope; scope; scope = scope->parent)
+    {
+        for (ZenSymbol *sym = scope->symbols; sym; sym = sym->next)
+        {
+            const char *sym_c_name = sym->link_name ? sym->link_name : sym->name;
+            if (sym_c_name && strcmp(sym_c_name, c_name) == 0 && is_local_of(f, sym))
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+// Whether `expr` reads the name `name`.
+static int reads_name(ASTNode *expr, const char *name)
+{
+    if (!expr)
+    {
+        return 0;
+    }
+    char **refs = NULL;
+    int count = 0;
+    find_var_refs(expr, &refs, &count);
+    for (int i = 0; i < count; i++)
+    {
+        if (strcmp(refs[i], name) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// The local of `f` declared at `site` with `name`: the one recorded before (a loop's second pass),
+// or a new one with its C name. The C name is the name, unless the local hides a local of `f`
+// that C would still see (local_c_name_visible), or hides a name its initializer reads (`let x =
+// x + 1`, `for i in 0..i`): then `name__N`, with the first N that hides nothing.
+static LocalCName *local_c_name(TypeChecker *tc, CFunctionLocals *f, const char *site,
+                                const char *name, ASTNode *const *reads, int read_count)
+{
+    for (int i = 0; i < f->count; i++)
+    {
+        if (f->locals[i].site == site && strcmp(f->locals[i].name, name) == 0)
+        {
+            return &f->locals[i];
+        }
+    }
+    const char *c_name = name;
+    int hides_what_it_reads = 0;
+    if (symbol_lookup(tc->pctx->current_scope, name))
+    {
+        for (int i = 0; i < read_count && !hides_what_it_reads; i++)
+        {
+            hides_what_it_reads = reads_name(reads[i], name);
+        }
+    }
+    if (local_c_name_visible(tc, f, name) || hides_what_it_reads)
+    {
+        size_t size = strlen(name) + 16;
+        char *candidate = xmalloc(size);
+        for (int n = 1;; n++)
+        {
+            snprintf(candidate, size, "%s__%d", name, n);
+            if (!local_c_name_visible(tc, f, candidate) &&
+                !symbol_lookup(tc->pctx->current_scope, candidate))
+            {
+                break;
+            }
+        }
+        c_name = candidate;
+        record_local_c_name(tc->pctx, site, name, c_name);
+    }
+    if (f->count == f->capacity)
+    {
+        f->capacity = f->capacity ? f->capacity * 2 : 8;
+        f->locals = xrealloc(f->locals, (size_t)f->capacity * sizeof(LocalCName));
+    }
+    f->locals[f->count] = (LocalCName){site, name, c_name, NULL};
+    return &f->locals[f->count++];
+}
+
+ZenSymbol *tc_declare_local(TypeChecker *tc, const char *name, Type *type, Token t,
+                            int is_immutable, ASTNode *const *reads, int read_count)
+{
+    LocalCName *local = tc->c_function && name
+                            ? local_c_name(tc, tc->c_function, t.start, name, reads, read_count)
+                            : NULL;
+    ZenSymbol *sym = tc_add_symbol(tc, name, type, t, is_immutable);
+    if (local)
+    {
+        local->symbol = sym;
+        if (sym && strcmp(local->c_name, name) != 0)
+        {
+            sym->link_name = (char *)local->c_name;
+        }
+    }
+    return sym;
+}
+
 ZenSymbol *tc_lookup(TypeChecker *tc, const char *name)
 {
     ZenSymbol *sym = symbol_lookup(tc->pctx->current_scope, name);

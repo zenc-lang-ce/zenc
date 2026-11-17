@@ -283,7 +283,8 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                 {
                     continue;
                 }
-                const char *bname = c_name(ctx, c->match_case.binding_names[i]);
+                const char *bname =
+                    local_decl_c_name(ctx, c->token, c->match_case.binding_names[i]);
                 int is_r = c->match_case.binding_refs ? c->match_case.binding_refs[i] : 0;
 
                 if (is_option)

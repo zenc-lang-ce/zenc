@@ -538,7 +538,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                                 {
                                     bt = type_new_ptr(bt);
                                 }
-                                ZenSymbol *sym = tc_add_symbol(tc, bname, bt, mcase->token, 0);
+                                ZenSymbol *sym =
+                                    tc_declare_local(tc, bname, bt, mcase->token, 0, NULL, 0);
                                 if (sym && !is_ref)
                                 {
                                     // Bound by value, the binding is a copy of the payload: the
@@ -910,7 +911,10 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         MoveState *prev_move_state = tc->pctx->move_state;
         tc->pctx->move_state = move_state_create(NULL);
 
+        // A test is a C function of its own: its locals get C names in it.
+        CFunctionLocals *prev_c_function = tc_enter_c_function(tc, node);
         check_node(tc, node->test_stmt.body, depth + 1);
+        tc_leave_c_function(tc, prev_c_function);
 
         move_state_free(tc->pctx->move_state);
         tc->pctx->move_state = prev_move_state;
@@ -1164,8 +1168,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         }
         for (int i = 0; i < node->destruct.count; i++)
         {
-            tc_add_symbol(tc, node->destruct.names[i], destructured_type(tc->pctx, node, i),
-                          node->token, 0);
+            tc_declare_local(tc, node->destruct.names[i], destructured_type(tc->pctx, node, i),
+                             node->token, 0, &node->destruct.init_expr, 1);
         }
         break;
     case NODE_BREAK:

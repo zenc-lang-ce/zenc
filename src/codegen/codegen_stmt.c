@@ -151,14 +151,15 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 char *declared = node_c_type(ctx, v);
                 if (declared)
                 {
-                    EMIT(ctx, "%s %s = (%s)(", declared, c_name(ctx, v->var_decl.name), declared);
+                    EMIT(ctx, "%s %s = (%s)(", declared,
+                         local_decl_c_name(ctx, v->token, v->var_decl.name), declared);
                     emit_expr_or_temp(ctx, v->var_decl.init_expr, init_temp);
                     EMIT(ctx, ")");
                 }
                 else
                 {
                     emit_auto_type(ctx, v->var_decl.init_expr, v->token);
-                    EMIT(ctx, " %s = ", c_name(ctx, v->var_decl.name));
+                    EMIT(ctx, " %s = ", local_decl_c_name(ctx, v->token, v->var_decl.name));
                     emit_expr_or_temp(ctx, v->var_decl.init_expr, init_temp);
                 }
             }
@@ -287,37 +288,44 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         {
             EMIT(ctx, "__typeof__((");
             emit_expr_or_temp(ctx, node->for_range.start, start_temp);
-            EMIT(ctx, ")) %s = ", c_name(ctx, node->for_range.var_name));
+            EMIT(ctx, ")) %s = ",
+                 local_decl_c_name(ctx, node->for_range.var_token, node->for_range.var_name));
         }
         else
         {
-            EMIT(ctx, "ZC_AUTO %s = ", c_name(ctx, node->for_range.var_name));
+            EMIT(ctx, "ZC_AUTO %s = ",
+                 local_decl_c_name(ctx, node->for_range.var_token, node->for_range.var_name));
         }
         emit_expr_or_temp(ctx, node->for_range.start, start_temp);
         if (counts_down)
         {
             if (node->for_range.is_inclusive)
             {
-                EMIT(ctx, "; %s >= ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s >= ",
+                     local_decl_c_name(ctx, node->for_range.var_token, node->for_range.var_name));
             }
             else
             {
-                EMIT(ctx, "; %s > ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s > ",
+                     local_decl_c_name(ctx, node->for_range.var_token, node->for_range.var_name));
             }
         }
         else
         {
             if (node->for_range.is_inclusive)
             {
-                EMIT(ctx, "; %s <= ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s <= ",
+                     local_decl_c_name(ctx, node->for_range.var_token, node->for_range.var_name));
             }
             else
             {
-                EMIT(ctx, "; %s < ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s < ",
+                     local_decl_c_name(ctx, node->for_range.var_token, node->for_range.var_name));
             }
         }
         emit_expr_or_temp(ctx, node->for_range.end, end_temp);
-        EMIT(ctx, "; %s", c_name(ctx, node->for_range.var_name));
+        EMIT(ctx, "; %s",
+             local_decl_c_name(ctx, node->for_range.var_token, node->for_range.var_name));
         if (step)
         {
             EMIT(ctx, " += ");
@@ -577,7 +585,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             EMIT(ctx, ", 0, sizeof(_z_ret_mv)); ");
             if (strcmp(node->ret.value->var_ref.name, "self") != 0)
             {
-                EMIT(ctx, "__z_drop_flag_%s = 0; ", node->ret.value->var_ref.name);
+                EMIT(ctx, "__z_drop_flag_%s = 0; ", var_ref_flag_name(node->ret.value));
             }
             emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
             EMIT(ctx, "_z_ret_mv; });\n");

@@ -1,0 +1,35 @@
+// language/features/variables: a local that hides another local of its function gets a C name
+// of its own, so the C (and C++) compiler sees two variables where the program has two, whatever
+// its rules of scope are.
+
+test "let_hides_a_lambda_parameter" {
+    // The body of a lambda is the block of its parameters in C.
+    let g = fn(n: int) -> int {
+        let n = 5;
+        return n;
+    };
+    assert(g(4) == 5, "the let, not the parameter");
+}
+
+test "let_hides_the_variable_of_a_for" {
+    // In C++ the body of a `for` cannot redeclare its variable.
+    let sum = 0;
+    for i in 0..3 {
+        let i = 7;
+        sum = sum + i;
+    }
+    assert(sum == 21, "the let, three times");
+}
+
+test "inner_let_reads_the_outer_one_and_a_lambda_captures_it" {
+    let x = 1;
+    let seen = 0;
+    {
+        let x = x + 10;
+        let add = fn(v: int) -> int { return v + x; };
+        seen = add(1);
+        assert(x == 11, "the inner x");
+    }
+    assert(seen == 12, "the lambda captured the inner x");
+    assert(x == 1, "the outer x is untouched");
+}

@@ -50,6 +50,30 @@ const char *c_name(ParserContext *ctx, const char *name)
     return c_safe_name(name, ctx->config->use_cpp);
 }
 
+const char *local_decl_c_name(ParserContext *ctx, Token site, const char *name)
+{
+    const char *renamed = local_c_name_at(ctx, site.start, name);
+    return renamed ? renamed : c_name(ctx, name);
+}
+
+const char *var_ref_c_name(ParserContext *ctx, ASTNode *ref)
+{
+    ZenSymbol *sym = ref->var_ref.symbol;
+    return sym && sym->link_name ? sym->link_name : c_name(ctx, ref->var_ref.name);
+}
+
+const char *local_decl_flag_name(ParserContext *ctx, Token site, const char *name)
+{
+    const char *renamed = local_c_name_at(ctx, site.start, name);
+    return renamed ? renamed : name;
+}
+
+const char *var_ref_flag_name(ASTNode *ref)
+{
+    ZenSymbol *sym = ref->var_ref.symbol;
+    return sym && sym->link_name ? sym->link_name : ref->var_ref.name;
+}
+
 char *c_type_spelling(ParserContext *ctx, Type *t)
 {
     return type_to_c_string_with(t, ctx->config->misra_mode, link_name_of, ctx);
@@ -616,7 +640,7 @@ int emit_moved_out(ParserContext *ctx, ASTNode *node)
             }
         }
     }
-    EMIT(ctx, "%s__z_drop_flag_%s = 0", df_prefix, node->var_ref.name);
+    EMIT(ctx, "%s__z_drop_flag_%s = 0", df_prefix, var_ref_flag_name(node));
     return 1;
 }
 
