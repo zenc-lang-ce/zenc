@@ -156,3 +156,30 @@ UTEST(find_func, a_miss_takes_constant_time)
     ASSERT_EQ(found, 0);
     ASSERT_LT(seconds, 1.0);
 }
+
+// The registry of declarations by module (register_declaration, find_file_declaration): each
+// top-level declaration under the file that makes it and the name it writes, a generic function
+// too (the parser registers it as a template and does not hand it to the program).
+UTEST(file_declarations, every_kind_by_the_name_written)
+{
+    parse_source("struct Point { x: int; }\n"
+                 "enum Shade { Light, Dark }\n"
+                 "trait Named { fn name(self) -> int; }\n"
+                 "type Count = int;\n"
+                 "def LIMIT = 3;\n"
+                 "let total: int = 0;\n"
+                 "fn twice(x: int) -> int { return x * 2; }\n"
+                 "fn first<T>(x: T) -> T { return x; }\n");
+    ParserContext *ctx = parse_source_context();
+    const char *names[] = {"Point", "Shade", "Named", "Count", "LIMIT", "total", "twice", "first"};
+    NodeType kinds[] = {NODE_STRUCT, NODE_ENUM,    NODE_TRAIT,    NODE_TYPE_ALIAS,
+                        NODE_CONST,  NODE_VAR_DECL, NODE_FUNCTION, NODE_FUNCTION};
+    for (int i = 0; i < 8; i++)
+    {
+        ASTNode *found = find_file_declaration(ctx, "test.zc", names[i]);
+        ASSERT_TRUE(found != NULL);
+        ASSERT_EQ(kinds[i], found->kind);
+    }
+    ASSERT_TRUE(find_file_declaration(ctx, "test.zc", "Missing") == NULL);
+    ASSERT_TRUE(find_file_declaration(ctx, "other.zc", "Point") == NULL);
+}

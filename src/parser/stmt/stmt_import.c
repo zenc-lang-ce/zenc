@@ -395,16 +395,17 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
                 if (is_header && alias_tok.kind == TOK_IDENT)
                 {
                     char *alias = token_strdup(alias_tok);
+                    Module *m = xmalloc(sizeof(Module));
+                    m->alias = alias;
+                    m->path = xstrdup(fn);
+                    m->base_name = module_prefix_for(ctx, fn);
+                    m->is_c_header = 1;
+                    m->is_re_export = is_re_export;
                     if (!zmap_get(&ctx->imports.modules, alias))
                     {
-                        Module *m = xmalloc(sizeof(Module));
-                        m->alias = alias;
-                        m->path = xstrdup(fn);
-                        m->base_name = module_prefix_for(ctx, fn);
-                        m->is_c_header = 1;
-                        m->is_re_export = is_re_export;
                         zmap_put(&ctx->imports.modules, alias, m);
                     }
+                    record_file_import(ctx, alias, fn, m);
                 }
             }
         }
@@ -447,6 +448,7 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         for (size_t i = 0; i < symbols.length; i++)
         {
             register_selective_import(ctx, symbols.data[i], aliases.data[i], module_base_name);
+            record_file_selective_import(ctx, symbols.data[i], aliases.data[i], module_base_name);
         }
     }
 
@@ -485,17 +487,18 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
                     is_header = 1;
                 }
 
+                char *mod_base = module_prefix_for(ctx, fn);
+                Module *m = xmalloc(sizeof(Module));
+                m->alias = xstrdup(alias);
+                m->path = xstrdup(fn);
+                m->base_name = mod_base;
+                m->is_c_header = is_header;
+                m->is_re_export = is_re_export;
                 if (!zmap_get(&ctx->imports.modules, alias))
                 {
-                    char *mod_base = module_prefix_for(ctx, fn);
-                    Module *m = xmalloc(sizeof(Module));
-                    m->alias = xstrdup(alias);
-                    m->path = xstrdup(fn);
-                    m->base_name = mod_base;
-                    m->is_c_header = is_header;
-                    m->is_re_export = is_re_export;
                     zmap_put(&ctx->imports.modules, alias, m);
                 }
+                record_file_import(ctx, alias, fn, m);
             }
         }
     }
@@ -583,16 +586,17 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         ctx->imports.current_module_prefix = NULL;
 
         char *mod_base = extract_module_name(fn);
+        Module *m = xmalloc(sizeof(Module));
+        m->alias = mod_base;
+        m->path = xstrdup(fn);
+        m->base_name = mod_base;
+        m->is_c_header = 0;
+        m->is_re_export = is_re_export;
         if (!zmap_get(&ctx->imports.modules, mod_base))
         {
-            Module *m = xmalloc(sizeof(Module));
-            m->alias = mod_base;
-            m->path = xstrdup(fn);
-            m->base_name = mod_base;
-            m->is_c_header = 0;
-            m->is_re_export = is_re_export;
             zmap_put(&ctx->imports.modules, m->alias, m);
         }
+        record_file_import(ctx, mod_base, fn, m);
     }
 
     if (is_re_export && alias && prev_module_prefix)
@@ -621,6 +625,10 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
     }
 
     ctx->current_filename = (char *)saved_fn;
+    if (is_wildcard && temp_module_prefix)
+    {
+        record_file_wildcard_import(ctx, temp_module_prefix);
+    }
 
     ctx->imports.current_module_prefix = prev_module_prefix;
     ctx->imports.current_module_alias = prev_module_alias;

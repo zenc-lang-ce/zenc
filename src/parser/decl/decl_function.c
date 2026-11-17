@@ -287,6 +287,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         if (!ctx->current_impl_target)
         {
             register_func_template(ctx, name, gen_params, gen_count, node);
+            register_declaration(ctx, node); // A template is not handed to the program.
             return NULL;
         }
     }

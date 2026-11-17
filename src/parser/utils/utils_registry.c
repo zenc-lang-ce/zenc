@@ -1168,3 +1168,97 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
 
     return NULL;
 }
+
+// The key of `name` in `file`'s part of a registry: the two, joined by the unit separator, which
+// neither a path nor a name has.
+static char *file_key(const char *file, const char *name)
+{
+    size_t size = strlen(file) + strlen(name) + 2;
+    char *key = xmalloc(size);
+    snprintf(key, size, "%s\x1f%s", file, name);
+    return key;
+}
+
+// Whether `node` is a named top-level declaration (not an impl, an import or a test).
+static int is_named_declaration(ASTNode *node)
+{
+    switch (node->kind)
+    {
+    case NODE_FUNCTION:
+    case NODE_STRUCT:
+    case NODE_ENUM:
+    case NODE_TRAIT:
+    case NODE_TYPE_ALIAS:
+    case NODE_CONST:
+    case NODE_VAR_DECL:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+void register_declaration(ParserContext *ctx, ASTNode *node)
+{
+    // Its name as its own file writes it: the token of the name, which the node keeps. Not the
+    // C name (`mod__Point`), nor the importer's (written_name, `geo::Point`).
+    if (!node || !is_named_declaration(node) || !node->token.file || node->token.len == 0)
+    {
+        return;
+    }
+    char *name = token_strdup(node->token);
+    if (!ctx->declarations.hash_func)
+    {
+        ctx->declarations = zmap_init(DeclByName, zmap_hash_cstr, zmap_cmp_cstr);
+    }
+    zmap_put(&ctx->declarations, file_key(node->token.file, name), node);
+}
+
+ASTNode *find_file_declaration(ParserContext *ctx, const char *file, const char *name)
+{
+    if (!file || !name || !ctx->declarations.hash_func)
+    {
+        return NULL;
+    }
+    char *key = file_key(file, name);
+    ASTNode **found = zmap_get(&ctx->declarations, key);
+    zfree(key);
+    return found ? *found : NULL;
+}
+
+void record_file_import(ParserContext *ctx, const char *alias, const char *path, Module *module)
+{
+    if (!ctx->current_filename || !alias)
+    {
+        return;
+    }
+    Module *own = xmalloc(sizeof(Module));
+    *own = *module;
+    own->alias = xstrdup(alias);
+    own->path = xstrdup(path);
+    zmap_put(&ctx->imports.file_modules, file_key(ctx->current_filename, alias), own);
+}
+
+void record_file_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
+                                  const char *source_module)
+{
+    if (!ctx->current_filename)
+    {
+        return;
+    }
+    SelectiveImport *si = xmalloc(sizeof(SelectiveImport));
+    si->symbol = xstrdup(symbol);
+    si->alias = alias ? xstrdup(alias) : NULL;
+    si->source_module = xstrdup(source_module);
+    zmap_put(&ctx->imports.file_selective_imports,
+             file_key(ctx->current_filename, alias ? alias : symbol), si);
+}
+
+void record_file_wildcard_import(ParserContext *ctx, const char *module_base)
+{
+    if (!ctx->current_filename || !module_base)
+    {
+        return;
+    }
+    char *key = file_key(ctx->current_filename, module_base);
+    zmap_put(&ctx->imports.file_wildcard_imports, key, key);
+}

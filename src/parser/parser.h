@@ -312,8 +312,14 @@ typedef struct ModuleState
         currently_parsing; ///< Set: files whose import is in progress (for cycle detection).
     zmap_PluginMap imported_plugins; ///< Map: alias → ImportedPlugin*.
     zmap_FileSet wildcard_imports;   ///< Set: module base names imported via `as *`.
-    zmap_FileSet module_prefixes;    ///< Map: module file path → its symbol prefix.
-    zmap_FileSet prefix_owners;      ///< Map: symbol prefix → the file path that owns it.
+    /// The same imports by the file that makes them (stage 4, step 5 of the architecture plan):
+    /// `file<US>alias` → Module, `file<US>name` → SelectiveImport, `file<US>module` for `as *`.
+    /// The tables above are of the whole program: an alias one file declares, every file sees.
+    zmap_ModMap file_modules;
+    zmap_SelMap file_selective_imports;
+    zmap_FileSet file_wildcard_imports;
+    zmap_FileSet module_prefixes; ///< Map: module file path → its symbol prefix.
+    zmap_FileSet prefix_owners;   ///< Map: symbol prefix → the file path that owns it.
 } ModuleState;
 
 /* * Initialize all maps in a ModuleState. Call once after zeroing the struct. */
@@ -327,6 +333,9 @@ static inline void module_state_init(ModuleState *ms)
     ms->wildcard_imports = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
     ms->module_prefixes = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
     ms->prefix_owners = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
+    ms->file_modules = zmap_init(ModMap, zmap_hash_cstr, zmap_cmp_cstr);
+    ms->file_selective_imports = zmap_init(SelMap, zmap_hash_cstr, zmap_cmp_cstr);
+    ms->file_wildcard_imports = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
 }
 
 /**
@@ -392,6 +401,8 @@ struct ParserContext
     FuncSig *func_registry; ///< Registry of declared function signatures (DEPRECATED: moved to
                             ///< global_scope).
     zmap_FuncByName func_registry_by_name; ///< func_registry by name: the one registered last.
+    /// Top-level declarations by module and written name, `file<US>name` (register_declaration).
+    zmap_DeclByName declarations;
 
     // Lambdas
     LambdaRef *global_lambdas; ///< All lambdas generated during parsing, in creation order.
@@ -1007,6 +1018,32 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l);
 ASTNode *parse_expect(ParserContext *ctx, Lexer *l);
 ASTNode *parse_plugin(ParserContext *ctx, Lexer *l, Token tk);
 char *token_get_string_content(Token t);
+/**
+ * @brief Enters the top-level declaration `node` in the registry of declarations by module: the
+ *        file that declares it, and the name that file writes for it (stage 4, step 5 of the
+ *        architecture plan). The parser calls it once per declaration it hands to the program.
+ */
+void register_declaration(ParserContext *ctx, ASTNode *node);
+
+/**
+ * @brief The declaration the file `file` makes of the name `name`, as written there; NULL when
+ *        it makes none.
+ */
+ASTNode *find_file_declaration(ParserContext *ctx, const char *file, const char *name);
+
+/**
+ * @brief Records, for the file being parsed, an import of the module at `path` under `alias`;
+ *        `module` is the record of the whole program's table (its base name and kind).
+ */
+void record_file_import(ParserContext *ctx, const char *alias, const char *path, Module *module);
+
+/** @brief Records, for the file being parsed, `symbol` imported one by one (as `alias`). */
+void record_file_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
+                                  const char *source_module);
+
+/** @brief Records, for the file being parsed, the module `module_base` imported with `as *`. */
+void record_file_wildcard_import(ParserContext *ctx, const char *module_base);
+
 /**
  * @brief The declaration (struct or enum node) of the named type `t`, or NULL for any other type.
  *        The way to go from a type to its declaration: by the type, not by a name built from it.
