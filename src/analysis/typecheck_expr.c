@@ -1656,6 +1656,69 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
     RECURSION_EXIT(tc->pctx);
 }
 
+// Whether every parameter of the lambda has a type: written, or taken from the function type the
+// lambda is given or called with.
+static int lambda_parameters_known(ASTNode *node)
+{
+    Type *t = get_inner_type(node->type_info);
+    for (int i = 0; i < node->lambda.count; i++)
+    {
+        if (!t || t->kind != TYPE_FUNCTION || !t->args || i >= t->count || !t->args[i] ||
+            get_inner_type(t->args[i])->kind == TYPE_UNKNOWN)
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int lambda_is_waiting(TypeChecker *tc, ASTNode *node)
+{
+    for (int i = 0; i < tc->waiting_lambda_count; i++)
+    {
+        if (tc->waiting_lambdas[i].lambda == node)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Checks a lambda's body, in the scope that holds its parameters and captures.
+static void check_lambda_body(TypeChecker *tc, ASTNode *node, int depth)
+{
+    MoveState *prev_move_state = tc->pctx->move_state;
+    tc->pctx->move_state = move_state_create(NULL);
+
+    int prev_unreachable = tc->is_unreachable;
+    tc->is_unreachable = 0;
+    LoopFrame *prev_loop = tc->current_loop; // A `break` cannot leave the lambda.
+    tc->current_loop = NULL;
+
+    // A `return` in the body is the lambda's, not the enclosing function's.
+    ASTNode *prev_returns_from = tc->returns_from;
+    tc->returns_from = node;
+
+    if (node->lambda.body)
+    {
+        if (node->lambda.body->kind == NODE_BLOCK)
+        {
+            check_block(tc, node->lambda.body, depth + 1);
+        }
+        else
+        {
+            check_node(tc, node->lambda.body, depth + 1);
+        }
+    }
+
+    move_state_free(tc->pctx->move_state);
+    tc->pctx->move_state = prev_move_state;
+
+    tc->returns_from = prev_returns_from;
+    tc->is_unreachable = prev_unreachable;
+    tc->current_loop = prev_loop;
+}
+
 void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
 {
     Type *expected = get_inner_type(node->type_info);
@@ -1740,37 +1803,100 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
         tc->pctx->silent_warnings = saved_silent;
     }
 
-    MoveState *prev_move_state = tc->pctx->move_state;
-    tc->pctx->move_state = move_state_create(NULL);
-
-    int prev_unreachable = tc->is_unreachable;
-    tc->is_unreachable = 0;
-    LoopFrame *prev_loop = tc->current_loop; // A `break` cannot leave the lambda.
-    tc->current_loop = NULL;
-
-    // A `return` in the body is the lambda's, not the enclosing function's.
-    ASTNode *prev_returns_from = tc->returns_from;
-    tc->returns_from = node;
-
-    if (node->lambda.body)
+    // Without types for its parameters (`let add = (x, y) => x + y;`), the body waits for the
+    // first call, which gives them: checked now, it would read `x + y` with unknown types. A
+    // loop's second pass finds the lambda waiting already.
+    if (!lambda_parameters_known(node))
     {
-        if (node->lambda.body->kind == NODE_BLOCK)
+        if (!lambda_is_waiting(tc, node))
         {
-            check_block(tc, node->lambda.body, depth + 1);
+            WaitingLambda w = {node, tc->pctx->current_scope, tc->current_depth, depth,
+                               tc->current_func};
+            tc->waiting_lambdas =
+                xrealloc(tc->waiting_lambdas,
+                         (size_t)(tc->waiting_lambda_count + 1) * sizeof(WaitingLambda));
+            tc->waiting_lambdas[tc->waiting_lambda_count++] = w;
         }
-        else
-        {
-            check_node(tc, node->lambda.body, depth + 1);
-        }
+        tc_exit_scope(tc);
+        return;
     }
 
-    move_state_free(tc->pctx->move_state);
-    tc->pctx->move_state = prev_move_state;
-
-    tc->returns_from = prev_returns_from;
-    tc->is_unreachable = prev_unreachable;
-    tc->current_loop = prev_loop;
+    check_lambda_body(tc, node, depth);
     tc_exit_scope(tc);
+}
+
+// Checks the body of a lambda whose waiting has ended, in the lambda's own scope (its parameters
+// and captures), wherever the checker is: the body sees the globals, but not what the enclosing
+// scopes declared after the lambda.
+static void check_waiting_lambda(TypeChecker *tc, WaitingLambda w)
+{
+    Scope *prev_scope = tc->pctx->current_scope;
+    int prev_depth = tc->current_depth;
+    ASTNode *prev_func = tc->current_func;
+    int prev_rechecking = tc->rechecking;
+    int prev_pass2 = tc->in_loop_pass2;
+    int prev_assign_lhs = tc->is_assign_lhs;
+    int prev_stmt = tc->is_stmt_context;
+    int prev_forget = tc->is_forget_receiver;
+    int prev_callee = tc->is_callee;
+
+    // Every local of an enclosing scope the body names is a capture (the parser lists them), so
+    // the lambda's scope needs only the globals behind it.
+    w.scope->parent = tc->pctx->global_scope;
+    tc->pctx->current_scope = w.scope;
+    tc->current_depth = w.scope_depth;
+    tc->current_func = w.func;
+    tc->rechecking = 0; // The body's first check, even if the call is in a loop's second pass.
+    tc->in_loop_pass2 = 0;
+    tc->is_assign_lhs = 0;
+    tc->is_stmt_context = 0;
+    tc->is_forget_receiver = 0;
+    tc->is_callee = 0;
+
+    check_lambda_body(tc, w.lambda, w.node_depth);
+
+    tc->pctx->current_scope = prev_scope;
+    tc->current_depth = prev_depth;
+    tc->current_func = prev_func;
+    tc->rechecking = prev_rechecking;
+    tc->in_loop_pass2 = prev_pass2;
+    tc->is_assign_lhs = prev_assign_lhs;
+    tc->is_stmt_context = prev_stmt;
+    tc->is_forget_receiver = prev_forget;
+    tc->is_callee = prev_callee;
+}
+
+// Checks the waiting lambdas that a call has given their parameters (`called`), or else those
+// written in `func` (all of them if NULL). Checking a body can add or end other waits (a lambda
+// in it, a call in it), so the search starts again after each one.
+static void check_waiting_lambdas(TypeChecker *tc, int called, ASTNode *func)
+{
+    int i = 0;
+    while (i < tc->waiting_lambda_count)
+    {
+        WaitingLambda w = tc->waiting_lambdas[i];
+        int ready = called ? lambda_parameters_known(w.lambda) : (!func || w.func == func);
+        if (!ready)
+        {
+            i++;
+            continue;
+        }
+        tc->waiting_lambda_count--;
+        memmove(&tc->waiting_lambdas[i], &tc->waiting_lambdas[i + 1],
+                (size_t)(tc->waiting_lambda_count - i) * sizeof(WaitingLambda));
+        check_waiting_lambda(tc, w);
+        i = 0;
+    }
+}
+
+void check_called_lambdas(TypeChecker *tc)
+{
+    check_waiting_lambdas(tc, 1, NULL);
+}
+
+void check_uncalled_lambdas(TypeChecker *tc, ASTNode *func)
+{
+    check_waiting_lambdas(tc, 0, func);
 }
 
 // INFERENCE & ENTRY POINTS

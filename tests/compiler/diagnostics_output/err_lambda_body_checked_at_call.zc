@@ -1,0 +1,18 @@
+// ARGS: check
+// A lambda whose parameters have no type gets them from its first call, and its body is
+// checked then, with them: `x` is an `i32` here, which `take` does not accept. A lambda that
+// is never called is checked with what it has.
+
+fn take(_s: string) -> int {
+    return 0;
+}
+
+fn main() {
+    let pass = (x) => {
+        return take(x);
+    };
+    let _r = pass(1);
+    let _never = (y) => {
+        return y;
+    };
+}

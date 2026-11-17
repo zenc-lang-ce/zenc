@@ -1427,6 +1427,7 @@ int check_program(ParserContext *ctx, ASTNode *root)
     root->is_checked = 1;
     check_implicit_std_imports(&tc);
     check_instantiations(&tc);
+    check_uncalled_lambdas(&tc, NULL);
 
     if (ctx->move_state)
     {

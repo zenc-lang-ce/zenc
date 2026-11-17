@@ -578,6 +578,9 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     }
     tc->is_forget_receiver = 0;
 
+    // The arguments may have given a lambda the types of its parameters: its body waited for them.
+    check_called_lambdas(tc);
+
     // Propagate return type from function signature
     if (sig && sig->ret_type)
     {

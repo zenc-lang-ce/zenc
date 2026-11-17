@@ -235,6 +235,8 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     check_node(tc, node->func.body, depth + 1);
+    // A lambda never called is checked with what it has, before leaving the function.
+    check_uncalled_lambdas(tc, node);
 
     // Control flow analysis: Check if non-void function always returns
     Type *ret_type = node->func.ret_type_info;
