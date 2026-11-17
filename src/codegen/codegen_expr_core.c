@@ -250,26 +250,18 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
             }
             else
             {
-                char *tstr = capture_c_type(ctx, node, i);
-
+                Type *captured = node->lambda.captured_types_info[i];
                 const char *cap_name = c_name(ctx, node->lambda.captured_vars[i]);
-                int is_array = !strstr(tstr, "(*") && strchr(tstr, '[');
-                if (strstr(tstr, "(*"))
-                {
-                    // A function pointer type cannot be spelled as a cast target by
-                    // appending '*'; assign the field directly.
-                    EMIT(ctx, "_z_ctx_%d->%s = ", lid, cap_name);
-                }
-                else if (is_array)
+                int is_array = is_fixed_size_array(captured);
+                if (is_array)
                 {
                     // An array cannot be assigned in C: copy its bytes.
                     EMIT(ctx, "memcpy(&_z_ctx_%d->%s, &", lid, cap_name);
                 }
                 else
                 {
-                    EMIT(ctx, "*(%s*)(&_z_ctx_%d->%s) = ", tstr, lid, cap_name);
+                    EMIT(ctx, "_z_ctx_%d->%s = ", lid, cap_name);
                 }
-                zfree(tstr);
 
                 // The variable as it is named where the lambda is written: a temporary node, which
                 // codegen reads and frees here.
@@ -279,7 +271,6 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                 var_node->token = node->token;
 
                 // A capture with no type is an `int`, as its context field is.
-                Type *captured = node->lambda.captured_types_info[i];
                 var_node->type_info = captured ? captured : type_new(TYPE_C_INT);
 
                 codegen_expression_with_move(ctx, var_node);
