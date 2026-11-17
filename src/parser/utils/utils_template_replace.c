@@ -143,98 +143,11 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c)
         return n;
     }
 
-    if (strcmp(c, "int") == 0)
+    // A primitive, by its name in Zen C or in C (`i32`, `int32_t`).
+    TypeKind kind = find_primitive_kind(c);
+    if (kind != TYPE_UNKNOWN)
     {
-        return type_new(TYPE_I32);
-    }
-    if (strcmp(c, "float") == 0)
-    {
-        return type_new(TYPE_F32);
-    }
-    if (strcmp(c, "void") == 0)
-    {
-        return type_new(TYPE_VOID);
-    }
-    if (strcmp(c, "string") == 0)
-    {
-        return type_new(TYPE_STRING);
-    }
-    if (strcmp(c, "bool") == 0)
-    {
-        return type_new(TYPE_BOOL);
-    }
-    if (strcmp(c, "char") == 0)
-    {
-        return type_new(TYPE_CHAR);
-    }
-    if (strcmp(c, "I8") == 0 || strcmp(c, "i8") == 0)
-    {
-        return type_new(TYPE_I8);
-    }
-    if (strcmp(c, "U8") == 0 || strcmp(c, "u8") == 0)
-    {
-        return type_new(TYPE_U8);
-    }
-    if (strcmp(c, "I16") == 0 || strcmp(c, "i16") == 0)
-    {
-        return type_new(TYPE_I16);
-    }
-    if (strcmp(c, "U16") == 0 || strcmp(c, "u16") == 0)
-    {
-        return type_new(TYPE_U16);
-    }
-    if (strcmp(c, "I32") == 0 || strcmp(c, "i32") == 0 || strcmp(c, "int32_t") == 0)
-    {
-        return type_new(TYPE_I32);
-    }
-    if (strcmp(c, "U32") == 0 || strcmp(c, "u32") == 0 || strcmp(c, "uint32_t") == 0)
-    {
-        return type_new(TYPE_U32);
-    }
-    if (strcmp(c, "I64") == 0 || strcmp(c, "i64") == 0 || strcmp(c, "int64_t") == 0)
-    {
-        return type_new(TYPE_I64);
-    }
-    if (strcmp(c, "U64") == 0 || strcmp(c, "u64") == 0 || strcmp(c, "uint64_t") == 0)
-    {
-        return type_new(TYPE_U64);
-    }
-    if (strcmp(c, "float") == 0 || strcmp(c, "f32") == 0)
-    {
-        return type_new(TYPE_F32);
-    }
-    if (strcmp(c, "double") == 0 || strcmp(c, "f64") == 0)
-    {
-        return type_new(TYPE_F64);
-    }
-    if (strcmp(c, "I128") == 0 || strcmp(c, "i128") == 0)
-    {
-        return type_new(TYPE_I128);
-    }
-    if (strcmp(c, "U128") == 0 || strcmp(c, "u128") == 0)
-    {
-        return type_new(TYPE_U128);
-    }
-    if (strcmp(c, "rune") == 0)
-    {
-        return type_new(TYPE_RUNE);
-    }
-    if (strcmp(c, "uint") == 0)
-    {
-        return type_new(TYPE_U32);
-    }
-
-    if (strcmp(c, "byte") == 0)
-    {
-        return type_new(TYPE_BYTE);
-    }
-    if (strcmp(c, "usize") == 0)
-    {
-        return type_new(TYPE_USIZE);
-    }
-    if (strcmp(c, "isize") == 0)
-    {
-        return type_new(TYPE_ISIZE);
+        return type_new(kind);
     }
 
     char *name = sanitize_mangled_name(c);

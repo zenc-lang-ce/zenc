@@ -156,7 +156,7 @@ void handle_expr_cast(ParserContext *ctx, ASTNode *node)
         return;
     }
 
-    const char *mapped = map_to_c_type(c_type_spelling(ctx, node->type_info));
+    const char *mapped = c_type_spelling(ctx, node->type_info);
 
     EMIT(ctx, "((%s)(", mapped);
     Type *src_type = node->cast.expr->type_info;

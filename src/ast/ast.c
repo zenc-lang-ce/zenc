@@ -1517,10 +1517,15 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         return xstrdup(t->c_typedef_name);
     }
 
+    // A primitive, by the one table of C names.
+    const char *primitive = primitive_c_name(t->kind, misra_mode);
+    if (primitive)
+    {
+        return xstrdup(primitive);
+    }
+
     switch (t->kind)
     {
-    case TYPE_VOID:
-        return xstrdup("void");
     case TYPE_STRUCT:
     {
         const char *c_name = c_name_of(t, lookup, context);
@@ -1537,66 +1542,6 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
     }
     case TYPE_TUPLE:
         return tuple_struct_name(t);
-    case TYPE_BOOL:
-        return xstrdup("bool");
-    case TYPE_STRING:
-        return xstrdup("string");
-    case TYPE_CHAR:
-        return xstrdup("char");
-    case TYPE_I8:
-        return xstrdup("int8_t");
-    case TYPE_U8:
-        return xstrdup("uint8_t");
-    case TYPE_I16:
-        return xstrdup("int16_t");
-    case TYPE_U16:
-        return xstrdup("uint16_t");
-    case TYPE_I32:
-        return xstrdup("int32_t");
-    case TYPE_U32:
-        return xstrdup("uint32_t");
-    case TYPE_I64:
-        return xstrdup("int64_t");
-    case TYPE_U64:
-        return xstrdup("uint64_t");
-    case TYPE_F32:
-        return xstrdup("float");
-    case TYPE_F64:
-        return xstrdup("double");
-    case TYPE_USIZE:
-        return xstrdup("size_t");
-    case TYPE_ISIZE:
-        return xstrdup("ptrdiff_t");
-    case TYPE_BYTE:
-        return xstrdup("uint8_t");
-    case TYPE_I128:
-        return xstrdup("__int128");
-    case TYPE_U128:
-        return xstrdup("unsigned __int128");
-    case TYPE_RUNE:
-        return xstrdup("int32_t");
-
-    // Portable C Types (Map directly to C types)
-    case TYPE_C_INT:
-        return xstrdup(misra_mode ? "int32_t" : "int");
-    case TYPE_C_UINT:
-        return xstrdup(misra_mode ? "uint32_t" : "unsigned int");
-    case TYPE_C_LONG:
-        return xstrdup(misra_mode ? "int64_t" : "long");
-    case TYPE_C_ULONG:
-        return xstrdup(misra_mode ? "uint64_t" : "unsigned long");
-    case TYPE_C_LONGLONG:
-        return xstrdup(misra_mode ? "int64_t" : "long long");
-    case TYPE_C_ULONGLONG:
-        return xstrdup(misra_mode ? "uint64_t" : "unsigned long long");
-    case TYPE_C_SHORT:
-        return xstrdup(misra_mode ? "int16_t" : "short");
-    case TYPE_C_USHORT:
-        return xstrdup(misra_mode ? "uint16_t" : "unsigned short");
-    case TYPE_C_CHAR:
-        return xstrdup(misra_mode ? "int8_t" : "char");
-    case TYPE_C_UCHAR:
-        return xstrdup(misra_mode ? "uint8_t" : "unsigned char");
 
     case TYPE_BITINT:
     {
