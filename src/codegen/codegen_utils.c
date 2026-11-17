@@ -201,10 +201,14 @@ char *emit_function_head(ParserContext *ctx, Type *ret, const char *declarator)
     char *with_mark = xmalloc(size);
     snprintf(with_mark, size, "%s%s", declarator, FUNCTION_DECLARATOR_MARK);
     char *decl = c_declaration(ctx, ret, with_mark);
+    // c_declaration writes the declarator once: what follows the mark comes after the `)`.
     char *mark = strstr(decl, FUNCTION_DECLARATOR_MARK);
-    *mark = 0;
+    char *after = xstrdup(mark ? mark + 1 : "");
+    if (mark)
+    {
+        *mark = 0;
+    }
     EMIT(ctx, "%s(", decl);
-    char *after = xstrdup(mark + 1);
     zfree(decl);
     zfree(with_mark);
     return after;
