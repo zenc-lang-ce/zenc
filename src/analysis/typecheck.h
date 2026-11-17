@@ -46,7 +46,10 @@ typedef struct TypeChecker
     LoopFrame *current_loop; ///< Innermost loop being checked; NULL outside loops.
 
     // Configuration
-    int move_checks_only; ///< If true, only report move semantics violations (no type errors).
+    int rechecking; ///< Checking code a second time (a loop's second pass, the expressions of an
+                    ///< f-string): only moves are reported.
+    int type_errors_as_warnings; ///< `zc build` in 0.5: a type error is a warning; from 0.6 it
+                                 ///< stops the build as in `zc check`.
 
     // Tracking
     int is_assign_lhs;      ///< If true, currently evaluating LHS of assignment.
@@ -68,21 +71,6 @@ typedef struct TypeChecker
  * @return 0 on success (no errors), non-zero if errors occurred.
  */
 int check_program(ParserContext *ctx, ASTNode *root);
-
-/**
- * @brief Move-Only Checking Entry Point.
- *
- * Performs only move semantics analysis (use-after-move detection)
- * without reporting type errors. Always runs, even without --typecheck.
- *
- * @param ctx Global parser context.
- * @param root Root AST node of the program.
- * @return 0 on success (no move errors), non-zero if move errors occurred.
- */
-/**
- * @brief Move-Only Checking Entry Point.
- */
-int check_moves_only(ParserContext *ctx, ASTNode *root);
 
 // Error helpers available to move_check.c
 void tc_error(TypeChecker *tc, Token t, const char *msg);

@@ -16,22 +16,23 @@ CUDA and Objective-C dialects; json, dot, ast-dump and lisp for tooling).
 
 ### How the phases run
 
-- `zc check` runs the full typechecker (`check_program`).
-- `zc build` and `zc run` also run the typechecker, in a reduced mode
-  (`check_moves_only`). It walks the whole tree with the same `check_node`, and
-  it reports move errors, control-flow errors, MISRA checks and warnings, but
-  `tc_error` is muted. It also **rewrites the AST** before codegen: index
-  operators become calls, implicit `&`/`*` nodes are inserted, `comptime`
-  blocks are expanded, and so on.
+- `zc check`, `zc build` and `zc run` run the same typechecker
+  (`check_program`). In `zc check` a type error (`tc_error`) is an error; in
+  `zc build` and `zc run` it is a warning until 0.6 (an error with `--misra`).
+  Move errors, control-flow errors and MISRA checks stop both. The
+  typechecker also **rewrites the AST** before codegen: index operators become
+  calls, implicit `&`/`*` nodes are inserted, `comptime` blocks are expanded,
+  and so on.
 - The language server only runs the parser (`parse_program`).
 
 So:
 
-- A check that reports only through `tc_error` does not stop a build.
+- A check that reports through `tc_error` stops `zc check` and warns in a
+  build (it stops a build from 0.6).
 - A change to `check_node`, or to anything it calls, can change the C a build
   emits.
-- `zc check` and `zc build` can disagree in both directions. To verify a fix,
-  run the program with `zc run`, not only `zc check`.
+- To verify a fix, run the program with `zc run`, not only `zc check`: the
+  backends still read things the typechecker does not check.
 
 ### Rules
 
@@ -170,7 +171,7 @@ Which checks a change needs, besides its tests (each one is explained below):
 | --- | --- |
 | Anything in `src/` | `make test`, `compare_compilers.sh` and `measure_all.sh` against `main` |
 | Codegen (`src/codegen/`) | also `cpp_cmp.sh` |
-| The typechecker (`src/analysis/`) | also `check_vs_run.sh`, and add the program to `check_clean` |
+| The typechecker (`src/analysis/`) | also `make test-check-vs-run`, and add the program to `check_clean` |
 | Any C file, before pushing | `validate_gcc14.sh` with the files you changed |
 | Code you believe is dead, before removing it | `trace_all.sh` |
 
@@ -198,10 +199,10 @@ temporary directory instead. Each script's header explains its arguments.
     `../awesome-zenc` next to the checkout). For a change meant for `main`,
     the only differences should be the ones the fix intends.
   - `scripts/cpp_cmp.sh ../zc-ref/zc ./zc`: the same for the C++ of `--cpp`.
-- **Typechecker changes:** `scripts/check_vs_run.sh [-v] ./zc` counts the
-  tests that pass with `zc run` but that `zc check` rejects, grouped by error.
-  It measures how far the typechecker is from being the single semantics: it
-  must not go up.
+- **Typechecker changes:** `make test-check-vs-run` (`scripts/check_vs_run.sh
+  -v`) lists the tests that pass with `zc run` but that `zc check` rejects,
+  grouped by error. There are none, and the CI fails if one appears: `zc
+  check` and a build follow one semantics.
 - **Run the CI's Linux checks before pushing a change in C.** macOS's clang
   misses warnings that fail the CI (`-Wformat-truncation`,
   `-Wsuggest-attribute=const`, `-Wnull-dereference`, the static analyzer).

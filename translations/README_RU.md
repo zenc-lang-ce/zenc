@@ -662,7 +662,7 @@ cc -I /usr/local/include/zenc my_tool.c -o my_tool
 - **`zc_core.h`** — `CompilerConfig`, `ZenCompiler`, `ASTNode`, `Type` типы, точки входа парсера, вспомогательные функции для типов
 - **`zc_driver.h`** — `driver_run()`, `driver_compile()` (полная оркестровка конвейера)
 - **`zc_codegen.h`** — `codegen_node()`, `emit_preamble()`, `format_expression_as_c()`
-- **`zc_analysis.h`** — `check_program()`, `check_moves_only()`, `resolve_alias()`
+- **`zc_analysis.h`** — `check_program()`, `resolve_alias()`
 - **`zc_diag.h`** — `zerror_at()`, `zwarn_at()`, `zpanic_at()`, диагностические отчеты
 - **`zc_utils.h`** — `Emitter` (выходной буфер), `load_file()`, `z_resolve_path()`
 

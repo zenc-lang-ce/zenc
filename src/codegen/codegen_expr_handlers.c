@@ -967,39 +967,6 @@ skip_callee_gen:
         if (node->call.callee->kind == NODE_EXPR_VAR)
         {
             sig = find_func(ctx, node->call.callee->var_ref.name);
-            if (!sig && !find_struct_def(ctx, node->call.callee->var_ref.name))
-            {
-                const char *name = node->call.callee->var_ref.name;
-
-                // RFC 0001: print, println, eprint and eprintln are functions of std/io.zc, no
-                // longer keywords. Calling one without importing it is an error that says so
-                // (otherwise it reaches the C compiler as an undeclared function).
-                if (strcmp(name, "print") == 0 || strcmp(name, "println") == 0 ||
-                    strcmp(name, "eprint") == 0 || strcmp(name, "eprintln") == 0)
-                {
-                    char msg[MAX_SHORT_MSG_LEN];
-                    snprintf(msg, sizeof(msg),
-                             "'%s' is a function of std/io.zc, which is not imported", name);
-                    const char *hints[] = {"add import \"std/io.zc\"", NULL};
-                    zerror_with_hints(node->call.callee->token, msg, hints);
-                }
-
-                // A function pointer, or a variant without a payload (`Enum::Variant()`, whose
-                // value check_expr_var typed as the enum), is not a missing function.
-                Type *callee_type = node->call.callee->type_info
-                                        ? get_inner_type(node->call.callee->type_info)
-                                        : NULL;
-                int is_value = callee_type && (callee_type->kind == TYPE_FUNCTION ||
-                                               callee_type->kind == TYPE_ENUM);
-                if (!should_suppress_undef_warning(ctx, name) && !is_value)
-                {
-                    Token t = node->call.callee->token;
-                    char msg[MAX_SHORT_MSG_LEN];
-                    snprintf(msg, sizeof(msg), "Undefined function '%s'", name);
-                    const char *hint = get_missing_function_hint(ctx, name);
-                    zwarn_diag(DIAG_INTEROP_UNDEF_FUNC, t, msg, hint);
-                }
-            }
         }
 
         ASTNode *arg = node->call.args;

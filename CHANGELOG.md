@@ -12,6 +12,11 @@ This new release brings breaking changes to the language:
 
 ## 0.5.3 (WIP)
 
+### Changes
+- `zc build` and `zc run` run the same typechecker as `zc check`. The errors `zc check` reports that a build did not (a type mismatch, an undefined variable, a pointer that escapes its scope, a `match` that is not exhaustive...) are warnings in a build, marked "an error from 0.6": from 0.6 they stop the build. With `--misra` they are errors, as they already were.
+- The backend no longer repeats what the typechecker reports: the warnings "Non-exhaustive match", "Undefined variable" and, with `-Wpedantic`, "Undefined function" are gone from a build, which now gets them from the typechecker. An undefined function gets the closest declared name as a hint ("Did you mean 'compute'?"), as an undefined variable did.
+- Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name: the special message "is a function of std/io.zc, which is not imported" is gone.
+
 ### Fixes
 - `zc check` gives a literal without a suffix the type its context expects everywhere, not only in a `let` or a `def`: in a `return`, an argument, a field of a struct literal, an assignment and the elements of an array literal. `return 0;` in a function returning `f64`, `Point{x: 1}` with an `f32` field and `let grid: f32[2] = [0, 1];` are no longer type mismatches, and neither is a negated literal (`let x: f64 = -1;`). An array literal of such literals passed as a slice of floats (`sum([0, 3])` for a `[f64]`) builds, instead of C that does not compile. MISRA Rule 10.4 is no longer reported for a literal that fits the unsigned type of a field, an argument or an assigned place (`len: 0` for a `usize`).
 - `zc check` converts an integer to a float without a cast, as `zc build` already did: `let a: f64 = count;` with an `i32` count is no longer a type mismatch. It warns when the float cannot hold every value of the integer (`i64` to `f64`, `u32` to `f32`). A float to an integer still needs a cast, since it drops the fraction.

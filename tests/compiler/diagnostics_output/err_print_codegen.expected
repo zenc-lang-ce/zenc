@@ -1,23 +1,23 @@
    Compiling tests/compiler/diagnostics_output/err_print_codegen.zc...
-error: a string on its own no longer prints
-  --> tests/compiler/diagnostics_output/err_print_codegen.zc:9:14
+warning: Undefined function 'println' (an error from 0.6; `zc check` reports it now)
+  --> tests/compiler/diagnostics_output/err_print_codegen.zc:14:5
    |
-9  |         1 => "one",
-   |              ^ here
+14 |     println(name);
+   |     ^ here
    |
-   = help: print it with println("..."), from std/io.zc
+   = note: Check if the function is defined or imported
 error: a string on its own no longer prints
   --> tests/compiler/diagnostics_output/err_print_codegen.zc:10:14
    |
-10 |         _ => "other",
+10 |         1 => "one",
    |              ^ here
    |
    = help: print it with println("..."), from std/io.zc
-error: 'println' is a function of std/io.zc, which is not imported
-  --> tests/compiler/diagnostics_output/err_print_codegen.zc:13:5
+error: a string on its own no longer prints
+  --> tests/compiler/diagnostics_output/err_print_codegen.zc:11:14
    |
-13 |     println(name);
-   |     ^ here
+11 |         _ => "other",
+   |              ^ here
    |
-   = help: add import "std/io.zc"
+   = help: print it with println("..."), from std/io.zc
 [exit 1]

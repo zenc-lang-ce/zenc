@@ -1,7 +1,8 @@
 // ARGS: build
 // RFC 0001 errors found while generating code: a string as the arm of a match statement
-// no longer prints, and println is a function of std/io.zc, which has to be imported. In a
-// match expression a string arm is the value and still compiles.
+// no longer prints. In a match expression a string arm is the value and still compiles.
+// println without importing std/io.zc is an undefined function, which the typechecker
+// reports (a warning in a build until 0.6).
 
 fn main() {
     let n = 2;

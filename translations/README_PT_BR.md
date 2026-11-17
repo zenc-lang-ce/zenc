@@ -693,7 +693,7 @@ A API pública cobre:
 - **`zc_core.h`** — Tipos `CompilerConfig`, `ZenCompiler`, `ASTNode`, `Type`, pontos de entrada do parser, auxiliares de introspecção de tipos
 - **`zc_driver.h`** — `driver_run()`, `driver_compile()` (orquestração completa do pipeline)
 - **`zc_codegen.h`** — `codegen_node()`, `emit_preamble()`, `format_expression_as_c()`
-- **`zc_analysis.h`** — `check_program()`, `check_moves_only()`, `resolve_alias()`
+- **`zc_analysis.h`** — `check_program()`, `resolve_alias()`
 - **`zc_diag.h`** — `zerror_at()`, `zwarn_at()`, `zpanic_at()`, relatórios de diagnóstico
 - **`zc_utils.h`** — `Emitter` (buffer de saída), `load_file()`, `z_resolve_path()`
 

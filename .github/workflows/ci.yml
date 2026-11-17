@@ -109,6 +109,18 @@ jobs:
         ./zc build std/std.zc --misra --emit-c -o .misra_bin/std.c || exit 0
         cppcheck --addon=misra --quiet .misra_bin/std.c || exit 0
 
+  check-vs-run:
+    name: zc check accepts what zc run passes
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install Dependencies
+      run: sudo apt-get update && sudo apt-get install -y libtcc-dev
+    - name: Build Compiler
+      run: make -j$(nproc) ZC_HAS_JIT=1
+    - name: Compare zc check with zc run
+      run: make test-check-vs-run
+
   test:
     name: Test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
