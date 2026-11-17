@@ -73,11 +73,14 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
 
         if (template_param)
         {
-            register_func_template(ctx, f->func.name, template_param, f);
+            char **params = xmalloc(sizeof(char *));
+            params[0] = xstrdup(template_param);
+            register_func_template(ctx, f->func.name, params, 1, f);
         }
-        else if (f->func.generic_params)
+        else if (f->func.generic_param_count > 0)
         {
-            register_func_template(ctx, f->func.name, f->func.generic_params, f);
+            register_func_template(ctx, f->func.name, f->func.generic_params,
+                                   f->func.generic_param_count, f);
         }
         else
         {
@@ -306,7 +309,8 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         if (target_gen_param || (def && ((def->kind == NODE_STRUCT && def->strct.is_template) ||
                                          (def->kind == NODE_ENUM && def->enm.is_template))))
         {
-            const char *gp = "T";
+            // One parameter, as an impl declares: the one written, or the type's first.
+            char *gp = "T";
             if (target_gen_param)
             {
                 gp = target_gen_param;
@@ -315,11 +319,13 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             {
                 gp = def->strct.generic_params[0];
             }
-            else if (def && def->kind == NODE_ENUM && def->enm.is_template)
+            else if (def && def->kind == NODE_ENUM && def->enm.generic_param_count > 0)
             {
-                gp = def->enm.generic_param;
+                gp = def->enm.generic_params[0];
             }
-            register_impl_template(ctx, name2, gp, n);
+            char **params = xmalloc(sizeof(char *));
+            params[0] = gp;
+            register_impl_template(ctx, name2, params, 1, n);
         }
 
         ctx->known_generics_count = generics_before;
@@ -370,7 +376,9 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             n->impl.target = target;
             n->impl.target_token = t1;
             n->impl.methods = h;
-            register_impl_template(ctx, name1, gen_param, n);
+            char **params = xmalloc(sizeof(char *));
+            params[0] = gen_param;
+            register_impl_template(ctx, name1, params, 1, n);
             ctx->current_impl_target = NULL;
             ctx->known_generics_count = generics_before;
             return NULL; // Do not emit generic template

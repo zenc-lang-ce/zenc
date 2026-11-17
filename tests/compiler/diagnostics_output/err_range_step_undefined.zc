@@ -1,0 +1,9 @@
+// ARGS: check
+// The step of a range loop is an expression the typechecker checks, as the bounds are: a name
+// it does not know is an undefined variable, not C text that the C compiler rejects.
+
+fn main() {
+    for i in 0..10 step stride {
+        let _x = i;
+    }
+}

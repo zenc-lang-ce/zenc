@@ -1,0 +1,36 @@
+   Compiling tests/compiler/diagnostics_output/err_missing_return.zc...
+error: Function 'missing_if' may not return a value on all code paths
+  --> tests/compiler/diagnostics_output/err_missing_return.zc:7:4
+   |
+7  | fn missing_if(c: bool) -> int {
+   |    ^ here
+   |
+   = help: Ensure all execution paths return a value
+   = help: Consider adding a default return at the end of the function
+error: Function 'missing_loop' may not return a value on all code paths
+  --> tests/compiler/diagnostics_output/err_missing_return.zc:11:4
+   |
+11 | fn missing_loop() -> int {
+   |    ^ here
+   |
+   = help: Ensure all execution paths return a value
+   = help: Consider adding a default return at the end of the function
+error: Function 'missing_while' may not return a value on all code paths
+  --> tests/compiler/diagnostics_output/err_missing_return.zc:15:4
+   |
+15 | fn missing_while() -> int {
+   |    ^ here
+   |
+   = help: Ensure all execution paths return a value
+   = help: Consider adding a default return at the end of the function
+error: Function 'last_expression' may not return a value on all code paths
+  --> tests/compiler/diagnostics_output/err_missing_return.zc:19:4
+   |
+19 | fn last_expression(x: int) -> int {
+   |    ^ here
+   |
+   = help: Ensure all execution paths return a value
+   = help: Consider adding a default return at the end of the function
+     error: semantic analysis found 4 errors
+       Check failed with 4 errors
+[exit 1]

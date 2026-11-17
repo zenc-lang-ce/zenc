@@ -1,0 +1,16 @@
+   Compiling tests/compiler/diagnostics_output/unknown_type_hint.zc...
+warning: Unknown type 'Abx' (assuming external C struct)
+  --> tests/compiler/diagnostics_output/unknown_type_hint.zc:8:15
+   |
+8  | fn second(_a: Abx*) {}
+   |               ^ here
+   |
+   = note: Did you mean 'Abc'?
+warning: Unknown type 'Vex' (assuming external C struct)
+  --> tests/compiler/diagnostics_output/unknown_type_hint.zc:7:14
+   |
+7  | fn first(_v: Vex*) {}
+   |              ^ here
+   |
+   = note: Did you mean 'Vec'?
+[exit 0]

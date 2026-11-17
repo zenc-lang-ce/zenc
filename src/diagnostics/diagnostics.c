@@ -154,6 +154,11 @@ void diag_render_json(void *data, const ZenDiagnostic *d)
 static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char *msg,
                       const char *const *hints, const DiagnosticNote *note)
 {
+    // `-Werror` and `--warn-errors`: a warning is an error, which fails the build.
+    if (!is_error && diag_cfg()->warn_as_errors)
+    {
+        is_error = 1;
+    }
     ParserContext *pctx = d_ctx.parser_ctx;
     if (is_error && pctx && pctx->suppress_errors)
     {

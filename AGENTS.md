@@ -27,9 +27,9 @@ Instructions for AI coding agents working on the Zen C compiler. They build on
   literal, another position): if one still fails in the same way, the fix
   covers a case, not the bug. Then count the places in the compiler that
   apply the same rule: if the fix touches one of several, it covers a case.
-- **Choose the fix that simplifies the compiler** (see "Rules" in
-  CONTRIBUTING.md). If you see two ways, say which one simplifies and
-  recommend it.
+- **Choose the solution that makes the compiler simpler**, for a fix, a
+  feature or a language rule (see "Rules" in CONTRIBUTING.md). If you see two
+  ways, say which one simplifies and recommend it.
 - **Look for the existing mechanism** before writing a helper. Do not add a
   parallel one.
 - **Keep the change to its topic.** If you find another bug on the way, write
@@ -55,7 +55,7 @@ Follow "Testing a change" in CONTRIBUTING.md. In short:
    scripts a change needs): `tests/scripts/compare_compilers.sh`, and
    `scripts/measure_all.sh`, whose only differences in the generated C are
    the ones the change intends. If you touched the typechecker,
-   `scripts/check_vs_run.sh` must not go up.
+   `scripts/check_vs_run.sh` and `scripts/check_twice.sh` must stay at 0.
 4. Before pushing C code: `scripts/validate_gcc14.sh` with the files you
    changed, if docker is available. Otherwise say in the PR that the gcc-14
    checks were not run locally.

@@ -1,0 +1,16 @@
+// language/features/arrays: a string literal assigned to a char array fills it
+// with its characters and zeros after them, without reading past the literal.
+struct Named {
+    name: char[8];
+}
+
+test "a string literal assigned to a char array" {
+    let b: char[8] = "letters";
+    b = "yz";
+    assert(b[0] == 'y' && b[1] == 'z', "the characters of the string");
+    assert(b[2] == 0 && b[7] == 0, "zeros after the string, to the end of the array");
+
+    let n = Named{name: "abcdefg"};
+    n.name = "de";
+    assert(n.name[1] == 'e' && n.name[2] == 0 && n.name[6] == 0, "a field of a struct too");
+}

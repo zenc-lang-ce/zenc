@@ -14,15 +14,9 @@
  * REPL segfaults on any input. */
 void repl_parser_ctx_init(ParserContext *ctx, ZenCompiler *compiler)
 {
-    memset(ctx, 0, sizeof(*ctx));
-    ctx->compiler = compiler;
-    ctx->config = &compiler->config;
-    ctx->current_filename = "<repl>";
+    parser_context_init(ctx, compiler, "<repl>");
     ctx->cg.is_repl = 1;
     ctx->is_fault_tolerant = 1;
-    module_state_init(&ctx->imports);
-    token_set_parser_ctx(ctx);
-    diag_set_parser_ctx(ctx);
 }
 
 typedef struct

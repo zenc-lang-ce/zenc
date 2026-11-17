@@ -1,0 +1,25 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A function returns on every path: both branches return, every arm returns,
+// a loop never ends, a goto jumps to a return, a labeled break leaves to a
+// return, or a nested block returns.
+enum E { A, B }
+
+fn both(c: bool) -> int { if c { return 1; } else { return 2; } }
+fn matched(e: E) -> int { match e { E::A => { return 1; }, _ => { return 2; } } }
+fn endless() -> int { loop { } }
+fn jump(c: bool) -> int {
+    if c { goto done; }
+    return 1;
+done:
+    return 2;
+}
+fn labeled() -> int {
+    outer: loop { loop { break outer; } }
+    return 3;
+}
+fn nested() -> int { { return 4; } }
+
+test "every path returns" {
+    assert(both(true) == 1 && matched(E::B) == 2, "branches and arms");
+    assert(jump(true) == 2 && labeled() == 3 && nested() == 4, "goto, labeled break, block");
+}

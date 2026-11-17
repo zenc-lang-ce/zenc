@@ -59,6 +59,7 @@ src/codegen/codegen_expr_simple.c
 src/codegen/codegen_expr_member.c
 src/codegen/codegen_expr_control.c
 src/codegen/codegen_expr_misc.c
+src/codegen/codegen_embed.c
 src/codegen/codegen_expr_handlers.c
 src/codegen/codegen_stmt.c
 src/codegen/codegen_stmt_match.c

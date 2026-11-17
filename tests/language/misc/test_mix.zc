@@ -1,5 +1,4 @@
 // language/misc: misc: test_mix
-// Uses the 0.5.1 `Enum_Variant` spelling (`Result_Ok`, `Result_Ok_Tag`): FF_COMPATIBILITY_0_5.
 import "std/io.zc"
 enum Result {
     Ok(int),
@@ -15,13 +14,13 @@ fn square(x: int) -> int {
 }
 
 test "test_result_constructors" {
-    let res = Result_Ok(42);
+    let res = Result::Ok(42);
     
-    assert(res.tag == Result_Ok_Tag, "Expected Ok tag");
+    assert(res.tag == Result__Ok_Tag, "Expected Ok tag");
     assert(res.data.Ok == 42, "Data mismatch");
     
-    let err = Result_Err(500);
-    assert(err.tag == Result_Err_Tag, "Expected Err tag");
+    let err = Result::Err(500);
+    assert(err.tag == Result__Err_Tag, "Expected Err tag");
 }
 
 test "test_pipelines" {

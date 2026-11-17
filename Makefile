@@ -596,6 +596,11 @@ test-misra: $(TARGET)
 test-check-vs-run: $(TARGET)
 	./scripts/check_vs_run.sh -v
 
+# Checking a program twice gives the same tree and the same C: the typechecker does not destroy
+# what it reads.
+test-check-twice: $(TARGET)
+	./scripts/check_twice.sh -v
+
 test-tcc: $(TARGET) $(PLUGINS)
 	./tests/scripts/run_tests.sh --cc tcc
 
@@ -795,4 +800,4 @@ fuzz-clean:
 	rm -f $(FUZZ_TARGET) $(FUZZ_CMPLOG_TARGET) $(FUZZ_HARNESS)
 	rm -rf obj-fuzz obj-fuzz-cmplog
 
-.PHONY: all clean install uninstall install-ape uninstall-ape install-tools format format-check lint bench test test-misra test-check-vs-run test-tcc test-filcc test-lsp test-unit test-asan test-plugins zig clang filcc ape windows asan tsan msan lsan analyzer coverage coverage-report core lite minimal fuzz-build fuzz-run fuzz-clean test-fuzz-regression zc-lsp zc-repl zc-doc zc-format FORCE
+.PHONY: all clean install uninstall install-ape uninstall-ape install-tools format format-check lint bench test test-misra test-check-vs-run test-check-twice test-tcc test-filcc test-lsp test-unit test-asan test-plugins zig clang filcc ape windows asan tsan msan lsan analyzer coverage coverage-report core lite minimal fuzz-build fuzz-run fuzz-clean test-fuzz-regression zc-lsp zc-repl zc-doc zc-format FORCE

@@ -256,11 +256,11 @@ static ASTNode *topo_sort_structs(ASTNode *head)
                 const char *dep_name = NULL;
                 if (nodes[j]->kind == NODE_STRUCT)
                 {
-                    dep_name = nodes[j]->strct.name;
+                    dep_name = declared_type_c_name(nodes[j]);
                 }
                 else if (nodes[j]->kind == NODE_ENUM)
                 {
-                    dep_name = nodes[j]->enm.name;
+                    dep_name = declared_type_c_name(nodes[j]);
                 }
 
                 if (dep_name && node_deps_match(&deps[i], dep_name))
@@ -416,7 +416,7 @@ static void emit_raw_statements_internal(ParserContext *ctx, ASTNode *node,
 // The Zen C name of the struct or enum node `s`.
 static const char *type_node_name(ASTNode *s)
 {
-    return s->kind == NODE_ENUM ? s->enm.name : s->strct.name;
+    return s->kind == NODE_ENUM ? declared_type_c_name(s) : declared_type_c_name(s);
 }
 
 // The name of the struct or enum node `s` in C: its `@link_name`, if it has one.
@@ -460,8 +460,9 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
             EMIT(ctx, "// Auto-Generated RAII Glue for %s\n", sname);
             EMIT(ctx, "void %s__Drop__glue(%s *self) {\n", sname, struct_c_type(s));
 
+            // The type's own `impl Drop` (traits.declares_drop) runs before its fields' drops.
             char *drop_method = mangle_method_symbol(sname, "Drop", "drop");
-            if (find_func(ctx, drop_method))
+            if (s->type_info->traits.declares_drop)
             {
                 EMIT(ctx, "    %s(self);\n", drop_method);
             }
@@ -645,8 +646,6 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
 
         ctx->cg.current_func_ret_type_info = NULL;
         ctx->cg.current_lambda = NULL;
-        ctx->cg.global_user_structs = kids;
-        struct_registry_changed(ctx);
         VisitedModules *visited = NULL;
 
         if (!ctx->cg.skip_preamble)
@@ -760,9 +759,10 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
                 {
                     if (chk->kind == k->kind)
                     {
-                        const char *n1 = (k->kind == NODE_STRUCT) ? k->strct.name : k->enm.name;
-                        const char *n2 =
-                            (chk->kind == NODE_STRUCT) ? chk->strct.name : chk->enm.name;
+                        const char *n1 = (k->kind == NODE_STRUCT) ? declared_type_c_name(k)
+                                                                  : declared_type_c_name(k);
+                        const char *n2 = (chk->kind == NODE_STRUCT) ? declared_type_c_name(chk)
+                                                                    : declared_type_c_name(chk);
                         if (n1 && n2 && strcmp(n1, n2) == 0)
                         {
                             found = 1;
@@ -980,7 +980,7 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         ASTNode *chk = merged_funcs;
         while (chk)
         {
-            if (chk->kind == NODE_FUNCTION && strcmp(chk->func.name, "main") == 0)
+            if (chk->kind == NODE_FUNCTION && strcmp(function_c_name(chk), "main") == 0)
             {
                 has_user_main = 1;
                 break;

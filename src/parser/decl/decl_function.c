@@ -89,17 +89,12 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     }
     char *name = token_strdup(name_tok);
 
-    char *gen_param = NULL;
-    Token *gen_tokens = NULL; // Where each one of `gen_param` is declared.
+    char **gen_params = NULL;
+    Token *gen_tokens = NULL; // Where each one of `gen_params` is declared.
     int gen_count = 0;
     if (lexer_peek(l).kind == TOK_LANGLE)
     {
         lexer_next(l);
-
-        size_t buf_size = 1024;
-        char *buf = xmalloc(buf_size);
-        buf[0] = 0;
-
         while (1)
         {
             Token gt = lexer_next(l);
@@ -110,20 +105,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
             }
             char *s = token_strdup(gt);
 
-            if (strlen(buf) + strlen(s) + 2 >= buf_size)
-            {
-                buf_size *= 2;
-                buf = xrealloc(buf, buf_size);
-            }
-
-            if (buf[0])
-            {
-                strcat(buf, ",");
-            }
-            strcat(buf, s);
-            gen_tokens = xrealloc(gen_tokens, sizeof(Token) * (size_t)(gen_count + 1));
-            gen_tokens[gen_count++] = gt;
-
             // Check for shadowing
             if (is_known_generic(ctx, s))
             {
@@ -131,7 +112,10 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
                 return NULL;
             }
 
-            zfree(s);
+            gen_params = xrealloc(gen_params, sizeof(char *) * (size_t)(gen_count + 1));
+            gen_tokens = xrealloc(gen_tokens, sizeof(Token) * (size_t)(gen_count + 1));
+            gen_params[gen_count] = s;
+            gen_tokens[gen_count++] = gt;
 
             if (lexer_peek(l).kind == TOK_COMMA)
             {
@@ -146,8 +130,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
             zpanic_at(lexer_peek(l), "Expected >");
             return NULL;
         }
-        gen_param = xstrdup(buf);
-        zfree(buf);
     }
 
     // Register generic parameters so type parsing recognizes them
@@ -196,23 +178,24 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
 
     curr_func_ret = ret_type_obj;
 
-    // Auto-prefix function name if in module context
-    // Don't prefix generic templates or functions inside impl blocks (already
-    // mangled)
+    // In a module parsed with a prefix, the function gets it. A generic template and a method keep
+    // their names: each instance, and the impl, give theirs.
+    // The node keeps the name the module writes (`name`); registries and C use the C name.
     char *written_name = NULL;
-    if (ctx->imports.current_module_prefix && !gen_param && !ctx->current_impl_target &&
-        !is_extern && !is_extern_symbol(ctx, name))
+    char *c_name = name;
+    char *prefixed_name = gen_count == 0 && !ctx->current_impl_target && !is_extern
+                              ? module_prefixed_name(ctx, ctx->imports.current_module_prefix, name)
+                              : NULL;
+    if (prefixed_name)
     {
         written_name = module_written_name(ctx, name);
-        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name);
-        zfree(name);
-        name = prefixed_name;
+        c_name = prefixed_name;
     }
 
     // Register if concrete (Global functions only)
-    if (!gen_param && !ctx->current_impl_target)
+    if (gen_count == 0 && !ctx->current_impl_target)
     {
-        register_func(ctx, ctx->current_scope->parent, name, count, default_values, arg_types,
+        register_func(ctx, ctx->current_scope->parent, c_name, count, default_values, arg_types,
                       ret_type_obj, is_varargs, 0, link_name, NULL, name_tok, is_export);
         // Note: required is set after return by caller (parser_core.c)
     }
@@ -220,7 +203,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     // Bodies are parsed once all declarations are known. A generic template's body (which
     // includes the methods of an impl on a generic type written without `<T>`) is parsed
     // before the concrete ones, with its generic parameters known again.
-    int is_template = gen_param || ctx->known_generics_count > 0 || in_generic_impl(ctx);
+    int is_template = gen_count > 0 || ctx->known_generics_count > 0 || in_generic_impl(ctx);
     PendingBody *pending = NULL;
 
     Token next_tok = lexer_peek(l);
@@ -276,6 +259,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     ASTNode *node = ast_create(NODE_FUNCTION);
     node->token = name_tok; // Save definition location
     node->func.name = name;
+    node->func.is_module_prefixed = prefixed_name != NULL;
     node->func.written_name = written_name;
 
     node->func.arg_types = arg_types;
@@ -298,12 +282,14 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         push_pending_body(ctx, pending);
     }
 
-    if (gen_param)
+    if (gen_count > 0)
     {
-        node->func.generic_params = xstrdup(gen_param);
+        node->func.generic_params = gen_params;
+        node->func.generic_param_count = gen_count;
         if (!ctx->current_impl_target)
         {
-            register_func_template(ctx, name, gen_param, node);
+            register_func_template(ctx, name, gen_params, gen_count, node);
+            register_declaration(ctx, node); // A template is not handed to the program.
             return NULL;
         }
     }

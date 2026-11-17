@@ -50,6 +50,9 @@ void check_expr_literal(TypeChecker *tc, ASTNode *node);
 void adopt_context_type(ASTNode *value, Type *expected);
 void check_struct_init(TypeChecker *tc, ASTNode *node, int depth);
 void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth);
+void check_called_lambdas(TypeChecker *tc);
+void resolve_member_method(TypeChecker *tc, ASTNode *member, int replaces_field);
+void check_uncalled_lambdas(TypeChecker *tc, ASTNode *func);
 int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t,
                              ASTNode *value_node, int is_call_arg);
 void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_ptr,
@@ -67,7 +70,5 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth);
 void tc_check_trait(TypeChecker *tc, ASTNode *node, int depth);
 void tc_check_impl(TypeChecker *tc, ASTNode *node, int depth);
 void tc_check_impl_trait(TypeChecker *tc, ASTNode *node, int depth);
-int block_always_returns(ASTNode *block);
-int stmt_always_returns(ASTNode *stmt);
 
 #endif

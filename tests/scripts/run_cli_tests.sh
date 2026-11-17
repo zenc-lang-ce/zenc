@@ -184,6 +184,57 @@ else
     check "-g passes -g to the C compiler" 0
 fi
 
+# `-Werror` and `--warn-errors` make zc's own warnings errors: the build stops. Without them an
+# unused variable is a warning and the program builds.
+printf 'fn main() {\n    let unused = 3;\n}\n' > "$workdir/werror.zc"
+"$ZC" build "$workdir/werror.zc" -o "$workdir/werror_plain" > "$workdir/werror_plain.txt" 2>&1
+plain_code=$?
+"$ZC" build "$workdir/werror.zc" -o "$workdir/werror_w" -Werror > "$workdir/werror_w.txt" 2>&1
+werror_code=$?
+"$ZC" build "$workdir/werror.zc" -o "$workdir/werror_long" --warn-errors > "$workdir/werror_long.txt" 2>&1
+long_code=$?
+if [ "$plain_code" -eq 0 ] && grep -q "^warning: Unused variable 'unused'" "$workdir/werror_plain.txt" &&
+    [ "$werror_code" -ne 0 ] && grep -q "^error: Unused variable 'unused'" "$workdir/werror_w.txt" &&
+    [ ! -e "$workdir/werror_w" ] &&
+    [ "$long_code" -ne 0 ] && grep -q "^error: Unused variable 'unused'" "$workdir/werror_long.txt"; then
+    check "-Werror and --warn-errors make zc's warnings errors" 1
+else
+    check "-Werror and --warn-errors make zc's warnings errors" 0
+fi
+
+# A message about a declaration of a module imported with an alias names it as the module writes
+# it (`helper`), not by its C name (`geo_names__helper`).
+mkdir -p "$workdir/written_names"
+cat > "$workdir/written_names/geo_names.zc" <<'ZC'
+fn helper(flag: int) -> int {
+    if flag > 0 {
+        return 1;
+    }
+}
+
+fn ignore(value: int) -> int {
+    return 0;
+}
+
+struct Point {
+    x: int;
+}
+
+struct Point {
+    y: int;
+}
+ZC
+printf 'import "./geo_names.zc" as geo\nfn main() {\n    let _n = geo::helper(2);\n}\n' \
+    > "$workdir/written_names/main.zc"
+out=$("$ZC" check "$workdir/written_names/main.zc" 2>&1)
+if echo "$out" | grep -qF "Function 'helper' may not return" &&
+    echo "$out" | grep -qF "Unused parameter 'value' in function 'ignore'" &&
+    echo "$out" | grep -qF "Redefinition of struct 'Point'" && ! echo "$out" | grep -qF "geo_names__"; then
+    check "messages name a module's declarations as the module writes them" 1
+else
+    check "messages name a module's declarations as the module writes them" 0
+fi
+
 # --- zc-doc ------------------------------------------------------------------
 
 # A declaration of a module is titled as its importer writes it (`geo::Vector`), its code
@@ -424,6 +475,10 @@ struct Counter { value: int; }
 impl Counter { fn get(self) -> int { return 1; } }
 impl Counter { fn get(self) -> int { return 2; } }
 fn main() { let c = Counter { value: 0 }; println(f"{c.get()}"); }' "Redefinition of method 'Counter::get'"
+
+diag_check "a struct named like an enum is a Zen C error" 'enum Shape { Dot, Line }
+struct Shape { sides: int; }
+fn main() {}' "Redefinition of struct 'Shape'"
 
 # --- Imported files: diagnostics and #line name the imported file -----------
 

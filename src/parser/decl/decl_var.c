@@ -282,18 +282,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         if (next.kind == TOK_IDENT && strncmp(next.start, "embed", 5) == 0)
         {
             init = parse_embed(ctx, l);
-
-            // In fault-tolerant mode (LSP), parse_embed may return NULL
-            // if the embedded file cannot be found. Create a placeholder.
-            if (!init)
-            {
-                init = ast_create(NODE_RAW_STMT);
-                init->token = next;
-                init->type_info = instantiate_slice(ctx, type_new(TYPE_CHAR), next);
-                char empty[MAX_TYPE_NAME_LEN + 16];
-                snprintf(empty, sizeof(empty), "((%s){0})", type_mangle_spelling(init->type_info));
-                init->raw_stmt.content = xstrdup(empty);
-            }
             if (lexer_peek(l).kind == TOK_SEMICOLON)
             {
                 lexer_next(l);
@@ -456,12 +444,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     n->var_decl.name = name;
     n->var_decl.type_info = type_obj;
     n->type_info = type_obj;
-
-    // Auto-construct Trait Object
-    if (type && is_trait(ctx, type))
-    {
-        init = transform_to_trait_object(ctx, type, init);
-    }
 
     n->var_decl.init_expr = init;
 

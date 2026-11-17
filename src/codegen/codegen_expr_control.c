@@ -18,10 +18,8 @@ void handle_block(ParserContext *ctx, ASTNode *node)
 {
     int saved = ctx->cg.defer_count;
     EMIT(ctx, "({ ");
-    enter_scope(ctx);
     codegen_walker(ctx, node->block.statements);
     emit_defers_down_to(ctx, saved);
-    exit_scope(ctx);
     ctx->cg.defer_count = saved;
     EMIT(ctx, " })");
 }
@@ -120,7 +118,8 @@ static int type_is_enum(ParserContext *ctx, const char *name)
     StructRef *er = ctx->parsed_enums_list;
     while (er)
     {
-        if (er->node && er->node->kind == NODE_ENUM && strcmp(er->node->enm.name, name) == 0)
+        if (er->node && er->node->kind == NODE_ENUM &&
+            strcmp(declared_type_c_name(er->node), name) == 0)
         {
             return 1;
         }
@@ -129,7 +128,7 @@ static int type_is_enum(ParserContext *ctx, const char *name)
     ASTNode *ins = ctx->instantiated_structs;
     while (ins)
     {
-        if (ins->kind == NODE_ENUM && strcmp(ins->enm.name, name) == 0)
+        if (ins->kind == NODE_ENUM && strcmp(declared_type_c_name(ins), name) == 0)
         {
             return 1;
         }

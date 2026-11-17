@@ -23,10 +23,10 @@ void register_type_usage(ParserContext *ctx, const char *name, Token t)
     ctx->pending_type_validations = u;
 }
 
-int is_known_type_name(ParserContext *ctx, const char *name)
+int is_known_type_name(ParserContext *ctx, const char *file, const char *name)
 {
-    if (find_struct_def(ctx, name) || find_type_alias(ctx, name) ||
-        find_selective_import(ctx, name) || is_extern_symbol(ctx, name) || is_trait(ctx, name) ||
+    if (find_struct_def(ctx, name) || find_type_alias(ctx, name) || imports_name(ctx, file, name) ||
+        is_extern_symbol(ctx, name) || is_trait(ctx, name) ||
         find_primitive_kind(name) != TYPE_UNKNOWN)
     {
         return 1;
@@ -66,12 +66,29 @@ int validate_types(ParserContext *ctx)
     }
     for (TypeUsage *u = ctx->pending_type_validations; u; u = u->next)
     {
-        if (!is_known_type_name(ctx, u->name))
+        if (!is_known_type_name(ctx, u->location.file, u->name))
         {
             warn_unknown_type(ctx, u);
         }
     }
     return 1;
+}
+
+int type_has_drop(ParserContext *ctx, Type *t)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
+    {
+        ASTNode *def = t->name ? named_type_def(ctx, t) : NULL;
+        if (def && def->type_info)
+        {
+            return def->type_info->traits.has_drop;
+        }
+    }
+    return t->traits.has_drop;
 }
 
 int type_needs_drop(ParserContext *ctx, Type *t)
@@ -101,7 +118,7 @@ int type_needs_drop(ParserContext *ctx, Type *t)
     }
     if ((t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name)
     {
-        ASTNode *def = find_struct_def(ctx, type_def_name(t));
+        ASTNode *def = named_type_def(ctx, t);
         return def && def->type_info && def->type_info->traits.has_drop;
     }
     return 0;
@@ -153,7 +170,8 @@ static int implements_drop(ParserContext *ctx, ASTNode *node)
     {
         return 0;
     }
-    const char *name = node->kind == NODE_STRUCT ? node->strct.name : node->enm.name;
+    const char *name =
+        node->kind == NODE_STRUCT ? declared_type_c_name(node) : declared_type_c_name(node);
     const char *tpl = NULL;
     for (Instantiation *inst = ctx->instantiations; inst && !tpl; inst = inst->next)
     {
@@ -165,14 +183,15 @@ static int implements_drop(ParserContext *ctx, ASTNode *node)
     return check_impl(ctx, "Drop", name) || (tpl && check_impl(ctx, "Drop", tpl));
 }
 
-// Marks `strct` as Drop if it implements Drop. `impl Drop for X` marks X when it is parsed, which
-// misses a struct declared below the impl, and an instance created before a generic impl.
+// Marks `strct` as Drop, and as declaring it, if it implements Drop. `impl Drop for X` marks X
+// when it is parsed, which misses a struct declared below the impl, and an instance created
+// before a generic impl; and a struct its fields made Drop declares it still.
 static void seed_drop_from_impl(ParserContext *ctx, ASTNode *strct)
 {
-    if (strct && strct->type_info && !strct->type_info->traits.has_drop &&
-        implements_drop(ctx, strct))
+    if (strct && strct->type_info && implements_drop(ctx, strct))
     {
         strct->type_info->traits.has_drop = 1;
+        strct->type_info->traits.declares_drop = 1;
     }
 }
 
@@ -204,7 +223,7 @@ static int type_will_drop_at(ParserContext *ctx, Type *t, int depth)
     case TYPE_STRUCT:
     case TYPE_ENUM:
     {
-        ASTNode *def = t->name ? find_struct_def(ctx, type_def_name(t)) : NULL;
+        ASTNode *def = t->name ? named_type_def(ctx, t) : NULL;
         if (!def)
         {
             return 0;
@@ -279,87 +298,6 @@ void propagate_drop_traits(ParserContext *ctx)
     }
 }
 
-void fix_type_refs_has_drop(ParserContext *ctx)
-{
-    if (!ctx)
-    {
-        return;
-    }
-
-    for (StructRef *ref = ctx->parsed_funcs_list; ref; ref = ref->next)
-    {
-        ASTNode *fn = ref->node;
-        if (!fn || fn->kind != NODE_FUNCTION)
-        {
-            continue;
-        }
-
-        for (int i = 0; i < fn->func.count; i++)
-        {
-            Type *at = fn->func.arg_types[i];
-            if (at && at->kind == TYPE_STRUCT && at->name && !at->traits.has_drop)
-            {
-                ASTNode *def = find_struct_def(ctx, type_def_name(at));
-                if (def && def->type_info && def->type_info->traits.has_drop)
-                {
-                    at->traits.has_drop = 1;
-                }
-            }
-        }
-
-        if (fn->func.ret_type_info && fn->func.ret_type_info->kind == TYPE_STRUCT &&
-            fn->func.ret_type_info->name && !fn->func.ret_type_info->traits.has_drop)
-        {
-            ASTNode *def = find_struct_def(ctx, type_def_name(fn->func.ret_type_info));
-            if (def && def->type_info && def->type_info->traits.has_drop)
-            {
-                fn->func.ret_type_info->traits.has_drop = 1;
-            }
-        }
-    }
-
-    for (StructRef *ref = ctx->parsed_structs_list; ref; ref = ref->next)
-    {
-        ASTNode *strct = ref->node;
-        if (!strct || strct->kind != NODE_STRUCT)
-        {
-            continue;
-        }
-        for (ASTNode *field = strct->strct.fields; field; field = field->next)
-        {
-            Type *ft = field->type_info;
-            if (ft && ft->kind == TYPE_STRUCT && ft->name && !ft->traits.has_drop)
-            {
-                ASTNode *def = find_struct_def(ctx, type_def_name(ft));
-                if (def && def->type_info && def->type_info->traits.has_drop)
-                {
-                    ft->traits.has_drop = 1;
-                }
-            }
-        }
-    }
-
-    for (ASTNode *ins = ctx->instantiated_structs; ins; ins = ins->next)
-    {
-        if (ins->kind != NODE_STRUCT)
-        {
-            continue;
-        }
-        for (ASTNode *field = ins->strct.fields; field; field = field->next)
-        {
-            Type *ft = field->type_info;
-            if (ft && ft->kind == TYPE_STRUCT && ft->name && !ft->traits.has_drop)
-            {
-                ASTNode *def = find_struct_def(ctx, type_def_name(ft));
-                if (def && def->type_info && def->type_info->traits.has_drop)
-                {
-                    ft->traits.has_drop = 1;
-                }
-            }
-        }
-    }
-}
-
 typedef struct
 {
     const char **names;
@@ -391,12 +329,12 @@ static int defined_functions_add(DefinedFunctions *set, const char *name)
 static void check_function_definition(ASTNode *f, const char *owner, DefinedFunctions *set,
                                       int *errors)
 {
-    if (f->kind != NODE_FUNCTION || !f->func.body || !f->func.name || f->func.generic_params ||
-        f->cfg_condition)
+    if (f->kind != NODE_FUNCTION || !f->func.body || !function_c_name(f) ||
+        f->func.generic_param_count > 0 || f->cfg_condition)
     {
         return;
     }
-    if (defined_functions_add(set, f->func.name))
+    if (defined_functions_add(set, function_c_name(f)))
     {
         return;
     }
