@@ -18,6 +18,7 @@ This new release brings breaking changes to the language:
 - Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name: the special message "is a function of std/io.zc, which is not imported" is gone.
 
 ### Fixes
+- An index on a struct with `get`/`set` (the operator overload) is decided in one place, the typechecker, with the rule the parser, the typechecker and the backend each had their own copy of: `v[i, j] = x` passes every index to `set`, a pointer is still indexed directly, and the result of `get` is a temporary a method can be called on (`m[k].unwrap()`).
 - A function with a return type whose last statement is an expression and not a `return` (`fn twice(x: int) -> int { x * 2 }`) is "may not return a value on all code paths". `zc check` took the expression as the function's value, but the C returns nothing there: the caller got garbage.
 - A `match` that names every variant of an enum, without `_`, counts as taking an arm for every value: a function whose arms all return no longer needs a `return` after it, and code after it is reported as unreachable.
 - Assigning a string literal to a `char[N]` (`buf = "yz";`) copies its characters and fills the rest of the array with zeros. Before, the C copied N bytes from the literal, reading past its end.

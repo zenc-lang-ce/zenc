@@ -1,0 +1,46 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// `v[i]` on a struct with `get` calls it, `v[i] = x` with `set` calls that,
+// with every index (`m[r, c]` is `get(m, r, c)`), also in `v[i] += x`, and the
+// result of `get` is a temporary a method can be called on.
+struct Cell {
+    v: int;
+}
+
+impl Cell {
+    fn doubled(self) -> int {
+        return self.v * 2;
+    }
+}
+
+struct Matrix {
+    cells: int[4];
+}
+
+impl Matrix {
+    fn get(self, r: int, c: int) -> int {
+        return self.cells[r * 2 + c];
+    }
+    fn set(self, r: int, c: int, v: int) {
+        self.cells[r * 2 + c] = v;
+    }
+}
+
+struct Row {
+    cells: Cell[2];
+}
+
+impl Row {
+    fn get(self, i: int) -> Cell {
+        return self.cells[i];
+    }
+}
+
+test "index overloads" {
+    let m = Matrix{cells: [1, 2, 3, 4]};
+    m[1, 0] = 30;
+    m[0, 1] += 5;
+    assert(m[1, 0] == 30 && m[0, 1] == 7 && m[1, 1] == 4, "get and set with two indices");
+
+    let row = Row{cells: [Cell{v: 5}, Cell{v: 6}]};
+    assert(row[1].doubled() == 12, "a method on the result of get");
+}

@@ -601,39 +601,34 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             // parser/codegen policy ("Pointers should use array indexing by
             // default, not operator overload").
             // A slice is indexed directly, although `Slice<T>` has a `get`.
-            if (t->kind == TYPE_STRUCT && t->name && !is_ptr && !slice_element(t))
+            // The operator overload `get` (index_method, the one rule for it).
+            if (!is_ptr && index_method(tc->pctx, t, "get"))
             {
-                char *mangled_get = mangle_method_symbol(type_def_name(t), NULL, "get");
+                ASTNode *array = node->index.array;
+                ASTNode *idx = node->index.index;
 
-                if (find_func(tc->pctx, mangled_get))
-                {
-                    ASTNode *array = node->index.array;
-                    ASTNode *idx = node->index.index;
+                // The node becomes the call it stands for and keeps `v[i]` as written, for
+                // what shows the program's own form (F7: elaborate without losing it).
+                ASTNode *written = ast_create(NODE_EXPR_INDEX);
+                *written = *node;
+                written->next = NULL;
 
-                    // The node becomes the call it stands for and keeps `v[i]` as written, for
-                    // what shows the program's own form (F7: elaborate without losing it).
-                    ASTNode *written = ast_create(NODE_EXPR_INDEX);
-                    *written = *node;
-                    written->next = NULL;
+                node->kind = NODE_EXPR_CALL;
+                memset(&node->call, 0, sizeof(node->call));
+                node->call.written = written;
 
-                    node->kind = NODE_EXPR_CALL;
-                    memset(&node->call, 0, sizeof(node->call));
-                    node->call.written = written;
+                ASTNode *callee = ast_create(NODE_EXPR_MEMBER);
+                callee->token = node->token;
+                callee->member.target = array;
+                callee->member.field = xstrdup("get");
+                callee->member.is_pointer_access = is_ptr;
 
-                    ASTNode *callee = ast_create(NODE_EXPR_MEMBER);
-                    callee->token = node->token;
-                    callee->member.target = array;
-                    callee->member.field = xstrdup("get");
-                    callee->member.is_pointer_access = is_ptr;
+                node->call.callee = callee;
+                node->call.args = idx;
+                idx->next = written->index.extra_indices; // `v[i, j]` is `get(v, i, j)`
 
-                    node->call.callee = callee;
-                    node->call.args = idx;
-
-                    check_expr_call(tc, node, depth + 1);
-                    zfree(mangled_get);
-                    break;
-                }
-                zfree(mangled_get);
+                check_expr_call(tc, node, depth + 1);
+                break;
             }
             // The overload lookup above looks through a pointer to a struct;
             // the element type comes from the array/pointer type itself.

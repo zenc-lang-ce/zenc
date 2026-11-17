@@ -299,11 +299,64 @@ static ASTNode *written_variable(ASTNode *place)
     return place && place->kind == NODE_EXPR_VAR ? place : NULL;
 }
 
+// `v[i] = x` on a struct with a `set` method (index_method) is the call `v.set(i, x)`, the
+// operator overload: the node becomes the call, which keeps the assignment as written. 0 when the
+// assignment is not one.
+static int rewrite_index_set(TypeChecker *tc, ASTNode *node, int depth)
+{
+    ASTNode *index = node->binary.left;
+    check_node(tc, index->index.array, depth + 1);
+    if (!index_method(tc->pctx, index->index.array->type_info, "set"))
+    {
+        return 0;
+    }
+
+    ASTNode *written = ast_create(NODE_EXPR_BINARY);
+    *written = *node;
+    written->next = NULL;
+
+    ASTNode *callee = ast_create(NODE_EXPR_MEMBER);
+    callee->token = node->token;
+    callee->member.target = index->index.array;
+    callee->member.field = xstrdup("set");
+
+    // Arguments: the index, the extra ones (`v[i, j] = x`), then the value. The index nodes are
+    // copied into the list: `v[i] += x` is `v[i] = v[i] + x`, whose right side shares them and
+    // chains them into its own call to `get`.
+    ASTNode *args = NULL;
+    ASTNode **tail = &args;
+    ASTNode *first_extra = index->index.extra_indices;
+    for (ASTNode *i = index->index.index; i; i = (i == index->index.index) ? first_extra : i->next)
+    {
+        ASTNode *copy = ast_create(i->kind);
+        *copy = *i;
+        copy->next = NULL;
+        *tail = copy;
+        tail = &copy->next;
+    }
+    *tail = node->binary.right;
+    node->binary.right->next = NULL;
+
+    node->kind = NODE_EXPR_CALL;
+    memset(&node->call, 0, sizeof(node->call));
+    node->call.callee = callee;
+    node->call.args = args;
+    node->call.written = written;
+    check_expr_call(tc, node, depth + 1);
+    return 1;
+}
+
 void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
 {
     OperatorKind binop = node->binary.op;
     const char *op = operator_spelling(binop);
     OperatorClass op_class = operator_class(binop);
+
+    if (binop == OP_ASSIGN && node->binary.left->kind == NODE_EXPR_INDEX &&
+        rewrite_index_set(tc, node, depth))
+    {
+        return;
+    }
 
     if (is_assignment_operator(binop))
     {

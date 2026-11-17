@@ -518,6 +518,10 @@ int expr_is_rvalue(ParserContext *ctx, ASTNode *e)
     case NODE_EXPR_LITERAL:
     case NODE_MATCH:
         return 1;
+    case NODE_EXPR_INDEX:
+        // An overloaded index is the result of its `get` call (index_method), a temporary; an
+        // element of an array or through a pointer has an address.
+        return index_method(ctx, e->index.array ? e->index.array->type_info : NULL, "get") != NULL;
     case NODE_EXPR_MEMBER:
         // A field of a temporary is a temporary too (`pairs.get(0).id`), unless
         // it is reached through a pointer (`ptr->field` has an address).

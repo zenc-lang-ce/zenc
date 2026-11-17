@@ -1148,187 +1148,11 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 node->index.extra_indices = extra_head;
                 node->index.index_count = 1 + extra_count;
 
-                char *struct_name = NULL;
-                Type *inner_t = lhs->type_info;
-                int is_ptr = 0;
                 // A slice is indexed directly, although `Slice<T>` has a `get`.
                 Type *slice_elem = slice_element(lhs->type_info);
-
-                if (inner_t && !slice_elem)
-                {
-                    if (inner_t->kind == TYPE_STRUCT)
-                    {
-                        struct_name = type_def_name(inner_t);
-                    }
-                    /*
-                    else if (t->kind == TYPE_POINTER && t->inner && t->inner->kind == TYPE_STRUCT)
-                    {
-                        // struct_name = t->inner->name;
-                        // is_ptr = 1;
-                        // DISABLE: Pointers should use array indexing by default, not operator
-                    overload.
-                        // If users want operator overload, they must dereference first (*ptr)[idx]
-                    }
-                    */
-                }
-                char *lhs_type_name = lhs->type_info ? type_mangle_spelling(lhs->type_info) : NULL;
-                if (!struct_name && lhs_type_name && !slice_elem)
-                {
-                    char *s = lhs_type_name;
-                    if (strncmp(s, "struct ", 7) == 0)
-                    {
-                        s += 7;
-                    }
-                    ASTNode *def = find_struct_def(ctx, s);
-                    if (def && def->kind == NODE_STRUCT)
-                    {
-                        struct_name = s;
-                        if (strchr(lhs_type_name, '*'))
-                        {
-                            is_ptr = 1;
-                        }
-                    }
-                    if (!struct_name)
-                    {
-                        def = find_struct_def(ctx, lhs_type_name);
-                        if (def && def->kind == NODE_STRUCT)
-                        {
-                            struct_name = lhs_type_name;
-                            // Just assume val type
-                        }
-                    }
-                }
-
-                if (struct_name)
-                {
-                    char *mangled_get = mangle_method_symbol(struct_name, NULL, "get");
-                    FuncSig *sig = find_func(ctx, mangled_get);
-
-                    // Fallback for Generics (e.g. Vec<T> -> Vec)
-                    int is_generic_template = 0;
-                    if (!sig && strchr(struct_name, '<'))
-                    {
-                        size_t len = strcspn(struct_name, "<");
-                        char *base = xmalloc((size_t)(len + 1));
-                        strncpy(base, struct_name, (size_t)(len));
-                        base[len] = 0;
-
-                        GenericImplTemplate *it = ctx->impl_templates;
-                        while (it)
-                        {
-                            if (strcmp(it->struct_name, base) == 0)
-                            {
-                                ASTNode *m = it->impl_node->impl.methods;
-                                char *mangled_g = mangle_method_symbol(base, NULL, "get");
-
-                                while (m)
-                                {
-                                    if (m->func.name && strcmp(m->func.name, mangled_g) == 0)
-                                    {
-                                        is_generic_template = 1;
-
-                                        // Construct temporary signature for checking
-                                        sig = xmalloc(sizeof(FuncSig));
-                                        memset(sig, 0, sizeof(FuncSig));
-                                        sig->ret_type = m->func.ret_type_info;
-                                        sig->arg_types = m->func.arg_types;
-                                        sig->total_args = m->func.count;
-
-                                        break;
-                                    }
-                                    m = m->next;
-                                }
-                            }
-                            if (is_generic_template)
-                            {
-                                break;
-                            }
-                            it = it->next;
-                        }
-                        zfree(base);
-                    }
-
-                    if (sig)
-                    {
-                        // Rewrite to Call
-                        ASTNode *call = ast_create(NODE_EXPR_CALL);
-                        call->token = t;
-                        ASTNode *callee;
-
-                        if (is_generic_template)
-                        {
-                            // For generics, keep it as a Member access so instantiation
-                            // can re-resolve the correct concrete function name.
-                            callee = ast_create(NODE_EXPR_MEMBER);
-                            callee->member.target = lhs;
-                            callee->member.field = xstrdup("get");
-                            callee->member.is_pointer_access = is_ptr;
-                            // Just a hint, logic below handles adjustments
-                        }
-                        else
-                        {
-                            callee = ast_create(NODE_EXPR_VAR);
-                            callee->var_ref.name = xstrdup(mangled_get);
-                        }
-
-                        callee->token = t;
-                        call->call.callee = callee;
-
-                        ASTNode *self_arg = lhs;
-
-                        // Pointer adjustment logic
-                        if (sig->total_args > 0 && sig->arg_types[0]->kind == TYPE_POINTER &&
-                            !is_ptr)
-                        {
-                            ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                            addr->unary.op =
-                                expr_is_rvalue(ctx, lhs) ? OP_ADDRESS_RVALUE : OP_ADDRESS;
-                            addr->unary.operand = lhs;
-                            if (inner_t)
-                            {
-                                addr->type_info = type_new_ptr(inner_t);
-                            }
-                            self_arg = addr;
-                        }
-                        else if (is_ptr && sig->arg_types[0]->kind != TYPE_POINTER)
-                        {
-                            ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                            deref->unary.op = OP_DEREF;
-                            deref->unary.operand = lhs;
-                            self_arg = deref;
-                        }
-
-                        // If using MEMBER access, we don't pass self as argument in AST
-                        // because codegen/semant handles "obj.method(args)" by injecting obj.
-                        // BUT here we are manually constructing the call.
-                        // If we use MEMBER, we should NOT put self in args?
-                        // standard parser produces: Call(Member, args). Member has target=obj.
-
-                        if (is_generic_template)
-                        {
-                            // Update target of member to be the adjusted self?
-                            // Member access usually expects the object as 'target'.
-                            // If we adjusted it (e.g. &obj), then target should be &obj.
-                            callee->member.target = self_arg;
-
-                            // And we DO NOT add self to call.args
-                            call->call.args = start;
-                        }
-                        else
-                        {
-                            // For VAR call (direct function call), we MUST pass self as first arg.
-                            self_arg->next = start;
-                            call->call.args = self_arg;
-                        }
-
-                        call->type_info = sig->ret_type;
-
-                        lhs = call;
-                        zfree(mangled_get);
-                        continue;
-                    }
-                    zfree(mangled_get);
-                }
+                // An overloaded index (`get`) stays an INDEX: the typechecker turns it into the
+                // call. The parser needs only its type, for a `let` that takes it.
+                FuncSig *get = index_method(ctx, lhs->type_info, "get");
 
                 // Static Array Bounds Check
                 if (lhs->type_info && lhs->type_info->kind == TYPE_ARRAY &&
@@ -1345,7 +1169,11 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
 
                 // Assign type_info for index access (Fix for nested generics)
-                if (slice_elem)
+                if (get)
+                {
+                    node->type_info = get->ret_type;
+                }
+                else if (slice_elem)
                 {
                     node->type_info = slice_elem;
                 }
@@ -1874,80 +1702,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
             bin->binary.op = OP_ASSIGN;
             bin->binary.right = op_node;
-        }
-
-        // Index Set Overload: Call(get, idx) = val  -->  Call(set, idx, val)
-        if (bin->binary.op == OP_ASSIGN && lhs->kind == NODE_EXPR_CALL)
-        {
-            if (lhs->call.callee->kind == NODE_EXPR_VAR)
-            {
-                char *name = lhs->call.callee->var_ref.name;
-                // Check if it ends in "_get"
-                size_t len = strlen(name);
-                if (len > 4 && strcmp(name + len - 4, "_get") == 0)
-                {
-                    char *set_name = xstrdup(name);
-                    set_name[len - 3] = 's'; // Replace 'g' with 's' -> _set
-                    set_name[len - 2] = 'e';
-                    set_name[len - 1] = 't';
-
-                    if (find_func(ctx, set_name))
-                    {
-                        // Create NEW Call Node for Set
-                        ASTNode *set_call = ast_create(NODE_EXPR_CALL);
-                        set_call->token = t;
-                        ASTNode *set_callee = ast_create(NODE_EXPR_VAR);
-                        set_callee->var_ref.name = set_name;
-                        set_call->call.callee = set_callee;
-
-                        // Clone argument list (Shallow copy of arg nodes to preserve chain
-                        // for get)
-                        ASTNode *lhs_args = lhs->call.args;
-                        ASTNode *new_head = NULL;
-                        ASTNode *new_tail = NULL;
-
-                        while (lhs_args)
-                        {
-                            ASTNode *arg_copy = xmalloc(sizeof(ASTNode));
-                            memcpy(arg_copy, lhs_args, sizeof(ASTNode));
-                            arg_copy->next = NULL;
-
-                            if (!new_head)
-                            {
-                                new_head = arg_copy;
-                            }
-                            else
-                            {
-                                new_tail->next = arg_copy;
-                            }
-                            new_tail = arg_copy;
-
-                            lhs_args = lhs_args->next;
-                        }
-
-                        // Append RHS to new args
-                        ASTNode *val_expr = bin->binary.right;
-                        if (new_tail)
-                        {
-                            new_tail->next = val_expr;
-                        }
-                        else
-                        {
-                            new_head = val_expr;
-                        }
-
-                        set_call->call.args = new_head;
-                        set_call->type_info = type_new(TYPE_VOID);
-
-                        lhs = set_call; // Use the new Set call as the result
-                        continue;
-                    }
-                    else
-                    {
-                        zfree(set_name);
-                    }
-                }
-            }
         }
 
         const char *method = operator_method(bin->binary.op);
