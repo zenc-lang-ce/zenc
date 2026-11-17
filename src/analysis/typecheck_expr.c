@@ -966,30 +966,6 @@ static int check_array_as_slice(TypeChecker *tc, Type *target, Type *value, Toke
     return 1;
 }
 
-// Warns when an integer of type `value`, the expression `value_node`, may not be held exactly by
-// the float type `target`, so large values are rounded, as an integer narrowing changes them. A
-// constant is judged by its value, as for integer targets.
-static void warn_inexact_integer_to_float(TypeChecker *tc, Type *target, Type *value,
-                                          ASTNode *value_node, Token t)
-{
-    long long constant;
-    int exact = (value_node && eval_const_int_expr(value_node, tc->pctx, &constant))
-                    ? float_holds_integer(target, constant)
-                    : float_holds_integer_type(target, value);
-    if (exact)
-    {
-        return;
-    }
-    char *t_str = zen_c_type_spelling(tc->pctx, target);
-    char *v_str = zen_c_type_spelling(tc->pctx, value);
-    char msg[MAX_SHORT_MSG_LEN];
-    snprintf(msg, sizeof(msg), "Implicit conversion from '%s' to '%s' rounds values above 2^%d",
-             v_str, t_str, float_significand_bits(target));
-    tc_warning(tc, t, msg);
-    zfree(t_str);
-    zfree(v_str);
-}
-
 // Whether the integer constant `value` keeps its value in the integer type `t`.
 // A type of 64 bits or more, or of unknown width, takes any constant: the folded
 // value is a long long, which cannot tell -1 from 0xFFFFFFFFFFFFFFFF.
@@ -1006,6 +982,58 @@ static int integer_constant_fits(long long value, Type *t)
         return value >= -limit && value < limit;
     }
     return value >= 0 && value < (1LL << width);
+}
+
+// An integer `value` converted to the integer or float type `target`: it keeps its value when
+// the target holds it, as a constant (by its value) or for every value of its type. When it may
+// not, a warning says how it changes; MISRA reports Rule 10.3 instead.
+static void check_integer_conversion(TypeChecker *tc, Type *target, Type *value,
+                                     ASTNode *value_node, Token t)
+{
+    if (tc->pctx->config->misra_mode)
+    {
+        misra_check_implicit_conversion(tc->pctx, target, value, value_node, t);
+        return;
+    }
+    Type *to = resolve_alias(target);
+    int to_float = is_float_type(to);
+    int target_width = integer_type_width(to);
+    int value_width = integer_type_width(resolve_alias(value));
+    long long constant;
+    int is_constant = value_node && eval_const_int_expr(value_node, tc->pctx, &constant);
+    int keeps =
+        to_float
+            ? (is_constant ? float_holds_integer(target, constant)
+                           : float_holds_integer_type(target, value))
+            : (is_constant ? integer_constant_fits(constant, to)
+                           : !(target_width > 0 && value_width > 0 && target_width < value_width));
+    if (keeps)
+    {
+        return;
+    }
+
+    char *t_str = zen_c_type_spelling(tc->pctx, target);
+    char *v_str = zen_c_type_spelling(tc->pctx, value);
+    char msg[MAX_SHORT_MSG_LEN];
+    if (to_float)
+    {
+        snprintf(msg, sizeof(msg), "Implicit conversion from '%s' to '%s' rounds values above 2^%d",
+                 v_str, t_str, float_significand_bits(target));
+    }
+    else if (is_constant)
+    {
+        snprintf(msg, sizeof(msg), "Integer constant %lld does not fit in '%s' (%d-bit)", constant,
+                 t_str, target_width);
+    }
+    else
+    {
+        snprintf(msg, sizeof(msg),
+                 "Implicit narrowing conversion from '%s' (%d-bit) to '%s' (%d-bit)", v_str,
+                 value_width, t_str, target_width);
+    }
+    tc_warning(tc, t, msg);
+    zfree(t_str);
+    zfree(v_str);
 }
 
 int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t,
@@ -1059,49 +1087,14 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         }
     }
 
-    // Resolution of Integer compatibility (Rule 10.3)
-    // This MUST happen before type_eq fast-path because type_eq is lax for integers.
-    if (is_integer_type(resolved_target) && is_integer_type(resolved_value))
+    // An integer converts to an integer or a float without a cast, as in C (a float to an integer
+    // does not: it drops the fraction, so it needs one). Before the type_eq fast path, which is
+    // lax for integers.
+    if (is_integer_type(resolved_value) &&
+        (is_integer_type(resolved_target) || is_float_type(resolved_target)))
     {
-        int target_width = integer_type_width(resolved_target);
-        int value_width = integer_type_width(resolved_value);
-        long long constant;
-
-        if (tc->pctx->config->misra_mode)
-        {
-            misra_check_implicit_conversion(tc->pctx, target, value, value_node, t);
-        }
-        else if (value_node && eval_const_int_expr(value_node, tc->pctx, &constant))
-        {
-            // A constant converts without loss when its value fits, whatever the
-            // type of the expression; one that does not fit changes its value.
-            if (!integer_constant_fits(constant, resolved_target))
-            {
-                char *t_str = zen_c_type_spelling(tc->pctx, target);
-                char msg[MAX_SHORT_MSG_LEN];
-                snprintf(msg, sizeof(msg), "Integer constant %lld does not fit in '%s' (%d-bit)",
-                         constant, t_str, target_width);
-                tc_warning(tc, t, msg);
-                zfree(t_str);
-            }
-        }
-        else
-        {
-            // Warn on narrowing conversions in non-MISRA mode
-            if (target_width > 0 && value_width > 0 && target_width < value_width)
-            {
-                char *t_str = zen_c_type_spelling(tc->pctx, target);
-                char *v_str = zen_c_type_spelling(tc->pctx, value);
-                char msg[MAX_SHORT_MSG_LEN];
-                snprintf(msg, sizeof(msg),
-                         "Implicit narrowing conversion from '%s' (%d-bit) to '%s' (%d-bit)", v_str,
-                         value_width, t_str, target_width);
-                tc_warning(tc, t, msg);
-                zfree(t_str);
-                zfree(v_str);
-            }
-        }
-        return 1; // All integer pairs compatible (modulo MISRA/Warning checks above)
+        check_integer_conversion(tc, target, value, value_node, t);
+        return 1;
     }
 
     if (!is_call_arg && resolved_target->kind == TYPE_POINTER &&
@@ -1221,21 +1214,6 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     // Float compatibility
     if (is_float_type(resolved_target) && is_float_type(resolved_value))
     {
-        return 1;
-    }
-
-    // An integer converts to a float, as in C. A float to an integer does not: it drops the
-    // fraction, so it needs a cast.
-    if (is_float_type(resolved_target) && is_integer_type(resolved_value))
-    {
-        if (tc->pctx->config->misra_mode)
-        {
-            misra_check_implicit_conversion(tc->pctx, target, value, value_node, t);
-        }
-        else
-        {
-            warn_inexact_integer_to_float(tc, target, value, value_node, t);
-        }
         return 1;
     }
 
