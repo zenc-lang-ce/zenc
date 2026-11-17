@@ -27,9 +27,9 @@ Instructions for AI coding agents working on the Zen C compiler. They build on
   literal, another position): if one still fails in the same way, the fix
   covers a case, not the bug. Then count the places in the compiler that
   apply the same rule: if the fix touches one of several, it covers a case.
-- **Choose the fix that simplifies the compiler** (see "Rules" in
-  CONTRIBUTING.md). If you see two ways, say which one simplifies and
-  recommend it.
+- **Choose the solution that makes the compiler simpler**, for a fix, a
+  feature or a language rule (see "Rules" in CONTRIBUTING.md). If you see two
+  ways, say which one simplifies and recommend it.
 - **Look for the existing mechanism** before writing a helper. Do not add a
   parallel one.
 - **Keep the change to its topic.** If you find another bug on the way, write

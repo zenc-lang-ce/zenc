@@ -85,10 +85,15 @@ them; code that does not follow them yet is not a precedent.
   the same call to one more place, or it changes a reader so that it respects
   something another step left. Passing tests and lower metrics show that a
   fix works, not that it fixes the cause.
-- **Prefer the fix that simplifies the compiler.** Between fixes for the same
-  bug, choose the one that leaves less code and fewer special cases: fix a
-  wrong value where it is produced instead of patching every reader. A patch
-  for a single case is a last resort: the PR says why the general fix is not
+- **Choose the solution that makes the compiler simpler.** This holds for
+  every change, not only for fixes: a feature, a refactor, a rule of the
+  language. Between ways of doing the same thing, choose the one that leaves
+  less code, fewer special cases and fewer places that must agree: fix a
+  wrong value where it is produced instead of patching every reader, and
+  prefer a language rule the compiler can check in one place to one that
+  needs a guess or a heuristic. If the simpler solution has a cost (a case it
+  does not cover yet, a less precise message), the PR says so. A patch for a
+  single case is a last resort: the PR says why the general fix is not
   possible, and an issue tracks it.
 - **Small functions, focused files.** Some functions are already hundreds of
   lines long. Do not make them longer: put what you add in a helper. Put a
