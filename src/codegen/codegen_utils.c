@@ -91,57 +91,6 @@ int is_fixed_size_array(Type *t)
     return t && t->kind == TYPE_ARRAY && t->array_size > 0;
 }
 
-int expr_names_var(ASTNode *expr, const char *name)
-{
-    if (!expr)
-    {
-        return 0;
-    }
-    char **refs = NULL;
-    int ref_count = 0;
-    find_var_refs(expr, &refs, &ref_count);
-    for (int i = 0; i < ref_count; i++)
-    {
-        if (strcmp(refs[i], name) == 0)
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-char *emit_init_temp(ParserContext *ctx, ASTNode *expr)
-{
-    char *temp = xmalloc(32);
-    snprintf(temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
-    if (z_path_match_compiler(ctx->config->cc, "tcc"))
-    {
-        // tcc has no __auto_type: the expression is written twice, once unevaluated.
-        EMIT(ctx, "__typeof__((");
-        codegen_expression(ctx, expr);
-        EMIT(ctx, ")) %s = ", temp);
-    }
-    else
-    {
-        EMIT(ctx, "ZC_AUTO %s = ", temp);
-    }
-    codegen_expression(ctx, expr);
-    EMIT(ctx, "; ");
-    return temp;
-}
-
-void emit_expr_or_temp(ParserContext *ctx, ASTNode *expr, const char *temp)
-{
-    if (temp)
-    {
-        EMIT(ctx, "%s", temp);
-    }
-    else
-    {
-        codegen_expression(ctx, expr);
-    }
-}
-
 const char *zero_initializer(ParserContext *ctx, Type *t)
 {
     if (!t)
