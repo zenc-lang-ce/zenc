@@ -270,7 +270,6 @@ static int compile_program(ZenCompiler *compiler)
     if (!compiler->config.mode_doc || compiler->config.use_typecheck)
     {
         propagate_drop_traits(&ctx);
-        fix_type_refs_has_drop(&ctx);
 
         if (!validate_types(&ctx))
         {

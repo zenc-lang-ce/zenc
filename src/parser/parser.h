@@ -674,7 +674,12 @@ int type_needs_drop(ParserContext *ctx, Type *t);
  *        are parsed (a struct with an `impl Drop` or a field that will be dropped).
  */
 int type_will_drop(ParserContext *ctx, Type *t);
-void fix_type_refs_has_drop(ParserContext *ctx);
+/**
+ * @brief Whether `t` has drop glue: for a struct or enum, what its declaration says (its own
+ * `impl Drop`, or a field or payload that needs dropping); for another type, such as an owning
+ * closure, its own flag.
+ */
+int type_has_drop(ParserContext *ctx, Type *t);
 
 // Token helpers
 

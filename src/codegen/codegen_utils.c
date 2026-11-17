@@ -557,8 +557,7 @@ int moves_drop_value(ParserContext *ctx, ASTNode *node)
     }
     if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
     {
-        ASTNode *def = named_type_def(ctx, t);
-        return (def && def->type_info) ? def->type_info->traits.has_drop : t->traits.has_drop;
+        return type_has_drop(ctx, t);
     }
     return 0;
 }
