@@ -22,54 +22,46 @@
 
 // Forward declarations (most are in headers — only keep what's not in headers)
 
+// Defines `name` for @cfg(...), unless the command line already did.
+static void add_cfg_define(ZenCompiler *compiler, const char *name)
+{
+    for (size_t i = 0; i < compiler->config.cfg_defines.length; i++)
+    {
+        if (strcmp(compiler->config.cfg_defines.data[i], name) == 0)
+        {
+            return;
+        }
+    }
+    zvec_push_Str(&compiler->config.cfg_defines, xstrdup(name));
+}
+
 int driver_run(ZenCompiler *compiler)
 {
     // Backend detection for @cfg purposes
     if (z_path_match_compiler(compiler->config.cc, "tcc"))
     {
-        zvec_push_Str(&compiler->config.cfg_defines, xstrdup("__TINYC__"));
+        add_cfg_define(compiler, "__TINYC__");
     }
     else if (z_path_match_compiler(compiler->config.cc, "clang"))
     {
-        zvec_push_Str(&compiler->config.cfg_defines, xstrdup("__clang__"));
+        add_cfg_define(compiler, "__clang__");
     }
     else if (z_path_match_compiler(compiler->config.cc, "zig"))
     {
-        zvec_push_Str(&compiler->config.cfg_defines, xstrdup("__ZIG__"));
+        add_cfg_define(compiler, "__ZIG__");
     }
     else if (z_path_match_compiler(compiler->config.cc, "filcc"))
     {
-        zvec_push_Str(&compiler->config.cfg_defines, xstrdup("__FILCC__"));
+        add_cfg_define(compiler, "__FILCC__");
     }
 
-    // Make the host OS available to @cfg(...) so @cfg(windows)/@cfg(not(windows))
-    // and @cfg(apple)/@cfg(not(apple)) (used by std/sys/fs.zc, std/sys/env.zc,
-    // std/sync.zc) resolve against the host platform instead of always falling
-    // through to the non-Windows/non-Apple branch.
-    const char *host_cfg = NULL;
-#if ZC_OS_WINDOWS
-    host_cfg = "windows";
-#elif ZC_OS_MACOS
-    host_cfg = "apple";
-#else
-    host_cfg = "linux";
+    // The host OS for @cfg(...), by the name that `__COMPTIME_TARGET__` and the `//>` build
+    // directives use (z_get_system_name): `linux`, `windows` or `macos`. On macOS `apple` too,
+    // the name std/sync.zc and older programs use.
+    add_cfg_define(compiler, z_get_system_name());
+#if ZC_OS_MACOS
+    add_cfg_define(compiler, "apple");
 #endif
-    if (host_cfg)
-    {
-        int found = 0;
-        for (size_t i = 0; i < compiler->config.cfg_defines.length; i++)
-        {
-            if (strcmp(compiler->config.cfg_defines.data[i], host_cfg) == 0)
-            {
-                found = 1;
-                break;
-            }
-        }
-        if (!found)
-        {
-            zvec_push_Str(&compiler->config.cfg_defines, xstrdup(host_cfg));
-        }
-    }
 
     init_builtins();
 
@@ -97,10 +89,31 @@ int driver_run(ZenCompiler *compiler)
     return result;
 }
 
+// How many of the functions a whole program could leave out it left out (--prune-unused), and
+// with -v which ones.
+static void report_pruned_functions(const ZenCompiler *compiler, const ParserContext *ctx)
+{
+    int pruned = ctx->cg.left_out_body_count;
+    int total = pruned + ctx->cg.written_body_count;
+    if (compiler->config.quiet || total == 0)
+    {
+        return;
+    }
+    printf(COLOR_BOLD COLOR_GREEN "      Pruned" COLOR_RESET " %d of %d functions (%d%%)\n", pruned,
+           total, pruned * 100 / total);
+    if (compiler->config.verbose)
+    {
+        for (int i = 0; i < pruned; i++)
+        {
+            printf("             %s\n", ctx->cg.left_out_bodies[i]);
+        }
+    }
+}
+
 static int compile_program(ZenCompiler *compiler)
 {
     // The counts are per compilation: the build fails when error_count is not 0 (see
-    // check_moves_only), so a previous compilation of the same compiler must not leave any.
+    // check_program), so a previous compilation of the same compiler must not leave any.
     compiler->error_count = 0;
     compiler->warning_count = 0;
 
@@ -256,7 +269,6 @@ static int compile_program(ZenCompiler *compiler)
     // Semantic Analysis & Validation
     if (!compiler->config.mode_doc || compiler->config.use_typecheck)
     {
-        propagate_vector_inner_types(&ctx);
         propagate_drop_traits(&ctx);
         fix_type_refs_has_drop(&ctx);
 
@@ -269,18 +281,12 @@ static int compile_program(ZenCompiler *compiler)
         {
             return 1;
         }
-
-        if (!compiler->config.use_typecheck && !compiler->config.mode_check)
-        {
-            if (check_moves_only(&ctx, root) != 0)
-            {
-                return 1;
-            }
-        }
     }
 
+    // `zc check` and `zc build` run the same typechecker; in 0.5 a build reports type errors as
+    // warnings (check_program).
     int tc_result = 0;
-    if (compiler->config.use_typecheck || compiler->config.mode_check)
+    if (!compiler->config.mode_doc || compiler->config.use_typecheck)
     {
         if (compiler->config.verbose)
         {
@@ -353,7 +359,25 @@ static int compile_program(ZenCompiler *compiler)
         snprintf(temp_source_buf, sizeof(temp_source_buf), "out%s", ext_p);
     }
 
-    FILE *out_f = fopen(temp_source_buf, "w");
+    // The command that compiles the C, decided before writing it: when it builds a whole program,
+    // codegen writes only the function bodies the program reaches.
+    const char *outfile = compiler->config.output_file ? compiler->config.output_file
+                                                       : (z_is_windows() ? "a.exe" : "a.out");
+    ArgList compile_args;
+    arg_list_init(&compile_args);
+    int compiles_c = !compiler->config.mode_transpile && (!backend || backend->needs_cc);
+    if (compiler->config.prune_unused && !compiles_c)
+    {
+        zwarn("--prune-unused has no effect when zc does not compile the C it writes");
+    }
+    int whole_program =
+        compiles_c && build_compile_arg_list(&compile_args, outfile, temp_source_buf, compiler);
+    ctx.cg.emit_reached_only = whole_program;
+
+    // Readable too: emit_function_bodies reads back what it has written, at the offsets ftell
+    // gave while writing. Binary, so that those offsets are the bytes fread returns: in text
+    // mode (Windows), every "\n" is written as "\r\n" but read back as one byte.
+    FILE *out_f = fopen(temp_source_buf, "w+b");
     if (!out_f)
     {
         perror("fopen temp output");
@@ -399,11 +423,11 @@ static int compile_program(ZenCompiler *compiler)
     }
 
     // Compile C
-    const char *outfile = compiler->config.output_file ? compiler->config.output_file
-                                                       : (z_is_windows() ? "a.exe" : "a.out");
-    ArgList compile_args;
-    arg_list_init(&compile_args);
-    build_compile_arg_list(&compile_args, outfile, temp_source_buf, compiler);
+    if (whole_program)
+    {
+        remove_unused_prototypes(&ctx, temp_source_buf);
+        report_pruned_functions(compiler, &ctx);
+    }
 
     if (compiler->config.verbose)
     {

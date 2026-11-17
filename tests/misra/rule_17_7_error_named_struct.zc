@@ -1,0 +1,16 @@
+// MISRA Rule 17.7: a struct whose name contains `Error` is not error information
+// for Dir 4.7 (that is `Result` and `Option`): ignoring it is Rule 17.7.
+// EXPECT: MISRA Rule 17.7
+
+struct ParseError {
+    line: int;
+}
+
+fn parse() -> ParseError {
+    return ParseError { line: 0 };
+}
+
+fn main() {
+    // Violation: return value ignored
+    parse();
+}

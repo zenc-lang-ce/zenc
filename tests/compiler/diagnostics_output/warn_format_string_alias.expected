@@ -1,0 +1,9 @@
+   Compiling tests/compiler/diagnostics_output/warn_format_string_alias.zc...
+warning: Format argument 3: expected 'string', got 'Meters'
+  --> tests/compiler/diagnostics_output/warn_format_string_alias.zc:22:5
+   |
+22 |     sprintf(buf, "%s\n", meters(1.0));
+   |     ^ here
+   |
+   = note: Mismatched format specifier may cause undefined behavior
+[exit 0]

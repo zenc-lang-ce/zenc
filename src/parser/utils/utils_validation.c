@@ -23,181 +23,258 @@ void register_type_usage(ParserContext *ctx, const char *name, Token t)
     ctx->pending_type_validations = u;
 }
 
-int validate_types(ParserContext *ctx)
+int is_known_type_name(ParserContext *ctx, const char *name)
 {
-    int errors = 0;
-    TypeUsage *u = ctx->pending_type_validations;
-    while (u)
+    if (find_struct_def(ctx, name) || find_type_alias(ctx, name) ||
+        find_selective_import(ctx, name) || is_extern_symbol(ctx, name) || is_trait(ctx, name) ||
+        find_primitive_kind(name) != TYPE_UNKNOWN)
     {
-        ASTNode *def = find_struct_def(ctx, u->name);
-        if (!def)
-        {
-            Type *alias = find_type_alias(ctx, u->name);
-            if (!alias)
-            {
-                SelectiveImport *si = find_selective_import(ctx, u->name);
-                if (!si && !is_extern_symbol(ctx, u->name))
-                {
-                    if (!is_trait(u->name) && TYPE_UNKNOWN == find_primitive_kind(u->name))
-                    {
-                        int whitelisted = 0;
-                        if (ctx->config->c_type_whitelist)
-                        {
-                            char **ptr = ctx->config->c_type_whitelist;
-                            while (*ptr)
-                            {
-                                if (strcmp(u->name, *ptr) == 0)
-                                {
-                                    whitelisted = 1;
-                                    break;
-                                }
-                                ptr++;
-                            }
-                        }
-
-                        if (whitelisted)
-                        {
-                            u = u->next;
-                            continue;
-                        }
-
-                        if (!ctx->config->mode_lsp && !ctx->config->mode_doc)
-                        {
-                            char msg[MAX_SHORT_MSG_LEN];
-                            snprintf(msg, sizeof(msg),
-                                     "Unknown type '%s' (assuming external C struct)", u->name);
-                            const char *hint = get_closest_type_hint(ctx, u->name);
-                            if (hint)
-                            {
-                                char help[MAX_MANGLED_NAME_LEN];
-                                snprintf(help, sizeof(help), "Did you mean '%s'?", hint);
-                                zwarn_with_suggestion(u->location, msg, help);
-                            }
-                            else
-                            {
-                                zwarn_at(u->location, "%s", msg);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        u = u->next;
+        return 1;
     }
-    return errors == 0;
+    for (char **listed = ctx->config->c_type_whitelist; listed && *listed; listed++)
+    {
+        if (strcmp(name, *listed) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
 }
 
-void propagate_vector_inner_types(ParserContext *ctx)
+void warn_unknown_type(ParserContext *ctx, const TypeUsage *use)
 {
-    StructRef *ref = ctx->parsed_structs_list;
-    while (ref)
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "Unknown type '%s' (assuming external C struct)", use->name);
+    const char *hint = get_closest_type_hint(ctx, use->name);
+    if (hint)
     {
-        ASTNode *strct = ref->node;
-        if (strct && strct->kind == NODE_STRUCT && strct->type_info &&
-            strct->type_info->kind == TYPE_VECTOR && !strct->type_info->inner)
+        char help[MAX_MANGLED_NAME_LEN];
+        snprintf(help, sizeof(help), "Did you mean '%s'?", hint);
+        zwarn_with_suggestion(use->location, msg, help);
+    }
+    else
+    {
+        zwarn_at(use->location, "%s", msg);
+    }
+}
+
+int validate_types(ParserContext *ctx)
+{
+    if (ctx->config->mode_doc)
+    {
+        return 1;
+    }
+    for (TypeUsage *u = ctx->pending_type_validations; u; u = u->next)
+    {
+        if (!is_known_type_name(ctx, u->name))
         {
-            if (strct->strct.fields && strct->strct.fields->type_info)
+            warn_unknown_type(ctx, u);
+        }
+    }
+    return 1;
+}
+
+int type_needs_drop(ParserContext *ctx, Type *t)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    if (is_owning_closure(t))
+    {
+        return 1;
+    }
+    if (t->kind == TYPE_ARRAY && t->array_size > 0)
+    {
+        return type_needs_drop(ctx, t->inner);
+    }
+    if (t->kind == TYPE_TUPLE)
+    {
+        for (int i = 0; i < t->count; i++)
+        {
+            if (type_needs_drop(ctx, t->args[i]))
             {
-                strct->type_info->inner = strct->strct.fields->type_info;
+                return 1;
             }
         }
-        ref = ref->next;
+        return 0;
     }
+    if ((t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name)
+    {
+        ASTNode *def = find_struct_def(ctx, type_def_name(t));
+        return def && def->type_info && def->type_info->traits.has_drop;
+    }
+    return 0;
+}
+
+// Marks a struct as Drop if one of its fields needs dropping, and an enum if the payload of one of
+// its variants does; returns whether it did.
+static int propagate_drop_from_fields(ParserContext *ctx, ASTNode *strct)
+{
+    if (!strct || !strct->type_info || strct->type_info->traits.has_drop)
+    {
+        return 0;
+    }
+    if (strct->kind == NODE_ENUM)
+    {
+        for (ASTNode *v = strct->enm.variants; v; v = v->next)
+        {
+            if (v->kind == NODE_ENUM_VARIANT && type_needs_drop(ctx, v->variant.payload))
+            {
+                strct->type_info->traits.has_drop = 1;
+                return 1;
+            }
+        }
+        return 0;
+    }
+    if (strct->kind != NODE_STRUCT)
+    {
+        return 0;
+    }
+    for (ASTNode *field = strct->strct.fields; field; field = field->next)
+    {
+        Type *ft = field->type_info;
+        if (ft && (ft->kind == TYPE_VECTOR || type_needs_drop(ctx, ft)))
+        {
+            strct->type_info->traits.has_drop = 1;
+            ft->traits.has_drop = 1;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Whether the struct or enum `node` (not a template) has an `impl Drop`, its own or, for an
+// instance (`Wrap__int32_t`), its template's (`Wrap`).
+static int implements_drop(ParserContext *ctx, ASTNode *node)
+{
+    if (!node || (node->kind == NODE_STRUCT ? node->strct.is_template
+                                            : node->kind != NODE_ENUM || node->enm.is_template))
+    {
+        return 0;
+    }
+    const char *name = node->kind == NODE_STRUCT ? node->strct.name : node->enm.name;
+    const char *tpl = NULL;
+    for (Instantiation *inst = ctx->instantiations; inst && !tpl; inst = inst->next)
+    {
+        if (inst->template_name && strcmp(inst->name, name) == 0)
+        {
+            tpl = inst->template_name;
+        }
+    }
+    return check_impl(ctx, "Drop", name) || (tpl && check_impl(ctx, "Drop", tpl));
+}
+
+// Marks `strct` as Drop if it implements Drop. `impl Drop for X` marks X when it is parsed, which
+// misses a struct declared below the impl, and an instance created before a generic impl.
+static void seed_drop_from_impl(ParserContext *ctx, ASTNode *strct)
+{
+    if (strct && strct->type_info && !strct->type_info->traits.has_drop &&
+        implements_drop(ctx, strct))
+    {
+        strct->type_info->traits.has_drop = 1;
+    }
+}
+
+// type_will_drop, `depth` levels into the declarations (a struct may hold itself through a pointer,
+// which is not followed, but the guard keeps any other cycle finite).
+static int type_will_drop_at(ParserContext *ctx, Type *t, int depth)
+{
+    if (!t || depth > 32)
+    {
+        return 0;
+    }
+    if (type_needs_drop(ctx, t))
+    {
+        return 1;
+    }
+    switch (t->kind)
+    {
+    case TYPE_TUPLE:
+        for (int i = 0; i < t->count; i++)
+        {
+            if (type_will_drop_at(ctx, t->args[i], depth + 1))
+            {
+                return 1;
+            }
+        }
+        return 0;
+    case TYPE_ARRAY:
+        return t->array_size > 0 && type_will_drop_at(ctx, t->inner, depth + 1);
+    case TYPE_STRUCT:
+    case TYPE_ENUM:
+    {
+        ASTNode *def = t->name ? find_struct_def(ctx, type_def_name(t)) : NULL;
+        if (!def)
+        {
+            return 0;
+        }
+        if (implements_drop(ctx, def))
+        {
+            return 1;
+        }
+        if (def->kind == NODE_ENUM)
+        {
+            for (ASTNode *v = def->enm.variants; v; v = v->next)
+            {
+                if (v->kind == NODE_ENUM_VARIANT &&
+                    type_will_drop_at(ctx, v->variant.payload, depth + 1))
+                {
+                    return 1;
+                }
+            }
+            return 0;
+        }
+        for (ASTNode *field = def->strct.fields; field; field = field->next)
+        {
+            if (field->type_info && (field->type_info->kind == TYPE_VECTOR ||
+                                     type_will_drop_at(ctx, field->type_info, depth + 1)))
+            {
+                return 1;
+            }
+        }
+        return 0;
+    }
+    default:
+        return 0;
+    }
+}
+
+int type_will_drop(ParserContext *ctx, Type *t)
+{
+    return type_will_drop_at(ctx, t, 0);
 }
 
 void propagate_drop_traits(ParserContext *ctx)
 {
+    for (StructRef *ref = ctx->parsed_structs_list; ref; ref = ref->next)
+    {
+        seed_drop_from_impl(ctx, ref->node);
+    }
+    for (StructRef *ref = ctx->parsed_enums_list; ref; ref = ref->next)
+    {
+        seed_drop_from_impl(ctx, ref->node);
+    }
+    for (ASTNode *ins = ctx->instantiated_structs; ins; ins = ins->next)
+    {
+        seed_drop_from_impl(ctx, ins);
+    }
+
     int changed = 1;
     while (changed)
     {
         changed = 0;
-
-        StructRef *ref = ctx->parsed_structs_list;
-        while (ref)
+        for (StructRef *ref = ctx->parsed_structs_list; ref; ref = ref->next)
         {
-            ASTNode *strct = ref->node;
-            if (strct && strct->kind == NODE_STRUCT && strct->type_info &&
-                !strct->type_info->traits.has_drop)
-            {
-                ASTNode *field = strct->strct.fields;
-                while (field)
-                {
-                    Type *ft = field->type_info;
-                    if (ft)
-                    {
-                        if (ft->kind == TYPE_VECTOR)
-                        {
-                            strct->type_info->traits.has_drop = 1;
-                            ft->traits.has_drop = 1;
-                            changed = 1;
-                            break;
-                        }
-                        if (ft->kind == TYPE_FUNCTION && ft->traits.has_drop && !ft->is_raw)
-                        {
-                            strct->type_info->traits.has_drop = 1;
-                            ft->traits.has_drop = 1;
-                            changed = 1;
-                            break;
-                        }
-                        if (ft->kind == TYPE_STRUCT && ft->name)
-                        {
-                            ASTNode *fdef = find_struct_def(ctx, type_def_name(ft));
-                            if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
-                            {
-                                strct->type_info->traits.has_drop = 1;
-                                ft->traits.has_drop = 1;
-                                changed = 1;
-                                break;
-                            }
-                        }
-                    }
-                    field = field->next;
-                }
-            }
-            ref = ref->next;
+            changed |= propagate_drop_from_fields(ctx, ref->node);
         }
-
-        ASTNode *ins = ctx->instantiated_structs;
-        while (ins)
+        for (StructRef *ref = ctx->parsed_enums_list; ref; ref = ref->next)
         {
-            if (ins->kind == NODE_STRUCT && ins->type_info && !ins->type_info->traits.has_drop)
-            {
-                ASTNode *field = ins->strct.fields;
-                while (field)
-                {
-                    Type *ft = field->type_info;
-                    if (ft)
-                    {
-                        if (ft->kind == TYPE_VECTOR)
-                        {
-                            ins->type_info->traits.has_drop = 1;
-                            ft->traits.has_drop = 1;
-                            changed = 1;
-                            break;
-                        }
-                        if (ft->kind == TYPE_FUNCTION && ft->traits.has_drop && !ft->is_raw)
-                        {
-                            ins->type_info->traits.has_drop = 1;
-                            ft->traits.has_drop = 1;
-                            changed = 1;
-                            break;
-                        }
-                        if (ft->kind == TYPE_STRUCT && ft->name)
-                        {
-                            ASTNode *fdef = find_struct_def(ctx, type_def_name(ft));
-                            if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
-                            {
-                                ins->type_info->traits.has_drop = 1;
-                                ft->traits.has_drop = 1;
-                                changed = 1;
-                                break;
-                            }
-                        }
-                    }
-                    field = field->next;
-                }
-            }
-            ins = ins->next;
+            changed |= propagate_drop_from_fields(ctx, ref->node);
+        }
+        for (ASTNode *ins = ctx->instantiated_structs; ins; ins = ins->next)
+        {
+            changed |= propagate_drop_from_fields(ctx, ins);
         }
     }
 }
@@ -324,11 +401,9 @@ static void check_function_definition(ASTNode *f, const char *owner, DefinedFunc
         return;
     }
 
-    size_t owner_len = owner ? strlen(owner) : 0;
-    if (owner && strncmp(f->func.name, owner, owner_len) == 0 &&
-        strncmp(f->func.name + owner_len, "__", 2) == 0)
+    if (owner && f->func.method_name)
     {
-        zerror_at(f->token, "Redefinition of method '%s::%s'", owner, f->func.name + owner_len + 2);
+        zerror_at(f->token, "Redefinition of method '%s::%s'", owner, f->func.method_name);
     }
     else
     {

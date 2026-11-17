@@ -62,28 +62,7 @@ Type *find_symbol_type_info(ParserContext *ctx, const char *n)
     EnumVariantReg *enum_variant = find_enum_variant(ctx, n);
     if (enum_variant)
     {
-        Type *t = type_new(TYPE_ENUM);
-        t->name = xstrdup(enum_variant->enum_name);
-        return t;
-    }
-
-    return NULL;
-}
-
-char *find_symbol_type(ParserContext *ctx, const char *n)
-{
-    ZenSymbol *sym = symbol_lookup(ctx->current_scope, n);
-    if (sym)
-    {
-        return (sym->type_info && sym->type_info->kind != TYPE_UNKNOWN)
-                   ? type_mangle_spelling(sym->type_info)
-                   : NULL;
-    }
-
-    EnumVariantReg *ev = find_enum_variant(ctx, n);
-    if (ev)
-    {
-        return xstrdup(ev->enum_name);
+        return type_new_enum(enum_variant->enum_name);
     }
 
     return NULL;
@@ -112,7 +91,8 @@ void init_builtins(void)
 
 void register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
                    ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
-                   int is_pure, const char *link_name, Token decl_token, int is_export)
+                   int is_pure, const char *link_name, const char *own_name, Token decl_token,
+                   int is_export)
 {
     FuncSig *f = NULL;
     if (ctx->config->mode_lsp || ctx->config->misra_mode)
@@ -122,7 +102,7 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
 
     if (!f)
     {
-        f = xmalloc(sizeof(FuncSig));
+        f = xcalloc(1, sizeof(FuncSig));
         f->name = xstrdup(name);
         f->next = ctx->func_registry;
         ctx->func_registry = f;
@@ -145,6 +125,7 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
     f->is_varargs = is_varargs;
     f->is_pure = is_pure;
     f->required = 0;
+    f->own_name = own_name;
 
     Scope *target_scope = scope ? scope : ctx->current_scope;
     audit_section_5(ctx, target_scope ? target_scope : ctx->global_scope, name, link_name,
@@ -177,6 +158,24 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
     ft->is_raw = 1;
     ft->traits.has_drop = 0;
     sym->type_info = ft;
+}
+
+const char *callee_own_name(ParserContext *ctx, ASTNode *callee)
+{
+    if (callee->kind != NODE_EXPR_VAR)
+    {
+        return NULL;
+    }
+    if (callee->var_ref.variant.member)
+    {
+        return callee->var_ref.variant.member;
+    }
+    FuncSig *sig = callee->var_ref.name ? find_func(ctx, callee->var_ref.name) : NULL;
+    if (sig && sig->own_name)
+    {
+        return sig->own_name;
+    }
+    return callee->var_ref.instance.name;
 }
 
 void register_func_template(ParserContext *ctx, const char *name, const char *param, ASTNode *node)
@@ -212,28 +211,56 @@ GenericFuncTemplate *find_func_template(ParserContext *ctx, const char *name)
     return NULL;
 }
 
-void register_generic(ParserContext *ctx, char *name)
+static GenericParameter *find_known_generic(ParserContext *ctx, const char *name, size_t len)
 {
     for (int i = 0; i < ctx->known_generics_count; i++)
     {
-        if (strcmp(ctx->known_generics[i], name) == 0)
+        const char *known = ctx->known_generics[i].name;
+        if (strncmp(known, name, len) == 0 && known[len] == 0)
         {
-            return;
+            return &ctx->known_generics[i];
         }
     }
-    ctx->known_generics[ctx->known_generics_count++] = xstrdup(name);
+    return NULL;
 }
 
-int is_known_generic(ParserContext *ctx, char *name)
+static void add_generic_parameter_use(ParserContext *ctx, Token at, Token declaration)
 {
-    for (int i = 0; i < ctx->known_generics_count; i++)
+    if (ctx->is_speculative)
     {
-        if (strcmp(ctx->known_generics[i], name) == 0)
-        {
-            return 1;
-        }
+        return;
     }
-    return 0;
+    GenericParameterUse *use = xmalloc(sizeof(GenericParameterUse));
+    use->at = at;
+    use->declaration = declaration;
+    use->next = ctx->generic_parameter_uses;
+    ctx->generic_parameter_uses = use;
+}
+
+void register_generic(ParserContext *ctx, Token name)
+{
+    if (find_known_generic(ctx, name.start, name.len))
+    {
+        return;
+    }
+    GenericParameter *param = &ctx->known_generics[ctx->known_generics_count++];
+    param->name = token_strdup(name);
+    param->token = name;
+    add_generic_parameter_use(ctx, name, name);
+}
+
+void record_generic_parameter_use(ParserContext *ctx, Token t)
+{
+    GenericParameter *param = find_known_generic(ctx, t.start, t.len);
+    if (param)
+    {
+        add_generic_parameter_use(ctx, t, param->token);
+    }
+}
+
+int is_known_generic(ParserContext *ctx, const char *name)
+{
+    return find_known_generic(ctx, name, strlen(name)) != NULL;
 }
 
 int type_is_generic_dependent(ParserContext *ctx, Type *t)
@@ -313,44 +340,16 @@ static int variant_reg_is_of(EnumVariantReg *r, const char *enum_name)
     return r->enum_name && strcmp(r->enum_name, enum_name) == 0;
 }
 
+// A variant written without its enum (`Red`): the first variant with that name. A qualified
+// one (`Color::Red`) is resolved where it is parsed, from the node's `var_ref.variant`.
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name)
 {
-    char *ename = NULL;
-    const char *vname = name;
-    const char *sep = (char *)strstr(name, "::");
-    if (!sep)
+    for (EnumVariantReg *r = ctx->enum_variants; r; r = r->next)
     {
-        sep = strstr(name, "__");
-    }
-
-    if (sep)
-    {
-        int elen = (int)(sep - name);
-        ename = xmalloc((size_t)(elen + 1));
-        strncpy(ename, name, (size_t)(elen));
-        ename[elen] = 0;
-        vname = sep + 2;
-    }
-
-    EnumVariantReg *r = ctx->enum_variants;
-    while (r)
-    {
-        if (strcmp(r->variant_name, vname) == 0)
+        if (r->variant_name && strcmp(r->variant_name, name) == 0)
         {
-            if (!ename || variant_reg_is_of(r, ename))
-            {
-                if (ename)
-                {
-                    zfree(ename);
-                }
-                return r;
-            }
+            return r;
         }
-        r = r->next;
-    }
-    if (ename)
-    {
-        zfree(ename);
     }
     return NULL;
 }
@@ -524,25 +523,10 @@ int expr_is_rvalue(ParserContext *ctx, ASTNode *e)
         // it is reached through a pointer (`ptr->field` has an address).
         return !e->member.is_pointer_access && expr_is_rvalue(ctx, e->member.target);
     case NODE_EXPR_VAR:
-    {
         // `Shape::Circle` written without (): the variant constructor's result.
-        const char *sep = e->var_ref.name ? strstr(e->var_ref.name, "::") : NULL;
-        if (!sep && e->var_ref.name)
-        {
-            sep = strstr(e->var_ref.name, "__");
-        }
-        if (!sep)
-        {
-            return 0;
-        }
-        size_t enum_len = (size_t)(sep - e->var_ref.name);
-        char *enum_name = xmalloc(enum_len + 1);
-        memcpy(enum_name, e->var_ref.name, enum_len);
-        enum_name[enum_len] = 0;
-        int is_variant = find_enum_variant_of(ctx, enum_name, sep + 2) != NULL;
-        zfree(enum_name);
-        return is_variant;
-    }
+        return e->var_ref.variant.member &&
+               find_enum_variant_of(ctx, type_def_name(e->var_ref.variant.owner),
+                                    e->var_ref.variant.member);
     default:
         return 0;
     }
@@ -723,66 +707,109 @@ int should_suppress_undef_warning(ParserContext *ctx, const char *name)
     return 0;
 }
 
-static char *find_last_sep(const char *s)
+// Picks the instance for `Template::method` from the type of the `let` being
+// initialized: in `let w: Wrap<int> = Wrap::make(3);` the call is to
+// `Wrap__int32_t__make`. Returns that function's name, or NULL when the `let`
+// is not declared as an instance of the template or that instance has no such
+// method.
+char *expected_instance_method(ParserContext *ctx, const char *template_name,
+                               const char *method_name)
 {
-    const char *last = NULL;
-    while ((s = strstr(s, "__")) != NULL)
+    Type *expected = ctx->cg.expected_init_type;
+    if (!type_is_instance_of(expected, template_name))
     {
-        last = s;
-        s += 2;
+        return NULL;
     }
-    return (char *)last;
+    char *name = mangle_method_symbol(type_mangle_spelling(expected), NULL, method_name);
+    return find_func(ctx, name) ? name : NULL;
 }
 
-char *find_method_owner_type_scoped(ParserContext *ctx, const char *struct_name,
-                                    const char *method_name)
+int find_method_call_target(ParserContext *ctx, const char *type_name, const char *method,
+                            const char **owner_out, char **method_out)
 {
-    size_t prefix_len = strlen(struct_name);
-
-    for (FuncSig *f = ctx->func_registry; f; f = f->next)
+    char *direct = mangle_method_symbol(type_name, NULL, method);
+    int found = find_func(ctx, direct) != NULL;
+    zfree(direct);
+    if (found)
     {
-        if (!f->name)
-        {
-            continue;
-        }
-
-        const char *p = f->name;
-        if (*p == '_')
-        {
-            p++;
-        }
-        if (strncasecmp(p, struct_name, prefix_len) != 0)
-        {
-            continue;
-        }
-
-        char *last_sep = find_last_sep(f->name);
-        if (!last_sep)
-        {
-            continue;
-        }
-        if (strcmp(last_sep + 2, method_name) != 0)
-        {
-            continue;
-        }
-
-        size_t concrete_len = (size_t)(last_sep - f->name);
-        char *concrete_type = xmalloc(concrete_len + 1);
-        strncpy(concrete_type, f->name, concrete_len);
-        concrete_type[concrete_len] = 0;
-
-        if (ctx->cg.expected_init_type)
-        {
-            if (strcmp(concrete_type, ctx->cg.expected_init_type) == 0)
-            {
-                return concrete_type;
-            }
-            zfree(concrete_type);
-            continue;
-        }
-
-        return concrete_type;
+        *owner_out = type_name;
+        *method_out = xstrdup(method);
+        return 1;
     }
 
-    return NULL;
+    // A method of a trait the type implements: `Type__Trait__method`.
+    for (StructRef *ref = ctx->parsed_impls_list; ref; ref = ref->next)
+    {
+        if (ref->node && ref->node->kind == NODE_IMPL_TRAIT &&
+            strcmp(type_impl_name(ref->node->impl_trait.target), type_name) == 0)
+        {
+            const char *trait = ref->node->impl_trait.trait_name;
+            char *trait_mangled = mangle_method_symbol(type_name, trait, method);
+            found = find_func(ctx, trait_mangled) != NULL;
+            zfree(trait_mangled);
+            if (found)
+            {
+                *owner_out = type_name;
+                *method_out = mangle_method_symbol(trait, NULL, method);
+                return 1;
+            }
+        }
+    }
+    for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
+    {
+        if (it->impl_node && it->impl_node->kind == NODE_IMPL_TRAIT)
+        {
+            const char *trait = it->impl_node->impl_trait.trait_name;
+            char *trait_mangled = mangle_method_symbol(type_name, trait, method);
+            found = find_func(ctx, trait_mangled) != NULL;
+            zfree(trait_mangled);
+            if (found)
+            {
+                *owner_out = type_name;
+                *method_out = mangle_method_symbol(trait, NULL, method);
+                return 1;
+            }
+        }
+    }
+
+    // A method of a struct the type mixes in with `use`.
+    ASTNode *def = find_struct_def(ctx, type_name);
+    if (def && def->kind == NODE_STRUCT && def->strct.used_structs)
+    {
+        for (int k = 0; k < def->strct.used_struct_count; k++)
+        {
+            char *mixin = mangle_method_symbol(def->strct.used_structs[k], NULL, method);
+            found = find_func(ctx, mixin) != NULL;
+            zfree(mixin);
+            if (found)
+            {
+                *owner_out = def->strct.used_structs[k];
+                *method_out = xstrdup(method);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+Token template_method_token(ParserContext *ctx, const char *template_name, const char *method_name)
+{
+    for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
+    {
+        if (!it->struct_name || strcmp(it->struct_name, template_name) != 0)
+        {
+            continue;
+        }
+        ASTNode *impl = it->impl_node;
+        ASTNode *methods = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
+        for (ASTNode *m = methods; m; m = m->next)
+        {
+            if (m->kind == NODE_FUNCTION && m->func.method_name &&
+                strcmp(m->func.method_name, method_name) == 0)
+            {
+                return m->token;
+            }
+        }
+    }
+    return TOKEN_UNKNOWN;
 }

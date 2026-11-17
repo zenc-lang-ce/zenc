@@ -35,7 +35,7 @@ test "test_net" {
             let n = n_res.unwrap();
             buf[n] = 0;
             if (strcmp(buf, "Ping") == 0) {
-                client.write("Pong", 4);
+                client.write((u8*)"Pong", 4);
             }
         }
         
@@ -52,7 +52,7 @@ test "test_net" {
     assert(!stream_res.is_err(), "Client connect failed");
     
     let stream = stream_res.unwrap();
-    stream.write("Ping", 4);
+    stream.write((u8*)"Ping", 4);
     
     let buf2: char* = malloc(100);
     let n2_res = stream.read(buf2, 100);

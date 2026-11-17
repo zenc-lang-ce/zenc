@@ -78,9 +78,8 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     Token lambda_token = lexer_next(l);
 
     int default_capture_mode = 0; // 0=Value, 1=Reference
-    char **explicit_captures = xmalloc(sizeof(char *) * 32);
-    int *explicit_capture_modes = xmalloc(sizeof(int) * 32);
-    int explicit_capture_count = 0;
+    zvec_Text explicit_captures = {0};
+    zvec_Int explicit_capture_modes = {0};
 
     if (lexer_peek(l).kind == TOK_LBRACKET)
     {
@@ -94,9 +93,8 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
                 lexer_next(l);
                 if (lexer_peek(l).kind == TOK_IDENT)
                 {
-                    explicit_captures[explicit_capture_count] = token_strdup(lexer_peek(l));
-                    explicit_capture_modes[explicit_capture_count] = 1; // By-Reference
-                    explicit_capture_count++;
+                    zvec_push_Text(&explicit_captures, token_strdup(lexer_peek(l)));
+                    zvec_push_Int(&explicit_capture_modes, 1); // By-Reference
                     lexer_next(l);
                 }
                 else
@@ -112,9 +110,8 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
             }
             else if (lexer_peek(l).kind == TOK_IDENT)
             {
-                explicit_captures[explicit_capture_count] = token_strdup(lexer_peek(l));
-                explicit_capture_modes[explicit_capture_count] = 0; // By-Value
-                explicit_capture_count++;
+                zvec_push_Text(&explicit_captures, token_strdup(lexer_peek(l)));
+                zvec_push_Int(&explicit_capture_modes, 0); // By-Value
                 lexer_next(l);
             }
             else
@@ -147,20 +144,13 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     lexer_next(l);
 
     Type *t = type_new(TYPE_FUNCTION);
-    t->args = xmalloc(sizeof(Type *) * 16);
-    char **param_names = xmalloc(sizeof(char *) * 16);
-    Token param_tokens[16];
-    int count = 0;
+    zvec_Type param_types = {0};
+    zvec_Text param_names = {0};
+    zvec_Token param_tokens = {0};
 
     while (lexer_peek(l).kind != TOK_RPAREN)
     {
-        if (count >= 16)
-        {
-            zpanic_at(lexer_peek(l), "Too many function parameters (max 16)");
-            break;
-        }
-
-        if (count > 0)
+        if (param_names.length > 0)
         {
             if (lexer_peek(l).kind != TOK_COMMA)
             {
@@ -178,8 +168,8 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
             break;
         }
 
-        param_names[count] = token_strdup(name_tok);
-        param_tokens[count] = name_tok;
+        zvec_push_Text(&param_names, token_strdup(name_tok));
+        zvec_push_Token(&param_tokens, name_tok);
 
         if (lexer_peek(l).kind != TOK_COLON)
         {
@@ -194,10 +184,11 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
         {
             return NULL;
         }
-        t->args[t->count] = typef;
-        count++;
-        t->count = count;
+        zvec_push_Type(&param_types, typef);
     }
+    t->args = param_types.data;
+    t->count = (int)param_types.length;
+    int count = t->count;
     lexer_next(l);
 
     if (lexer_peek(l).kind == TOK_ARROW)
@@ -215,7 +206,7 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
 
     for (int i = 0; i < count; i++)
     {
-        add_symbol_with_token(ctx, param_names[i], t->args[i], param_tokens[i], 0);
+        add_symbol_with_token(ctx, param_names.data[i], t->args[i], param_tokens.data[i], 0);
     }
 
     ASTNode *body = NULL;
@@ -235,14 +226,15 @@ ASTNode *parse_lambda(ParserContext *ctx, Lexer *l)
     ASTNode *lambda = ast_create(NODE_LAMBDA);
     lambda->token = lambda_token;
     lambda->line = lambda_token.line;
-    lambda->lambda.param_names = param_names;
+    lambda->lambda.param_names = param_names.data;
+    lambda->lambda.param_tokens = param_tokens.data;
     lambda->lambda.body = body;
     lambda->lambda.body = body;
     lambda->lambda.count = count;
     lambda->lambda.default_capture_mode = default_capture_mode;
-    lambda->lambda.explicit_captures = explicit_captures;
-    lambda->lambda.explicit_capture_modes = explicit_capture_modes;
-    lambda->lambda.explicit_capture_count = explicit_capture_count;
+    lambda->lambda.explicit_captures = explicit_captures.data;
+    lambda->lambda.explicit_capture_modes = explicit_capture_modes.data;
+    lambda->lambda.explicit_capture_count = (int)explicit_captures.length;
     lambda->lambda.capture_modes = NULL; // Will be allocated in analysis
     lambda->lambda.lambda_id = ctx->lambda_counter++;
     lambda->lambda.is_expression = 0;
@@ -431,7 +423,7 @@ ASTNode *parse_int_literal(ParserContext *ctx, Token t)
     ASTNode *node = ast_create(NODE_EXPR_LITERAL);
     node->token = t;
     node->literal.kind = LITERAL_INT;
-    node->type_info = type_new(TYPE_INT);
+    node->type_info = type_new(TYPE_I32);
     char *s = token_strdup(t);
     int write_idx = 0;
     for (int read_idx = 0; s[read_idx]; read_idx++)
@@ -488,7 +480,7 @@ ASTNode *parse_int_literal(ParserContext *ctx, Token t)
         // Apply type from suffix
         if (strcasecmp(endptr, "u") == 0)
         {
-            node->type_info->kind = TYPE_UINT;
+            node->type_info->kind = TYPE_U32;
         }
         else if (strcasecmp(endptr, "l") == 0)
         {
@@ -562,6 +554,7 @@ ASTNode *parse_int_literal(ParserContext *ctx, Token t)
     }
     else
     {
+        node->literal.is_untyped = 1;
         // No suffix: default to int or i64 if too large
         if (val > 2147483647ULL)
         {
@@ -609,6 +602,7 @@ ASTNode *parse_float_literal(Token t)
     // Check for suffix
     char *endptr = NULL;
     strtod(s, &endptr);
+    node->literal.is_untyped = !(endptr && *endptr);
     if (endptr && *endptr)
     {
         if (!is_valid_float_suffix(endptr))
@@ -853,8 +847,10 @@ static ASTNode *fstring_text_part(const char *start, const char *end)
 
 // The `{...}` that starts at `brace`, up to its closing brace: the expression parsed and
 // typed with the current scope, and the printf conversion written after a ':' (not `::`).
+// `brace` is a copy of the content of `srctoken`, `brace_offset` characters into it.
 // Returns NULL after reporting an error; *end is left at the closing brace.
-static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brace, char **end)
+static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brace,
+                                  size_t brace_offset, char **end)
 {
     char *p = brace + 1;
     char *colon = NULL;
@@ -901,6 +897,8 @@ static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brac
         zpanic_at(srctoken, "Unclosed interpolation brace in printf-sugar");
         return NULL;
     }
+    // Where the expression ends in the source, from the brace: at the ':' or at the '}'.
+    size_t expr_end = (size_t)((colon ? colon : p) - brace);
     *p = 0;
     *end = p;
 
@@ -929,12 +927,57 @@ static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brac
         expr++;
     }
 
-    // The lexer keeps pointers into the text it reads: parse a copy that outlives it.
-    char *src = xstrdup(expr);
+    // The lexer keeps pointers into the text it reads, and a diagnostic prints the line of a
+    // token from them: parse a copy of the expression's source line, with the expression in its
+    // place, so that its tokens have the line and column it has in the file. The lexer stops at
+    // `stop`, the end of the expression.
+    char *line_copy = NULL;
+    size_t prefix = 0;
+    size_t stop = 0;
+    int line = srctoken.line;
+    int col = srctoken.col;
+    if (srctoken.start && srctoken.col > 0)
+    {
+        const char *in_source =
+            srctoken.start + token_string_content_offset(srctoken, NULL) + brace_offset;
+        const char *source_expr = in_source + (expr - brace);
+        const char *source_end = in_source + expr_end;
+        const char *line_start = srctoken.start - (srctoken.col - 1);
+        for (const char *c = line_start; c < source_expr; c++)
+        {
+            if (*c == '\n')
+            {
+                line++;
+                line_start = c + 1;
+            }
+        }
+        const char *line_end = source_end;
+        while (*line_end && *line_end != '\n')
+        {
+            line_end++;
+        }
+        prefix = (size_t)(source_expr - line_start);
+        size_t expr_len = strlen(expr);
+        size_t rest = (size_t)(line_end - source_end);
+        line_copy = xmalloc(prefix + expr_len + rest + 1);
+        memcpy(line_copy, line_start, prefix);
+        memcpy(line_copy + prefix, expr, expr_len);
+        memcpy(line_copy + prefix + expr_len, source_end, rest);
+        line_copy[prefix + expr_len + rest] = 0;
+        stop = prefix + expr_len;
+        col = (int)prefix + 1;
+    }
+    else
+    {
+        line_copy = xstrdup(expr);
+        stop = strlen(expr);
+    }
     Lexer lex;
-    lexer_init(&lex, src, ctx->config, ctx->current_filename);
-    lex.line = srctoken.line;
-    lex.col = srctoken.col;
+    lexer_init(&lex, line_copy, ctx->config, ctx->current_filename);
+    lex.end = line_copy + stop;
+    lex.pos = (int)prefix;
+    lex.line = line;
+    lex.col = col;
 
     ASTNode *expr_node = parse_expression(ctx, &lex);
     if (!expr_node)
@@ -967,7 +1010,7 @@ static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brac
     // The codegen no longer has this scope: keep what the name says the type is.
     if (!expr_node->type_info)
     {
-        part->fstring_part.symbol_type = find_symbol_type_info(ctx, src);
+        part->fstring_part.symbol_type = find_symbol_type_info(ctx, expr);
     }
     return part;
 }
@@ -1005,7 +1048,7 @@ ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *con
         if (*brace)
         {
             char *end = NULL;
-            expr = fstring_expr_part(ctx, srctoken, brace, &end);
+            expr = fstring_expr_part(ctx, srctoken, brace, (size_t)(brace - s), &end);
             if (!expr)
             {
                 ctx->silent_warnings = saved_silent;
@@ -1180,6 +1223,32 @@ ASTNode *parse_char_literal(Token t)
     return node;
 }
 
+// Whether `ty`, read where a type or an expression may follow (`sizeof(x)`), names a variable
+// instead of a type: its base, or an element of a tuple (`sizeof((a, b))`), is a symbol and not
+// a type.
+static int type_names_variable(ParserContext *ctx, Type *ty)
+{
+    Type *base = ty;
+    while (base->inner)
+    {
+        base = base->inner;
+    }
+    if (base->kind == TYPE_TUPLE)
+    {
+        for (int i = 0; i < base->count; i++)
+        {
+            if (type_names_variable(ctx, base->args[i]))
+            {
+                return 1;
+            }
+        }
+        return 0;
+    }
+    return base->kind == TYPE_STRUCT && base->name && !is_primitive_type_name(base->name) &&
+           !find_struct_def(ctx, type_def_name(base)) && !find_type_alias_node(ctx, base->name) &&
+           find_symbol_entry(ctx, base->name);
+}
+
 ASTNode *parse_size_or_typeof(ParserContext *ctx, Lexer *l, Token tk, int is_typeof)
 {
     if (lexer_peek(l).kind != TOK_LPAREN)
@@ -1200,26 +1269,9 @@ ASTNode *parse_size_or_typeof(ParserContext *ctx, Lexer *l, Token tk, int is_typ
         return NULL;
     }
 
-    int is_actually_var = 0;
-    if (ty->kind != TYPE_UNKNOWN)
-    {
-        Type *base = ty;
-        while (base->inner)
-        {
-            base = base->inner;
-        }
-        if (base->kind == TYPE_STRUCT && base->name)
-        {
-            if (!is_primitive_type_name(base->name) && !find_struct_def(ctx, type_def_name(base)) &&
-                !find_type_alias_node(ctx, base->name) && find_symbol_entry(ctx, base->name))
-            {
-                is_actually_var = 1;
-            }
-        }
-    }
-
     ASTNode *node;
-    if (ty->kind != TYPE_UNKNOWN && !is_actually_var && lexer_peek(l).kind == TOK_RPAREN)
+    if (ty->kind != TYPE_UNKNOWN && !type_names_variable(ctx, ty) &&
+        lexer_peek(l).kind == TOK_RPAREN)
     {
         lexer_next(l);
         node = ast_create(is_typeof ? NODE_TYPEOF : NODE_EXPR_SIZEOF);

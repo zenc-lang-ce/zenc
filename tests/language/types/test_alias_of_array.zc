@@ -1,0 +1,42 @@
+// language/types: an alias of an array type is declared with the alias where a declaration puts
+// its name (`typedef int32_t Row[3];`), not after the whole type (`typedef int32_t[3] Row;`).
+alias Row = int[3];
+alias Grid = int[2][3];
+alias Ptrs = int*[3];
+alias Names = string[2];
+alias Matrix = Row[2];
+
+struct Holder {
+    row: Row;
+}
+
+fn corners(g: Grid) -> int {
+    return g[0][0] + g[1][2];
+}
+
+test "an alias of a one dimensional array" {
+    let r: Row = [1, 2, 3];
+    expect_eq(r[0] + r[2], 4, "the elements of a Row should be readable");
+}
+
+test "an alias of a two dimensional array, and of an alias of an array" {
+    let g: Grid = [[1, 2, 3], [4, 5, 6]];
+    let m: Matrix = [[7, 8, 9], [10, 11, 12]];
+    expect_eq(g[1][2], 6, "the elements of a Grid should be readable");
+    expect_eq(m[1][0], 10, "the elements of a Matrix should be readable");
+    expect_eq(corners(g), 7, "a Grid should be passed to a function");
+}
+
+test "an alias of an array of pointers or of strings" {
+    let a = 7;
+    let p: Ptrs = [&a, &a, &a];
+    let n: Names = ["a", "b"];
+    expect_eq(*p[1], 7, "the pointers of a Ptrs should be readable");
+    expect_eq(n[1][0], 'b', "the strings of a Names should be readable");
+}
+
+test "an alias of an array as the type of a field" {
+    let h: Holder;
+    h.row[2] = 9;
+    expect_eq(h.row[2], 9, "a field of an alias of an array should be writable");
+}

@@ -1,0 +1,59 @@
+   Compiling tests/compiler/diagnostics_output/err_initial_value_type.zc...
+error: Type mismatch: expected 'i32', but found 'string'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:13:5
+   |
+13 | def LIMIT: int = "hello";
+   |     ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Type mismatch: expected 'Point', but found 'i32'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:21:9
+   |
+21 |     def LOCAL: Point = 5;
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Type mismatch: expected 'i32', but found 'Point'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:22:9
+   |
+22 |     let _count: i32 = origin();
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Type mismatch: expected 'Point', but found 'i32'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:23:9
+   |
+23 |     let _p: Point = 7;
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Type mismatch: expected 'i32', but found 'f64'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:24:9
+   |
+24 |     let _whole: i32 = 3.7;
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Type mismatch: expected 'i32', but found 'const f64'
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:25:9
+   |
+25 |     let _scaled: i32 = SCALE;
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Shift amount 40 is out of range for 'i32' (32 bits)
+  --> tests/compiler/diagnostics_output/err_initial_value_type.zc:26:27
+   |
+26 |     let _wide: i64 = 1 << 40;
+   |                           ^ here
+   |
+   = help: Shifting by a negative amount or by the width of the type or more is undefined behavior
+     error: semantic analysis found 7 errors
+       Check failed with 7 errors
+[exit 1]

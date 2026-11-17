@@ -112,10 +112,10 @@ ifeq ($(ZC_HAS_JIT), 1)
 endif
 
 TARGET = zc$(EXE)
-# Standalone tools built alongside the compiler (Unix-style separation). zc-lsp and zc-format
-# need the LSP sources and zc-repl the REPL ones, so ZC_LSP=0 / ZC_REPL=0 leave them out.
+# Standalone tools built alongside the compiler (Unix-style separation). zc-lsp needs the LSP
+# sources and zc-repl the REPL ones, so ZC_LSP=0 / ZC_REPL=0 leave them out.
 ALL_TOOLS = zc-lsp zc-repl zc-doc zc-format
-TOOLS = $(if $(filter 1,$(ZC_LSP)),zc-lsp zc-format) $(if $(filter 1,$(ZC_REPL)),zc-repl) zc-doc
+TOOLS = $(if $(filter 1,$(ZC_LSP)),zc-lsp) $(if $(filter 1,$(ZC_REPL)),zc-repl) zc-doc zc-format
 ifeq ($(OS),Windows_NT)
     LIBS = -lws2_32
     ifeq ($(ZC_HAS_JIT), 1)
@@ -149,7 +149,7 @@ DEFINES += -DZC_HAS_ASTDUMP_BACKEND=$(ZC_BACKENDS)
 
 # Source files read from src-sources.txt, filtered by feature selection.
 ALL_SRCS := $(shell cat src-sources.txt)
-ZC_FILTER_LSP = $(if $(filter-out 1,$(ZC_LSP)),src/lsp/lsp_main.c src/lsp/lsp_analysis.c src/lsp/lsp_semantic.c src/lsp/lsp_index.c src/lsp/lsp_locals.c src/lsp/lsp_formatter.c src/lsp/lsp_project.c src/lsp/lsp_c_headers.c src/lsp/lsp_config.c src/lsp/json_rpc.c)
+ZC_FILTER_LSP = $(if $(filter-out 1,$(ZC_LSP)),src/lsp/lsp_main.c src/lsp/lsp_analysis.c src/lsp/lsp_semantic.c src/lsp/lsp_index.c src/lsp/lsp_locals.c src/lsp/lsp_project.c src/lsp/lsp_c_headers.c src/lsp/lsp_config.c src/lsp/json_rpc.c)
 ZC_FILTER_REPL = $(if $(filter-out 1,$(ZC_REPL)),src/repl/% src/platform/console.c)
 ZC_FILTER_PLUGINS = $(if $(filter-out 1,$(ZC_PLUGINS)),src/plugins/% src/parser/utils/utils_plugins.c)
 ZC_FILTER_BACKENDS = $(if $(filter-out 1,$(ZC_BACKENDS)),src/codegen/codegen_backend_cpp.c src/codegen/codegen_backend_cuda.c src/codegen/codegen_backend_objc.c src/codegen/codegen_backend_json.c src/codegen/codegen_backend_lisp.c src/codegen/codegen_backend_dot.c src/codegen/codegen_backend_astdump.c)
@@ -289,7 +289,7 @@ $(TARGET): $(ZC_BASE_OBJS)
 # trailing /) and TOOL_EXT name the output: the portable build makes out/stage/zc-lsp.com.
 TOOL_OUT ?=
 TOOL_EXT ?=
-$(TOOL_OUT)zc-lsp$(TOOL_EXT): $(TOOL_BASE_OBJS) $(LSP_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_lsp.o
+$(TOOL_OUT)zc-lsp$(TOOL_EXT): $(TOOL_BASE_OBJS) $(LSP_OBJS) $(ZEN_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_lsp.o
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 	@echo "=> Build complete: $@"
@@ -304,7 +304,7 @@ $(TOOL_OUT)zc-doc$(TOOL_EXT): $(TOOL_BASE_OBJS) $(ZEN_OBJS) $(TOOLS_COMMON) $(OB
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 	@echo "=> Build complete: $@"
 
-$(TOOL_OUT)zc-format$(TOOL_EXT): $(TOOL_BASE_OBJS) $(LSP_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_format.o
+$(TOOL_OUT)zc-format$(TOOL_EXT): $(TOOL_BASE_OBJS) $(ZEN_OBJS) $(TOOLS_COMMON) $(OBJ_DIR)/src/tools/main_format.o
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 	@echo "=> Build complete: $@"
@@ -344,14 +344,18 @@ $(OBJ_DIR)/%.o: %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Rebuild the version-printing objects (and thus relink every tool) whenever
+# Rebuild the objects that use ZEN_VERSION (and thus relink every tool) whenever
 # GIT_VERSION changes. The stamp only rewrites when the version differs, so a
-# plain `make` does not recompile anything.
+# plain `make` does not recompile anything. Each source that reads ZEN_VERSION
+# goes in this list: the language server's version and the key of the C header
+# cache come from it too.
 $(OBJ_DIR)/version.stamp: FORCE
 	@$(MKDIR) $(OBJ_DIR)
 	@if [ -f $@ ] && [ "$$(cat $@)" = "$(GIT_VERSION)" ]; then :; else echo "$(GIT_VERSION)" > $@; fi
 
-$(OBJ_DIR)/src/utils/cmd.o $(OBJ_DIR)/src/repl/repl.o: $(OBJ_DIR)/version.stamp
+VERSION_OBJS = $(addprefix $(OBJ_DIR)/src/,utils/cmd.o repl/repl.o lsp/json_rpc.o lsp/lsp_main.o \
+                 parser/utils/utils_c_types.o)
+$(VERSION_OBJS): $(OBJ_DIR)/version.stamp
 
 # APE targets
 $(ZC_ENTRY_O): ape/zc_entry.c
@@ -588,6 +592,10 @@ test-check: $(TARGET)
 test-misra: $(TARGET)
 	./tests/scripts/run_misra_tests.sh
 
+# Every test `zc run` passes, `zc check` must accept: one semantics for both.
+test-check-vs-run: $(TARGET)
+	./scripts/check_vs_run.sh -v
+
 test-tcc: $(TARGET) $(PLUGINS)
 	./tests/scripts/run_tests.sh --cc tcc
 
@@ -787,4 +795,4 @@ fuzz-clean:
 	rm -f $(FUZZ_TARGET) $(FUZZ_CMPLOG_TARGET) $(FUZZ_HARNESS)
 	rm -rf obj-fuzz obj-fuzz-cmplog
 
-.PHONY: all clean install uninstall install-ape uninstall-ape install-tools format format-check lint bench test test-misra test-tcc test-filcc test-lsp test-unit test-asan test-plugins zig clang filcc ape windows asan tsan msan lsan analyzer coverage coverage-report core lite minimal fuzz-build fuzz-run fuzz-clean test-fuzz-regression zc-lsp zc-repl zc-doc zc-format FORCE
+.PHONY: all clean install uninstall install-ape uninstall-ape install-tools format format-check lint bench test test-misra test-check-vs-run test-tcc test-filcc test-lsp test-unit test-asan test-plugins zig clang filcc ape windows asan tsan msan lsan analyzer coverage coverage-report core lite minimal fuzz-build fuzz-run fuzz-clean test-fuzz-regression zc-lsp zc-repl zc-doc zc-format FORCE

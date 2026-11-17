@@ -2,9 +2,170 @@
 
 The most significant changes of each release. Every change is listed in the [full changelog](https://zenc-lang-ce.github.io/docs/changelog/).
 
+## 0.6 (WIP)
+This new release brings breaking changes to the language:
+
+- `Slice_char` and the other `Slice_X` names are gone: write `Slice<char>` (or `[char]`).
+- A slice no longer has a `cap` field: it is `{ data, len }`. Code that reads `.cap`, or that builds a slice in C with three fields, must change.
+- Returning an array literal as a slice (`fn f() -> [float] { return [1.0, 2.0]; }`) is an error, as it already is for a local array: its elements live on the function's stack. Return a fixed-size array (`float[2]`) or a `Vec<T>`. Before, the literal was copied to the heap and never freed.
+- `Enum_Variant` and `Enum_Variant_Tag` (`Result_Ok`, `Result_Ok_Tag`) no longer stand for `Enum::Variant` and its tag: write `Result::Ok`.
+
+## 0.5.3 (WIP)
+
+### Changes
+- `zc build` and `zc run` run the same typechecker as `zc check`. The errors `zc check` reports that a build did not (a type mismatch, an undefined variable, a pointer that escapes its scope, a `match` that is not exhaustive...) are warnings in a build, marked "an error from 0.6": from 0.6 they stop the build. With `--misra` they are errors, as they already were.
+- The backend no longer repeats what the typechecker reports: the warnings "Non-exhaustive match", "Undefined variable" and, with `-Wpedantic`, "Undefined function" are gone from a build, which now gets them from the typechecker. An undefined function gets the closest declared name as a hint ("Did you mean 'compute'?"), as an undefined variable did.
+- Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name: the special message "is a function of std/io.zc, which is not imported" is gone.
+
+### Fixes
+- `zc check` gives a literal without a suffix the type its context expects everywhere, not only in a `let` or a `def`: in a `return`, an argument, a field of a struct literal, an assignment and the elements of an array literal. `return 0;` in a function returning `f64`, `Point{x: 1}` with an `f32` field and `let grid: f32[2] = [0, 1];` are no longer type mismatches, and neither is a negated literal (`let x: f64 = -1;`). An array literal of such literals passed as a slice of floats (`sum([0, 3])` for a `[f64]`) builds, instead of C that does not compile. MISRA Rule 10.4 is no longer reported for a literal that fits the unsigned type of a field, an argument or an assigned place (`len: 0` for a `usize`).
+- `zc check` converts an integer to a float without a cast, as `zc build` already did: `let a: f64 = count;` with an `i32` count is no longer a type mismatch. It warns when the float cannot hold every value of the integer (`i64` to `f64`, `u32` to `f32`). A float to an integer still needs a cast, since it drops the fraction.
+- Unreachable code is a warning (`-Wno-logic` turns it off) instead of a `zc check` error, which `zc build` did not report; under `--misra` it is still an error (Rule 2.1). The code after a label is reachable (a `goto`, also `goto *ptr`, can jump there). Code after an `if`/`else` or a `match` whose branches all return, or after a `loop` without a `break`, is now reported too.
+- `zc check` accepts the SIMD types of `std/simd.zc` and other `@vector` structs, as `zc build` already did: `+`, `-`, `*`, `/`, `&`, `|`, `^`, `~`, negation and indexing on a vector, and the positional literal `f32x4{1.0, 2.0, 3.0, 4.0}`. Bitwise operators on a vector of floats (`f32x4 & f32x4`) are an error in `zc check` too, instead of C that does not compile.
+- `zc check` judges a `comptime` block as `zc build` does: by running it in the comptime interpreter, whose rules allow `"a" + "b"` (it joins the strings). Before, it also checked the block with the rules of program code and rejected it. The code the block yields is still checked like any other.
+- `zc check` knows the type of an enum value's `.tag`, an integer: `table[shape.tag]` is no longer a "Non-integer array index", also through a pointer (`p.tag`). Before, the tag had no type, so `zc check` also accepted it where an integer does not fit, such as in a pointer. A field read through a pointer (`p.x`, `self.x`, `.x` in a method) also gets its type from `zc check` itself, so `-.x` on a number is no longer "Cannot negate non-numeric type".
+- `zc check` judges a constant shift amount by the width of what is shifted: `u128 << 100` is no longer "Shift amount too large", and a type narrower than `int` is shifted as an `int`, as C does (`u8 << 8` is fine). An amount at or above the width is reported for every type, also when it is a named constant or negative (`i64 << 64`, `x << BIG`, `x >> -1`), with the type and its width in the message.
+- Errors about the function a call names point at the call: "Pure function cannot call non-pure function" had no line.
+- `zc check` accepts a default value for a trait parameter (`fn show(s: Shape = &g_circle)`): it is no longer "Unknown struct 'Shape'". The default becomes a trait object the same way a written argument does.
+- `zc check` reports a variable no scope declares, as it did a function: `let y = cont + 1;` is "Undefined variable 'cont'" with "Did you mean 'count'?", instead of passing the check and failing in the C compiler. Names of C (an included header, `stdin`) are still accepted. `&&label`, the address of a label for `goto *ptr`, is a `void*`.
+- `zc check` accepts calling a field that holds a function pointer with the arguments written (`api.error(api, "...")`): the struct is no longer taken as a receiver as for a method, which shifted every argument ("expected 'char*', but found 'ZApi*'"). Too few or too many arguments name the field.
+- `zc check` accepts a string literal that initializes an array of characters it fits in, with its NUL (`let name: char[8] = "abc";`, a `char[N]` field), as C does; one that does not fit is an error that says how many bytes it needs.
+- `zc check` treats a `string` as the `char*` it is in every place: a `char[N]` passes where a `string` is expected, a `string` converts to and from `c_char*` (what `strstr` and `strchr` return), and `++`/`--` work on it.
+- Escape analysis follows a pointer variable through its assignments: a cursor read through a pointer, moved along the text and stored back (`let ptr = *p; ptr = &ptr[1]; *p = ptr;`) is no longer "pointer assigned to a location that outlives it". Before, any variable assigned to later in its block was taken to point into its own block. A pointer that escapes only in a later iteration of a loop is still reported.
+- A recursive call to a function that returns the pointer it was given no longer turns that function's later `return` into an escape: the depth worked out for one call changed the function's own return type.
+- A variable a lambda captures by value is the closure's own copy, which the body may change: `zc check` accepts `fn() -> int { n += 1; return n; }`, a closure that keeps state between calls, as `zc build` already compiled it. The original variable does not change. Before, `zc check` said "Cannot assign to immutable variable".
+- In pointer arithmetic, `zc check` takes an array as the pointer to its first element, as C does: `strchr(buf, c) - buf` and `buf + 1` with `buf: char[N]` are no longer "requires numeric operands".
+- `zc check` accepts comparing a pointer with a `void*` (`p == v`), as it already accepted assigning one to the other: it is no longer "Cannot compare '==' with incompatible types".
+
+## 0.5.2
+This is mainly a bug-fix release but it also brings some improvements and new features.
+
+### Fixes
+- Enums:
+  - `Color.Green` works for a variant without a payload.
+  - A variant written without its enum (`let s: Shape = Dot;`) is an error that says `Shape::Dot`, instead of C that does not compile.
+  - A variable hides an enum or a variant with the same name; `Color_max` is no longer read as `Color::max`.
+  - A variant as a callee gets its `()`; `Enum::Variant()` is accepted for a variant without a payload.
+  - A variant without a payload of a generic enum (`Maybe<int>::Nothing`) is a value of its enum, not a function.
+- Drop:
+  - Dropped now: enums with `Drop` or a payload that needs it, tuples, arrays, closures (local, in a field or captured) and `@link_name` structs.
+  - Assigning to a variable with `Drop` drops the old value in C too, and assigning a closure drops the old closure.
+  - A struct is `Drop` whatever the order of its `impl`; a local that will be dropped gets no unused-variable warning.
+  - Tuples that hold a `Drop` value move, and a `const` parameter can be dropped and moved out through a mutable pointer.
+- Arrays and slices: `a[i..j]` slices an array; `let b = a;` and `b = a;` copy a fixed-size array, and move one whose elements have `Drop`.
+- A default value that names a parameter of its function, or a local of the caller, is an error instead of reading the caller's variable.
+- A global without a value is zeroed in the C, so `ld` no longer warns about its alignment on arm64 macOS.
+- Names that are C or C++ keywords are written under another name.
+- `match` works through a pointer subject.
+- A `ref` binding in a `match` on a dereferenced pointer (`match *p`, `match *self`) points to the value the pointer designates: writes through it are no longer made to a copy and lost. ([#352](https://github.com/zenc-lang-ce/zenc/pull/352))
+- `.` reaches a field or a method through every pointer level: `pp.value` and `pp.get()` with `pp: P**`. ([#264](https://github.com/zenc-lang-ce/zenc/pull/264))
+- `?.` on a pointer to a pointer is an error that says to write `(*pp)?.value`, instead of C that does not compile. ([#279](https://github.com/zenc-lang-ce/zenc/pull/279))
+- A call to a method the type does not have is an error of `zc`, instead of C that does not compile: `file.ok().read_to_string()` gives "No method 'read_to_string' on 'Option<File>'". ([#314](https://github.com/zenc-lang-ce/zenc/pull/314))
+- A method of a struct mixed in with `use` can be called on a temporary: `make().value()`. ([#323](https://github.com/zenc-lang-ce/zenc/pull/323))
+- `module::f()` and `Type::f()` no longer call a function of another type whose name starts the same: `geo::create()` called `GeoBuilder::create()`. ([#191](https://github.com/zenc-lang-ce/zenc/pull/191))
+- An alias of an array type (`alias Row = int[3];`) compiles. ([#281](https://github.com/zenc-lang-ce/zenc/pull/281))
+- `?` works on a `Result` or an enum whose type's name ends in `__`. ([#320](https://github.com/zenc-lang-ce/zenc/pull/320))
+- `sizeof((a, b))` with two variables is the size of the tuple, instead of C that does not compile. ([#164](https://github.com/zenc-lang-ce/zenc/pull/164))
+- `const x = 5;` inside a function is an error that points to `def` and `let x: const Type`, as it already was at the top level. ([#309](https://github.com/zenc-lang-ce/zenc/pull/309))
+- `impl<T> A for Cell<T>` followed by `impl B for Cell` no longer crashes the compiler and the language server. ([#280](https://github.com/zenc-lang-ce/zenc/pull/280))
+- `include <stdio.h` without its `>` is an error instead of a crash of the compiler and the language server. ([#282](https://github.com/zenc-lang-ce/zenc/pull/282))
+- The `//>` build directives of an imported module are applied, so a library carries its own `include:`, `link:` and `lib:`. Before, only those of the compiled file were. ([#322](https://github.com/zenc-lang-ce/zenc/pull/322))
+- With `--cpp`, a parameter whose `@ctype` is a C++ template (`@ctype("const std::map<int, std::vector<int>>&")`) is declared as written. ([#321](https://github.com/zenc-lang-ce/zenc/pull/321))
+- The initializer of a `let` that shadows a name reads the shadowed variable (`let x = x + 1;`, `let s = s;`, `let f = f();`), as `zc check` does. In the C it read the new, uninitialized variable, or called a variable instead of the function. ([#359](https://github.com/zenc-lang-ce/zenc/pull/359))
+- The start, the end and the step of a `for` range read the variable the loop variable shadows (`for i in 0..i`, `for i in i..6`, `step i`), as `zc check` does. In the C they read the loop variable: the loop ran no iteration, never ended, or started from an uninitialized value. ([#365](https://github.com/zenc-lang-ce/zenc/pull/365))
+- The initializer of a C-style `for` reads the variable its loop variable shadows (`for (let i = i; i < n; i = i + 1)`), as `zc check` does. In the C it read the new, uninitialized loop variable. ([#365](https://github.com/zenc-lang-ce/zenc/pull/365))
+- CLI: `-I`, `-O` and other options read their value correctly; `-g` passes `-g` to the C compiler; options can come before the command (`zc -g build app.zc`).
+- C headers: `import "x.h"` reads the names the header declares, and `zc check` accepts a struct literal of a type from a header.
+- A module imported with an alias (`as m`, a selective import or `as *`) uses its own functions and types by their names, the variants of its enums too: `import "std/string.zc" as str` and `import "std/arena.zc" as arena` build, and such a name no longer goes to a function or a type of the program with the same name. The program that imports it names its enums in a `match` (`m::Shape::Circle(r) =>`), and a type imported one by one is read by its module everywhere: its enum builds, compares and matches its variants, and the program can write an `impl` for it.
+- With `--cpp`, an f-string interpolation is evaluated once.
+- `comptime` computes `<< >> & | ^ ~`, which it rejected as unsupported operators, and integer operations as constant folding does: `+ - *` wrap around instead of overflowing, `LLONG_MIN / -1` (undefined before) and a shift by a negative amount or by 64 or more are errors, and so is `-` or `~` on a value that is not an integer, which `-` accepted silently.
+- `int` and `i32` share one generic instance.
+- `zc check` no longer reports a false escape in a `test` block: a pointer from one of its locals, stored in another local (`s = w.get()`, `Holder{value: &n}`), was taken to outlive the block, because its variables were treated as globals.
+- `zc check` applies the rule of opaque aliases that the parser already applied: in the file that defines it, an opaque alias converts to and from its underlying type in a return, an assignment or a call, and an opaque alias of a number takes `==`, `<` and arithmetic with numbers. Elsewhere it stays a type of its own.
+- Escape analysis tells where a variable lives from where its value points: a pointer to the heap returned or stored through a cast (`(char*)malloc(n)`) is no longer reported, and a pointer to a local is still reported when it escapes through a struct, an array, a cast, a copy or a later assignment, to the variable, a field or an element, also when a loop reads it before the assignment.
+- Dividing a float by a literal zero (`1.0 / 0.0`, `0.0 / 0.0`, `x / 0` with a float `x`) is a warning in `zc check` instead of an error: the result is defined (infinity or NaN) and the program builds. An integer divided by zero is still an error.
+- `zc check` checks the value of a `let` or a `def` against its declared type: `let p: Point = 7`, `let n: i32 = make_point()` and `def LIMIT: int = "hello"` are errors there instead of C that does not compile. A float is not converted to an integer there, as in an assignment: `let n: i32 = 3.7` is an error in `zc check` (the C truncates it). A `def` without a type has the type of its value, also a float or a string (`def SCALE = 2.5`). A literal written without a suffix, or an expression of such literals (`255 + 1`), still takes the declared type, and a lambda the declared function type. A cast is emitted as written, not as the declared type.
+- A type alias is emitted once; `@fields` names a `@link_name` struct by its C name.
+- Casts are decided by whether the name is a type, as in C.
+- A compound assignment (`%=`, `|=`, `<<=`, `**=`...) to a `const` variable, a member of one or an element of one is an error of `zc`, as `=` and `+=` were, instead of C that does not compile.
+- Typechecker: one exhaustiveness check for `match`; `return` in lambdas, `Self` literals and casts to `@link_name` structs; a struct's address only for a pointer to the same struct; moving a value bound by a `match` arm is an error.
+- Diagnostics:
+  - `println "..."` is reported at the `match` arm.
+  - `extern enum` and `extern const` say they are not declarations.
+  - A token that does not start a struct field is reported.
+  - A variable used as the message of `assert` or `expect` counts as used.
+  - Implicit `std` imports report the module path.
+  - A type is shown as the program writes it, in errors, hover, `zc-doc` and the REPL: `Vec<i32>` instead of `Vec__int32_t`, `(i32, bool)` instead of `Tuple__int32_t__bool`, and `geo::Vector` instead of `_geo__Vector` for a type of a module imported `as geo`. ([#273](https://github.com/zenc-lang-ce/zenc/pull/273), [#274](https://github.com/zenc-lang-ce/zenc/pull/274))
+  - An integer constant is checked against the range of its target: `take(20)` for a `u8` no longer warns, and `let big: u8 = 300;` does.
+  - An error inside an f-string interpolation points at the expression and prints its line.
+  - A MISRA diagnostic about a struct field points at the field.
+  - A diagnostic about a field of a struct literal (a type mismatch, a pointer that escapes, a MISRA rule) points at that field, not at the name of the struct.
+  - "Use of moved value" shows where the value was moved, with its own line of code and `^`, or says that a loop moved it on an earlier iteration. With `--json` the place comes in a `note` field.
+  - MISRA Rule 2.4 does not flag an enum the program uses; `assert` and `test` blocks are reported under Rule 21.6 instead of C that does not compile.
+  - A type inferred from an integer literal is called `i32`, as an `int` the program writes already was: `found 'i32'` instead of `found 'int'`, also in hover, in the REPL's `:vars` and in the json, ast-dump and dot output. `int` is `i32`; the compiler no longer keeps a second kind for it.
+  - A literal with the `u` suffix is a `u32`, the type `uint` names: `found 'u32'` instead of `found 'unsigned int'`, and `uint32_t` in the C.
+  - The printf format warning (W701, part of `-Wstyle`, on by default) is reported: the typechecker checks the arguments of `printf`, `sprintf`, `fprintf` and `dprintf` against a literal format. It never ran before: the parser checked it only in a call path that a call to `printf` by name never takes. An `f32` matches `%f`, an enum without payloads matches `%d`, and an alias, opaque or not, matches as the type under it.
+- The lists the parser reads have no fixed size any more. Four of them overflowed when they got more entries than their initial size, which crashed the compiler or corrupted what it compiled: the fields of `let Point{...} = p` (16), the `use` of a struct (8), the generic parameters of a trait (8) and the captures of `fn[a, b, ...]` (32). Others stopped with an error: the parameters of a lambda (16), the type arguments of a generic call (8) and the operands of `asm` (16). `@derive` dropped the traits after the 32nd, and a `#define` of a C header the parameters after the 32nd.
+- `#line` is emitted when the file changes on the same line, and again when a newline was written since the last one; a `for` loop restores the lexer after its lookahead.
+- The C is written in binary mode on Windows.
+- `@cfg(macos)` is defined on macOS, the name `__COMPTIME_TARGET__` and the `//> macos:` directives use; before, only `@cfg(apple)` was, and code under `@cfg(macos)` was left out without a warning. `apple` stays defined.
+- Language server:
+  - Completes what the program declares by the name it declares, `__` or not.
+  - Hover and go to definition work on type names, inside f-string interpolations, and on both parts of a path: the type and the function of `Vec<int>::new()`.
+  - Go to definition reaches the standard library from a workspace that does not contain it.
+  - A definition in another file is looked up in that file, not at the same line of the open one.
+  - Go to definition, hover, references and rename follow the declaration a name resolves to, not every declaration with that name: renaming a local or a parameter edits only its own uses, and a type name leads to the type its file declares.
+  - Rename works on a struct's fields: from the declaration, a literal, `x.field` or a destructuring. `let Point{x} = p` becomes `let Point{y: x} = p`; a field that `let {x} = p` destructures is not renamed, since that form cannot name the variable apart. References list the fields of a destructuring, and a field mixed in with `use` once.
+  - Every request gets an answer: on a file the server does not know, or without its parameters, it is `null` instead of none, which left the client waiting.
+  - Editing a file, or closing it without saving, analyzes again the open documents that import it, directly or not: a method added to an imported file is found by go to definition, hover and completion in the file that calls it, without editing that file first.
+  - The variants offered after `value.` are enum members, not values, and a `def` is highlighted as readonly.
+  - Semantic highlighting covers the whole file: every declaration and method, and what is inside the bodies of `if`, `while`, `for` and `match`, not only the first declaration. Completion offers the locals of every kind of body, such as a `match` arm.
+  - Keywords are the language's, from one table that the lexer reads too: `for` and `in` are highlighted as keywords, and `print`, `println` and `printf` are functions. Completion offers each keyword where it starts a construct, and C functions such as `malloc` as functions, not keywords; words that are not Zen C (`module`, `unsafe`, `typedef`) are not offered.
+  - A file whose path has spaces or other characters that a URI encodes: the server answers its URI encoded, and closing it goes back to the file on disk (it kept the editor's text).
+  - Hover describes every primitive type by any of its names (`int32`, `byte` and `c_long` too), with its C spelling.
+  - The workspace index leaves out what the project's .gitignore or `exclude` in zenc.server.json leave out, and nothing else: it no longer skips `node_modules`, `obj`, `vhdl` and `vivado` by their names.
+  - `initialize` gives the compiler's version as the server's, instead of 1.0.0.
+  - Completion no longer offers the constructs the language removed: `repeat`, `unless`, `guard`, `do`, `async`, `await` and `autofree`.
+  - Completion and signature help read what each file declares now: a function, type or method that was deleted is no longer offered. They offer generic structs and functions and traits too, and the std modules that a `test` block imports by itself (std/test.zc) are indexed, so go to definition reaches them.
+  - Signature help shows the function the call calls, as hover finds it: `Item::create(` shows the method of `Item`, not a function `create` of another file.
+  - Hover and go to definition work on the fields and methods reached through `.` (`self.count`, `self.is_full()`, `list.push(x)`), and on a field's declaration.
+  - The variable of a `for` has hover and go to definition, with the type of the elements it walks (`for entry in list`, `for i, x in v`, `for i in 0..n`), and the hover of a `let` gives its type.
+  - Enum variants have hover and go to definition where they are declared, built (`Value::Hour(3)`, `Value::Nothing`) and matched (`Value::Hour(h) =>`, `Hour(h) =>`, `Some(x) =>` on an Option); the hover gives the enum and the payload: `Value::Hour(i32)`.
+  - Generic functions (`fn f<T>`) are indexed: their name, parameters and body have hover and go to definition, and so have their calls (`f<int>(1)`, `f(1)`).
+  - The field names of a struct literal (`Point { x: 1, y: 2 }`, `Box<int> { val: 3 }`) have hover and go to definition.
+  - Generic parameters (`T` of `struct Box<T>`, `impl<T>`, `fn max<T>`, a trait or an enum) have hover and go to definition: each `T` leads to the declaration in scope where it is written.
+  - Completion after `.` reads the members of the type the value has, whatever qualifies it: `h.` on a `let h: const Header` or a `const Header*`, a field of a C header through a pointer (`font.recs.`), and the methods of an `impl int` on an `int`.
+  - A type name that names no type (`origin: Pont`) is warned about, as `zc build` does, with the closest name as a suggestion. The types that the C headers of the file declare are not warned about.
+  - Completion where a type goes offers the types and only them: the primitives, and the structs, enums, traits and aliases. That is the type of a field, a parameter, a `let` or a `def`, the return type, the right side of `alias Word =`, a variant's payload, and inside `Vec<...>` and `[...]`. Before, a field, a parameter, a return type or an alias offered no primitive. Aliases are offered in the rest of the completion too.
+  - Completion where a field's name goes in a struct literal (after `Point {` or a `,`) offers the fields of that struct that the literal does not give yet, written as `name: `.
+  - Completion after `.` on a value of a trait (`h: Header`) offers the trait's methods. Before it offered nothing, since it looked for the fields of a struct of a C header with that name.
+  - Typing the second `:` of `::` opens the completion (`Color::`, `String::`). After the alias of an imported module (`geo::`), completion offers what the module declares, and after `geo::Point::` the members of that module's type.
+  - Completion where a method goes in an `impl Trait for Type` offers the methods of the trait that the impl does not define yet, and inserts each with the signature written in the trait and an empty body (without `fn` when it is typed already).
+  - A code action, "Implement the missing methods of Trait", in the header or the body of an `impl Trait for Type`, writes the methods of the trait that the impl does not define, with the signature written in the trait and an empty body, after the last member of the impl.
+  - On a type name that the file does not see, a code action imports a file that declares it, one action per file: "Import Header from \"std/net/http.zc\"". The files of the workspace go before the standard library, the nearest first. The import goes after the file's last one and is written as the parser resolves it: from `std/` for the standard library, relative to the file otherwise.
+  - A type that only files the document does not import declare is warned about, as `zc build` warns about it, with the file to import: "Type 'Shape' is declared in \"a/shapes.zc\", which this file does not import". Before there was no warning, since the server parses the whole workspace with one context, which knows that type.
+  - Completion of a type that the file does not see adds the import of a file that declares it: one item for each such file, which the item names on its right (`a/shapes.zc`).
+  - A type name goes to the declaration the file sees: its own or one of a file it imports. The server parses the whole workspace with one context, so a type of the same name in a file it does not import (`Header` of `std/net/http.zc`) could win: hover, go to definition and the members after `.` showed that one.
+  - Rename works on an enum: it edits its declaration, the types, `impl`, the patterns of `match` and the variants of expressions (`Mode::On`). Before it answered nothing. References no longer list twice the enum of a variant without a payload in an expression.
+  - A trait imported from another file is no longer warned about as an unknown type (`h: Header`) after a hover or another read-only request: those requests forgot every trait registered until then, and the file that imports it does not parse it again.
+- `zc-doc` titles a declaration by the name the program uses (`geo::Vector`, `split__name`) and writes the parameters of methods: `fn len(self) -> i32;` instead of `fn len(...);`. ([#275](https://github.com/zenc-lang-ce/zenc/pull/275))
+- `zc-format` no longer needs the language server: it is built with `ZC_LSP=0` too.
+- REPL: Backspace and Escape work in reverse search.
+
+### Added
+- `--prune-unused`: leaves unreached functions out of the generated C, for faster builds and smaller executables. It reports how many it pruned.
+
+### Flagged as deprecated
+Still accepted in 0.5.2 and removed in 0.6:
+
+- `Slice_char` and the other `Slice_X` names: use `Slice<char>`.
+- The `cap` field of a slice.
+- Returning an array literal as a slice.
+- `Enum_Variant` and `Enum_Variant_Tag` (`Result_Ok`): use `Enum::Variant`.
+
 ## 0.5.1
 
-A bug-fix release, with downloads for each platform.
+A bug-fix release.
 
 - Release downloads: `zc.com` finds its standard library in any directory, `zc-boot.com` installs the `zc.com` of this release, the tools come as portable executables too, and there are native binaries for Linux, macOS and Windows. All of them need a C compiler on the system.
 - The language server no longer crashes when two files declare the same enum, one with a payload on a variant and one without.

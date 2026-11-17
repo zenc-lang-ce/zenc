@@ -1,0 +1,20 @@
+   Compiling tests/compiler/diagnostics_output/err_move_match_binding.zc...
+error: Cannot move out of a match binding
+  --> tests/compiler/diagnostics_output/err_move_match_binding.zc:27:20
+   |
+27 |             return r;
+   |                    ^ here
+   |
+   = help: The matched value keeps ownership of its payload and drops it
+   = help: Use the binding in place, or bind it with 'ref' to borrow it
+error: Cannot move out of a match binding
+  --> tests/compiler/diagnostics_output/err_move_match_binding.zc:39:27
+   |
+39 |             let _n = take(r);
+   |                           ^ here
+   |
+   = help: The matched value keeps ownership of its payload and drops it
+   = help: Use the binding in place, or bind it with 'ref' to borrow it
+     error: semantic analysis found 2 errors
+       Check failed with 2 errors
+[exit 1]

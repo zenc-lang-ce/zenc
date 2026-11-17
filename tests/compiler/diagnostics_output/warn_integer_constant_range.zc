@@ -1,0 +1,33 @@
+// ARGS: check
+// An integer constant converts silently when its value fits in the target type,
+// in a typed `let`, an argument or a field; one that does not fit is reported in
+// each of those places. A value that is not a constant still gets the narrowing
+// warning.
+struct Pixel {
+    level: u8;
+    offset: i8;
+}
+
+fn scale(factor: u16) -> u16 {
+    return factor;
+}
+
+def LIMIT = 1000;
+
+fn main() {
+    let fits: u8 = 255;
+    let negative: i8 = -128;
+    let folded: u8 = LIMIT - 900;
+    let p = Pixel { level: 20, offset: -5 };
+    let s = scale(65535);
+
+    let too_big: u8 = 300;
+    let wrapped: u8 = -1;
+    let q = Pixel { level: 0, offset: 128 };
+    let t = scale(LIMIT * 100);
+
+    let count = 7;
+    let narrowed: u8 = count;
+    printf("%d %d %d %d %d %d\n", fits, negative, folded, p.level, s, narrowed);
+    printf("%d %d %d %d\n", too_big, wrapped, q.offset, t);
+}

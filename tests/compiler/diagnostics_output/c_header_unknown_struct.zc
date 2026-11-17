@@ -1,0 +1,7 @@
+// ARGS: check
+import "tests/compiler/diagnostics_output/c_header_unknown_struct.h"
+
+fn main() {
+    let _ok = KnownPair { x: 1 };
+    let _typo = KnownPairr { x: 1 };
+}

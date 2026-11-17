@@ -1,0 +1,15 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// W701: an argument of printf that does not match its conversion. An f32 is
+// promoted to double, and an enum without payloads is a C enum: both match.
+
+enum Color { Red, Green }
+
+fn main() {
+    let f: f32 = 1.5f;
+    let c = Color::Green;
+    let n: i64 = 42;
+    printf("%f %d\n", f, c);
+    printf("%d\n", f);
+    printf("%s\n", n);
+}

@@ -10,104 +10,63 @@
 #include <stdlib.h>
 #include <string.h>
 
-// The by-value field types (or variant payload types) of a struct or enum,
-// resolved once. topo_sort_structs compares every pair of nodes, so resolving
-// aliases and mangling names inside that loop made it quadratic in the work per
-// field.
+// The C names of the types a struct or enum holds by value (its fields, or its
+// variants' payloads), collected once: topo_sort_structs compares every pair of
+// nodes.
 typedef struct
 {
     int count;
-    char **mangled;     // Resolved and mangled type, compared with the dependency name.
-    const char **clean; // Resolved type before mangling (enums check the next character).
-    int is_enum;
+    char **names;
 } NodeDeps;
 
-static const char *strip_c_tag(const char *type_str)
+// Adds what `t` holds by value: itself, or an array's elements. An opaque alias holds what it
+// names; a pointer holds nothing.
+static void node_deps_add(NodeDeps *deps, Type *t)
 {
-    if (strncmp(type_str, "struct ", 7) == 0)
+    t = resolve_alias(t);
+    while (t && t->kind == TYPE_ARRAY && t->array_size > 0)
     {
-        return type_str + 7;
+        t = resolve_alias(t->inner);
     }
-    if (strncmp(type_str, "enum ", 5) == 0)
-    {
-        return type_str + 5;
-    }
-    if (strncmp(type_str, "union ", 6) == 0)
-    {
-        return type_str + 6;
-    }
-    return type_str;
-}
-
-// `type_str` is the spelling of a field's type with its aliases resolved: an opaque alias holds
-// what it names by value.
-static void node_deps_add(NodeDeps *deps, const char *type_str)
-{
-    // Pointers do not create an ordering dependency.
-    if (strchr(type_str, '*'))
+    if (!t || t->kind == TYPE_POINTER || t->kind == TYPE_FUNCTION)
     {
         return;
     }
-
-    const char *clean = strip_c_tag(type_str);
-
-    deps->mangled = xrealloc(deps->mangled, (size_t)(deps->count + 1) * sizeof(char *));
-    deps->clean = xrealloc(deps->clean, (size_t)(deps->count + 1) * sizeof(char *));
-    deps->mangled[deps->count] = replace_string_type(clean);
-    deps->clean[deps->count] = clean;
-    deps->count++;
+    deps->names = xrealloc(deps->names, (size_t)(deps->count + 1) * sizeof(char *));
+    deps->names[deps->count++] = type_mangle_spelling(t);
 }
 
-static void node_deps_build(ParserContext *ctx, ASTNode *node, NodeDeps *deps)
+static void node_deps_build(ASTNode *node, NodeDeps *deps)
 {
     memset(deps, 0, sizeof(*deps));
     if (node->kind == NODE_STRUCT)
     {
-        ASTNode *field = node->strct.fields;
-        while (field)
+        for (ASTNode *field = node->strct.fields; field; field = field->next)
         {
             if (field->kind == NODE_FIELD)
             {
-                node_deps_add(deps, type_mangle_spelling(resolve_alias(field->type_info)));
+                node_deps_add(deps, field->type_info);
             }
-            field = field->next;
         }
     }
     else if (node->kind == NODE_ENUM)
     {
-        deps->is_enum = 1;
-        ASTNode *variant = node->enm.variants;
-        while (variant)
+        for (ASTNode *variant = node->enm.variants; variant; variant = variant->next)
         {
             if (variant->kind == NODE_ENUM_VARIANT && variant->variant.payload)
             {
-                char *type_str = c_type_spelling(ctx, resolve_alias(variant->variant.payload));
-                if (type_str)
-                {
-                    node_deps_add(deps, type_str);
-                }
+                node_deps_add(deps, variant->variant.payload);
             }
-            variant = variant->next;
         }
     }
 }
 
-// Whether a node depends by value on the struct or enum named target_name.
+// Whether a node holds by value the struct or enum named target_name.
 static int node_deps_match(const NodeDeps *deps, const char *target_name)
 {
-    size_t len = strlen(target_name);
     for (int k = 0; k < deps->count; k++)
     {
-        if (strncmp(deps->mangled[k], target_name, len) != 0)
-        {
-            continue;
-        }
-        if (!deps->is_enum)
-        {
-            return 1;
-        }
-        char next = deps->clean[k][len];
-        if (next == 0 || next == '[' || isspace(next))
+        if (strcmp(deps->names[k], target_name) == 0)
         {
             return 1;
         }
@@ -206,6 +165,7 @@ static ASTNode *tuple_struct(Type *tuple)
 {
     ASTNode *def = ast_create(NODE_STRUCT);
     def->strct.name = type_mangle_spelling(tuple);
+    def->type_info = tuple;
     ASTNode *tail = NULL;
     for (int i = 0; i < tuple->count; i++)
     {
@@ -228,7 +188,7 @@ static ASTNode *tuple_struct(Type *tuple)
 }
 
 // Topologically sort a list of struct/enum nodes.
-static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
+static ASTNode *topo_sort_structs(ASTNode *head)
 {
     if (!head)
     {
@@ -251,7 +211,7 @@ static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
     NodeDeps *deps = xcalloc((size_t)count, sizeof(NodeDeps));
     for (int k = 0; k < count; k++)
     {
-        node_deps_build(ctx, nodes[k], &deps[k]);
+        node_deps_build(nodes[k], &deps[k]);
     }
 
     // Build order array (indices in emission order).
@@ -453,42 +413,99 @@ static void emit_raw_statements_internal(ParserContext *ctx, ASTNode *node,
     }
 }
 
+// The Zen C name of the struct or enum node `s`.
+static const char *type_node_name(ASTNode *s)
+{
+    return s->kind == NODE_ENUM ? s->enm.name : s->strct.name;
+}
+
+// The name of the struct or enum node `s` in C: its `@link_name`, if it has one.
+static const char *struct_c_type(ASTNode *s)
+{
+    return s->link_name ? s->link_name : type_node_name(s);
+}
+
+// Whether the struct node `s` gets a drop glue: a struct with Drop, or the struct of a tuple that
+// holds a value that needs dropping.
+static int struct_has_drop_glue(ParserContext *ctx, ASTNode *s)
+{
+    if (s->kind == NODE_ENUM)
+    {
+        return s->type_info && !s->enm.is_template && s->type_info->traits.has_drop;
+    }
+    if (s->kind != NODE_STRUCT || !s->type_info || s->strct.is_template)
+    {
+        return 0;
+    }
+    if (s->type_info->kind == TYPE_TUPLE)
+    {
+        return type_needs_drop(ctx, s->type_info);
+    }
+    return s->type_info->traits.has_drop;
+}
+
 static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
 {
     ASTNode *s = structs;
     while (s)
     {
-        if (s->kind == NODE_STRUCT && s->type_info && s->type_info->traits.has_drop &&
-            !s->strct.is_template)
+        if (struct_has_drop_glue(ctx, s))
         {
             if (s->cfg_condition)
             {
                 EMIT(ctx, "#if %s\n", s->cfg_condition);
             }
 
-            char *sname = s->strct.name;
+            const char *sname = type_node_name(s);
             EMIT(ctx, "// Auto-Generated RAII Glue for %s\n", sname);
-            EMIT(ctx, "void %s__Drop__glue(%s *self) {\n", sname, sname);
+            EMIT(ctx, "void %s__Drop__glue(%s *self) {\n", sname, struct_c_type(s));
 
-            char glue_mangled[MAX_MANGLED_NAME_LEN];
-            snprintf(glue_mangled, sizeof(glue_mangled), "%s__Drop__drop", sname);
-            if (find_func(ctx, glue_mangled))
+            char *drop_method = mangle_method_symbol(sname, "Drop", "drop");
+            if (find_func(ctx, drop_method))
             {
-                EMIT(ctx, "    %s__Drop__drop(self);\n", sname);
+                EMIT(ctx, "    %s(self);\n", drop_method);
             }
 
-            ASTNode *field = s->strct.fields;
+            if (s->kind == NODE_ENUM && enum_has_payload(s))
+            {
+                // The payload of the active variant.
+                EMIT(ctx, "    switch (self->tag) {\n");
+                for (ASTNode *v = s->enm.variants; v; v = v->next)
+                {
+                    if (v->kind != NODE_ENUM_VARIANT || !type_needs_drop(ctx, v->variant.payload))
+                    {
+                        continue;
+                    }
+                    char lvalue[MAX_SHORT_MSG_LEN];
+                    snprintf(lvalue, sizeof(lvalue), "self->data.%s", v->variant.name);
+                    EMIT(ctx, "    case %s_Tag: %s break;\n",
+                         mangle_variant_symbol(struct_c_type(s), v->variant.name),
+                         drop_value_stmt(v->variant.payload, lvalue, 0));
+                }
+                EMIT(ctx, "    default: break;\n    }\n");
+            }
+
+            ASTNode *field = s->kind == NODE_STRUCT ? s->strct.fields : NULL;
             while (field)
             {
                 Type *ft = field->type_info;
-                if (ft && ft->kind == TYPE_STRUCT && ft->name)
+                const char *f = field->field.name;
+                if (is_owning_closure(ft))
                 {
-                    ASTNode *fdef = find_struct_def(ctx, type_def_name(ft));
-                    if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
-                    {
-                        EMIT(ctx, "    %s__Drop__glue(&self->%s);\n", type_def_name(ft),
-                             field->field.name);
-                    }
+                    EMIT(ctx, "    if (self->%s.drop) self->%s.drop(self->%s.ctx);\n", f, f, f);
+                }
+                else if (ft &&
+                         (((ft->kind == TYPE_STRUCT || ft->kind == TYPE_ENUM) && ft->name) ||
+                          ft->kind == TYPE_TUPLE) &&
+                         type_needs_drop(ctx, ft))
+                {
+                    EMIT(ctx, "    %s__Drop__glue(&self->%s);\n", drop_glue_name(ft), f);
+                }
+                else if (ft && ft->kind == TYPE_ARRAY && type_needs_drop(ctx, ft))
+                {
+                    char lvalue[MAX_SHORT_MSG_LEN];
+                    snprintf(lvalue, sizeof(lvalue), "self->%s", f);
+                    EMIT(ctx, "    %s\n", drop_value_stmt(ft, lvalue, 0));
                 }
                 field = field->next;
             }
@@ -517,16 +534,16 @@ static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
         ASTNode *s = structs;
         while (s)
         {
-            if (s->kind == NODE_STRUCT && s->type_info && s->type_info->traits.has_drop &&
-                !s->strct.is_template)
+            if (struct_has_drop_glue(ctx, s))
             {
                 if (s->cfg_condition)
                 {
                     EMIT(ctx, "#if %s\n", s->cfg_condition);
                 }
-                char *sname = s->strct.name;
-                EMIT(ctx, "inline void _z_drop(%s& x) { %s__Drop__glue(&x); }\n", sname, sname);
-                EMIT(ctx, "inline void _z_drop(%s* x) { if(x) %s__Drop__glue(x); }\n", sname,
+                const char *sname = type_node_name(s);
+                const char *ctype = struct_c_type(s);
+                EMIT(ctx, "inline void _z_drop(%s& x) { %s__Drop__glue(&x); }\n", ctype, sname);
+                EMIT(ctx, "inline void _z_drop(%s* x) { if(x) %s__Drop__glue(x); }\n", ctype,
                      sname);
                 if (s->cfg_condition)
                 {
@@ -546,11 +563,10 @@ static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
         ASTNode *s = structs;
         while (s)
         {
-            if (s->kind == NODE_STRUCT && s->type_info && s->type_info->traits.has_drop &&
-                !s->strct.is_template)
+            if (struct_has_drop_glue(ctx, s))
             {
-                char *sname = s->strct.name;
-                EMIT(ctx, ", \\\n    %s: %s__Drop__glue((void*)&(x))", sname, sname);
+                const char *sname = type_node_name(s);
+                EMIT(ctx, ", \\\n    %s: %s__Drop__glue((void*)&(x))", struct_c_type(s), sname);
             }
             s = s->next;
         }
@@ -793,7 +809,7 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         }
 
         // Topologically sort.
-        ASTNode *sorted = topo_sort_structs(ctx, merged);
+        ASTNode *sorted = topo_sort_structs(merged);
 
         print_type_defs(ctx, sorted);
         emit_global_aliases(ctx);
@@ -958,27 +974,7 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
 
         int test_count = emit_tests_and_runner(ctx, kids);
 
-        ASTNode *iter = merged_funcs;
-        while (iter)
-        {
-            // An impl of a template is emitted with each instance.
-            if ((iter->kind == NODE_IMPL || iter->kind == NODE_IMPL_TRAIT) &&
-                impl_on_template(ctx, iter))
-            {
-                iter = iter->next;
-                continue;
-            }
-            if (iter->cfg_condition)
-            {
-                EMIT(ctx, "#if %s\n", iter->cfg_condition);
-            }
-            codegen_node_single(ctx, iter);
-            if (iter->cfg_condition)
-            {
-                EMIT(ctx, "#endif\n");
-            }
-            iter = iter->next;
-        }
+        emit_function_bodies(ctx, merged_funcs);
 
         int has_user_main = 0;
         ASTNode *chk = merged_funcs;

@@ -4,8 +4,10 @@ on:
   push:
     branches: [ "main" ]
     tags: [ "v*" ]
+  # Every pull request, whatever its base: one stacked on another PR, or aimed at a next/<version>
+  # branch, must be tested too. When the PR below is merged, GitHub moves the base of the one on
+  # top to main without running the CI again.
   pull_request:
-    branches: [ "main" ]
 
 permissions:
   contents: read
@@ -106,6 +108,18 @@ jobs:
         mkdir -p .misra_bin
         ./zc build std/std.zc --misra --emit-c -o .misra_bin/std.c || exit 0
         cppcheck --addon=misra --quiet .misra_bin/std.c || exit 0
+
+  check-vs-run:
+    name: zc check accepts what zc run passes
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install Dependencies
+      run: sudo apt-get update && sudo apt-get install -y libtcc-dev
+    - name: Build Compiler
+      run: make -j$(nproc) ZC_HAS_JIT=1
+    - name: Compare zc check with zc run
+      run: make test-check-vs-run
 
   test:
     name: Test (${{ matrix.name }})

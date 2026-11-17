@@ -14,6 +14,7 @@
 
 #include "token.h"
 #include "../feature_flags.h"
+#include "operators.h"
 #include <stdlib.h>
 
 typedef struct ParserContext ParserContext;
@@ -59,13 +60,10 @@ typedef enum
     TYPE_U128,   ///< `u128` type.
     TYPE_F32,    ///< `f32` type.
     TYPE_F64,    ///< `f64` type.
-    TYPE_INT,    ///< `int` (alias, usually i32).
-    TYPE_FLOAT,  ///< `float` (alias).
     TYPE_USIZE,  ///< `usize` (pointer size unsigned).
     TYPE_ISIZE,  ///< `isize` (pointer size signed).
     TYPE_BYTE,   ///< `byte`.
     TYPE_RUNE,   ///< `rune`.
-    TYPE_UINT,   ///< `uint` (alias).
     // Portable C Types (FFI)
     TYPE_C_INT,       ///< `c_int` (int).
     TYPE_C_UINT,      ///< `c_uint` (unsigned int).
@@ -223,6 +221,17 @@ typedef struct QualifiedName
 } QualifiedName;
 
 /**
+ * @brief The member `member` of the type `owner`: `Color::Red` is the variant `Red` of the
+ *        enum `Color`.
+ */
+typedef struct TypeMember
+{
+    Type *owner;  ///< The type the member belongs to: `Color`, `Option<int>`.
+    char *member; ///< `Red`, `Some`.
+    Token token;  ///< Where the member is written, for the language server; zeroed if nowhere.
+} TypeMember;
+
+/**
  * @brief An instance of a generic function, `f<int>`: the function and the types its
  *        parameters take. Its C name is computed from them.
  */
@@ -246,7 +255,11 @@ typedef enum
 typedef struct MatchPattern
 {
     PatternKind kind;
-    QualifiedName name; ///< PATTERN_NAME: the name, as written.
+    QualifiedName name; ///< PATTERN_NAME: the name; its scope by the name the type is declared
+                        ///< under (`base__Shape` for `m::Shape`, see type_declaration_name).
+    Token name_token;   ///< PATTERN_NAME: where the name is written, for the language server.
+    Token scope_token;  ///< PATTERN_NAME: where the last part of its scope is (`Color` of
+                        ///< `Color::Red`).
     char *literal;      ///< PATTERN_LITERAL: the literal, as written.
     char *range_start;  ///< PATTERN_RANGE: the start, as written.
     char *range_end;    ///< PATTERN_RANGE: the end, as written.
@@ -285,6 +298,7 @@ struct ASTNode
             Type **arg_types;
             ASTNode **default_values; // Default value of each parameter, NULL where it has none.
             char **param_names;       // Explicit parameter names.
+            Token *param_tokens;      // Where each name is written (NULL for trait prototypes).
             int count;
             Type *ret_type_info;
             int is_varargs;
@@ -316,7 +330,11 @@ struct ASTNode
 
             // Declaration context (to parse a deferred body)
             char *module_prefix;  // C prefix of the declaring module (NULL if none)
-            char *impl_struct;    // Type of the enclosing impl block (NULL for free function)
+            Type *impl_target;    // Type of the enclosing impl block (NULL for free function)
+            char *method_name;    // Name written in the impl or trait (`get` of `Point__get`);
+                                  // NULL for a free function
+            char *written_name;   // As programs write it when `name` has a module prefix:
+                                  // `geo::helper` for `_geo__helper`
             const char *filename; // Source file that declares the function
         } func;
 
@@ -351,6 +369,7 @@ struct ASTNode
         struct
         {
             char *name;
+            char *written_name; // As programs write it, when `name` has a module prefix.
             ASTNode *variants;
             int is_template;
             char *generic_param;
@@ -391,6 +410,7 @@ struct ASTNode
         struct
         {
             char *var_name;
+            Token var_token; ///< Where the loop variable is written: its declaration.
             ASTNode *start;
             ASTNode *end;
             char *step;
@@ -425,14 +445,14 @@ struct ASTNode
 
         struct
         {
-            char *op;
+            OperatorKind op;
             ASTNode *left;
             ASTNode *right;
         } binary;
 
         struct
         {
-            char *op;
+            OperatorKind op;
             ASTNode *operand;
             int owns_temp; ///< `&_rval` of a temporary that the enclosing call must drop.
             int temp_id;   ///< While emitting that call: 1 + id of the named temporary.
@@ -441,6 +461,9 @@ struct ASTNode
         struct
         {
             LiteralKind kind;
+            /// Written without a suffix (`15`, `0.5`): its type comes from where it is used.
+            /// Also a `def` without a type, folded into a literal.
+            int is_untyped;
             unsigned long long int_val;
             double float_val;
             char *string_val;
@@ -451,7 +474,7 @@ struct ASTNode
             char *name;
             char *suggestion;
             struct ZenSymbol *symbol;
-            QualifiedName variant;     ///< An enum variant: its enum (resolved) and its name.
+            TypeMember variant;        ///< An enum variant: its enum and its name.
             FunctionInstance instance; ///< An instance of a generic function: `f<int>`.
             /// `Vec<T>` in `Vec<T>::new` inside a template: the instance whose `member` this
             /// names. The copy for an instance of the template renames it from this type.
@@ -465,6 +488,9 @@ struct ASTNode
             ASTNode *args;
             char **arg_names;
             int count;
+            // Where a path writes the function, its last segment (`of` of `Id::of(1)`): the
+            // node's token is where the path starts. TOKEN_UNKNOWN for a plain name.
+            Token member_token;
         } call;
 
         struct
@@ -518,6 +544,8 @@ struct ASTNode
         struct
         {
             char *name;
+            char *written_name; // As programs write it when `name` has a module prefix:
+                                // `math::Vector` for `_math__Vector`.
             ASTNode *fields;
             int is_template;
             char **generic_params;   // Array of generic parameter names (for example, ["K", "V"])
@@ -540,6 +568,9 @@ struct ASTNode
         {
             char *name; // The field's type is the node's type_info.
             int bit_width;
+            // The field this one copies when the struct mixes it in with `use`; NULL when the
+            // struct declares it. The copy keeps that field's token.
+            ASTNode *mixed_in_from;
         } field;
 
         struct
@@ -552,14 +583,17 @@ struct ASTNode
 
         struct
         {
-            Type *target; // the type the methods belong to; type_impl_name gives their prefix
+            Type *target;       // the type the methods belong to; type_impl_name gives their prefix
+            Token target_token; // Where the target's name is written (`Point` of `impl Point`).
             ASTNode *methods;
         } impl;
 
         struct
         {
             char *trait_name;
-            Type *target; // the type the methods belong to; type_impl_name gives their prefix
+            Type *target;       // the type the methods belong to; type_impl_name gives their prefix
+            Token trait_token;  // Where the trait's name is written (`Show` of `impl Show for`).
+            Token target_token; // Where the target's name is written.
             ASTNode *methods;
         } impl_trait;
 
@@ -621,6 +655,10 @@ struct ASTNode
             int is_struct_destruct;
             char *struct_name;  // "Point" (or NULL if unchecked/inferred).
             char **field_names; // NULL if same as 'names', otherwise mapped.
+            // A struct's: where each field and each name is written. In `Point{x}` the two are
+            // the same token, in `Point{x: a}` they are not.
+            Token *field_tokens;
+            Token *name_tokens;
             int is_guard;
             char *guard_variant; // "Some", "Ok".
             ASTNode *else_block;
@@ -655,7 +693,8 @@ struct ASTNode
 
         struct
         {
-            char **param_names; // Parameter and return types: type_info->args and ->inner.
+            char **param_names;  // Parameter and return types: type_info->args and ->inner.
+            Token *param_tokens; // Where each name is written.
             ASTNode *body;
             int count;
             int lambda_id;
@@ -798,12 +837,20 @@ typedef struct
  *
  * Not included: the tree of an imported module (`import_stmt.module_root`,
  * shared between importers; walk it yourself with a visited set), the array
- * `func.default_values`, and the pieces of an f-string (`fstring.parts`): their
- * expressions carry the position of the string, not their own.
+ * `func.default_values`, and the pieces of an f-string (`fstring.parts`): a walker that
+ * needs their expressions reads them itself (see find_var_refs and lsp_walk_node).
  * For NODE_COMPTIME, both `body` (the code written) and `generated` (the code
  * it produced).
  */
 ASTChildren ast_children(ASTNode *node);
+
+/**
+ * @brief The name of a node kind, as the tree backends print it ("BINARY",
+ * "VAR_DECL"...).
+ *
+ * Every NodeType has one: a new kind fails to compile until it is named here.
+ */
+const char *ast_kind_name(NodeType kind);
 
 Type *type_new(TypeKind kind);
 Type *type_new_ptr(Type *inner);
@@ -811,6 +858,8 @@ Type *type_new_array(Type *inner, int size);
 Type *type_new_tuple(Type **elements, int count);
 /** @brief The instance `tpl<args>` of a generic struct or enum. */
 Type *type_new_instance(const char *tpl, Type **args, int count);
+/** @brief The enum declared as `name`. */
+Type *type_new_enum(const char *name);
 /**
  * @brief The name the definition of a struct, enum, alias or trait type is registered under,
  * which its C name and its methods' C names build on: for a generic instance, the mangled name
@@ -839,10 +888,14 @@ int type_is_instance_of(Type *t, const char *tpl);
 char *type_impl_name(Type *t);
 /** @brief Whether `t` is the generic parameter `param` (`T`). */
 int type_is_generic_param(Type *t, const char *param);
+/** @brief Whether `t` names the generic parameter `param` anywhere: `T`, `T*`, `Vec<T>`. */
+int type_names_param(Type *t, const char *param);
 /** @brief The element type of a slice, `[T]` or `Slice<T>`; NULL if `t` is not one. */
 Type *slice_element(Type *t);
 /** @brief `t` if it is a tuple, or the tuple it points to; else NULL. */
 Type *tuple_of(Type *t);
+/** @brief Whether `t` is a closure that owns its context (freed by its `drop`), not a raw `fn*`. */
+int is_owning_closure(Type *t);
 /** @brief The type of the element `field` (`0` or `v0`) of `tuple`, or NULL. */
 Type *tuple_element_type(Type *tuple, const char *field);
 Type *type_clone(Type *t);
@@ -851,6 +904,11 @@ int is_integer_type(Type *t);
 int is_incomplete_type(struct ParserContext *ctx, Type *t);
 int is_unsigned_type(Type *t);
 Type *resolve_alias(Type *t);
+/**
+ * @brief `t` as the code of `file` sees it: an alias is the type it names, and so is an opaque
+ *        alias in the file that defines it. Anywhere else an opaque alias is a type of its own.
+ */
+Type *type_seen_from(Type *t, const char *file);
 /** @brief Whether `t`, after aliases, is a character: `char`, `c_char` or `c_uchar`. */
 int is_char_type(Type *t);
 int integer_type_width(Type *t);
@@ -863,6 +921,36 @@ Type *integer_operation_type(struct ASTNode *left, struct ASTNode *right);
 int is_signed_type(Type *t);
 int is_boolean_type(Type *t);
 int is_float_type(Type *t);
+/**
+ * @brief The bits of the significand of the float type `t` (24 in an `f32`, 53 in an `f64`):
+ * every integer whose magnitude fits in them is exact in `t`.
+ */
+int float_significand_bits(Type *t);
+
+/**
+ * @brief The characters a string literal stands for, as a new string: a raw literal's text as
+ *        it is, any other with its escapes (`\n`, `\x41`...) decoded.
+ */
+char *string_literal_text(ASTNode *literal);
+
+/**
+ * @brief Whether `t` is a pointer: a `T*`, or a `string`, which is a `char*`.
+ */
+int is_pointer_type(Type *t);
+
+/**
+ * @brief What the pointer `t` points to: the `T` of a `T*`, `char` for a `string`. NULL for
+ *        anything else.
+ */
+Type *pointee_of(Type *t);
+/**
+ * @brief Whether the float type `float_type` holds every value of the integer type `integer_type`
+ * exactly: the integer's magnitude fits in the float's significand (24 bits in an `f32`, 53 in an
+ * `f64`). An integer of unknown width counts as held.
+ */
+int float_holds_integer_type(Type *float_type, Type *integer_type);
+/** @brief Whether the float type `float_type` holds the integer `value` exactly. */
+int float_holds_integer(Type *float_type, long long value);
 int is_composite_expression(ASTNode *node);
 /**
  * @brief The spelling of a type inside a C name (`Vec__int32_t`, `Tuple__int32_t__bool`):
@@ -871,6 +959,18 @@ int is_composite_expression(ASTNode *node);
  */
 char *type_mangle_spelling(Type *t);
 char *type_to_string(Type *t);
+/**
+ * @brief How programs write the struct or enum `name` when it is not its name (`math::Vector`
+ * for `_math__Vector`), or NULL to write `name`.
+ */
+typedef const char *(*WrittenNameLookup)(void *context, const char *name);
+/**
+ * @brief A type as the program writes it, for diagnostics and the editor: `Vec<Vec<f64>>`,
+ * `(int, bool)`, and a struct or enum by what `lookup` gives. type_to_string spells instances
+ * and tuples by their C name, as the compiler identifies them; this is never a name to look
+ * up. The parser's zen_c_type_spelling passes the lookup.
+ */
+char *type_to_zen_c_string_with(Type *t, WrittenNameLookup lookup, void *context);
 char *type_to_c_string(Type *t, int misra_mode);
 /**
  * @brief The C name of the struct or enum `name` (its @link_name), or NULL to write `name`.
@@ -884,11 +984,12 @@ char *infer_type(struct ParserContext *ctx, struct ASTNode *node);
 char *get_field_type_str(struct ParserContext *ctx, const char *struct_name,
                          const char *field_name);
 Type *get_inner_type(Type *t);
-
-typedef struct TraitReg
-{
-    char *name;
-    struct TraitReg *next;
-} TraitReg;
+/**
+ * @brief `expr` dereferenced down to one level of pointer: `pp`, a `P**`, becomes `*pp`, a `P*`.
+ * `.` reaches a field or a method through every level of pointer, as the field and method
+ * lookup do (resolve_struct_name_from_type). Returns `expr` itself when it is not a pointer to
+ * a pointer.
+ */
+ASTNode *deref_to_one_pointer(ASTNode *expr);
 
 #endif

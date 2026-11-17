@@ -13,6 +13,47 @@
 
 ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l);
 
+// Whether `(name)` (or `(A::B)`, `(T*)`) followed by `next` is a cast, as C decides it: a name
+// that is a value in scope is a parenthesized expression (`(x) * y`); a type, or a pointer type,
+// is a cast of whatever expression follows (`(i64) -x`). A path, which may name an enum variant,
+// and a name that is neither keep the rule of the token that follows.
+static int cast_starts_here(ParserContext *ctx, Token name_token, int has_path, int has_stars,
+                            Token next)
+{
+    int starts_operand = next.kind == TOK_STRING || next.kind == TOK_INT ||
+                         next.kind == TOK_FLOAT || next.kind == TOK_CHAR ||
+                         next.kind == TOK_FSTRING || next.kind == TOK_RAW_STRING ||
+                         next.kind == TOK_IDENT || next.kind == TOK_LPAREN ||
+                         (next.kind == TOK_OP && (is_token(next, "&") || is_token(next, "*") ||
+                                                  is_token(next, "**") || is_token(next, "!")));
+    // A unary operator, an array literal or an intrinsic also start an operand, but after a
+    // value they are binary operators or an index: they only follow a known type.
+    int starts_typed_operand =
+        starts_operand || next.kind == TOK_LBRACKET || next.kind == TOK_AT ||
+        (next.kind == TOK_OP &&
+         (is_token(next, "-") || is_token(next, "+") || is_token(next, "~")));
+    if (has_path)
+    {
+        return starts_operand;
+    }
+    char *name = token_strdup(name_token);
+    int is_value = 0;
+    int is_type = has_stars;
+    if (!has_stars)
+    {
+        ZenSymbol *sym = find_symbol_entry(ctx, name);
+        is_value = sym && (sym->kind == SYM_VARIABLE || sym->kind == SYM_FUNCTION);
+        is_type = !is_value && (is_primitive_type_name(name) || find_struct_def(ctx, name) ||
+                                find_type_alias_node(ctx, name) || is_known_generic(ctx, name));
+    }
+    zfree(name);
+    if (is_value)
+    {
+        return 0;
+    }
+    return is_type ? starts_typed_operand : starts_operand;
+}
+
 ASTNode *parse_primary(ParserContext *ctx, Lexer *l)
 {
     return parse_primary_impl(ctx, l);
@@ -38,6 +79,61 @@ static Type *generic_arg_from_value(Type *field, Type *value, const char *param)
     return NULL;
 }
 
+// Whether `.` comes next and, with what follows it, names a variant of the enum `name`, as
+// `::` would: `Color.Green`, `Shape.Rect(1, 2)`, `Maybe<int>.Nothing` (`generic` is the
+// instance). A variable or constant called `name` hides the enum: then `.` reads one of its
+// fields.
+static int next_is_dot_variant(ParserContext *ctx, Lexer *l, const char *name, Type *generic)
+{
+    // The next token has to be a `.`; the caller checks `::` itself.
+    Token dot = lexer_peek(l);
+    if (dot.kind != TOK_OP || !is_token(dot, "."))
+    {
+        return 0;
+    }
+    // A variable or constant called `name` hides the enum (`let Color = Palette{...}`):
+    // `Color.Green` reads its field.
+    ZenSymbol *sym = find_symbol_entry(ctx, name);
+    if (sym && (sym->kind == SYM_VARIABLE || sym->kind == SYM_CONSTANT))
+    {
+        return 0;
+    }
+    // Read past the `.` on a copy of the lexer, so nothing is consumed: a name has to
+    // follow it.
+    Lexer lookahead = *l;
+    lexer_next(&lookahead);
+    Token field = lexer_next(&lookahead);
+    if (field.kind != TOK_IDENT)
+    {
+        return 0;
+    }
+
+    // Find the type called `name` (imported one by one, or in a module its own type)...
+    char *type_name = type_declaration_name(ctx, name);
+    ASTNode *def = find_struct_def(ctx, type_name ? type_name : name);
+    // ...or, for an instance of a generic type (`Maybe<int>`), its template.
+    if (!def && generic)
+    {
+        GenericTemplate *gt = find_generic_template(ctx, generic->name);
+        def = gt ? gt->struct_node : NULL;
+    }
+    // The type has to be an enum: on a struct, `.` stays a field access.
+    if (!def || def->kind != NODE_ENUM)
+    {
+        return 0;
+    }
+    // And the name after the `.` has to be one of its variants: `Color.other` is not
+    // read as `Color::other`.
+    for (ASTNode *v = def->enm.variants; v; v = v->next)
+    {
+        if (is_token(field, v->variant.name))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 {
     ASTNode *node = NULL;
@@ -55,8 +151,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             self_node->var_ref.name = xstrdup("self");
             self_node->token = dot_tok;
 
-            Type *inner_type =
-                type_from_name(ctx, ctx->current_impl_struct ? ctx->current_impl_struct : "Self");
+            Type *inner_type = ctx->current_impl_target ? type_clone(ctx->current_impl_target)
+                                                        : type_from_name(ctx, "Self");
             self_node->type_info = type_new_ptr(inner_type);
 
             node = ast_create(NODE_EXPR_MEMBER);
@@ -264,7 +360,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
         char *acc = ident;
         // Set when acc ends up naming an enum variant: its enum and its name.
-        QualifiedName variant = {0};
+        TypeMember variant = {0};
         // Set when acc ends up naming an instance of a generic function.
         FunctionInstance instance = {0};
         // Set when acc ends up naming an instance of a generic struct or enum.
@@ -272,6 +368,16 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         // Set when acc names a member of an instance that still names a generic parameter.
         Type *owner = NULL;
         char *owner_member = NULL;
+        // Where the path writes the segment acc names (`FactId` of `FactId::of`), and its last
+        // member (`of`), for the language server.
+        Token segment_token = t;
+        Token member_token = TOKEN_UNKNOWN;
+        // The declaration of that member when it is a method of a generic impl: the method of
+        // an instance (`Vec<int>::new`) is not a function until it is instantiated.
+        Token member_declaration = TOKEN_UNKNOWN;
+        // Whether acc is still the first name, as written: only that one is read by the rule
+        // of a bare type name.
+        int acc_is_bare = 1;
         while (1)
         {
             if (lexer_peek(l).kind == TOK_EOF)
@@ -279,7 +385,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 break;
             }
             int changed = 0;
-            if (lexer_peek(l).kind == TOK_DCOLON)
+            if (lexer_peek(l).kind == TOK_DCOLON || next_is_dot_variant(ctx, l, acc, generic_type))
             {
                 lexer_next(l);
                 Token suffix = lexer_next(l);
@@ -288,8 +394,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     zpanic_at(suffix, "Expected identifier after ::");
                     return NULL;
                 }
+                Token type_token = segment_token;
+                segment_token = suffix;
+                member_token = suffix;
                 // acc names a member of the type from here on: `Vec<T>::new`, `T::make`.
                 Type *path_type = generic_type;
+                // The instance whose member this is: `Vec<int>` of `Vec<int>::new`, or the one an
+                // alias names.
+                Type *instance_of = generic_type;
                 if (!path_type && is_known_generic(ctx, acc))
                 {
                     path_type = type_new(TYPE_GENERIC);
@@ -299,206 +411,143 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 owner_member = owner ? token_strdup(suffix) : NULL;
                 generic_type = NULL;
 
-                SelectiveImport *si =
-                    (!ctx->imports.current_module_prefix) ? find_selective_import(ctx, acc) : NULL;
-                if (si)
+                if (find_module(ctx, acc))
                 {
-                    char *tmp =
-                        xmalloc(strlen(si->source_module) + strlen(si->symbol) + suffix.len + 5);
-
-                    char *base = mangle_module_symbol(si->source_module, si->symbol);
-                    ASTNode *def = find_struct_def(ctx, base);
-                    int is_type = (def != NULL);
-
-                    if (is_type)
+                    // `m::Point`: the module's type, a member of it follows.
+                    char *member = token_strdup(suffix);
+                    char *qualified = qualified_type_name(ctx, acc, member);
+                    zfree(acc);
+                    acc = qualified;
+                }
+                else
+                {
+                    // A bare name: a type imported one by one, or in a module its own type, when
+                    // a type is declared by that name (a body sees every declaration).
+                    char *type_name = acc_is_bare ? type_declaration_name(ctx, acc) : NULL;
+                    if (type_name &&
+                        (find_struct_def(ctx, type_name) || find_type_alias_node(ctx, type_name)))
                     {
-                        // Check Enum Variant
-                        if (def->kind == NODE_ENUM)
+                        zfree(acc);
+                        acc = type_name;
+                    }
+                    ASTNode *def = find_struct_def(ctx, acc);
+                    if (def)
+                    {
+                        // `Point::new`: the type's name, as any other type name read.
+                        register_type_usage(ctx, acc, type_token);
+                    }
+
+                    int is_opaque_alias = 0;
+                    if (!def)
+                    {
+                        TypeAlias *ta = find_type_alias_node(ctx, acc);
+                        if (ta)
+                        {
+                            register_type_usage(ctx, acc, type_token);
+                            is_opaque_alias = ta->is_opaque;
+                            if (!is_opaque_alias)
+                            {
+                                Type *aliased = find_type_alias(ctx, acc);
+                                if (aliased)
+                                {
+                                    instance_of = aliased;
+                                    zfree(acc);
+                                    acc = type_mangle_spelling(aliased);
+                                    def = find_struct_def(ctx, acc);
+                                }
+                            }
+                        }
+                    }
+
+                    char *method_name = xmalloc(suffix.len + 1);
+                    strncpy(method_name, suffix.start, suffix.len);
+                    method_name[suffix.len] = 0;
+                    char *tmp = NULL;
+                    if (instance_of && instance_of->kind == TYPE_STRUCT && instance_of->count > 0 &&
+                        instance_of->name)
+                    {
+                        member_declaration =
+                            template_method_token(ctx, instance_of->name, method_name);
+                    }
+
+                    if (def || is_opaque_alias)
+                    {
+                        // Check for enum variant first
+                        int is_variant = 0;
+                        if (def && def->kind == NODE_ENUM)
                         {
                             ASTNode *v = def->enm.variants;
-                            char sbuf[128];
-                            if (suffix.len < (int)sizeof(sbuf))
-                            {
-                                strncpy(sbuf, suffix.start, suffix.len);
-                                sbuf[suffix.len] = 0;
-                            }
-                            else
-                            {
-                                // Suffix too long for sbuf
-                                sbuf[0] = 0;
-                            }
                             while (v)
                             {
-                                if (strcmp(v->variant.name, sbuf) == 0)
+                                if (strcmp(v->variant.name, method_name) == 0)
                                 {
+                                    is_variant = 1;
+                                    member_declaration = v->token;
                                     break;
                                 }
                                 v = v->next;
                             }
                         }
 
-                        char *member = xmalloc((size_t)suffix.len + 1);
-                        memcpy(member, suffix.start, (size_t)suffix.len);
-                        member[suffix.len] = 0;
-                        tmp = mangle_method_symbol(base, NULL, member);
-                    }
-                    else
-                    {
-                        char *member = xmalloc((size_t)suffix.len + 1);
-                        memcpy(member, suffix.start, (size_t)suffix.len);
-                        member[suffix.len] = 0;
-                        tmp = mangle_method_symbol(base, NULL, member);
-                    }
-
-                    zfree(acc);
-                    acc = tmp;
-                }
-                else
-                {
-                    Module *mod = find_module(ctx, acc);
-                    if (mod)
-                    {
-                        if (mod->is_c_header)
+                        if (is_variant)
                         {
-                            char *tmp = xmalloc(suffix.len + 1);
-                            strncpy(tmp, suffix.start, suffix.len);
-                            tmp[suffix.len] = 0;
-                            zfree(acc);
-                            acc = tmp;
-
-                            register_extern_symbol(ctx, acc);
+                            char *v_mangled = mangle_variant_symbol(acc, method_name);
+                            if (v_mangled)
+                            {
+                                variant.owner = def->type_info;
+                                variant.member = xstrdup(method_name);
+                                variant.token = suffix;
+                                zfree(acc);
+                                acc = v_mangled;
+                                tmp = acc;
+                            }
                         }
                         else
                         {
-                            char sbuf[MAX_TYPE_NAME_LEN];
-                            size_t sblen = suffix.len;
-                            if (sblen >= sizeof(sbuf))
-                            {
-                                sblen = sizeof(sbuf) - 1;
-                            }
-                            strncpy(sbuf, suffix.start, sblen);
-                            sbuf[sblen] = 0;
+                            char *direct = mangle_method_symbol(acc, NULL, method_name);
 
-                            if (is_extern_symbol(ctx, sbuf))
+                            if (find_func(ctx, direct))
                             {
                                 zfree(acc);
-                                acc = xstrdup(sbuf);
+                                acc = direct;
+                                tmp = acc;
                             }
                             else
                             {
-                                char *type_name =
-                                    find_method_owner_type_scoped(ctx, mod->base_name, sbuf);
-                                char *tmp2 = type_name ? mangle_method_symbol(type_name, NULL, sbuf)
-                                                       : mangle_module_symbol(mod->base_name, sbuf);
-                                zfree(acc);
-                                acc = tmp2;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        ASTNode *def = find_struct_def(ctx, acc);
-
-                        int is_opaque_alias = 0;
-                        if (!def && ctx->imports.current_module_prefix)
-                        {
-                            // Module prefix is set — try the prefixed name
-                            // (the struct was defined WITHIN this module, so it's
-                            //  registered as prefix__name, not bare name).
-                            char *prefixed =
-                                mangle_module_symbol(ctx->imports.current_module_prefix, acc);
-                            def = find_struct_def(ctx, prefixed);
-                            if (def)
-                            {
-                                zfree(acc);
-                                acc = prefixed;
-                            }
-                            else
-                            {
-                                zfree(prefixed);
-                            }
-                        }
-                        if (!def)
-                        {
-                            TypeAlias *ta = find_type_alias_node(ctx, acc);
-                            if (ta)
-                            {
-                                is_opaque_alias = ta->is_opaque;
-                                if (!is_opaque_alias)
+                                char *concrete = expected_instance_method(ctx, acc, method_name);
+                                if (concrete)
                                 {
-                                    Type *aliased = find_type_alias(ctx, acc);
-                                    if (aliased)
-                                    {
-                                        zfree(acc);
-                                        acc = type_mangle_spelling(aliased);
-                                        def = find_struct_def(ctx, acc);
-                                    }
+                                    zfree(acc);
+                                    acc = concrete;
+                                    tmp = acc;
+                                    zfree(method_name);
+                                    break;
                                 }
-                            }
-                        }
 
-                        char *method_name = xmalloc(suffix.len + 1);
-                        strncpy(method_name, suffix.start, suffix.len);
-                        method_name[suffix.len] = 0;
-                        char *tmp = NULL;
-
-                        if (def || is_opaque_alias)
-                        {
-                            // Check for enum variant first
-                            int is_variant = 0;
-                            if (def && def->kind == NODE_ENUM)
-                            {
-                                ASTNode *v = def->enm.variants;
-                                while (v)
+                                // Fallback: check for trait implementations
+                                StructRef *ref = ctx->parsed_impls_list;
+                                int found_trait = 0;
+                                while (ref)
                                 {
-                                    if (strcmp(v->variant.name, method_name) == 0)
+                                    if (ref->node && ref->node->kind == NODE_IMPL_TRAIT &&
+                                        strcmp(type_impl_name(ref->node->impl_trait.target), acc) ==
+                                            0)
                                     {
-                                        is_variant = 1;
-                                        break;
-                                    }
-                                    v = v->next;
-                                }
-                            }
+                                        const char *tname = ref->node->impl_trait.trait_name;
+                                        char *t_m = mangle_method_symbol(acc, tname, method_name);
 
-                            if (is_variant)
-                            {
-                                char *v_mangled = mangle_variant_symbol(acc, method_name);
-
-                                if (!find_func(ctx, v_mangled))
-                                {
-                                    char *concrete_type =
-                                        find_method_owner_type_scoped(ctx, acc, method_name);
-                                    if (concrete_type)
-                                    {
-                                        char *concrete =
-                                            mangle_method_symbol(concrete_type, NULL, method_name);
-                                        if (find_func(ctx, concrete))
+                                        if (find_func(ctx, t_m))
                                         {
                                             zfree(acc);
-                                            acc = concrete;
+                                            acc = xstrdup(t_m);
                                             tmp = acc;
-                                            zfree(v_mangled);
-                                            zfree(concrete_type);
+                                            found_trait = 1;
                                             break;
                                         }
-                                        zfree(concrete);
-                                        zfree(concrete_type);
                                     }
+                                    ref = ref->next;
                                 }
-                                if (v_mangled)
-                                {
-                                    variant.scope = xstrdup(acc);
-                                    variant.name = xstrdup(method_name);
-                                    zfree(acc);
-                                    acc = v_mangled;
-                                    tmp = acc;
-                                }
-                            }
-                            else
-                            {
-                                char *direct = mangle_method_symbol(acc, NULL, method_name);
-
-                                if (find_func(ctx, direct))
+                                if (!found_trait)
                                 {
                                     zfree(acc);
                                     acc = direct;
@@ -506,251 +555,57 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 }
                                 else
                                 {
-                                    char *concrete_type =
-                                        find_method_owner_type_scoped(ctx, acc, method_name);
-                                    if (concrete_type)
-                                    {
-                                        char *concrete =
-                                            mangle_method_symbol(concrete_type, NULL, method_name);
-                                        if (find_func(ctx, concrete))
-                                        {
-                                            zfree(acc);
-                                            acc = concrete;
-                                            tmp = acc;
-                                            zfree(method_name);
-                                            zfree(concrete_type);
-                                            break;
-                                        }
-                                        zfree(concrete);
-                                        zfree(concrete_type);
-                                    }
-
-                                    // Fallback: check for trait implementations
-                                    StructRef *ref = ctx->parsed_impls_list;
-                                    int found_trait = 0;
-                                    while (ref)
-                                    {
-                                        if (ref->node && ref->node->kind == NODE_IMPL_TRAIT &&
-                                            strcmp(type_impl_name(ref->node->impl_trait.target),
-                                                   acc) == 0)
-                                        {
-                                            const char *tname = ref->node->impl_trait.trait_name;
-                                            char *t_m =
-                                                mangle_method_symbol(acc, tname, method_name);
-
-                                            if (find_func(ctx, t_m))
-                                            {
-                                                zfree(acc);
-                                                acc = xstrdup(t_m);
-                                                tmp = acc;
-                                                found_trait = 1;
-                                                break;
-                                            }
-                                        }
-                                        ref = ref->next;
-                                    }
-                                    if (!found_trait)
-                                    {
-                                        zfree(acc);
-                                        acc = direct;
-                                        tmp = acc;
-                                    }
-                                    else
-                                    {
-                                        zfree(direct);
-                                    }
+                                    zfree(direct);
                                 }
                             }
+                        }
+                    }
+                    else
+                    {
+                        // A template (`Option::Some`), or one of its instances not
+                        // declared as a struct, such as `Option<T>::Some` in a template.
+                        GenericTemplate *gt = find_generic_template(
+                            ctx,
+                            path_type && path_type->kind == TYPE_STRUCT ? path_type->name : acc);
+                        ASTNode *tpl_def = gt ? gt->struct_node : NULL;
+                        int is_variant = 0;
+                        if (tpl_def && tpl_def->kind == NODE_ENUM)
+                        {
+                            for (ASTNode *v = tpl_def->enm.variants; v; v = v->next)
+                            {
+                                if (strcmp(v->variant.name, method_name) == 0)
+                                {
+                                    is_variant = 1;
+                                    member_declaration = v->token;
+                                    break;
+                                }
+                            }
+                        }
+                        if (is_variant)
+                        {
+                            variant.owner = path_type ? path_type : type_from_name(ctx, acc);
+                            variant.member = xstrdup(method_name);
+                            variant.token = suffix;
+                            tmp = mangle_variant_symbol(acc, method_name);
+                        }
+                        else if (tpl_def)
+                        {
+                            tmp = mangle_method_symbol(acc, NULL, method_name);
                         }
                         else
                         {
-                            // Handle generics or other cases
-                            int handled_as_generic = 0;
-                            for (int i = 0; i < ctx->known_generics_count; i++)
-                            {
-                                char *gname = ctx->known_generics[i];
-                                size_t glen = strlen(gname);
-                                if (strncmp(acc, gname, (size_t)(glen)) == 0 && acc[glen] == '_' &&
-                                    acc[glen + 1] == '_')
-                                {
-                                    ASTNode *tpl_def = find_struct_def(ctx, gname);
-                                    if (tpl_def)
-                                    {
-                                        int is_v = 0;
-                                        if (tpl_def->kind == NODE_ENUM)
-                                        {
-                                            ASTNode *v = tpl_def->enm.variants;
-                                            while (v)
-                                            {
-                                                if (strcmp(v->variant.name, method_name) == 0)
-                                                {
-                                                    is_v = 1;
-                                                    break;
-                                                }
-                                                v = v->next;
-                                            }
-                                        }
-                                        if (is_v)
-                                        {
-                                            tmp = mangle_method_symbol(acc, NULL, method_name);
-                                            handled_as_generic = 1;
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Also check registered templates list
-                            if (!handled_as_generic)
-                            {
-                                GenericTemplate *gt = ctx->templates;
-                                while (gt)
-                                {
-                                    char *gname = gt->name;
-                                    size_t glen = strlen(gname);
-                                    if ((strncmp(acc, gname, (size_t)(glen)) == 0 &&
-                                         acc[glen] == '_' && acc[glen + 1] == '_') ||
-                                        strcmp(acc, gname) == 0)
-                                    {
-                                        ASTNode *tpl_def = gt->struct_node;
-                                        if (tpl_def)
-                                        {
-                                            int is_variant = 0;
-                                            if (tpl_def->kind == NODE_ENUM)
-                                            {
-                                                ASTNode *v = tpl_def->enm.variants;
-                                                char sbuf[128];
-                                                if (suffix.len < (int)sizeof(sbuf))
-                                                {
-                                                    strncpy(sbuf, suffix.start, suffix.len);
-                                                    sbuf[suffix.len] = 0;
-                                                }
-                                                else
-                                                {
-                                                    sbuf[0] = 0;
-                                                }
-                                                while (v)
-                                                {
-                                                    if (strcmp(v->variant.name, sbuf) == 0)
-                                                    {
-                                                        is_variant = 1;
-                                                        break;
-                                                    }
-                                                    v = v->next;
-                                                }
-                                            }
-                                            if (is_variant)
-                                            {
-                                                char *direct = mangle_variant_symbol(
-                                                    acc, token_strdup(suffix));
-                                                // Do not resolve a path whose owner names a generic
-                                                // parameter (e.g. Option<V>) to an existing
-                                                // concrete instantiation: the concrete arg is a
-                                                // placeholder substituted at instantiation time.
-                                                if (!owner && !find_func(ctx, direct))
-                                                {
-                                                    char mbuf[128];
-                                                    if (suffix.len < (int)sizeof(mbuf))
-                                                    {
-                                                        strncpy(mbuf, suffix.start, suffix.len);
-                                                        mbuf[suffix.len] = 0;
-                                                    }
-                                                    else
-                                                    {
-                                                        mbuf[0] = 0;
-                                                    }
-                                                    char *concrete_type =
-                                                        find_method_owner_type_scoped(ctx, acc,
-                                                                                      mbuf);
-                                                    if (concrete_type)
-                                                    {
-                                                        char *concrete = mangle_method_symbol(
-                                                            concrete_type, NULL, mbuf);
-                                                        if (find_func(ctx, concrete))
-                                                        {
-                                                            tmp = concrete;
-                                                            zfree(direct);
-                                                            zfree(concrete_type);
-                                                            handled_as_generic = 1;
-                                                            break;
-                                                        }
-                                                        zfree(concrete);
-                                                        zfree(concrete_type);
-                                                    }
-                                                }
-                                                if (!handled_as_generic)
-                                                {
-                                                    variant.scope = xstrdup(acc);
-                                                    variant.name = token_strdup(suffix);
-                                                    tmp = direct;
-                                                }
-                                            }
-                                            else
-                                            {
-                                                char *direct = mangle_method_symbol(
-                                                    acc, NULL, token_strdup(suffix));
-                                                // Do not resolve a path whose owner names a generic
-                                                // parameter (e.g. Option<V>) to an existing
-                                                // concrete instantiation: the concrete arg is a
-                                                // placeholder substituted at instantiation time.
-                                                if (!owner && !find_func(ctx, direct))
-                                                {
-                                                    char mbuf[128];
-                                                    if (suffix.len < (int)sizeof(mbuf))
-                                                    {
-                                                        strncpy(mbuf, suffix.start, suffix.len);
-                                                        mbuf[suffix.len] = 0;
-                                                    }
-                                                    else
-                                                    {
-                                                        mbuf[0] = 0;
-                                                    }
-                                                    char *concrete_type =
-                                                        find_method_owner_type_scoped(ctx, acc,
-                                                                                      mbuf);
-                                                    if (concrete_type)
-                                                    {
-                                                        char *concrete = mangle_method_symbol(
-                                                            concrete_type, NULL, mbuf);
-                                                        if (find_func(ctx, concrete))
-                                                        {
-                                                            tmp = concrete;
-                                                            zfree(direct);
-                                                            zfree(concrete_type);
-                                                            handled_as_generic = 1;
-                                                            break;
-                                                        }
-                                                        zfree(concrete);
-                                                        zfree(concrete_type);
-                                                    }
-                                                }
-                                                if (!handled_as_generic)
-                                                {
-                                                    tmp = direct;
-                                                }
-                                            }
-                                            handled_as_generic = 1;
-                                            break;
-                                        }
-                                    }
-                                    gt = gt->next;
-                                }
-                            }
-
-                            if (!handled_as_generic)
-                            {
-                                char *combined =
-                                    mangle_method_symbol(acc, NULL, token_strdup(suffix));
-                                zfree(acc);
-                                acc = combined;
-                                tmp = acc;
-                            }
+                            char *combined = mangle_method_symbol(acc, NULL, method_name);
+                            zfree(acc);
+                            acc = combined;
+                            tmp = acc;
                         }
-                        zfree(method_name);
-                        zfree(acc);
-                        acc = tmp;
                     }
+                    zfree(method_name);
+                    zfree(acc);
+                    acc = tmp;
                 }
                 changed = 1;
+                acc_is_bare = 0;
             }
 
             if (lexer_peek(l).kind == TOK_LANGLE && tokens_could_be_generic_args(l))
@@ -781,23 +636,16 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     lexer_next(l); // eat <
 
-                    Type **arg_types = xmalloc(sizeof(Type *) * 8);
-                    int count = 0;
+                    zvec_Type arg_types = {0};
 
                     while (1)
                     {
-                        if (count >= 8)
-                        {
-                            zpanic_at(lexer_peek(l), "Too many generic arguments (max 8)");
-                            break;
-                        }
                         Type *formal_type = parse_type_formal(ctx, l);
                         if (!formal_type)
                         {
                             return NULL;
                         }
-                        arg_types[count] = formal_type;
-                        count++;
+                        zvec_push_Type(&arg_types, formal_type);
 
                         if (lexer_peek(l).kind == TOK_COMMA)
                         {
@@ -826,10 +674,12 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                     if (is_struct)
                     {
+                        // `Holder<int>::make`, `Holder<int>{ v: 1 }`: the template's name.
+                        register_type_usage(ctx, acc, segment_token);
                         generic_type = type_new(TYPE_STRUCT);
                         generic_type->name = acc;
-                        generic_type->args = arg_types;
-                        generic_type->count = count;
+                        generic_type->args = arg_types.data;
+                        generic_type->count = (int)arg_types.length;
                         instantiate_type(ctx, generic_type, t);
                         acc = type_mangle_spelling(generic_type);
                     }
@@ -837,8 +687,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     {
                         // Function Template
                         instance.name = acc;
-                        instance.args = arg_types;
-                        instance.count = count;
+                        instance.args = arg_types.data;
+                        instance.count = (int)arg_types.length;
                         char *m = instantiate_function(ctx, instance);
                         if (!m)
                         {
@@ -849,6 +699,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     }
 
                     changed = 1;
+                    acc_is_bare = 0;
                 }
             }
             if (!changed)
@@ -873,49 +724,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     is_struct_init = 1;
                 }
-                else
+                else if (generic_type)
                 {
-                    // Fallback: Check if it's a generic instantiation (e.g. Optional_T)
-                    // We check if 'acc' starts with any known struct name followed by '_'
-                    StructRef *sr = ctx->parsed_structs_list;
-                    while (sr)
-                    {
-                        if (sr->node && sr->node->kind == NODE_STRUCT)
-                        {
-                            size_t len = strlen(sr->node->strct.name);
-                            if (strncmp(acc, sr->node->strct.name, (size_t)(len)) == 0 &&
-                                acc[len] == '_' && acc[len + 1] == '_')
-                            {
-                                is_struct_init = 1;
-                                break;
-                            }
-                        }
-                        sr = sr->next;
-                    }
-
-                    if (!is_struct_init && ctx->cg.global_user_structs)
-                    {
-                        ASTNode *gn = ctx->cg.global_user_structs;
-                        while (gn)
-                        {
-                            if (gn->kind == NODE_STRUCT)
-                            {
-                                size_t len = strlen(gn->strct.name);
-                                if (strncmp(acc, gn->strct.name, (size_t)(len)) == 0 &&
-                                    acc[len] == '_')
-                                {
-                                    is_struct_init = 1;
-                                    break;
-                                }
-                            }
-                            gn = gn->next;
-                        }
-                    }
-
-                    if (!is_struct_init)
-                    {
-                        is_struct_init = 0;
-                    }
+                    // An instance not declared as a struct: `Optional<T>{}` in a template.
+                    is_struct_init = 1;
                 }
             }
             else if (fi.kind == TOK_IDENT)
@@ -930,9 +742,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 // Vector positional init: e.g. f32x4{1.0, 2.0, 3.0, 4.0}
                 // First token is not an ident (it's a literal/expr), check if this is a vector type
-                ASTNode *vec_def = find_struct_def(ctx, acc);
-                if (vec_def && vec_def->kind == NODE_STRUCT && vec_def->type_info &&
-                    vec_def->type_info->kind == TYPE_VECTOR)
+                if (vector_type_named(ctx, acc))
                 {
                     is_struct_init = 1;
                 }
@@ -961,10 +771,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         TypeKind tk = get_primitive_type_kind(acc);
                         if (tk == TYPE_UNKNOWN)
                         {
-                            tk = TYPE_INT; // fallback
+                            tk = TYPE_I32; // fallback
                         }
 
-                        if (tk == TYPE_F32 || tk == TYPE_F64 || tk == TYPE_FLOAT)
+                        if (tk == TYPE_F32 || tk == TYPE_F64)
                         {
                             node->literal.kind = LITERAL_FLOAT;
                             node->literal.float_val = 0.0;
@@ -983,7 +793,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
                         lexer_next(l); // Eat }
 
-                        if (is_trait(acc))
+                        if (is_trait(ctx, acc))
                         {
                             return transform_to_trait_object(ctx, acc, node);
                         }
@@ -995,7 +805,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         TypeKind tk = get_primitive_type_kind(acc);
                         if (tk == TYPE_UNKNOWN)
                         {
-                            tk = TYPE_INT;
+                            tk = TYPE_I32;
                         }
 
                         cast->type_info = type_new(tk);
@@ -1004,9 +814,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 }
 
                 // `Self { ... }` builds the impl's struct, as `Self` names it in a type.
-                if (strcmp(acc, "Self") == 0 && ctx->current_impl_struct)
+                if (strcmp(acc, "Self") == 0 && ctx->current_impl_target)
                 {
-                    acc = xstrdup(ctx->current_impl_struct);
+                    acc = type_impl_name(ctx->current_impl_target);
                 }
 #if FF_COMPATIBILITY_0_5
                 if (!generic_type)
@@ -1014,26 +824,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     generic_type = compat_slice_from_name(ctx, acc, t);
                 }
 #endif
-                char *struct_name = acc;
-                if (!ctx->imports.current_module_prefix)
-                {
-                    SelectiveImport *si = find_selective_import(ctx, acc);
-                    if (si)
-                    {
-                        struct_name = mangle_module_symbol(si->source_module, si->symbol);
-                    }
-                }
-                if (struct_name == acc && ctx->imports.current_module_prefix &&
-                    !is_known_generic(ctx, acc))
-                {
-                    // Only prefix module-defined types, not imported types.
-                    // Imports are registered with bare names, so if find_struct_def
-                    // succeeds on the bare name, this is an imported type — skip.
-                    if (!find_struct_def(ctx, acc) && !find_type_alias(ctx, acc))
-                    {
-                        struct_name = mangle_module_symbol(ctx->imports.current_module_prefix, acc);
-                    }
-                }
+                // A type imported one by one, or in a module its own type.
+                char *type_name = type_declaration_name(ctx, acc);
+                char *struct_name = type_name ? type_name : acc;
 
                 // Opaque Struct Check
                 ASTNode *def = find_struct_def(ctx, struct_name);
@@ -1059,8 +852,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                 // Check if this is a vector type for positional init
                 int is_vector_init = 0;
-                if (def && def->kind == NODE_STRUCT && def->type_info &&
-                    def->type_info->kind == TYPE_VECTOR)
+                if (def && def->kind == NODE_STRUCT && vector_type_of(ctx, def->type_info))
                 {
                     // Peek ahead: if first value is not followed by ':',
                     // this is positional vector init like f32x4{1.0, 2.0, 3.0, 4.0}
@@ -1131,7 +923,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
                         ASTNode *val = parse_expression(ctx, l);
                         ASTNode *assign = ast_create(NODE_FIELD_INIT);
-                        assign->token = t;
+                        assign->token = fn;
                         assign->var_decl.name = token_strdup(fn);
                         assign->var_decl.init_expr = val;
                         if (!head)
@@ -1148,6 +940,27 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     lexer_next(l);
                 }
                 node->struct_init.fields = head;
+
+                // For the language server: each field where its struct, or the template of a
+                // generic one, declares it.
+                GenericTemplate *declaring_template =
+                    def ? NULL : find_generic_template(ctx, struct_name);
+                ASTNode *declaring = def                  ? def
+                                     : declaring_template ? declaring_template->struct_node
+                                                          : NULL;
+                for (ASTNode *f = declaring && declaring->kind == NODE_STRUCT ? head : NULL; f;
+                     f = f->next)
+                {
+                    for (ASTNode *d = declaring->strct.fields; d; d = d->next)
+                    {
+                        if (d->kind == NODE_FIELD && d->field.name &&
+                            strcmp(d->field.name, f->var_decl.name) == 0)
+                        {
+                            f->definition_token = d->token;
+                            break;
+                        }
+                    }
+                }
 
                 // `Box{val: 5}` names the instance its fields give the parameter: `Box<int>`.
                 GenericTemplate *gtpl = generic_type ? NULL : find_generic_template(ctx, acc);
@@ -1203,7 +1016,36 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
         }
 
+        // A bare `helper` in a module parsed with a prefix names the module's own function.
+        char *own_function = (!variant.member && !owner) ? module_function_name(ctx, acc) : NULL;
+        if (own_function)
+        {
+            zfree(acc);
+            acc = own_function;
+        }
+
         FuncSig *sig = find_func(ctx, acc);
+
+        // A variant is written with its enum: `Shape::Dot`, `Shape::Circle(1.0)`. Alone
+        // (`Dot`, `Circle(1.0)`) it only names one in a constant expression, which the
+        // compiler computes itself; anywhere else C would get an undeclared name. A variable,
+        // a parameter or a function with that name is not a variant.
+        if (!variant.member && !sig && !ctx->in_constant_expression && !find_symbol_entry(ctx, acc))
+        {
+            EnumVariantReg *bare = find_enum_variant(ctx, acc);
+            if (bare && strcmp(bare->variant_name, acc) == 0)
+            {
+                char msg[MAX_SHORT_MSG_LEN];
+                char hint[MAX_SHORT_MSG_LEN];
+                snprintf(msg, sizeof(msg), "'%s' is a variant of the enum '%s'", acc,
+                         bare->enum_name);
+                snprintf(hint, sizeof(hint), "write it with its enum: %s::%s", bare->enum_name,
+                         acc);
+                const char *hints[] = {hint, NULL};
+                zerror_with_hints(t, msg, hints);
+            }
+        }
+
         if (strcmp(acc, "readln") == 0 && lexer_peek(l).kind == TOK_LPAREN)
         {
             lexer_next(l);
@@ -1253,7 +1095,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 ASTNode *callee = ast_create(NODE_EXPR_VAR);
                 callee->var_ref.name = xstrdup("_z_scan_helper");
                 node->call.callee = callee;
-                node->type_info = type_new(TYPE_INT);
+                node->type_info = type_new(TYPE_I32);
 
                 ASTNode *fmt_node = ast_create(NODE_EXPR_LITERAL);
                 fmt_node->literal.kind = LITERAL_STRING; // string
@@ -1265,7 +1107,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     // Create Unary & (AddressOf) node wrapping the arg
                     ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                    addr->unary.op = xstrdup("&");
+                    addr->unary.op = OP_ADDRESS;
                     addr->unary.operand = args[i];
                     // Link
                     tail->next = addr;
@@ -1295,98 +1137,12 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 if (sig->default_values && sig->default_values[i])
                 {
-                    ASTNode *def = copy_default_value(ctx, sig, i);
+                    ASTNode *def = copy_default_value(ctx, sig, i, t);
                     Type *expected = sig->arg_types[i];
-                    if (expected && expected->name && is_trait(type_def_name(expected)))
+                    // A trait parameter takes a trait object, built as for a written argument.
+                    if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
                     {
-                        Type *arg_type = def->type_info
-                                             ? def->type_info
-                                             : ((def->kind == NODE_EXPR_VAR)
-                                                    ? find_symbol_type_info(ctx, def->var_ref.name)
-                                                    : NULL);
-
-                        if (!arg_type && def->kind == NODE_EXPR_UNARY &&
-                            strcmp(def->unary.op, "&") == 0)
-                        {
-                            if (def->unary.operand->kind == NODE_EXPR_VAR)
-                            {
-                                Type *inner =
-                                    find_symbol_type_info(ctx, def->unary.operand->var_ref.name);
-                                if (inner && inner->kind == TYPE_STRUCT)
-                                {
-                                    if (check_impl(ctx, type_def_name(expected),
-                                                   type_def_name(inner)))
-                                    {
-                                        ASTNode *init = ast_create(NODE_EXPR_STRUCT_INIT);
-                                        init->struct_init.struct_name = xstrdup(expected->name);
-
-                                        Type *trait_type = type_new(TYPE_STRUCT);
-                                        trait_type->name = xstrdup(expected->name);
-                                        init->type_info = trait_type;
-
-                                        ASTNode *f_self = ast_create(NODE_FIELD_INIT);
-                                        f_self->var_decl.name = xstrdup("self");
-                                        f_self->var_decl.init_expr = def;
-
-                                        char *vtable_name = mangle_vtable_symbol(
-                                            type_def_name(inner), type_def_name(expected));
-
-                                        ASTNode *vtable_var = ast_create(NODE_EXPR_VAR);
-                                        vtable_var->var_ref.name = xstrdup(vtable_name);
-
-                                        ASTNode *vtable_ref = ast_create(NODE_EXPR_UNARY);
-                                        vtable_ref->unary.op = xstrdup("&");
-                                        vtable_ref->unary.operand = vtable_var;
-
-                                        ASTNode *f_vtable = ast_create(NODE_FIELD_INIT);
-                                        f_vtable->var_decl.name = xstrdup("vtable");
-                                        f_vtable->var_decl.init_expr = vtable_ref;
-
-                                        f_self->next = f_vtable;
-                                        init->struct_init.fields = f_self;
-
-                                        def = init;
-                                    }
-                                }
-                            }
-                        }
-                        else if (arg_type && arg_type->kind == TYPE_POINTER && arg_type->inner &&
-                                 arg_type->inner->kind == TYPE_STRUCT)
-                        {
-                            if (check_impl(ctx, type_def_name(expected),
-                                           type_def_name(arg_type->inner)))
-                            {
-                                ASTNode *init = ast_create(NODE_EXPR_STRUCT_INIT);
-                                init->struct_init.struct_name = xstrdup(expected->name);
-
-                                Type *trait_type = type_new(TYPE_STRUCT);
-                                trait_type->name = xstrdup(expected->name);
-                                init->type_info = trait_type;
-
-                                ASTNode *f_self = ast_create(NODE_FIELD_INIT);
-                                f_self->var_decl.name = xstrdup("self");
-                                f_self->var_decl.init_expr = def;
-
-                                char *vtable_name = mangle_vtable_symbol(
-                                    type_def_name(arg_type->inner), type_def_name(expected));
-
-                                ASTNode *vtable_var = ast_create(NODE_EXPR_VAR);
-                                vtable_var->var_ref.name = xstrdup(vtable_name);
-
-                                ASTNode *vtable_ref = ast_create(NODE_EXPR_UNARY);
-                                vtable_ref->unary.op = xstrdup("&");
-                                vtable_ref->unary.operand = vtable_var;
-
-                                ASTNode *f_vtable = ast_create(NODE_FIELD_INIT);
-                                f_vtable->var_decl.name = xstrdup("vtable");
-                                f_vtable->var_decl.init_expr = vtable_ref;
-
-                                f_self->next = f_vtable;
-                                init->struct_init.fields = f_self;
-
-                                def = init;
-                            }
-                        }
+                        def = transform_to_trait_object(ctx, type_def_name(expected), def);
                     }
 
                     if (!head)
@@ -1413,6 +1169,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             node = ast_create(NODE_EXPR_CALL);
             node->token = t;
             ASTNode *callee = ast_create(NODE_EXPR_VAR);
+            callee->token = t;
             callee->var_ref.name = acc;
             callee->var_ref.variant = variant;
             callee->var_ref.instance = instance;
@@ -1422,9 +1179,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
             node->call.count = args_provided;
+            node->call.member_token = member_token;
             if (sig)
             {
                 node->definition_token = sig->decl_token;
+            }
+            if (node->definition_token.line <= 0)
+            {
+                node->definition_token = member_declaration;
             }
             node->type_info = sig->ret_type ? sig->ret_type : type_new(TYPE_VOID);
         }
@@ -1452,10 +1214,15 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             callee->var_ref.instance = instance;
             callee->var_ref.owner = owner;
             callee->var_ref.member = owner_member;
+            // The closest declared name, for the error the typechecker gives (as for a variable).
+            callee->var_ref.suggestion =
+                should_suppress_undef_warning(ctx, acc) ? NULL : find_similar_symbol(ctx, acc);
             node->call.callee = callee;
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
             node->call.count = args_provided;
+            node->call.member_token = member_token;
+            node->definition_token = member_declaration;
 
             GenericFuncTemplate *tpl = find_func_template(ctx, acc);
             if (tpl && tpl->func_node && args_provided > 0 && head)
@@ -1552,7 +1319,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 long long value = sym->const_int_val;
                 // The literal takes the declared primitive type (`def X: u64`) without
                 // the symbol's const qualifier; anything else stays `int`.
-                Type *value_type = type_new(TYPE_INT);
+                Type *value_type = type_new(TYPE_I32);
                 if (sym->type_info && is_integer_type(sym->type_info) &&
                     sym->type_info->kind != TYPE_ALIAS && sym->type_info->kind != TYPE_STRUCT)
                 {
@@ -1562,6 +1329,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node->token = t;
                 node->literal.kind = LITERAL_INT;
                 node->type_info = value_type;
+                // A `def` without a type is an untyped constant, as a literal is.
+                node->literal.is_untyped = sym->is_untyped;
                 if (value < 0 && value != LLONG_MIN && !is_unsigned_type(value_type))
                 {
                     // A literal holds the magnitude: emit `-N`, as the source would
@@ -1569,7 +1338,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     node->literal.int_val = (unsigned long long)(-value);
                     ASTNode *neg = ast_create(NODE_EXPR_UNARY);
                     neg->token = t;
-                    neg->unary.op = xstrdup("-");
+                    neg->unary.op = OP_NEG;
                     neg->unary.operand = node;
                     neg->type_info = value_type;
                     node = neg;
@@ -1590,30 +1359,34 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node->var_ref.owner = owner;
                 node->var_ref.member = owner_member;
                 node->type_info = find_symbol_type_info(ctx, acc);
+                // A variant without payload is a value of its enum, not a function: an enum
+                // has no symbol for it, but an instance of a generic one has a constructor.
+                if (variant.member)
+                {
+                    EnumVariantReg *reg =
+                        find_enum_variant_of(ctx, type_def_name(variant.owner), variant.member);
+                    FuncSig *constructor = find_func(ctx, acc);
+                    if (reg && (!constructor || constructor->total_args == 0))
+                    {
+                        node->type_info = type_new_enum(reg->enum_name);
+                    }
+                }
 
                 if (sym)
                 {
                     sym->is_used = 1;
                     node->definition_token = sym->decl_token;
                 }
-
-                char *type_str = find_symbol_type(ctx, acc);
-
-                if (type_str)
+                else if (variant.member)
                 {
-                    node->var_ref.suggestion = NULL;
+                    // `Color::Red`: no symbol, the variant itself.
+                    node->definition_token = member_declaration;
                 }
-                else
-                {
-                    if (sym || should_suppress_undef_warning(ctx, acc))
-                    {
-                        node->var_ref.suggestion = NULL;
-                    }
-                    else
-                    {
-                        node->var_ref.suggestion = find_similar_symbol(ctx, acc);
-                    }
-                }
+
+                node->var_ref.suggestion =
+                    (node->type_info || sym || should_suppress_undef_warning(ctx, acc))
+                        ? NULL
+                        : find_similar_symbol(ctx, acc);
             }
         }
     }
@@ -1623,15 +1396,14 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
         Lexer lookahead = *l;
         int is_lambda = 0;
-        Token *params = xmalloc(sizeof(Token) * 16);
-        Type **param_types = xmalloc(sizeof(Type *) * 16);
-        int nparams = 0;
+        zvec_Token params = {0};
+        zvec_Type param_types = {0};
 
         while (1)
         {
             if (lexer_peek(&lookahead).kind != TOK_IDENT)
             {
-                if (nparams == 0 && lexer_peek(&lookahead).kind == TOK_RPAREN)
+                if (params.length == 0 && lexer_peek(&lookahead).kind == TOK_RPAREN)
                 {
                     lexer_next(&lookahead);
                     if (lexer_peek(&lookahead).kind == TOK_FAT_ARROW)
@@ -1642,14 +1414,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 }
                 break;
             }
-            if (nparams >= 16)
-            {
-                zpanic_at(lexer_peek(&lookahead), "Too many lambda parameters (max 16)");
-                break;
-            }
-            params[nparams] = lexer_next(&lookahead);
-            param_types[nparams] = NULL;
-            lookahead.pos = lookahead.pos;
+            zvec_push_Token(&params, lexer_next(&lookahead));
+            zvec_push_Type(&param_types, NULL);
 
             if (lexer_peek(&lookahead).kind == TOK_COLON)
             {
@@ -1664,7 +1430,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     lexer_next(&lookahead);
                 }
             }
-            nparams++;
 
             Token sep = lexer_peek(&lookahead);
             if (sep.kind == TOK_COMMA)
@@ -1691,16 +1456,16 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         if (is_lambda)
         {
             Lexer actual_parse = *l;
-            if (nparams > 0)
+            if (params.length > 0)
             {
-                for (int i = 0; i < nparams; i++)
+                for (size_t i = 0; i < params.length; i++)
                 {
                     lexer_next(&actual_parse);
                     if (lexer_peek(&actual_parse).kind == TOK_COLON)
                     {
                         lexer_next(&actual_parse);
-                        param_types[i] = parse_type_formal(ctx, &actual_parse);
-                        if (!param_types[i])
+                        param_types.data[i] = parse_type_formal(ctx, &actual_parse);
+                        if (!param_types.data[i])
                         {
                             return NULL;
                         }
@@ -1720,14 +1485,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
             *l = actual_parse;
 
-            ASTNode *node_multi = parse_arrow_lambda_multi(ctx, l, params, param_types, nparams, 0);
-            zfree(param_types);
-            return node_multi;
-        }
-        else
-        {
-            zfree(params);
-            zfree(param_types);
+            return parse_arrow_lambda_multi(ctx, l, params.data, param_types.data,
+                                            (int)params.length, 0);
         }
 
         int saved = l->pos;
@@ -1736,9 +1495,12 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         if (lexer_peek(l).kind == TOK_IDENT)
         {
             Lexer cast_look = *l;
-            lexer_next(&cast_look);
+            Token cast_name = lexer_next(&cast_look);
+            int has_path = 0;
+            int has_stars = 0;
             while (lexer_peek(&cast_look).kind == TOK_DCOLON)
             { // handle A::B
+                has_path = 1;
                 lexer_next(&cast_look);
                 if (lexer_peek(&cast_look).kind == TOK_IDENT)
                 {
@@ -1764,6 +1526,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     break;
                 }
+                has_stars = 1;
                 lexer_next(&cast_look);
             }
 
@@ -1771,12 +1534,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 lexer_next(&cast_look);
                 Token next = lexer_peek(&cast_look);
-                if (next.kind == TOK_STRING || next.kind == TOK_INT || next.kind == TOK_FLOAT ||
-                    next.kind == TOK_CHAR || next.kind == TOK_FSTRING ||
-                    next.kind == TOK_RAW_STRING ||
-                    (next.kind == TOK_OP && (is_token(next, "&") || is_token(next, "*") ||
-                                             is_token(next, "**") || is_token(next, "!"))) ||
-                    next.kind == TOK_IDENT || next.kind == TOK_LPAREN)
+                if (cast_starts_here(ctx, cast_name, has_path, has_stars, next))
                 {
 
                     Type *cast_type_obj = parse_type_formal(ctx, l);
@@ -1795,7 +1553,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     ASTNode *target = parse_expr_prec(ctx, l, PREC_UNARY);
 
                     char *cast_type = type_mangle_spelling(cast_type_obj);
-                    if (is_trait(cast_type))
+                    if (is_trait(ctx, cast_type))
                     {
                         return transform_to_trait_object(ctx, cast_type, target);
                     }
@@ -1899,33 +1657,26 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             lexer_next(l); // consume ']'
 
                             lexer_next(l); // consume '('
-                            Token *params = xmalloc(sizeof(Token) * 16);
-                            Type **param_types = xmalloc(sizeof(Type *) * 16);
-                            int nparams = 0;
+                            zvec_Token params = {0};
+                            zvec_Type param_types = {0};
                             while (1)
                             {
                                 if (lexer_peek(l).kind != TOK_IDENT)
                                 {
                                     break;
                                 }
-                                if (nparams >= 16)
-                                {
-                                    zpanic_at(lexer_peek(l), "Too many parameters (max 16)");
-                                    break;
-                                }
-                                params[nparams] = lexer_next(l);
-                                param_types[nparams] = NULL;
-
+                                zvec_push_Token(&params, lexer_next(l));
+                                Type *param_type = NULL;
                                 if (lexer_peek(l).kind == TOK_COLON)
                                 {
                                     lexer_next(l);
-                                    param_types[nparams] = parse_type_formal(ctx, l);
-                                    if (!param_types[nparams])
+                                    param_type = parse_type_formal(ctx, l);
+                                    if (!param_type)
                                     {
                                         return NULL;
                                     }
                                 }
-                                nparams++;
+                                zvec_push_Type(&param_types, param_type);
 
                                 Token sep = lexer_peek(l);
                                 if (sep.kind == TOK_COMMA)
@@ -1950,10 +1701,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 return NULL;
                             }
 
-                            ASTNode *node_multi = parse_arrow_lambda_multi(
-                                ctx, l, params, param_types, nparams, default_capture_mode);
-                            zfree(param_types);
-                            return node_multi;
+                            return parse_arrow_lambda_multi(ctx, l, params.data, param_types.data,
+                                                            (int)params.length,
+                                                            default_capture_mode);
                         }
                     }
                 }
@@ -2042,7 +1792,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             call->call.args = args.head;
             call->call.arg_names = args.has_named ? args.arg_names : NULL;
             call->call.count = args.count;
-            check_format_string(call, t);
 
             // Try to infer type if callee has function type info
             if (node->type_info && node->type_info->kind == TYPE_FUNCTION && node->type_info->inner)
@@ -2139,8 +1888,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     {
                         // Needs ptr, have value -> &node (through a temporary if it has no address)
                         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                        addr->unary.op =
-                            expr_is_rvalue(ctx, node) ? xstrdup("&_rval") : xstrdup("&");
+                        addr->unary.op = expr_is_rvalue(ctx, node) ? OP_ADDRESS_RVALUE : OP_ADDRESS;
                         addr->unary.operand = node;
                         addr->type_info = type_new_ptr(st);
                         arg1 = addr;
@@ -2149,7 +1897,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     {
                         // Needs value, have ptr -> *node
                         ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                        deref->unary.op = xstrdup("*");
+                        deref->unary.op = OP_DEREF;
                         deref->unary.operand = node;
                         arg1 = deref;
                     }
@@ -2199,27 +1947,13 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     idx_node->type_info = arr_type->inner;
                 }
-                else if (arr_type && arr_type->name &&
-                         (arr_type->kind == TYPE_VECTOR || arr_type->kind == TYPE_STRUCT ||
-                          arr_type->kind == TYPE_ARRAY))
+                else if (vector_type_of(ctx, arr_type))
                 {
-                    // Look up struct def to check if it's a vector type
-                    ASTNode *def = find_struct_def(ctx, type_def_name(arr_type));
-                    if (def && def->kind == NODE_STRUCT && def->type_info &&
-                        def->type_info->kind == TYPE_VECTOR && def->strct.fields &&
-                        def->strct.fields->type_info)
-                    {
-                        arr_type->inner = def->strct.fields->type_info;
-                        idx_node->type_info = def->strct.fields->type_info;
-                    }
-                    else
-                    {
-                        idx_node->type_info = type_new(TYPE_INT);
-                    }
+                    idx_node->type_info = vector_type_of(ctx, arr_type)->inner;
                 }
                 else
                 {
-                    idx_node->type_info = type_new(TYPE_INT);
+                    idx_node->type_info = type_new(TYPE_I32);
                 }
                 node = idx_node;
             }

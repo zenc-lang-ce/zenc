@@ -698,7 +698,7 @@ cc -I /usr/local/include/zenc my_tool.c -o my_tool
 - **`zc_core.h`** — `CompilerConfig`、`ZenCompiler`、`ASTNode`、`Type` 類型，解析器入口點，類型內省輔助函數
 - **`zc_driver.h`** — `driver_run()`、`driver_compile()`（完整管線編排）
 - **`zc_codegen.h`** — `codegen_node()`、`emit_preamble()`、`format_expression_as_c()`
-- **`zc_analysis.h`** — `check_program()`、`check_moves_only()`、`resolve_alias()`
+- **`zc_analysis.h`** — `check_program()`、`resolve_alias()`
 - **`zc_diag.h`** — `zerror_at()`、`zwarn_at()`、`zpanic_at()`，診斷報告
 - **`zc_utils.h`** — `Emitter`（輸出緩衝區）、`load_file()`、`z_resolve_path()`
 

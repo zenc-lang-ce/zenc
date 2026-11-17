@@ -15,6 +15,20 @@
 #include "zprep_plugin.h"
 #include "analysis/move_check.h"
 
+// An arm ends with `,`, `}` or a new line. Anything else on the line of its last token would be
+// read as the pattern of the next arm.
+static void expect_match_arm_end(Lexer *l)
+{
+    int body_end_line = l->line;
+    skip_comments(l);
+    Token next = lexer_peek(l);
+    if (next.kind != TOK_COMMA && next.kind != TOK_RBRACE && next.kind != TOK_EOF &&
+        next.line == body_end_line)
+    {
+        zpanic_at(next, "Expected ',' or '}' after match arm");
+    }
+}
+
 ASTNode *parse_match(ParserContext *ctx, Lexer *l)
 {
     init_builtins();
@@ -77,7 +91,13 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
         {
             Token p = lexer_next(l);
             char *written_scope = NULL;
+            // The scope by the name it is declared under (`m::Shape` is `base__Shape`), read as
+            // any path to a type is.
+            char *scope_name = NULL;
+            int scope_parts = 0;
             char *written_name = token_strdup(p);
+            Token name_token = p;
+            Token scope_token = TOKEN_UNKNOWN;
 
             while (1)
             {
@@ -92,13 +112,18 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                         size_t scope_size = strlen(written_scope) + strlen(written_name) + 3;
                         char *joined = xmalloc(scope_size);
                         snprintf(joined, scope_size, "%s::%s", written_scope, written_name);
+                        scope_name = qualified_type_name(ctx, scope_name, written_name);
                         written_scope = joined;
                     }
                     else
                     {
                         written_scope = written_name;
+                        scope_name = written_name;
                     }
+                    scope_parts++;
                     written_name = token_strdup(suffix);
+                    scope_token = name_token;
+                    name_token = suffix;
                 }
                 else if (pk.kind == TOK_LANGLE)
                 {
@@ -127,6 +152,17 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 }
             }
 
+            // A scope of one name (`Side::Right`) is a bare type name: one imported one by
+            // one, or in a module its own type.
+            if (scope_parts == 1)
+            {
+                char *declared = type_declaration_name(ctx, scope_name);
+                if (declared)
+                {
+                    scope_name = declared;
+                }
+            }
+
             char *range_start = NULL;
             char *range_end = NULL;
             int range_is_inclusive = 0;
@@ -136,8 +172,8 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                 range_is_inclusive = (lexer_peek(l).kind == TOK_DOTDOT_EQ);
                 lexer_next(l); // eat operator
                 Token end_tok = lexer_next(l);
-                range_start = written_scope ? mangle_module_symbol(written_scope, written_name)
-                                            : written_name;
+                range_start =
+                    scope_name ? mangle_module_symbol(scope_name, written_name) : written_name;
                 range_end = token_strdup(end_tok);
             }
 
@@ -156,8 +192,10 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
             else if (p.kind == TOK_IDENT)
             {
                 alternative->kind = PATTERN_NAME;
-                alternative->name.scope = written_scope;
+                alternative->name.scope = scope_name;
                 alternative->name.name = written_name;
+                alternative->name_token = name_token;
+                alternative->scope_token = scope_token;
             }
             else
             {
@@ -421,7 +459,7 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
                     if (enum_def->enm.generic_param)
                     {
                         char *param = enum_def->enm.generic_param;
-                        if (strstr(binding_type, param))
+                        if (type_names_param(binding_type_info, param))
                         {
                             is_generic_unresolved = 1;
                         }
@@ -495,6 +533,8 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
         }
 
         exit_scope(ctx);
+
+        expect_match_arm_end(l);
 
         ASTNode *c = ast_create(NODE_MATCH_CASE);
         c->token = pk;

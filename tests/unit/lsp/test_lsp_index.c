@@ -8,7 +8,8 @@
 static LSPIndex *index_source(const char *src)
 {
     LSPIndex *index = lsp_index_new();
-    lsp_build_index(index, parse_source(src));
+    ASTNode *root = parse_source(src);
+    lsp_build_index(parse_source_context(), index, root, src);
     return index;
 }
 
@@ -20,7 +21,7 @@ static int definition_line_at(LSPIndex *index, int line, int col)
     {
         return -1;
     }
-    return r->def_line;
+    return r->symbol.definition.line - 1;
 }
 
 UTEST(lsp_index, reference_in_an_if)

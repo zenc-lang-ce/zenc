@@ -1,0 +1,39 @@
+   Compiling tests/compiler/diagnostics_output/shift_amount_range.zc...
+error: Shift amount 64 is out of range for 'u64' (64 bits)
+  --> tests/compiler/diagnostics_output/shift_amount_range.zc:12:26
+   |
+12 |     let _bad_wide = w << 64;
+   |                          ^ here
+   |
+   = help: Shifting by a negative amount or by the width of the type or more is undefined behavior
+error: Shift amount 32 is out of range for 'i32' (32 bits)
+  --> tests/compiler/diagnostics_output/shift_amount_range.zc:13:25
+   |
+13 |     let _bad_int = i << 32;
+   |                         ^ here
+   |
+   = help: Shifting by a negative amount or by the width of the type or more is undefined behavior
+error: Shift amount 70 is out of range for 'u64' (64 bits)
+  --> tests/compiler/diagnostics_output/shift_amount_range.zc:14:27
+   |
+14 |     let _bad_named = w << BIG;
+   |                           ^ here
+   |
+   = help: Shifting by a negative amount or by the width of the type or more is undefined behavior
+error: Shift amount -1 is out of range for 'i32' (32 bits)
+  --> tests/compiler/diagnostics_output/shift_amount_range.zc:15:30
+   |
+15 |     let _bad_negative = i >> -1;
+   |                              ^ here
+   |
+   = help: Shifting by a negative amount or by the width of the type or more is undefined behavior
+error: Shift amount 32 is out of range for 'u8' (shifted as int, 32 bits)
+  --> tests/compiler/diagnostics_output/shift_amount_range.zc:16:28
+   |
+16 |     let _bad_narrow = b << 32;
+   |                            ^ here
+   |
+   = help: Shifting by a negative amount or by the width of the type or more is undefined behavior
+     error: semantic analysis found 5 errors
+       Check failed with 5 errors
+[exit 1]

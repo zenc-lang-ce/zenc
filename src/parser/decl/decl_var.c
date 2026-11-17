@@ -54,37 +54,26 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     {
         int is_struct = (lexer_peek(l).kind == TOK_LBRACE);
         lexer_next(l);
-        int cap = 16;
-        char **names = xmalloc((size_t)cap * sizeof(char *));
-        Type **type_infos = xmalloc((size_t)cap * sizeof(Type *));
-        int count = 0;
+        zvec_Text names = {0};
+        zvec_Type type_infos = {0};
+        zvec_Token tokens = {0};
         while (1)
         {
-            if (count >= cap)
-            {
-                cap *= 2;
-                names = xrealloc(names, (size_t)cap * sizeof(char *));
-                type_infos = xrealloc(type_infos, (size_t)cap * sizeof(Type *));
-            }
             Token t = lexer_next(l);
             check_identifier(t);
             char *nm = token_strdup(t);
-            names[count] = nm;
-            type_infos[count] = NULL;
+            zvec_push_Token(&tokens, t);
 
             // Check for optional type annotation: name: type
+            Type *type_obj = NULL;
             if (!is_struct && lexer_peek(l).kind == TOK_COLON)
             {
                 lexer_next(l); // eat :
-                Type *type_obj = parse_type_formal(ctx, l);
-                type_infos[count] = type_obj;
-                add_symbol(ctx, nm, type_obj, is_export);
+                type_obj = parse_type_formal(ctx, l);
             }
-            else
-            {
-                add_symbol(ctx, nm, NULL, is_export);
-            }
-            count++;
+            zvec_push_Text(&names, nm);
+            zvec_push_Type(&type_infos, type_obj);
+            add_symbol(ctx, nm, type_obj, is_export);
 
             Token next = lexer_next(l);
             if (next.kind == TOK_EOF)
@@ -114,11 +103,17 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         }
         ASTNode *n = ast_create(NODE_DESTRUCT_VAR);
         n->token = tk;
-        n->destruct.names = names;
-        n->destruct.type_infos = type_infos;
-        n->destruct.count = count;
+        n->destruct.names = names.data;
+        n->destruct.type_infos = type_infos.data;
+        n->destruct.count = (int)names.length;
         n->destruct.init_expr = init;
         n->destruct.is_struct_destruct = is_struct;
+        if (is_struct)
+        {
+            // `let {x, y}`: each name is the field's.
+            n->destruct.field_tokens = tokens.data;
+            n->destruct.name_tokens = tokens.data;
+        }
         return n;
     }
 
@@ -131,16 +126,19 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     if (lexer_peek(l).kind == TOK_LBRACE)
     {
         lexer_next(l);
-        char **names = xmalloc(16 * sizeof(char *));
-        char **fields = xmalloc(16 * sizeof(char *));
-        int count = 0;
+        zvec_Text names = {0};
+        zvec_Text fields = {0};
+        zvec_Token field_tokens = {0};
+        zvec_Token name_tokens = {0};
 
         while (1)
         {
             // Parse field:name or just name
             Token t = lexer_next(l);
             check_identifier(t);
-            char *ident = token_strdup(t);
+            char *field = token_strdup(t);
+            char *variable = field; // Shorthand: field (implies var name = field)
+            Token variable_token = t;
 
             if (lexer_peek(l).kind == TOK_COLON)
             {
@@ -148,19 +146,15 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 lexer_next(l); // eat :
                 Token v = lexer_next(l);
                 check_identifier(v);
-                fields[count] = ident;
-                names[count] = token_strdup(v);
+                variable = token_strdup(v);
+                variable_token = v;
             }
-            else
-            {
-                // Shorthand: field (implies var name = field)
-                fields[count] = ident;
-                names[count] = ident; // Share pointer or duplicate? duplicate safer if we free
-            }
+            zvec_push_Text(&fields, field);
+            zvec_push_Text(&names, variable);
+            zvec_push_Token(&field_tokens, t);
+            zvec_push_Token(&name_tokens, variable_token);
             // Register symbol for variable
-            add_symbol(ctx, names[count], NULL, is_export);
-
-            count++;
+            add_symbol(ctx, variable, NULL, is_export);
 
             Token next = lexer_next(l);
             if (next.kind == TOK_EOF)
@@ -192,9 +186,11 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
 
         ASTNode *n = ast_create(NODE_DESTRUCT_VAR);
         n->token = name_tok;
-        n->destruct.names = names;
-        n->destruct.field_names = fields;
-        n->destruct.count = count;
+        n->destruct.names = names.data;
+        n->destruct.field_names = fields.data;
+        n->destruct.field_tokens = field_tokens.data;
+        n->destruct.name_tokens = name_tokens.data;
+        n->destruct.count = (int)names.length;
         n->destruct.init_expr = init;
         n->destruct.is_struct_destruct = 1;
         n->destruct.struct_name = name; // "Point"
@@ -313,12 +309,8 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         }
         else
         {
-            if (type_obj && type_obj->name)
-            {
-                ctx->cg.expected_init_type = type_mangle_spelling(type_obj);
-            }
+            ctx->cg.expected_init_type = type_obj;
             init = parse_expression(ctx, l);
-            zfree(ctx->cg.expected_init_type);
             ctx->cg.expected_init_type = NULL;
         }
 
@@ -386,25 +378,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                 zpanic_at(init->token, "Slice Node has NO Type Info!");
                 return NULL;
             }
-            // Fallbacks for literals
-            else if (init->kind == NODE_EXPR_LITERAL)
-            {
-                if (init->literal.kind == LITERAL_INT)
-                {
-                    type = xstrdup("int");
-                    type_obj = type_new(TYPE_INT);
-                }
-                else if (init->literal.kind == LITERAL_FLOAT)
-                {
-                    type = xstrdup("float");
-                    type_obj = type_new(TYPE_FLOAT);
-                }
-                else if (init->literal.kind == LITERAL_STRING)
-                {
-                    type = xstrdup("string");
-                    type_obj = type_new(TYPE_STRING);
-                }
-            }
             else if (init->kind == NODE_EXPR_STRUCT_INIT)
             {
                 type = xstrdup(init->struct_init.struct_name);
@@ -431,29 +404,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
             t = find_symbol_type_info(ctx, init->var_ref.name);
         }
 
-        // Literal type construction for validation
-        Type *temp_literal_type = NULL;
-        if (!t && init->kind == NODE_EXPR_LITERAL)
-        {
-            if (init->literal.kind == LITERAL_INT)
-            {
-                temp_literal_type = type_new(TYPE_INT);
-            }
-            else if (init->literal.kind == LITERAL_FLOAT)
-            {
-                temp_literal_type = type_new(TYPE_FLOAT);
-            }
-            else if (init->literal.kind == LITERAL_STRING)
-            {
-                temp_literal_type = type_new(TYPE_STRING);
-            }
-            else if (init->literal.kind == LITERAL_CHAR)
-            {
-                temp_literal_type = type_new(TYPE_CHAR);
-            }
-            t = temp_literal_type;
-        }
-
         // Parser-level type validation: catches obvious mismatches like assigning
         // string to int. More comprehensive type checking happens in the typechecker.
         if (t && !type_eq(type_obj, t))
@@ -472,19 +422,14 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
             if (!is_numeric && !is_pointer && !is_function && !is_struct && !is_array &&
                 (!is_opaque || !check_opaque_alias_compat(ctx, type_obj, t)))
             {
-                char *expected = type_to_string(type_obj);
-                char *got = type_to_string(t);
+                char *expected = zen_c_type_spelling(ctx, type_obj);
+                char *got = zen_c_type_spelling(ctx, t);
                 zpanic_at(init->token, "Type validation failed. Expected '%s', but got '%s'",
                           expected, got);
                 return NULL;
                 zfree(expected);
                 zfree(got);
             }
-        }
-
-        if (temp_literal_type)
-        {
-            zfree(temp_literal_type); // Simple free, shallow
         }
     }
 
@@ -513,7 +458,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     n->type_info = type_obj;
 
     // Auto-construct Trait Object
-    if (type && is_trait(type))
+    if (type && is_trait(ctx, type))
     {
         init = transform_to_trait_object(ctx, type, init);
     }
@@ -637,24 +582,6 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
                     }
                     next_type_obj->array_size = next_init->type_info->array_size;
                     next_type = type_mangle_spelling(next_type_obj);
-                }
-                else if (next_init->kind == NODE_EXPR_LITERAL)
-                {
-                    if (next_init->literal.kind == LITERAL_INT)
-                    {
-                        next_type = xstrdup("int");
-                        next_type_obj = type_new(TYPE_INT);
-                    }
-                    else if (next_init->literal.kind == LITERAL_FLOAT)
-                    {
-                        next_type = xstrdup("float");
-                        next_type_obj = type_new(TYPE_FLOAT);
-                    }
-                    else if (next_init->literal.kind == LITERAL_STRING)
-                    {
-                        next_type = xstrdup("string");
-                        next_type_obj = type_new(TYPE_STRING);
-                    }
                 }
             }
 

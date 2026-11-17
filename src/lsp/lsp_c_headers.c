@@ -428,9 +428,7 @@ static char *find_module_file(const char *name, const char *from_dir)
 // Text of a module: the client's version when it is open, otherwise the file on disk.
 static char *module_text(const char *path)
 {
-    char uri[MAX_PATH_LEN + 8];
-    snprintf(uri, sizeof(uri), "file://%s", path);
-    ProjectFile *file = lsp_project_get_file(uri);
+    ProjectFile *file = lsp_project_get_file_by_path(path);
     if (file && file->source)
     {
         return c_headers_copy_text(file->source, strlen(file->source));
@@ -605,8 +603,7 @@ static void fill_origin(CHeaderOrigin *origin, const HeaderImport *header, const
 }
 
 // Where to look for a header that a module imports: where the document looks, plus the
-// module's own directives. `zc build` ignores those (see lsp_c_headers_add_diagnostics()),
-// but the module may well be compiled on its own or with them copied over.
+// module's own directives, which `zc build` applies too.
 static void module_search_dirs(const CSearchDirList *document_dirs, const ModuleHeader *entry,
                                CSearchDirList *dirs)
 {
@@ -1157,6 +1154,30 @@ static void symbol_documentation(const CHeaderFile *header, const CHeaderSymbol 
     }
 }
 
+// The completion kind of a C declaration of that kind.
+static LspCompletionItemKind completion_kind(CSymbolKind kind)
+{
+    switch (kind)
+    {
+    case C_SYMBOL_FUNCTION:
+        return LSP_COMPLETION_FUNCTION;
+    case C_SYMBOL_VARIABLE:
+        return LSP_COMPLETION_VARIABLE;
+    case C_SYMBOL_ENUM:
+        return LSP_COMPLETION_ENUM;
+    case C_SYMBOL_ENUM_MEMBER:
+        return LSP_COMPLETION_ENUM_MEMBER;
+    case C_SYMBOL_CONSTANT:
+        return LSP_COMPLETION_CONSTANT;
+    case C_SYMBOL_STRUCT:
+        return LSP_COMPLETION_STRUCT;
+    case C_SYMBOL_TYPE:
+        return LSP_COMPLETION_TYPE_PARAMETER;
+    default:
+        return LSP_COMPLETION_VARIABLE;
+    }
+}
+
 // Completion items for the declarations of `path` matching `typed`, then those of the headers
 // it includes with quotes: `#include "x.h"` belongs to the same library, while `<x.h>` brings
 // in the system or other libraries.
@@ -1191,7 +1212,7 @@ static void add_completion_items(const char *path, const char *typed, const CSea
 
         cJSON *item = cJSON_CreateObject();
         cJSON_AddStringToObject(item, "label", entry->name);
-        cJSON_AddNumberToObject(item, "kind", entry->kind);
+        cJSON_AddNumberToObject(item, "kind", completion_kind(entry->kind));
         cJSON_AddStringToObject(item, "detail", detail);
         if (doc[0])
         {
@@ -1666,7 +1687,7 @@ int lsp_c_headers_add_fields(const char *document_path, const char *source, cons
     {
         cJSON *item = cJSON_CreateObject();
         cJSON_AddStringToObject(item, "label", list->fields[i].name);
-        cJSON_AddNumberToObject(item, "kind", 5); // Field
+        cJSON_AddNumberToObject(item, "kind", LSP_COMPLETION_FIELD);
         cJSON_AddStringToObject(item, "detail", list->fields[i].type);
         cJSON_AddItemToArray(items, item);
     }
@@ -1696,43 +1717,6 @@ int lsp_c_headers_field_type(const char *document_path, const char *source, cons
     return found;
 }
 
-static char *path_to_uri(const char *path)
-{
-    size_t length = strlen(path);
-    char *uri = libc_malloc(length * 3 + 16);
-    if (!uri)
-    {
-        return NULL;
-    }
-    size_t capacity = length * 3 + 16;
-    size_t used = (size_t)snprintf(uri, capacity, "file://");
-    if (isalpha((unsigned char)path[0]) && path[1] == ':')
-    {
-        uri[used++] = '/';
-    }
-    for (size_t i = 0; i < length; i++)
-    {
-        unsigned char c = (unsigned char)path[i];
-        if (c == '\\')
-        {
-            uri[used++] = '/';
-        }
-        else if (isalnum(c) || strchr("/-._~:", c))
-        {
-            uri[used++] = (char)c;
-        }
-        else
-        {
-            static const char hex[] = "0123456789ABCDEF";
-            uri[used++] = '%';
-            uri[used++] = hex[c >> 4];
-            uri[used++] = hex[c & 0x0F];
-        }
-    }
-    uri[used] = '\0';
-    return uri;
-}
-
 static cJSON *make_range(int line, int column, int length)
 {
     cJSON *range = cJSON_CreateObject();
@@ -1749,14 +1733,8 @@ static cJSON *make_range(int line, int column, int length)
 
 static cJSON *make_location(const char *path, int line, int column, int length)
 {
-    char *uri = path_to_uri(path);
-    if (!uri)
-    {
-        return NULL;
-    }
     cJSON *location = cJSON_CreateObject();
-    cJSON_AddStringToObject(location, "uri", uri);
-    libc_free(uri);
+    cJSON_AddStringToObject(location, "uri", lsp_path_to_uri(path));
     cJSON_AddItemToObject(location, "range", make_range(line, column, length));
     return location;
 }
@@ -1805,107 +1783,12 @@ struct cJSON *lsp_c_headers_origin_location(const CHeaderOrigin *origin, CHeader
     {
         return make_location(origin->path, 0, 0, 0);
     }
-    char *uri = path_to_uri(origin->path);
-    if (!uri)
-    {
-        return NULL;
-    }
     cJSON *link = cJSON_CreateObject();
     cJSON_AddItemToObject(link, "originSelectionRange", lsp_c_headers_origin_range(origin, kind));
-    cJSON_AddStringToObject(link, "targetUri", uri);
-    libc_free(uri);
+    cJSON_AddStringToObject(link, "targetUri", lsp_path_to_uri(origin->path));
     cJSON_AddItemToObject(link, "targetRange", make_range(0, 0, 0));
     cJSON_AddItemToObject(link, "targetSelectionRange", make_range(0, 0, 0));
     cJSON *links = cJSON_CreateArray();
     cJSON_AddItemToArray(links, link);
     return links;
-}
-
-/* --- Diagnostics --- */
-
-typedef struct
-{
-    const CSearchDirList *document_dirs;
-    struct cJSON *diagnostics;
-    StringList warned;
-} DirectiveCheck;
-
-// `zc build` only applies the `//>` directives of the file it compiles, but every header
-// of every imported module ends up in the generated C. Warns about the headers that only a
-// module's own directive makes findable.
-static int check_module_header(const ModuleHeader *entry, void *data)
-{
-    DirectiveCheck *check = data;
-    const HeaderImport *header = entry->header;
-    if (string_list_contains(&check->warned, header->name))
-    {
-        return 0;
-    }
-    char module_dir[MAX_PATH_LEN];
-    c_headers_directory_of(entry->module_path, module_dir, sizeof(module_dir));
-    char *path = c_headers_find(header->name, header->is_system ? NULL : module_dir,
-                                check->document_dirs, NULL, 0);
-    if (path)
-    {
-        libc_free(path);
-        return 0;
-    }
-
-    CSearchDirList module_dirs = {0};
-    collect_directive_dirs(entry->module_source, entry->module_path, &module_dirs);
-    char found_by[MAX_PATH_LEN];
-    path = c_headers_find(header->name, NULL, &module_dirs, found_by, sizeof(found_by));
-    c_search_dirs_free(&module_dirs);
-    if (!path)
-    {
-        return 0;
-    }
-    libc_free(path);
-    string_list_add(&check->warned, header->name);
-
-    // Three paths may not fit: a message cut at the buffer size still points at the problem.
-    char message[MAX_PATH_LEN * 2];
-    int written = snprintf(message, sizeof(message),
-                           "C header '%s' (imported by %s) is only found through %s, but zc "
-                           "build only applies the directives of the file it compiles: add "
-                           "that directive here.",
-                           header->name, file_label(entry->module_path), found_by);
-    if (written < 0)
-    {
-        return 0;
-    }
-    cJSON *diagnostic = cJSON_CreateObject();
-    cJSON_AddItemToObject(
-        diagnostic, "range",
-        make_range(entry->top->line, entry->top->name_column, (int)strlen(entry->top->name)));
-    cJSON_AddNumberToObject(diagnostic, "severity", LSP_SEVERITY_WARNING);
-    cJSON_AddStringToObject(diagnostic, "message", message);
-    cJSON_AddItemToArray(check->diagnostics, diagnostic);
-    return 0;
-}
-
-void lsp_c_headers_add_diagnostics(const char *document_path, const char *source,
-                                   struct cJSON *diagnostics)
-{
-    if (!document_path || !source || !diagnostics)
-    {
-        return;
-    }
-    FileImports imports = {0};
-    collect_imports(source, &imports);
-    int module_count = imports.module_count;
-    free_imports(&imports);
-    if (module_count == 0)
-    {
-        return;
-    }
-
-    CSearchDirList dirs = {0};
-    collect_search_dirs(source, document_path, &dirs);
-    DirectiveCheck check = {&dirs, diagnostics, {0}};
-    StringList visited = {0};
-    walk_module_headers(source, document_path, NULL, 0, 0, &visited, check_module_header, &check);
-    string_list_free(&visited);
-    string_list_free(&check.warned);
-    c_search_dirs_free(&dirs);
 }

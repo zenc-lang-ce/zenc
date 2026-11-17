@@ -56,8 +56,10 @@ typedef struct ZenSymbol
     int is_export;           ///< 1 if visible outside module.
     int is_const_value;      ///< 1 if compile-time constant.
     int is_def;              ///< 1 if definition vs declaration.
+    int is_untyped;          ///< A `def` without a type: an untyped constant, as a literal.
     long long const_int_val; ///< Integer value if constant.
     int is_moved;            ///< 1 if ownership transferred.
+    int is_borrowed;         ///< 1 if it views a value another symbol owns (a match binding).
     int is_local;            ///< 1 if this is a local variable/symbol.
     int is_written_to;       ///< 1 if the value (or dereferenced memory) was modified.
     int is_dereferenced;     ///< 1 if struct fields were explicitly accessed.

@@ -16,6 +16,9 @@
 ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_export)
 {
     lexer_next(l);
+    // `register_generic` skips a name that is already a generic parameter: what the enum
+    // registers is undone by restoring the count, not by subtracting what it declared.
+    int generics_before = ctx->known_generics_count;
     Token n = lexer_next(l);
     check_identifier(n);
 
@@ -27,7 +30,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
         check_identifier(g);
         gp = token_strdup(g);
         lexer_next(l); // eat >
-        register_generic(ctx, gp);
+        register_generic(ctx, g);
     }
 
     lexer_next(l);
@@ -35,6 +38,18 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     ASTNode *h = 0, *tl = 0;
     int v = 0;
     char *ename = token_strdup(n); // Store enum name
+
+    // In a module parsed with a prefix (imported with an alias, one by one or as `*`), the enum
+    // is named with the prefix. The variants and their constructors are registered below under
+    // that name, the one the type and its uses carry.
+    char *written_name = NULL;
+    if (ctx->imports.current_module_prefix && !gp)
+    { // Don't prefix generic templates
+        written_name = module_written_name(ctx, ename);
+        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, ename);
+        zfree(ename);
+        ename = prefixed_name;
+    }
 
     while (1)
     {
@@ -111,7 +126,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             {
                 lexer_next(l);
                 Token value_tok = lexer_peek(l);
-                ASTNode *value_expr = parse_expression(ctx, l);
+                ASTNode *value_expr = parse_constant_expression(ctx, l);
                 long long value = 0;
                 if (!value_expr || !eval_const_int_expr(value_expr, ctx, &value))
                 {
@@ -128,6 +143,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
 
             ASTNode *va = ast_create(NODE_ENUM_VARIANT);
             ATTACH_DOC_COMMENT(ctx, va);
+            va->token = vt;
             va->variant.name = vname;
             va->variant.tag_id = v++;      // Use tag_id instead of value
             va->variant.payload = payload; // Store Type*
@@ -144,21 +160,19 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             {
                 if (payload->kind == TYPE_TUPLE)
                 {
-                    Type *ret_t = type_new(TYPE_ENUM);
-                    ret_t->name = xstrdup(ename);
+                    Type *ret_t = type_new_enum(ename);
 
                     // We can reuse the tuple_types collected during parsing!
                     register_func(ctx, ctx->current_scope, mangled, tuple_count, NULL, tuple_types,
-                                  ret_t, 0, 0, c_mangled, vt, is_export);
+                                  ret_t, 0, 0, c_mangled, va->variant.name, vt, is_export);
                 }
                 else
                 {
                     Type **at = xmalloc(sizeof(Type *));
                     at[0] = payload;
-                    Type *ret_t = type_new(TYPE_ENUM);
-                    ret_t->name = xstrdup(ename);
+                    Type *ret_t = type_new_enum(ename);
                     register_func(ctx, ctx->current_scope, mangled, 1, NULL, at, ret_t, 0, 0,
-                                  c_mangled, vt, is_export);
+                                  c_mangled, va->variant.name, vt, is_export);
                 }
             }
             else if (!gp)
@@ -184,20 +198,12 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
         }
     }
 
-    // Auto-prefix enum name if in module context
-    if (ctx->imports.current_module_prefix && !gp)
-    { // Don't prefix generic templates
-        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, ename);
-        zfree(ename);
-        ename = prefixed_name;
-    }
-
     ASTNode *node = ast_create(NODE_ENUM);
     node->token = n;
     node->enm.name = ename;
+    node->enm.written_name = written_name;
     node->link_name = definition_link_name(ctx, link_name, ename);
-    node->type_info = type_new(TYPE_ENUM);
-    node->type_info->name = xstrdup(ename);
+    node->type_info = type_new_enum(ename);
 
     node->enm.variants = h;
     node->enm.generic_param = gp; // Store generic param
@@ -206,7 +212,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     if (gp)
     {
         node->enm.is_template = 1;
-        ctx->known_generics_count--;
+        ctx->known_generics_count = generics_before;
         register_template(ctx, node->enm.name, node);
     }
 

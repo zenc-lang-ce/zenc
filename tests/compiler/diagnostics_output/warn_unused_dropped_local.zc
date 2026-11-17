@@ -1,0 +1,30 @@
+// ARGS: build
+// A local that is dropped at the end of its scope is used: no Unused variable warning when its
+// struct is Drop through a field, or through an impl Drop written above the struct. A local that
+// is not dropped is still reported.
+
+impl Drop for Early {
+    fn drop(self) {}
+}
+
+struct Early {
+    id: int;
+}
+
+struct Res {
+    id: int;
+}
+
+impl Drop for Res {
+    fn drop(self) {}
+}
+
+struct Holder {
+    r: Res;
+}
+
+fn main() {
+    let h = Holder { r: Res { id: 1 } };
+    let e = Early { id: 2 };
+    let n = 3;
+}

@@ -96,5 +96,4 @@ void emit_defers_down_to(ParserContext *ctx, int boundary);
 // From codegen.c
 extern int g_emitting_callee;
 
-const char *get_missing_function_hint(ParserContext *ctx, const char *name);
 #endif

@@ -1,0 +1,40 @@
+// features/enums: test_enum_prefixed_names
+// A variable or a function whose name starts with an enum's name and `_` is
+// its own name: `Color_max` was emitted as `Color__max`, as if it were the
+// 0.5.1 spelling of a variant, and the C did not compile.
+
+enum Color {
+    Red,
+    Green,
+}
+
+fn Color_name(c: Color) -> int {
+    return match c {
+        Color::Red => 1,
+        Color::Green => 2,
+    };
+}
+
+test "names_that_start_like_an_enum" {
+    let Color_max = 3;
+    assert(Color_max == 3, "a local named Color_max");
+    assert(Color_name(Color::Green) == 2, "a function named Color_name");
+}
+
+// A name whose part before the first `_` starts with `Result`, `Option` or `JsonType` was
+// rewritten the same way, even without an enum of that name: `Optional_count` became
+// `Optional__count`, `Options_default` `Options__default`.
+fn Result_ok() -> int {
+    return 1;
+}
+
+fn Options_default() -> int {
+    return 7;
+}
+
+test "names_that_start_like_a_std_type" {
+    let Optional_count = 4;
+    let JsonType_tag = 10;
+    expect_eq(Optional_count + Options_default(), 11, "Optional_ and Options_ should not change");
+    expect_eq(JsonType_tag + Result_ok(), 11, "JsonType_ and Result_ should not change");
+}

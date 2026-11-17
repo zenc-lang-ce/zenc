@@ -67,8 +67,34 @@ char *parse_condition_raw(ParserContext *ctx, Lexer *l)
     }
 }
 
+// A default value is compiled in each call that leaves its argument out, where the parameters
+// do not exist: it cannot name one (of the `count` in `names`), before or after its own.
+static void check_default_names_no_parameter(ASTNode *def, const char *param, char **names,
+                                             int count)
+{
+    if (!def)
+    {
+        return;
+    }
+    char **refs = NULL;
+    int ref_count = 0;
+    find_var_refs(def, &refs, &ref_count);
+    for (char **ref = refs; ref < refs + ref_count; ref++)
+    {
+        for (char **name = names; name < names + count; name++)
+        {
+            if (strcmp(*ref, *name) == 0)
+            {
+                zerror_at(def->token, "The default value of '%s' uses the parameter '%s'", param,
+                          *name);
+                break;
+            }
+        }
+    }
+}
+
 int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_values_out,
-                           int *count_out, Type ***types_out, char ***names_out,
+                           int *count_out, Type ***types_out, char ***names_out, Token **tokens_out,
                            int *is_varargs_out, char ***ctype_overrides_out)
 {
     Token t = lexer_next(l);
@@ -83,6 +109,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
     ASTNode **default_values = xcalloc((size_t)(max_args), sizeof(ASTNode *));
     Type **types = xcalloc((size_t)(max_args), sizeof(Type *));
     char **names = xcalloc((size_t)(max_args), sizeof(char *));
+    Token *tokens = xcalloc((size_t)(max_args), sizeof(Token));
     char **ctype_overrides = xcalloc((size_t)(max_args), sizeof(char *));
 
     // Initial 16 entries already zeroed by xcalloc
@@ -105,6 +132,8 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                 memset(types + max_args, 0, sizeof(Type *) * (size_t)(new_max - max_args));
                 names = xrealloc(names, sizeof(char *) * (size_t)(new_max));
                 memset(names + max_args, 0, sizeof(char *) * (size_t)(new_max - max_args));
+                tokens = xrealloc(tokens, sizeof(Token) * (size_t)(new_max));
+                memset(tokens + max_args, 0, sizeof(Token) * (size_t)(new_max - max_args));
                 ctype_overrides = xrealloc(ctype_overrides, sizeof(char *) * (size_t)(new_max));
                 memset(ctype_overrides + max_args, 0,
                        sizeof(char *) * (size_t)(new_max - max_args));
@@ -160,44 +189,23 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
             if (is_token(param_tok, "self"))
             {
                 names[count] = xstrdup("self");
-                if (ctx->current_impl_struct)
+                tokens[count] = param_tok;
+                if (ctx->current_impl_target)
                 {
-                    char *buf_type = xmalloc(strlen(ctx->current_impl_struct) + 2);
-                    sprintf(buf_type, "%s*", ctx->current_impl_struct); /* safe */
+                    // self is a pointer to the impl's type, in the signature and the body.
+                    Type *st = type_clone(ctx->current_impl_target);
+                    st->is_const = is_const_param;
+                    Type *ptr = type_new_ptr(st);
 
-                    if (is_primitive_type_name(ctx->current_impl_struct))
-                    {
-                        // Primitives: self is a pointer in signature and body
-                        TypeKind pk = get_primitive_type_kind(ctx->current_impl_struct);
-                        Type *bt = type_new(pk);
-                        if (pk == TYPE_STRUCT)
-                        { // Fallback if get_primitive_type_kind failed for some reason
-                            bt->name = xstrdup(ctx->current_impl_struct);
-                        }
-                        bt->is_const = is_const_param;
-                        Type *ptr = type_new_ptr(bt);
-
-                        add_symbol(ctx, "self", ptr, 0);
-                        types[count] = ptr;
-                    }
-                    else
-                    {
-                        // Structs and opaque aliases: self is a pointer in signature and body
-                        Type *st = type_from_name(ctx, ctx->current_impl_struct);
-                        st->is_const = is_const_param;
-                        Type *ptr = type_new_ptr(st);
-
-                        add_symbol(ctx, "self", ptr, 0);
-                        types[count] = ptr;
-                    }
-                    zfree(buf_type);
+                    add_symbol_with_token(ctx, "self", ptr, param_tok, 0);
+                    types[count] = ptr;
                 }
                 else
                 {
                     Type *void_type = type_new(TYPE_VOID);
                     void_type->is_const = is_const_param;
                     types[count] = type_new_ptr(void_type);
-                    add_symbol(ctx, "self", types[count], 0);
+                    add_symbol_with_token(ctx, "self", types[count], param_tok, 0);
                 }
                 ctype_overrides[count] = ctype_override;
                 count++;
@@ -212,6 +220,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                 check_identifier(param_tok);
                 char *name = token_strdup(param_tok);
                 names[count] = name; // Store name
+                tokens[count] = param_tok;
                 if (lexer_next(l).kind != TOK_COLON)
                 {
                     zpanic_at(lexer_peek(l), "Expected ':'");
@@ -266,10 +275,19 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
         return 0;
     }
 
+    for (int i = 0; i < count; i++)
+    {
+        check_default_names_no_parameter(default_values[i], names[i], names, count);
+    }
+
     *default_values_out = default_values;
     *count_out = count;
     *types_out = types;
     *names_out = names;
+    if (tokens_out)
+    {
+        *tokens_out = tokens;
+    }
     if (ctype_overrides_out)
     {
         *ctype_overrides_out = ctype_overrides;

@@ -1,0 +1,7 @@
+// ARGS: transpile
+// A compound assignment to an element of a const array is rejected by zc.
+
+fn main() {
+    let arr: const int[3] = [1, 2, 3];
+    arr[0] <<= 1;
+}

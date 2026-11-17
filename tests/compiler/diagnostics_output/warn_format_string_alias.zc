@@ -1,0 +1,23 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// W701 checks the C value printf reads, where an alias is a typedef: an alias,
+// opaque or not, matches the conversions of the type under it. An enum written
+// as a type matches %d as its values do, and %p takes a string. The warning
+// names the type as written.
+
+enum Color { Red, Green }
+alias Hue = Color;
+opaque alias Level = u8;
+opaque alias Meters = f64;
+
+fn level(n: u8) -> Level { return n; }
+fn meters(x: f64) -> Meters { return x; }
+
+fn main() {
+    let c: Color = Color::Red;
+    let h: Hue = Color::Green;
+    let s: string = "text";
+    printf("%d %d %u %f %p\n", c, h, level(2), meters(2.5), s);
+    let buf: char[32];
+    sprintf(buf, "%s\n", meters(1.0));
+}

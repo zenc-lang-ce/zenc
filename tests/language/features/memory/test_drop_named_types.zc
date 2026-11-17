@@ -1,0 +1,71 @@
+// features/memory: a local of a struct with Drop is dropped once whatever its C spelling: a
+// struct renamed in C with @link_name, and a `const` local, kept, moved or returned.
+
+let drops: int = 0;
+
+@link_name("c_res")
+struct Linked {
+    id: int;
+}
+
+impl Drop for Linked {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+struct Res {
+    id: int;
+}
+
+impl Drop for Res {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+fn take(r: Res) -> int {
+    return r.id;
+}
+
+fn make_const(id: int) -> Res {
+    let r: const Res = Res { id: id };
+    return r;
+}
+
+test "a struct with @link_name" {
+    drops = 0;
+    {
+        let l = Linked { id: 1 };
+        assert(l.id == 1, "alive");
+    }
+    assert(drops == 1, "dropped once");
+}
+
+test "a const local that is kept" {
+    drops = 0;
+    {
+        let r: const Res = Res { id: 2 };
+        assert(r.id == 2, "alive");
+    }
+    assert(drops == 1, "dropped once");
+}
+
+test "a const local that is moved" {
+    drops = 0;
+    {
+        let r: const Res = Res { id: 3 };
+        assert(take(r) == 3, "moved");
+        assert(drops == 1, "dropped by take");
+    }
+    assert(drops == 1, "not dropped again");
+}
+
+test "a const local that is returned" {
+    drops = 0;
+    {
+        let r = make_const(4);
+        assert(drops == 0, "not dropped by make_const");
+    }
+    assert(drops == 1, "dropped once by the caller");
+}

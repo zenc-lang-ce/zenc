@@ -1,0 +1,24 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A variable captured by value is the closure's own copy: the body may change
+// it, the closure keeps it between calls, and the original does not change.
+fn counter(start: int) -> fn() -> int {
+    let n = start;
+    return fn() -> int {
+        n += 1;
+        return n;
+    };
+}
+
+test "a closure keeps its captured copy between calls" {
+    let next = counter(10);
+    next();
+    next();
+    assert(next() == 13, "the copy counts across calls");
+
+    let base = 5;
+    let bump = fn() -> int {
+        base = base + 1;
+        return base;
+    };
+    assert(bump() == 6 && base == 5, "the original does not change");
+}

@@ -1,0 +1,77 @@
+// fstrings: each interpolated expression runs once, with both backends (issue #14).
+// In C++, `_z_str` is a function, so an expression written twice in the
+// generated code ran twice; a side effect nested in an index or a member
+// access is not seen from the outermost node.
+
+let calls = 0;
+
+fn next_int() -> int {
+    calls = calls + 1;
+    return 7;
+}
+
+fn next_float() -> f64 {
+    calls = calls + 1;
+    return 1.5;
+}
+
+fn next_bool() -> bool {
+    calls = calls + 1;
+    return true;
+}
+
+fn next_index() -> int {
+    calls = calls + 1;
+    return 1;
+}
+
+struct Counter {
+    v: int;
+}
+
+impl Counter {
+    fn get(self) -> int {
+        calls = calls + 1;
+        return self.v;
+    }
+}
+
+fn make_counter() -> Counter {
+    calls = calls + 1;
+    return Counter { v: 5 };
+}
+
+@packed
+struct Header {
+    tag: u8;
+    size: i32;
+}
+
+test "a call is evaluated once" {
+    calls = 0;
+    let s = f"{next_int()} {next_float()} {next_bool()}";
+    assert(strcmp(s, "7 1.500000 true") == 0, "values of the calls");
+    assert(calls == 3, "each call runs once");
+}
+
+test "a call nested in an index or a member access is evaluated once" {
+    let arr: int[3] = [10, 20, 30];
+    calls = 0;
+    let s = f"{arr[next_index()]} {make_counter().v}";
+    assert(strcmp(s, "20 5") == 0, "values read through the calls");
+    assert(calls == 2, "the nested calls run once");
+}
+
+test "a method call and an operand are evaluated once" {
+    let c = Counter { v: 3 };
+    calls = 0;
+    let s = f"{c.get()} {1 + next_int()}";
+    assert(strcmp(s, "3 8") == 0, "values of the method and the sum");
+    assert(calls == 2, "the method and the operand run once");
+}
+
+test "a field of a packed struct is printed" {
+    let h = Header { tag: (u8)2, size: 64 };
+    let s = f"{h.tag} {h.size}";
+    assert(strcmp(s, "2 64") == 0, "packed fields");
+}

@@ -328,6 +328,16 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
             return parse_var_decl(ctx, l, 0);
         }
 
+        // `const x = 5;` declared a variable before v0.5.0. Without this it is
+        // read as the identifier `const` and an assignment to an undeclared `x`,
+        // which only fail in the C compiler. Parse the rest as a `let` so
+        // recovery (LSP) does not report `x` as undeclared too.
+        if (strncmp(tk.start, "const", 5) == 0 && tk.len == 5)
+        {
+            report_local_const(tk);
+            return parse_var_decl(ctx, l, 0);
+        }
+
         // Static local variable: static let x = 0;
         if (strncmp(tk.start, "static", 6) == 0 && tk.len == 6)
         {
@@ -727,10 +737,7 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
         int is_assign = 0;
         if (s->kind == NODE_EXPR_BINARY)
         {
-            char *op = s->binary.op;
-            if (strcmp(op, "=") == 0 ||
-                (strlen(op) > 1 && op[strlen(op) - 1] == '=' && strcmp(op, "==") != 0 &&
-                 strcmp(op, "!=") != 0 && strcmp(op, "<=") != 0 && strcmp(op, ">=") != 0))
+            if (is_assignment_operator(s->binary.op))
             {
                 is_assign = 1;
             }
@@ -907,16 +914,8 @@ static ASTNode *parse_block_impl(ParserContext *ctx, Lexer *l, int is_value)
                 strcmp(sym->name, "it") != 0 && strcmp(sym->name, "self") != 0)
             {
                 // RAII: Don't warn if type implements Drop (it is used implicitly)
-                int has_drop = (sym->type_info && sym->type_info->traits.has_drop);
-                if (!has_drop && sym->type_info && sym->type_info->name)
-                {
-                    ASTNode *def = find_struct_def(ctx, type_def_name(sym->type_info));
-                    if (def && def->type_info && def->type_info->traits.has_drop)
-                    {
-                        has_drop = 1;
-                    }
-                }
-
+                int has_drop = sym->type_info && (sym->type_info->traits.has_drop ||
+                                                  type_will_drop(ctx, sym->type_info));
                 if (!has_drop)
                 {
                     warn_unused_variable(sym->decl_token, sym->name);

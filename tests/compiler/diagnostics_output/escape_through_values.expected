@@ -1,0 +1,68 @@
+   Compiling tests/compiler/diagnostics_output/escape_through_values.zc...
+error: Escape analysis error: pointer assigned to a location that outlives it
+  --> tests/compiler/diagnostics_output/escape_through_values.zc:15:5
+   |
+15 |     return b.ptr;
+   |     ^ here
+   |
+   = help: The source pointer belongs to a child scope and will become invalid when that scope ends.
+   = help: Consider copying the value instead of taking a reference.
+error: Escape analysis error: pointer assigned to a location that outlives it
+  --> tests/compiler/diagnostics_output/escape_through_values.zc:21:5
+   |
+21 |     return a[0];
+   |     ^ here
+   |
+   = help: The source pointer belongs to a child scope and will become invalid when that scope ends.
+   = help: Consider copying the value instead of taking a reference.
+error: Escape analysis error: pointer assigned to a location that outlives it
+  --> tests/compiler/diagnostics_output/escape_through_values.zc:27:5
+   |
+27 |     return p;
+   |     ^ here
+   |
+   = help: The source pointer belongs to a child scope and will become invalid when that scope ends.
+   = help: Consider copying the value instead of taking a reference.
+error: Escape analysis error: pointer assigned to a location that outlives it
+  --> tests/compiler/diagnostics_output/escape_through_values.zc:34:5
+   |
+34 |     return q;
+   |     ^ here
+   |
+   = help: The source pointer belongs to a child scope and will become invalid when that scope ends.
+   = help: Consider copying the value instead of taking a reference.
+error: Escape analysis error: pointer assigned to a location that outlives it
+  --> tests/compiler/diagnostics_output/escape_through_values.zc:41:5
+   |
+41 |     return s;
+   |     ^ here
+   |
+   = help: The source pointer belongs to a child scope and will become invalid when that scope ends.
+   = help: Consider copying the value instead of taking a reference.
+error: Escape analysis error: pointer assigned to a location that outlives it
+  --> tests/compiler/diagnostics_output/escape_through_values.zc:48:5
+   |
+48 |     return h.ptr;
+   |     ^ here
+   |
+   = help: The source pointer belongs to a child scope and will become invalid when that scope ends.
+   = help: Consider copying the value instead of taking a reference.
+error: Escape analysis error: pointer assigned to a location that outlives it
+  --> tests/compiler/diagnostics_output/escape_through_values.zc:55:5
+   |
+55 |     return a[0];
+   |     ^ here
+   |
+   = help: The source pointer belongs to a child scope and will become invalid when that scope ends.
+   = help: Consider copying the value instead of taking a reference.
+error: Escape analysis error: pointer assigned to a location that outlives it
+  --> tests/compiler/diagnostics_output/escape_through_values.zc:63:13
+   |
+63 |             return p;
+   |             ^ here
+   |
+   = help: The source pointer belongs to a child scope and will become invalid when that scope ends.
+   = help: Consider copying the value instead of taking a reference.
+     error: semantic analysis found 8 errors
+       Check failed with 8 errors
+[exit 1]

@@ -60,7 +60,6 @@ typedef enum
     TOK_AND,        ///< 'and' keyword.
     TOK_OR,         ///< 'or' keyword.
     TOK_NOT,        ///< 'not' keyword.
-    TOK_FOR,        ///< 'for' keyword.
     TOK_DO,         ///< 'do' keyword.
     TOK_COMPTIME,   ///< 'comptime' keyword.
     TOK_ELLIPSIS,   ///< ...
@@ -96,6 +95,7 @@ typedef struct
 typedef struct
 {
     const char *src;        ///< Source code buffer.
+    const char *end;        ///< Where the text to read ends; NULL to read up to its NUL.
     int pos;                ///< Current position index.
     int line;               ///< Current line number.
     int col;                ///< Current column number.

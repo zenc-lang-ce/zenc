@@ -1,0 +1,11 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// A token that does not start a field is an error, not skipped.
+
+struct Point {
+    x: int;
+    42;
+    y: int;
+}
+
+fn main() {}

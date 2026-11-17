@@ -36,8 +36,6 @@ static ZenCompiler *g_server_compiler = NULL;
 
 // Files parsed by the current workspace indexing, for its summary.
 static int g_indexed_file_count = 0;
-// While the workspace is indexed, files are parsed without validating their types.
-static int g_is_indexing = 0;
 
 static void scan_dir(const char *dir_path, StringList *files);
 static void scan_file(const char *path);
@@ -59,10 +57,6 @@ static IgnoreRule *g_ignore_rules = NULL;
 static int g_ignore_rule_count = 0;
 static size_t g_scan_root_length = 0;
 
-// Initialize the project with a root directory
-
-// Perform full project indexing
-
 void lsp_set_compiler(ZenCompiler *compiler)
 {
     g_server_compiler = compiler;
@@ -80,14 +74,10 @@ void lsp_project_init(const char *root_path)
         return;
     }
 
-    // Close any previous hoist_out before creating a new project context
-    if (g_project && g_project->ctx && g_project->ctx->cg.hoist_out)
-    {
-        fclose(g_project->ctx->cg.hoist_out);
-    }
-
     g_project = xcalloc(1, sizeof(LSPProject));
     g_project->root_path = xstrdup(root_path);
+    // The index finds the types a file names among the ones it imports.
+    lsp_index_set_visible_type(lsp_project_visible_type);
     fprintf(stderr, "zls: project root: %s\n", root_path);
     g_project->use_gitignore = 1;
 
@@ -139,7 +129,6 @@ void lsp_project_index_workspace(void)
     g_scan_root_length = strlen(g_project->root_path);
     double start = z_get_monotonic_time();
     g_indexed_file_count = 0;
-    g_is_indexing = 1;
     // The files are collected first, so that the progress shown by the client has a total.
     StringList files = {0};
     scan_dir(g_project->root_path, &files);
@@ -155,7 +144,6 @@ void lsp_project_index_workspace(void)
         }
     }
     string_list_free(&files);
-    g_is_indexing = 0;
     char summary[64];
     snprintf(summary, sizeof(summary), "Indexed %d files", g_indexed_file_count);
     lsp_progress_end(summary);
@@ -269,7 +257,6 @@ void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
     *g_server_compiler = *base_compiler;
     g_project = NULL;
     curr_func_ret = NULL;
-    clear_registered_traits();
 
     lsp_project_init(root_path);
     libc_free(root_path);
@@ -286,7 +273,6 @@ void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
     fprintf(stderr, "zls: project rebuilt, arena in use: %zu KB\n", g_built_total / 1024);
 }
 
-// Default error handler for indexing phase
 // `*` and `?` match within a path component, as in .gitignore.
 static int glob_match(const char *pattern, const char *text)
 {
@@ -435,11 +421,10 @@ static const IgnoreRule *is_ignored(const char *path, const char *name, int is_d
 
 static void scan_file(const char *path)
 {
-    char uri[MAX_PATH_LEN + 16];
-    snprintf(uri, sizeof(uri), "file://%s", path);
-
-    // Deduplicate indexing
-    if (lsp_project_get_file(uri))
+    // Deduplicate indexing. A file an import indexed first (index_imported_modules) is indexed
+    // again here, as a file of the workspace.
+    ProjectFile *known = lsp_project_get_file_by_path(path);
+    if (known && !known->is_external)
     {
         return;
     }
@@ -450,7 +435,7 @@ static void scan_file(const char *path)
         return;
     }
 
-    lsp_project_update_file(uri, src);
+    lsp_project_update_file(lsp_path_to_uri(path), src);
     g_indexed_file_count++;
 
     // Free source after update
@@ -470,15 +455,6 @@ static void scan_dir(const char *dir_path, StringList *files)
     while ((dir = readdir(d)) != NULL)
     {
         if (dir->d_name[0] == '.')
-        {
-            continue;
-        }
-
-        // Project filters: skip known noise directories
-        if (strcmp(dir->d_name, "node_modules") == 0 || strcmp(dir->d_name, "obj") == 0 ||
-            strcmp(dir->d_name, ".git") == 0 ||
-            strcmp(dir->d_name, "vhdl") == 0 || // Often contains large vendor dirs
-            strcmp(dir->d_name, "vivado") == 0)
         {
             continue;
         }
@@ -512,41 +488,560 @@ static void scan_dir(const char *dir_path, StringList *files)
     closedir(d);
 }
 
+static int hex_digit(char c)
+{
+    if (c >= '0' && c <= '9')
+    {
+        return c - '0';
+    }
+    c = (char)toupper((unsigned char)c);
+    return c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+}
+
+char *lsp_uri_to_path(const char *uri)
+{
+    if (strncmp(uri, "file://", 7) != 0)
+    {
+        return xstrdup(uri);
+    }
+    const char *s = uri + 7;
+    char *path = xmalloc(strlen(s) + 1);
+    size_t used = 0;
+    for (; *s; s++)
+    {
+        int high = s[0] == '%' ? hex_digit(s[1]) : -1;
+        int low = high >= 0 ? hex_digit(s[2]) : -1;
+        if (low >= 0)
+        {
+            path[used++] = (char)(high * 16 + low);
+            s += 2;
+        }
+        else
+        {
+            path[used++] = *s;
+        }
+    }
+    path[used] = 0;
+    // `file:///C:/x`: that `/` belongs to the URI, not to the path.
+    if (path[0] == '/' && isalpha((unsigned char)path[1]) && path[2] == ':')
+    {
+        memmove(path, path + 1, used);
+    }
+    return path;
+}
+
+char *lsp_path_to_uri(const char *path)
+{
+    size_t length = strlen(path);
+    size_t capacity = length * 3 + sizeof("file:///");
+    char *uri = xmalloc(capacity);
+    size_t used = (size_t)snprintf(uri, capacity, "file://");
+    if (isalpha((unsigned char)path[0]) && path[1] == ':')
+    {
+        uri[used++] = '/';
+    }
+    for (size_t i = 0; i < length; i++)
+    {
+        unsigned char c = (unsigned char)path[i];
+        if (c == '\\')
+        {
+            uri[used++] = '/';
+        }
+        else if (isalnum(c) || strchr("/-._~:", c))
+        {
+            uri[used++] = (char)c;
+        }
+        else
+        {
+            static const char hex[] = "0123456789ABCDEF";
+            uri[used++] = '%';
+            uri[used++] = hex[c >> 4];
+            uri[used++] = hex[c & 0x0F];
+        }
+    }
+    uri[used] = 0;
+    return uri;
+}
+
+ASTNode *lsp_project_top_level(const ProjectFile *pf)
+{
+    ASTNode *node = pf ? pf->ast : NULL;
+    return node && node->kind == NODE_ROOT ? node->root.children : node;
+}
+
 ProjectFile *lsp_project_get_file(const char *uri)
 {
-    if (!g_project)
+    return uri ? lsp_project_get_file_by_path(lsp_uri_to_path(uri)) : NULL;
+}
+
+ProjectFile *lsp_project_get_file_by_path(const char *path)
+{
+    if (!g_project || !path)
     {
         return NULL;
     }
-    ProjectFile *curr = g_project->files;
-    while (curr)
+    for (ProjectFile *curr = g_project->files; curr; curr = curr->next)
     {
-        if (strcmp(curr->uri, uri) == 0)
+        if (curr->path && strcmp(curr->path, path) == 0)
         {
             return curr;
         }
-        curr = curr->next;
     }
     return NULL;
 }
 
-static ProjectFile *add_project_file(const char *uri)
+static ProjectFile *add_project_file(const char *path)
 {
     ProjectFile *f = xcalloc(1, sizeof(ProjectFile));
-    f->uri = xstrdup(uri);
-    // Simple path extraction from URI (file://...)
-    if (strncmp(uri, "file://", 7) == 0)
-    {
-        f->path = xstrdup(uri + 7);
-    }
-    else
-    {
-        f->path = xstrdup(uri);
-    }
+    f->path = xstrdup(path);
+    f->uri = lsp_path_to_uri(path);
 
     f->next = g_project->files;
     g_project->files = f;
     return f;
+}
+
+// What the parser context had before a parse: the lists it adds to, newest first, so what the
+// parse added is what comes before these.
+typedef struct
+{
+    TypeUsage *usages;
+    GenericParameterUse *generic_parameter_uses;
+    GenericImplTemplate *impls;
+    GenericFuncTemplate *functions;
+    ASTNode *implicit_imports; ///< The std modules the parser imports by itself (std/test.zc).
+} ParseMarks;
+
+static ParseMarks parse_marks(void)
+{
+    ParseMarks marks = {g_project->ctx->pending_type_validations,
+                        g_project->ctx->generic_parameter_uses, g_project->ctx->impl_templates,
+                        g_project->ctx->func_templates, g_project->ctx->implicit_std_imports};
+    return marks;
+}
+
+// Bumped whenever a file's imports are read again: the visible files kept for a file are stale.
+static unsigned g_imports_generation = 0;
+
+// Reads the files `pf` imports from its text (`import "a.zc"`, `import { f } from "a.zc"`,
+// `import "a.zc" as a`) and resolves them as the parser does. Its AST does not list them all: a
+// file another one imported before leaves no node where it is imported again.
+static void read_imports(ProjectFile *pf)
+{
+    g_imports_generation++;
+    pf->imports = NULL;
+    pf->import_count = 0;
+    if (!pf->source || !pf->path)
+    {
+        return;
+    }
+    int capacity = 0;
+    Lexer l;
+    lexer_init(&l, pf->source, g_project->ctx->config, pf->path);
+    for (Token t = lexer_next(&l); t.kind != TOK_EOF; t = lexer_next(&l))
+    {
+        if (t.kind != TOK_IDENT || t.len != 6 || strncmp(t.start, "import", 6) != 0)
+        {
+            continue;
+        }
+        Token file = lexer_next(&l);
+        while (file.kind != TOK_STRING && file.kind != TOK_SEMICOLON && file.kind != TOK_EOF)
+        {
+            file = lexer_next(&l);
+        }
+        if (file.kind != TOK_STRING || file.len < 2)
+        {
+            continue;
+        }
+        char *written = xmalloc(file.len - 1);
+        memcpy(written, file.start + 1, file.len - 2);
+        written[file.len - 2] = 0;
+        char *resolved = z_resolve_path(written, pf->path, g_project->ctx->config);
+        if (!resolved)
+        {
+            continue;
+        }
+        if (pf->import_count == capacity)
+        {
+            capacity = capacity ? capacity * 2 : 8;
+            pf->imports = xrealloc(pf->imports, (size_t)capacity * sizeof(FileImport));
+        }
+        // `as geo` after the path, read on a copy: without a `;`, the next token may start the
+        // next import.
+        Lexer after = l;
+        Token as = lexer_next(&after);
+        Token alias = lexer_next(&after);
+        int has_alias = as.kind == TOK_IDENT && as.len == 2 && strncmp(as.start, "as", 2) == 0 &&
+                        alias.kind == TOK_IDENT;
+        pf->imports[pf->import_count++] =
+            (FileImport){resolved, has_alias ? token_strdup(alias) : NULL};
+    }
+}
+
+ProjectFile *lsp_project_aliased_module(const ProjectFile *pf, const char *alias)
+{
+    for (int i = 0; pf && alias && i < pf->import_count; i++)
+    {
+        if (pf->imports[i].alias && strcmp(pf->imports[i].alias, alias) == 0)
+        {
+            return lsp_project_get_file_by_path(pf->imports[i].path);
+        }
+    }
+    return NULL;
+}
+
+#define VISIBLE_FILES_MAX 256
+#define VISIBLE_FILES_MAX_DEPTH 32 // As deep as index_imported_modules follows imports
+
+// The files a file sees: itself first, then what it imports, directly or through another import.
+typedef struct
+{
+    const char *paths[VISIBLE_FILES_MAX];
+    ProjectFile *files[VISIBLE_FILES_MAX]; // NULL for a file the server has not read
+    int count;
+} VisibleFiles;
+
+static int is_visible(const VisibleFiles *visible, const char *path)
+{
+    for (int i = 0; path && i < visible->count; i++)
+    {
+        if (strcmp(visible->paths[i], path) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void collect_visible_files(VisibleFiles *visible, const char *path, int depth)
+{
+    if (is_visible(visible, path) || visible->count == VISIBLE_FILES_MAX ||
+        depth > VISIBLE_FILES_MAX_DEPTH)
+    {
+        return;
+    }
+    ProjectFile *pf = lsp_project_get_file_by_path(path);
+    visible->paths[visible->count] = path;
+    visible->files[visible->count++] = pf;
+    for (int i = 0; pf && i < pf->import_count; i++)
+    {
+        collect_visible_files(visible, pf->imports[i].path, depth + 1);
+    }
+}
+
+// The files `path` sees. They are kept while the same file asks again (its index asks once per type
+// name it reads) and no file's imports change.
+static const VisibleFiles *visible_files(const char *path)
+{
+    static VisibleFiles visible;
+    static char kept_path[MAX_PATH_LEN];
+    static unsigned kept_generation;
+    if (visible.count && kept_generation == g_imports_generation && strcmp(kept_path, path) == 0)
+    {
+        return &visible;
+    }
+    visible.count = 0;
+    collect_visible_files(&visible, path, 0);
+    snprintf(kept_path, sizeof(kept_path), "%s", path);
+    kept_generation = g_imports_generation;
+    return &visible;
+}
+
+void lsp_project_visit_documents_seeing(const char *uri,
+                                        void (*visit)(const char *uri, const char *source))
+{
+    ProjectFile *seen = g_project ? lsp_project_get_file(uri) : NULL;
+    if (!seen)
+    {
+        return;
+    }
+    // The files a file imports are resolved as the parser resolves them, to their real path (/tmp
+    // is /private/tmp on macOS); the path of an open document is the one of its URI.
+    const char *resolved = z_resolve_path(seen->path, NULL, g_project->ctx->config);
+    for (TrackedDocument *document = g_tracked_documents; document; document = document->next)
+    {
+        ProjectFile *pf = lsp_project_get_file(document->uri);
+        if (!pf || pf == seen)
+        {
+            continue;
+        }
+        const VisibleFiles *visible = visible_files(pf->path);
+        if (is_visible(visible, resolved))
+        {
+            visit(document->uri, document->source);
+        }
+    }
+}
+
+// The name a top-level node declares a type with, as the parser registers it; NULL for no type.
+static const char *declared_type_name(ASTNode *node)
+{
+    switch (node->kind)
+    {
+    case NODE_STRUCT:
+        return node->strct.name;
+    case NODE_ENUM:
+        return node->enm.name;
+    case NODE_TRAIT:
+        return node->trait.name;
+    case NODE_TYPE_ALIAS:
+        return node->type_alias.alias;
+    default:
+        return NULL;
+    }
+}
+
+// Whether `text`, written in an `import` of the file `importer`, leads to the file `target` (a
+// resolved path), as the parser resolves it.
+static int import_leads_to(const char *text, const char *importer, const char *target)
+{
+    char *resolved = z_resolve_path(text, importer, g_project->ctx->config);
+    return resolved && strcmp(resolved, target) == 0;
+}
+
+int lsp_project_import_text(const char *importer, const char *target, char *out, size_t size)
+{
+    if (!g_project || !g_project->ctx || !importer || !target || size == 0)
+    {
+        return 0;
+    }
+    CompilerConfig *cfg = g_project->ctx->config;
+    char *from = z_resolve_path(importer, NULL, cfg);
+    char *to = z_resolve_path(target, NULL, cfg);
+    if (!from || !to)
+    {
+        return 0;
+    }
+    const char *std_dir = z_find_std_dir(to);
+    if (std_dir && import_leads_to(std_dir + 1, importer, to))
+    {
+        snprintf(out, size, "%s", std_dir + 1);
+        return 1;
+    }
+    // The directories both share, then a `../` for each one left of `importer`'s.
+    size_t common = 0;
+    for (size_t i = 0; from[i] && from[i] == to[i]; i++)
+    {
+        if (z_is_path_sep(from[i]))
+        {
+            common = i + 1;
+        }
+    }
+    size_t used = 0;
+    out[0] = 0;
+    for (const char *p = from + common; *p; p++)
+    {
+        if (z_is_path_sep(*p))
+        {
+            str_appendf(out, size, &used, "../");
+        }
+    }
+    str_appendf(out, size, &used, "%s", to + common);
+    return import_leads_to(out, importer, to);
+}
+
+ASTNode *lsp_project_visible_type(const char *path, const char *name)
+{
+    if (!g_project || !g_project->ctx || !path || !name)
+    {
+        return NULL;
+    }
+    const VisibleFiles *visible = visible_files(path);
+
+    // The context registered one declaration per name and kind: when it is in a file `path` sees,
+    // that is the one. It also finds the types of a file not parsed on its own yet (an import the
+    // parse is still reading), which has no AST.
+    ParserContext *ctx = g_project->ctx;
+    GenericTemplate *template = find_generic_template(ctx, name);
+    ASTNode *registered[] = {find_struct_def(ctx, name), template ? template->struct_node : NULL,
+                             find_trait_def(ctx, name)};
+    int any_registered = find_type_alias_node(ctx, name) != NULL;
+    for (size_t r = 0; r < sizeof(registered) / sizeof(registered[0]); r++)
+    {
+        if (registered[r] && is_visible(visible, registered[r]->token.file))
+        {
+            return registered[r];
+        }
+        any_registered |= registered[r] != NULL;
+    }
+    // A name the program does not declare (a C header's) is in no file's AST.
+    if (!any_registered)
+    {
+        return NULL;
+    }
+    // Another file declares a type of that name too, and the context kept that one.
+    for (int i = 0; i < visible->count; i++)
+    {
+        ProjectFile *pf = visible->files[i];
+        for (ASTNode *node = pf ? lsp_project_top_level(pf) : NULL; node; node = node->next)
+        {
+            const char *declared = declared_type_name(node);
+            if (declared && strcmp(declared, name) == 0)
+            {
+                return node;
+            }
+        }
+    }
+    return NULL;
+}
+
+// The index of `pf`, a file the last parse read from `root`: its nodes, the generic impls the parse
+// registered for it and the type names it read there. Its generic impls and functions are kept
+// too, since they are no nodes of its AST.
+static void index_parsed_file(ProjectFile *pf, ASTNode *root, ParseMarks before)
+{
+    // Before the index: the types its names go to are those of the files it imports.
+    read_imports(pf);
+    pf->index = lsp_index_new();
+    lsp_build_index(g_project->ctx, pf->index, root, pf->source);
+
+    // A generic impl (`impl Vec<T>`) is a template, not a node of the file's AST: its
+    // methods are what `Vec<int>::new` goes to.
+    pf->generic_impl_count = 0;
+    for (GenericImplTemplate *it = g_project->ctx->impl_templates; it && it != before.impls;
+         it = it->next)
+    {
+        pf->generic_impl_count++;
+    }
+    pf->generic_impls = xcalloc((size_t)pf->generic_impl_count + 1, sizeof(ASTNode *));
+    pf->generic_impl_count = 0;
+    for (GenericImplTemplate *it = g_project->ctx->impl_templates; it && it != before.impls;
+         it = it->next)
+    {
+        ASTNode *impl = it->impl_node;
+        if (impl && impl->token.file && strcmp(impl->token.file, pf->path) == 0)
+        {
+            pf->generic_impls[pf->generic_impl_count++] = impl;
+            lsp_build_index(g_project->ctx, pf->index, impl, pf->source);
+        }
+    }
+
+    pf->generic_function_count = 0;
+    for (GenericFuncTemplate *it = g_project->ctx->func_templates; it && it != before.functions;
+         it = it->next)
+    {
+        pf->generic_function_count++;
+    }
+    pf->generic_functions = xcalloc((size_t)pf->generic_function_count + 1, sizeof(ASTNode *));
+    pf->generic_function_count = 0;
+    for (GenericFuncTemplate *it = g_project->ctx->func_templates; it && it != before.functions;
+         it = it->next)
+    {
+        ASTNode *fn = it->func_node;
+        if (fn && fn->token.file && strcmp(fn->token.file, pf->path) == 0)
+        {
+            pf->generic_functions[pf->generic_function_count++] = fn;
+            lsp_build_index(g_project->ctx, pf->index, fn, pf->source);
+        }
+    }
+
+    for (TypeUsage *use = g_project->ctx->pending_type_validations; use && use != before.usages;
+         use = use->next)
+    {
+        // The names the file imports were read too, in their own files.
+        if (use->location.file && strcmp(use->location.file, pf->path) == 0)
+        {
+            lsp_index_add_type_ref(pf->index, g_project->ctx, use->location, use->name);
+        }
+    }
+
+    for (GenericParameterUse *use = g_project->ctx->generic_parameter_uses;
+         use && use != before.generic_parameter_uses; use = use->next)
+    {
+        if (!use->at.file || strcmp(use->at.file, pf->path) != 0)
+        {
+            continue;
+        }
+        if (use->at.start == use->declaration.start)
+        {
+            char hover[MAX_SHORT_MSG_LEN];
+            snprintf(hover, sizeof(hover), "type parameter %.*s", (int)use->at.len, use->at.start);
+            lsp_index_add_def(pf->index, use->at, DECLARATION_TYPE_PARAMETER, hover, NULL);
+        }
+        else
+        {
+            lsp_index_add_ref(pf->index, use->at, use->declaration, NULL);
+        }
+    }
+}
+
+// Whether a file of the project declares a type named `name`.
+static int project_declares_type(const char *name)
+{
+    for (ProjectFile *pf = g_project->files; pf; pf = pf->next)
+    {
+        for (ASTNode *node = lsp_project_top_level(pf); node; node = node->next)
+        {
+            const char *declared = declared_type_name(node);
+            if (declared && strcmp(declared, name) == 0)
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+// The type names the last parse, whose marks are `before`, read in `pf` and that name no type
+// that `pf` sees: no type of the program, or one that only files `pf` does not import declare.
+// The server parses the whole workspace with one context, which knows those too.
+static TypeUsage *unknown_types_of(ProjectFile *pf, ParseMarks before)
+{
+    TypeUsage *unknown = NULL;
+    TypeUsage **tail = &unknown;
+    for (TypeUsage *use = g_project->ctx->pending_type_validations; use && use != before.usages;
+         use = use->next)
+    {
+        if (use->location.file && strcmp(use->location.file, pf->path) == 0 &&
+            !lsp_project_visible_type(pf->path, use->name) &&
+            (!is_known_type_name(g_project->ctx, use->name) || project_declares_type(use->name)))
+        {
+            TypeUsage *copy = xmalloc(sizeof(TypeUsage));
+            *copy = *use;
+            copy->next = NULL;
+            *tail = copy;
+            tail = &copy->next;
+        }
+    }
+    return unknown;
+}
+
+// The modules the last parse read that are no file of the project, such as the standard library
+// outside the workspace: their definitions are what `Vec` and `Vec<int>::new` go to. The
+// server's context parses a module once, so each is indexed from the import that read it.
+static void index_imported_modules(ASTNode *nodes, ParseMarks before, int depth);
+
+// The modules that the parse whose marks are `before` imported without an import of the program
+// (the parser loads std/test.zc for a `test` block): they are no nodes of any AST.
+static void index_implicit_imports(ParseMarks before)
+{
+    for (ASTNode *n = g_project->ctx->implicit_std_imports; n && n != before.implicit_imports;
+         n = n->next)
+    {
+        ASTNode *next = n->next;
+        n->next = NULL; // One import, not the ones before it.
+        index_imported_modules(n, before, 0);
+        n->next = next;
+    }
+}
+
+static void index_imported_modules(ASTNode *nodes, ParseMarks before, int depth)
+{
+    for (ASTNode *n = nodes; n && depth < 32; n = n->next)
+    {
+        const char *path = n->kind == NODE_IMPORT ? n->import_stmt.path : NULL;
+        if (!path || !n->import_stmt.module_root || lsp_project_get_file_by_path(path))
+        {
+            continue;
+        }
+        ProjectFile *module = add_project_file(path);
+        module->is_external = 1;
+        module->ast = n->import_stmt.module_root;
+        // The text it was parsed from, so code the parser generates in it stays out of the index.
+        module->source = load_file(path, NULL, g_project->ctx->config);
+        index_parsed_file(module, n->import_stmt.module_root, before);
+        index_imported_modules(n->import_stmt.module_root, before, depth + 1);
+    }
 }
 
 void lsp_project_update_file(const char *uri, const char *src)
@@ -559,8 +1054,10 @@ void lsp_project_update_file(const char *uri, const char *src)
     ProjectFile *pf = lsp_project_get_file(uri);
     if (!pf)
     {
-        pf = add_project_file(uri);
+        pf = add_project_file(lsp_uri_to_path(uri));
     }
+    // Opened or in the workspace: a file of the project, even if an import read it first.
+    pf->is_external = 0;
 
     // Use the plain path for internal compiler state.
     // This allows z_resolve_path and is_file_imported to work correctly.
@@ -603,97 +1100,58 @@ void lsp_project_update_file(const char *uri, const char *src)
     g_project->ctx->compiler->error_count = 0;
     g_project->ctx->compiler->warning_count = 0;
 
+    // The parser lists every type name it reads (newest first), to validate them when it is done.
+    // The server indexes the names this parse read, keeps those of this file that name no type
+    // (the caller may warn about them), and drops the list with the parse.
+    ParseMarks before = parse_marks();
     ASTNode *root = parse_program(g_project->ctx, &l);
+    pf->unknown_types = NULL;
     if (root)
     {
         pf->ast = root;
-        pf->index = lsp_index_new();
-        lsp_build_index(pf->index, root);
-
-        if (!g_is_indexing)
-        {
-            validate_types(g_project->ctx);
-        }
+        index_parsed_file(pf, root, before);
+        pf->unknown_types = unknown_types_of(pf, before);
+        index_imported_modules(root->kind == NODE_ROOT ? root->root.children : root, before, 0);
+        index_implicit_imports(before);
     }
     else
     {
         pf->ast = NULL;
+        pf->generic_impl_count = 0;
+        pf->generic_function_count = 0;
     }
+    g_project->ctx->pending_type_validations = before.usages;
+    g_project->ctx->generic_parameter_uses = before.generic_parameter_uses;
 
     g_project->ctx->current_filename = saved_filename;
 }
 
-DefinitionResult lsp_project_find_definition(const char *name)
+LSPRange *lsp_project_definition(ProjectFile *pf, LSPRange *r, ProjectFile **def_file)
 {
-    DefinitionResult res = {0};
-    if (!g_project)
+    ProjectFile *owner = pf;
+    const char *file = r->symbol.definition.file;
+    if (r->kind == RANGE_REFERENCE && file && pf->path && strcmp(file, pf->path) != 0)
     {
-        return res;
+        owner = lsp_project_get_file_by_path(file);
     }
-
-    ProjectFile *pf = g_project->files;
-    while (pf)
+    if (def_file)
     {
-        if (pf->index)
-        {
-            LSPRange *r = pf->index->head;
-            while (r)
-            {
-                if (r->kind == RANGE_DEFINITION && r->node)
-                {
-                    char *found_name = NULL;
-                    if (r->node->kind == NODE_FUNCTION)
-                    {
-                        found_name = r->node->func.name;
-                    }
-                    else if (r->node->kind == NODE_VAR_DECL)
-                    {
-                        found_name = r->node->var_decl.name;
-                    }
-                    else if (r->node->kind == NODE_CONST)
-                    {
-                        found_name = r->node->var_decl.name;
-                    }
-                    else if (r->node->kind == NODE_STRUCT)
-                    {
-                        found_name = r->node->strct.name;
-                    }
-                    else if (r->node->kind == NODE_ENUM)
-                    {
-                        found_name = r->node->enm.name;
-                    }
-                    else if (r->node->kind == NODE_ENUM_VARIANT)
-                    {
-                        found_name = r->node->variant.name;
-                    }
-                    else if (r->node->kind == NODE_TRAIT)
-                    {
-                        found_name = r->node->trait.name;
-                    }
-                    else if (r->node->kind == NODE_TYPE_ALIAS)
-                    {
-                        found_name = r->node->type_alias.alias;
-                    }
-
-                    if (found_name && strcmp(found_name, name) == 0)
-                    {
-                        res.uri = pf->uri;
-                        res.range = r;
-                        return res;
-                    }
-                }
-                r = r->next;
-            }
-        }
-        pf = pf->next;
+        *def_file = owner;
     }
-
-    return res;
+    if (r->kind == RANGE_DEFINITION)
+    {
+        return r;
+    }
+    if (!owner || !owner->index)
+    {
+        return NULL;
+    }
+    LSPRange *def =
+        lsp_find_at(owner->index, r->symbol.definition.line - 1, r->symbol.definition.col - 1);
+    return (def && def->kind == RANGE_DEFINITION) ? def : NULL;
 }
 
-// Find all references to a symbol name project-wide
-
-ReferenceResult *lsp_project_find_references(const char *name)
+ReferenceResult *lsp_project_find_references(Token definition)
 {
     if (!g_project)
     {
@@ -702,85 +1160,32 @@ ReferenceResult *lsp_project_find_references(const char *name)
     ReferenceResult *head = NULL;
     ReferenceResult *tail = NULL;
 
-    ProjectFile *pf = g_project->files;
-    while (pf)
+    for (ProjectFile *pf = g_project->files; pf; pf = pf->next)
     {
-        if (pf->index)
+        // A module outside the workspace is not the program's: rename must not edit it.
+        if (!pf->index || pf->is_external)
         {
-            LSPRange *r = pf->index->head;
-            while (r)
-            {
-                // We want REFERENCES that match the name
-                // Or DEFINITIONS that match the name (include decl)
-                char *scan_name = NULL;
-
-                if (r->node)
-                {
-                    if (r->node->kind == NODE_FUNCTION)
-                    {
-                        scan_name = r->node->func.name;
-                    }
-                    else if (r->node->kind == NODE_VAR_DECL)
-                    {
-                        scan_name = r->node->var_decl.name;
-                    }
-                    else if (r->node->kind == NODE_CONST)
-                    {
-                        scan_name = r->node->var_decl.name;
-                    }
-                    else if (r->node->kind == NODE_STRUCT)
-                    {
-                        scan_name = r->node->strct.name;
-                    }
-                    else if (r->node->kind == NODE_ENUM)
-                    {
-                        scan_name = r->node->enm.name;
-                    }
-                    else if (r->node->kind == NODE_ENUM_VARIANT)
-                    {
-                        scan_name = r->node->variant.name;
-                    }
-                    else if (r->node->kind == NODE_TRAIT)
-                    {
-                        scan_name = r->node->trait.name;
-                    }
-                    else if (r->node->kind == NODE_TYPE_ALIAS)
-                    {
-                        scan_name = r->node->type_alias.alias;
-                    }
-                    else if (r->node->kind == NODE_EXPR_VAR)
-                    {
-                        scan_name = r->node->var_ref.name;
-                    }
-                    else if (r->node->kind == NODE_EXPR_CALL && r->node->call.callee &&
-                             r->node->call.callee->kind == NODE_EXPR_VAR)
-                    {
-                        scan_name = r->node->call.callee->var_ref.name;
-                    }
-                }
-
-                if (scan_name && strcmp(scan_name, name) == 0)
-                {
-                    ReferenceResult *new_res = calloc(1, sizeof(ReferenceResult));
-                    new_res->uri = pf->uri;
-                    new_res->range = r;
-
-                    if (!head)
-                    {
-                        head = new_res;
-                        tail = new_res;
-                    }
-                    else
-                    {
-                        tail->next = new_res;
-                        tail = new_res;
-                    }
-                }
-
-                r = r->next;
-            }
+            continue;
         }
-        pf = pf->next;
+        for (LSPRange *r = pf->index->head; r; r = r->next)
+        {
+            if (!lsp_range_names(r, definition))
+            {
+                continue;
+            }
+            ReferenceResult *found = calloc(1, sizeof(ReferenceResult));
+            found->uri = pf->uri;
+            found->range = r;
+            if (!head)
+            {
+                head = found;
+            }
+            else
+            {
+                tail->next = found;
+            }
+            tail = found;
+        }
     }
     return head;
 }

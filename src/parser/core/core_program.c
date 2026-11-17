@@ -12,18 +12,6 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
-// Anything the top-level loop does not recognise is an error: skipping it
-// silently made declarations vanish (`const X: T = v;`, `extern let x: T;`).
-static void report_unexpected_toplevel(Token t)
-{
-    const char *hints[] = {"Top-level declarations start with fn, struct, enum, union, "
-                           "trait, impl, let, def, alias, import, extern, raw, test...",
-                           NULL};
-    char msg[MAX_SHORT_MSG_LEN];
-    snprintf(msg, sizeof(msg), "Unexpected '%.*s' at top level", (int)t.len, t.start);
-    zpanic_with_hints(t, msg, hints);
-}
-
 // An interpolated string runs at run time, so it cannot initialize a global:
 // the C would put a statement expression (`({ ... })`) at file scope. Only that
 // is rejected: `embed "file" as string` is a raw statement too, but a constant.
@@ -242,6 +230,7 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                     {
                         s->type_info->kind = TYPE_VECTOR;
                         s->type_info->array_size = attrs.vector_size;
+                        s->type_info->inner = s->strct.fields ? s->strct.fields->type_info : NULL;
                     }
                 }
             }
@@ -325,6 +314,10 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                     {
                         register_extern_symbol(ctx, s->strct.name);
                     }
+                }
+                else if (report_extern_with_kind(l))
+                {
+                    continue;
                 }
                 else
                 {
@@ -427,13 +420,9 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                 s->raw_stmt.content = normalize_raw_content(content);
                 zfree(content);
             }
-            else if (t.len == 5 && strncmp(t.start, "const", 5) == 0)
+            else if (is_token(t, "const"))
             {
-                const char *hints[] = {"For a compile-time constant use `def NAME = value;`",
-                                       "For a read-only global use `let NAME: const Type = value;`",
-                                       NULL};
-                zpanic_with_hints(t, "'const' cannot start a top-level declaration", hints);
-                lexer_next(l); // fault-tolerant (LSP): resync on the next declaration
+                report_toplevel_const(l, t);
                 continue;
             }
             else
@@ -629,7 +618,10 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
     // included, so the deferred bodies can see all of them.
     if (ctx->parse_depth == 0)
     {
+        ctx->declarations_read = 1;
+        resolve_pending_instances(ctx);
         parse_pending_bodies(ctx);
+        ctx->declarations_read = 0;
     }
     return nodes;
 }
@@ -647,6 +639,14 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
     {
         ctx->current_scope = ctx->global_scope;
     }
+
+    // A parse the language server abandoned on an error may have left instances or bodies waiting.
+    ctx->pending_instances = NULL;
+    ctx->pending_instances_tail = NULL;
+    ctx->declarations_read = 0;
+    ctx->pending_template_bodies = NULL;
+    ctx->pending_template_bodies_tail = NULL;
+    ctx->body_copies = NULL;
 
     ASTNode *r = ast_create(NODE_ROOT);
     skip_comments(l);

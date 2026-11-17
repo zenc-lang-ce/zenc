@@ -1,0 +1,56 @@
+// features/memory: a fixed-size array drops each of its elements that needs dropping, once: in a
+// local, in a struct field and nested, and an array literal moves the values it is built from.
+
+struct Res {
+    id: int;
+}
+
+let drops: int = 0;
+
+impl Drop for Res {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+struct Pair2 {
+    items: Res[2];
+}
+
+test "a local array" {
+    drops = 0;
+    {
+        let a = [Res { id: 1 }, Res { id: 2 }];
+        assert(a[1].id == 2, "alive");
+    }
+    assert(drops == 2, "each element dropped once");
+}
+
+test "an array built from variables" {
+    drops = 0;
+    {
+        let r1 = Res { id: 3 };
+        let r2 = Res { id: 4 };
+        let a = [r1, r2];
+        assert(a[0].id == 3, "moved in");
+    }
+    assert(drops == 2, "dropped once, by the array");
+}
+
+test "an array in a struct field" {
+    drops = 0;
+    {
+        let p = Pair2 { items: [Res { id: 5 }, Res { id: 6 }] };
+        assert(p.items[0].id == 5, "alive");
+    }
+    assert(drops == 2, "each element dropped once");
+}
+
+test "a nested array" {
+    drops = 0;
+    {
+        let m = [[Res { id: 7 }, Res { id: 8 }], [Res { id: 9 }, Res { id: 10 }]];
+        assert(m[1][0].id == 9, "alive");
+    }
+    assert(drops == 4, "each element dropped once");
+}

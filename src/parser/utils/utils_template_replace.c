@@ -145,11 +145,11 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c)
 
     if (strcmp(c, "int") == 0)
     {
-        return type_new(TYPE_INT);
+        return type_new(TYPE_I32);
     }
     if (strcmp(c, "float") == 0)
     {
-        return type_new(TYPE_FLOAT);
+        return type_new(TYPE_F32);
     }
     if (strcmp(c, "void") == 0)
     {
@@ -221,7 +221,7 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c)
     }
     if (strcmp(c, "uint") == 0)
     {
-        return type_new(TYPE_UINT);
+        return type_new(TYPE_U32);
     }
 
     if (strcmp(c, "byte") == 0)
@@ -346,6 +346,8 @@ static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char 
         MatchPattern *copy = xcalloc(1, sizeof(MatchPattern));
         copy->kind = src->kind;
         copy->is_inclusive = src->is_inclusive;
+        copy->name_token = src->name_token;
+        copy->scope_token = src->scope_token;
         if (src->name.scope)
         {
             copy->name.scope = rename_template(src->name.scope, os, ns);
@@ -449,10 +451,10 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
     case NODE_EXPR_BINARY:
         new_node->binary.left = copy_ast_replacing(ctx, n->binary.left, b, os, ns);
         new_node->binary.right = copy_ast_replacing(ctx, n->binary.right, b, os, ns);
-        new_node->binary.op = n->binary.op ? xstrdup(n->binary.op) : NULL;
+        new_node->binary.op = n->binary.op;
         break;
     case NODE_EXPR_UNARY:
-        new_node->unary.op = n->unary.op ? xstrdup(n->unary.op) : NULL;
+        new_node->unary.op = n->unary.op;
         new_node->unary.operand = copy_ast_replacing(ctx, n->unary.operand, b, os, ns);
         break;
     case NODE_EXPR_CALL:
@@ -480,9 +482,9 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
             Type *owner = replace_type_formal(ctx, n->var_ref.owner, b, os, ns);
             char *owner_name = type_mangle_spelling(owner);
             new_node->var_ref.owner = owner;
-            if (n->var_ref.variant.scope)
+            if (n->var_ref.variant.member)
             {
-                new_node->var_ref.variant.scope = owner_name;
+                new_node->var_ref.variant.owner = owner;
                 new_node->var_ref.name = mangle_variant_symbol(owner_name, n->var_ref.member);
             }
             else
@@ -491,25 +493,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
             }
             break;
         }
-        // A method of the template (`Vec__push`, inside its impl) is the instance's.
-        char *n1 = n->var_ref.name ? xstrdup(n->var_ref.name) : NULL;
-        if (os && ns)
-        {
-            size_t os_len = strlen(os);
-            size_t ns_len = strlen(ns);
-            // Only replace if it starts with os__ and DOES NOT already start with ns__
-            if (strncmp(n1, os, (size_t)(os_len)) == 0 && n1[os_len] == '_' &&
-                n1[os_len + 1] == '_' && strncmp(n1, ns, (size_t)(ns_len)) != 0)
-            {
-                char *suffix = n1 + os_len;
-                char buf[MAX_ERROR_MSG_LEN];
-                snprintf(buf, sizeof(buf), "%s%s", ns, suffix);
-                char *n3 = merge_underscores(buf);
-                zfree(n1);
-                n1 = n3;
-            }
-        }
-        new_node->var_ref.name = n1;
+        new_node->var_ref.name = n->var_ref.name ? xstrdup(n->var_ref.name) : NULL;
     }
     break;
     case NODE_FIELD:
@@ -830,7 +814,20 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
     return new_node;
 }
 
-ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index)
+ASTNode *copy_default_value(ParserContext *ctx, FuncSig *sig, int index, Token call)
 {
-    return copy_ast_replacing(ctx, sig->default_values[index], NULL, NULL, NULL);
+    ASTNode *def = sig->default_values[index];
+    char **refs = NULL;
+    int ref_count = 0;
+    find_var_refs(def, &refs, &ref_count);
+    for (int i = 0; i < ref_count; i++)
+    {
+        ZenSymbol *s = find_symbol_entry(ctx, refs[i]);
+        if (s && s->is_local)
+        {
+            zerror_at(call, "A default value of '%s' uses '%s', which is a local variable here",
+                      sig->own_name ? sig->own_name : sig->name, refs[i]);
+        }
+    }
+    return copy_ast_replacing(ctx, def, NULL, NULL, NULL);
 }

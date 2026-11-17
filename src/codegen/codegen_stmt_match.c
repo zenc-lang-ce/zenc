@@ -100,16 +100,16 @@ static int case_is_wildcard(ASTNode *c)
 ZEN_CONST bool is_int_type(TypeKind k)
 {
     static const bool is_int[] = {
-        [TYPE_CHAR] = true,    [TYPE_I8] = true,         [TYPE_U8] = true,
-        [TYPE_I16] = true,     [TYPE_U16] = true,        [TYPE_I32] = true,
-        [TYPE_U32] = true,     [TYPE_I64] = true,        [TYPE_U64] = true,
-        [TYPE_I128] = true,    [TYPE_U128] = true,       [TYPE_INT] = true,
-        [TYPE_UINT] = true,    [TYPE_USIZE] = true,      [TYPE_ISIZE] = true,
-        [TYPE_BYTE] = true,    [TYPE_RUNE] = true,       [TYPE_ENUM] = true,
-        [TYPE_C_INT] = true,   [TYPE_C_UINT] = true,     [TYPE_C_LONG] = true,
-        [TYPE_C_ULONG] = true, [TYPE_C_LONGLONG] = true, [TYPE_C_ULONGLONG] = true,
-        [TYPE_C_SHORT] = true, [TYPE_C_USHORT] = true,   [TYPE_C_CHAR] = true,
-        [TYPE_C_UCHAR] = true, [TYPE_BITINT] = true,     [TYPE_UBITINT] = true};
+        [TYPE_CHAR] = true,        [TYPE_I8] = true,      [TYPE_U8] = true,
+        [TYPE_I16] = true,         [TYPE_U16] = true,     [TYPE_I32] = true,
+        [TYPE_U32] = true,         [TYPE_I64] = true,     [TYPE_U64] = true,
+        [TYPE_I128] = true,        [TYPE_U128] = true,    [TYPE_USIZE] = true,
+        [TYPE_ISIZE] = true,       [TYPE_BYTE] = true,    [TYPE_RUNE] = true,
+        [TYPE_ENUM] = true,        [TYPE_C_INT] = true,   [TYPE_C_UINT] = true,
+        [TYPE_C_LONG] = true,      [TYPE_C_ULONG] = true, [TYPE_C_LONGLONG] = true,
+        [TYPE_C_ULONGLONG] = true, [TYPE_C_SHORT] = true, [TYPE_C_USHORT] = true,
+        [TYPE_C_CHAR] = true,      [TYPE_C_UCHAR] = true, [TYPE_BITINT] = true,
+        [TYPE_UBITINT] = true};
     if (k < (int)(sizeof(is_int) / sizeof(is_int[0])))
     {
         return is_int[k];
@@ -167,9 +167,13 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     int subject_is_ptr = scrutinee && scrutinee->kind == TYPE_POINTER;
     int m_is_ptr = has_ref_binding || subject_is_ptr;
 
-    int is_lvalue_opt = (node->match_stmt.expr->kind == NODE_EXPR_VAR ||
-                         node->match_stmt.expr->kind == NODE_EXPR_MEMBER ||
-                         node->match_stmt.expr->kind == NODE_EXPR_INDEX);
+    // A subject that designates a place: a `ref` binding points into it instead of a copy.
+    // `*p` is one too: `&*p` is the address p holds.
+    ASTNode *subject_expr = node->match_stmt.expr;
+    int is_lvalue_opt =
+        (subject_expr->kind == NODE_EXPR_VAR || subject_expr->kind == NODE_EXPR_MEMBER ||
+         subject_expr->kind == NODE_EXPR_INDEX ||
+         (subject_expr->kind == NODE_EXPR_UNARY && subject_expr->unary.op == OP_DEREF));
 
     emit_source_mapping(ctx, node); // Step through match statements elegantly
 
@@ -216,12 +220,6 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     for (ASTNode *chk = node->match_stmt.cases; chk; chk = chk->next)
     {
         has_wildcard = has_wildcard || case_is_wildcard(chk);
-    }
-
-    const char *missing = match_missing_variant(ctx, node, node->match_stmt.expr->type_info);
-    if (missing && strcmp(missing, "_") != 0)
-    {
-        zwarn_at(node->token, "Non-exhaustive match: Missing variant '%s'", missing);
     }
 
     ASTNode *c = node->match_stmt.cases;

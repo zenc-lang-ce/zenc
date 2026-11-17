@@ -8,14 +8,15 @@
 #define JSON_RPC_H
 
 /**
- * @brief Handle a raw JSON-RPC request string.
+ * @brief Handles a JSON-RPC message from the client, a request or a notification.
  *
- * Parses the request, routes it to the appropriate handler (initialize, textDocument/didChange,
- * etc.), and sends back the response to stdout.
+ * Parses the message and routes it to its handler (initialize, textDocument/didChange, etc.). A
+ * request, which has an id, gets exactly one response, sent from here: the result its handler
+ * returns, `null` when it returns none, or an error for a method the server does not implement.
  *
- * @param json_str Null-terminated JSON request string.
+ * @param json_str Null-terminated JSON message string.
  */
-void handle_request(const char *json_str);
+void lsp_handle_message(const char *json_str);
 
 /// Set to 0 before calling handlers that modify persistent project state (didOpen, didChange).
 /// When 1 (default), the caller (lsp_main.c) may restore the arena after the request.
@@ -27,9 +28,9 @@ extern int g_lsp_definition_link_support;
 
 struct cJSON;
 
-/// A response to a request: `{"jsonrpc":"2.0","id":...}`, with the id copied as the request
-/// sent it (a number or a string).
-struct cJSON *lsp_response_new(const struct cJSON *id);
+/// Writes a message to the client and deletes it: the only writer of the server's output. A
+/// response is sent by lsp_handle_message; the rest of the server sends notifications.
+void lsp_send_message(struct cJSON *message);
 
 /// Work done progress shown by the client (`$/progress`), for long work outside a request such
 /// as indexing the workspace. Nothing is sent when the client does not support it. A report is

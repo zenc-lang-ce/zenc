@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_for_lookahead_multiline.zc...
+error: Type validation failed. Expected 'i32', but got 'string'
+  --> tests/compiler/diagnostics_output/err_for_lookahead_multiline.zc:7:45
+   |
+7  |         t = 0; t < 2; t += 1 { let q: int = "text"; }
+   |                                             ^ here
+   |
+[exit 1]

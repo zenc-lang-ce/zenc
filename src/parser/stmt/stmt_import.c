@@ -113,20 +113,31 @@ ASTNode *parse_include(ParserContext *ctx, Lexer *l)
     {
         is_system = 1;
         char buf[MAX_SHORT_MSG_LEN];
+        size_t used = 0;
         buf[0] = 0;
         while (1)
         {
-            Token i = lexer_next(l);
-            if (i.kind == TOK_EOF)
+            // The path is written on one line: a `>` that is missing (`include <std`, while it is
+            // being typed) must not swallow the rest of the file into the path.
+            Token i = lexer_peek(l);
+            if (i.kind == TOK_EOF || i.line != t.line)
             {
-                zpanic_at(i, "Unexpected EOF in include path, expected '>'");
+                zpanic_at(t, "Unclosed include path, expected '>'");
                 break;
             }
+            lexer_next(l);
             if (i.kind == TOK_RANGLE)
             {
                 break;
             }
-            strncat(buf, i.start, i.len);
+            if (i.len >= sizeof(buf) - used)
+            {
+                zpanic_at(t, "Include path is too long");
+                break;
+            }
+            memcpy(buf + used, i.start, i.len);
+            used += i.len;
+            buf[used] = 0;
         }
         path = xstrdup(buf);
 
@@ -497,6 +508,9 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         // Otherwise a second import of the same header (e.g. via a std module)
         // would be misreported as a circular import.
         zmap_remove(&ctx->imports.currently_parsing, fn);
+        // What the header declares is read as `include "x.h"` reads it, so the program can use
+        // its types; a header the compiler cannot find (a system header) is left alone.
+        scan_c_header_contents(ctx, fn, 0);
         mark_file_imported(ctx, fn);
         ASTNode *n = ast_create(NODE_INCLUDE);
         n->include.path = xstrdup(fn);
@@ -541,12 +555,17 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         }
     }
 
+    // The module's `//> link:`, `include:`... go to the build, as those of the file it compiles.
+    scan_build_directives(ctx, src);
+
     Lexer i;
     // The imported file's own path: tokens carry it into diagnostics and #line.
     lexer_init(&i, src, ctx->config, fn);
 
     char *prev_module_prefix = ctx->imports.current_module_prefix;
+    char *prev_module_alias = ctx->imports.current_module_alias;
     char *temp_module_prefix = NULL;
+    ctx->imports.current_module_alias = alias;
 
     if (alias)
     {
@@ -604,6 +623,7 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
     ctx->current_filename = (char *)saved_fn;
 
     ctx->imports.current_module_prefix = prev_module_prefix;
+    ctx->imports.current_module_alias = prev_module_alias;
     if (temp_module_prefix)
     {
         zfree(temp_module_prefix);

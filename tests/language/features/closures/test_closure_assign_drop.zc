@@ -1,0 +1,86 @@
+// features/closures: assigning a closure to a variable that holds one drops the old closure, and
+// what it captured by value, before it takes the new one; each value is dropped once.
+
+struct Tracked {
+    id: int;
+}
+
+let drops: int = 0;
+let dropped_ids: int = 0;
+
+impl Drop for Tracked {
+    fn drop(self) {
+        drops = drops + 1;
+        dropped_ids = dropped_ids + self.id;
+    }
+}
+
+fn reassign(f: fn() -> int) -> int {
+    let t = Tracked { id: 9 };
+    f = fn() -> int { return t.id; };
+    return f();
+}
+
+test "assigning a new closure drops the old one" {
+    drops = 0;
+    dropped_ids = 0;
+    {
+        let t1 = Tracked { id: 1 };
+        let t2 = Tracked { id: 2 };
+        let f = fn() -> int { return t1.id; };
+        f = fn() -> int { return t2.id; };
+        expect_eq(dropped_ids, 1, "f = ... should drop what the old closure captured");
+        expect_eq(f(), 2, "f should call the new closure");
+    }
+    expect_eq(drops, 2, "each captured value should be dropped once");
+}
+
+test "assigning another closure variable moves it" {
+    drops = 0;
+    {
+        let t1 = Tracked { id: 1 };
+        let t2 = Tracked { id: 2 };
+        let f = fn() -> int { return t1.id; };
+        let g = fn() -> int { return t2.id; };
+        f = g;
+        expect_eq(f(), 2, "f = g should move g into f");
+    }
+    expect_eq(drops, 2, "each captured value should be dropped once when g is moved into f");
+}
+
+test "assigning a closure to itself keeps it" {
+    drops = 0;
+    {
+        let t = Tracked { id: 3 };
+        let f = fn() -> int { return t.id; };
+        f = f;
+        expect_eq(f(), 3, "f = f should keep the closure");
+        expect_eq(drops, 0, "f = f should drop nothing");
+    }
+    expect_eq(drops, 1, "the captured value should be dropped once, at the end");
+}
+
+test "assigning in a loop drops each old closure" {
+    drops = 0;
+    {
+        let f = fn() -> int { return 0; };
+        for i in 0..3 {
+            let t = Tracked { id: 10 + i };
+            f = fn() -> int { return t.id; };
+        }
+        expect_eq(drops, 2, "each assignment but the last should drop the old closure");
+        expect_eq(f(), 12, "f should call the last closure");
+    }
+    expect_eq(drops, 3, "each captured value should be dropped once");
+}
+
+test "assigning to a closure parameter drops the closure passed in" {
+    drops = 0;
+    dropped_ids = 0;
+    {
+        let t = Tracked { id: 6 };
+        expect_eq(reassign(fn() -> int { return t.id; }), 9, "f should call the new closure");
+    }
+    expect_eq(drops, 2, "the closure passed in and the new one should each be dropped once");
+    expect_eq(dropped_ids, 15, "both captured values should be dropped");
+}

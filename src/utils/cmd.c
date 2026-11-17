@@ -115,6 +115,8 @@ void print_usage(void)
                     "Freestanding mode (no standard library)");
     print_help_item(COLOR_CYAN "--misra" COLOR_RESET, "Generate strictly MISRA C compliant code");
     print_help_item(COLOR_CYAN "--cpp, --cuda" COLOR_RESET, "C++ or CUDA compatibility modes");
+    print_help_item(COLOR_CYAN "--prune-unused" COLOR_RESET,
+                    "Leave out of the C the functions nothing calls");
     print_help_item(COLOR_CYAN "-S, -E, -shared" COLOR_RESET,
                     "To the C compiler: assembly / preprocess only / shared library");
 
@@ -133,6 +135,7 @@ void print_command_help(const char *command)
         print_help_item("-g, -g0", "Enable/disable debug information");
         print_help_item("--release", "Release mode (equivalent to -O3 -g0)");
         print_help_item("-shared", "Build a shared library (.so, .dll)");
+        print_help_item("--prune-unused", "Leave out the functions nothing calls (-v lists them)");
         print_help_item("-v, --verbose", "Show all granular compilation phases");
         print_help_item("-q, --quiet", "Suppress non-essential status messages");
     }
@@ -185,8 +188,48 @@ void print_command_help(const char *command)
     }
 }
 
-void build_compile_arg_list(ArgList *list, const char *outfile, const char *temp_source_file,
-                            ZenCompiler *compiler)
+// Whether the command `list` builds an executable from the generated C alone. Then no other code
+// can call a function of the program by name, and the functions that are not `main` or @export
+// can be `static`: the C compiler drops the ones nothing calls (most methods of each generic
+// instance). Not with C or object files of the user (from the command line or a `//> link:`
+// directive), a shared library, an object or assembly output, symbols exported to libraries
+// (`-rdynamic`), MISRA (whose C already makes them `static`) or CUDA. Returns NULL when it does;
+// otherwise the option or file that prevents it.
+static const char *whole_program_obstacle(const ArgList *list, const char *temp_source_file,
+                                          const CompilerConfig *cfg)
+{
+    if (cfg->misra_mode)
+    {
+        return "--misra";
+    }
+    if (cfg->use_cuda)
+    {
+        return "--cuda";
+    }
+    if (cfg->c_files.length > 0)
+    {
+        return cfg->c_files.data[0];
+    }
+    for (size_t i = 1; i < list->count; i++)
+    {
+        const char *arg = list->args[i];
+        if (strcmp(arg, "-shared") == 0 || strcmp(arg, "-S") == 0 || strcmp(arg, "-E") == 0 ||
+            strcmp(arg, "-c") == 0 || strcmp(arg, "-rdynamic") == 0 ||
+            strstr(arg, "export-dynamic") != NULL)
+        {
+            return arg;
+        }
+        const char *ext = arg[0] != '-' ? strrchr(arg, '.') : NULL;
+        if (ext && ZC_IS_BACKEND_EXT(ext) && strcmp(arg, temp_source_file) != 0)
+        {
+            return arg;
+        }
+    }
+    return NULL;
+}
+
+int build_compile_arg_list(ArgList *list, const char *outfile, const char *temp_source_file,
+                           ZenCompiler *compiler)
 {
     CompilerConfig *cfg = &compiler->config;
 
@@ -195,6 +238,10 @@ void build_compile_arg_list(ArgList *list, const char *outfile, const char *temp
 
     // GCC Flags
     arg_list_add_from_string(list, cfg->gcc_flags);
+    if (cfg->debug_info)
+    {
+        arg_list_add(list, "-g");
+    }
     arg_list_add_from_string(list, compiler->cflags);
 
     // Suppress warnings triggered by transpiled code
@@ -390,6 +437,19 @@ void build_compile_arg_list(ArgList *list, const char *outfile, const char *temp
             arg_list_add(list, abs_input_dir);
         }
     }
+
+    if (!cfg->prune_unused)
+    {
+        return 0;
+    }
+    const char *obstacle = whole_program_obstacle(list, temp_source_file, cfg);
+    if (obstacle)
+    {
+        zwarn("--prune-unused has no effect with %s", obstacle);
+        return 0;
+    }
+    arg_list_add(list, "-DZC_WHOLE_PROGRAM");
+    return 1;
 }
 
 void arg_list_init(ArgList *list)

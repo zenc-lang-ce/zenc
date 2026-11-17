@@ -1,0 +1,30 @@
+// ARGS: build
+// A default value is compiled where the call is: a name in it that is a local variable there
+// would be that variable, not the global the function sees.
+let limit: int = 5;
+
+fn clamp(x: int, max: int = limit) -> int {
+    if x > max {
+        return max;
+    }
+    return x;
+}
+
+struct Range {
+    low: int;
+}
+
+impl Range {
+    fn top(self, max: int = limit) -> int {
+        return self.low + max;
+    }
+}
+
+fn main() -> int {
+    let r = Range { low: 1 };
+    let limit = 100;
+    let a = clamp(7);
+    let b = r.top();
+    let c = clamp(7, limit);
+    return a + b + c;
+}

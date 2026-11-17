@@ -104,7 +104,21 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
                     }
                     else
                     {
-                        if (ctx->config->use_cpp)
+                        ASTNode *value = f->var_decl.init_expr;
+                        Type *field_type = f->type_info ? resolve_alias(f->type_info) : NULL;
+                        if (ctx->config->use_cpp && field_type && field_type->kind == TYPE_ARRAY &&
+                            value->kind == NODE_EXPR_LITERAL &&
+                            (value->literal.kind == LITERAL_STRING ||
+                             value->literal.kind == LITERAL_RAW_STRING))
+                        {
+                            // C++ assigns no array, nor casts to one: a string fills a char
+                            // array field by copy, cut to the field's size.
+                            const char *field = c_name(ctx, f->var_decl.name);
+                            EMIT(ctx, "strncpy(_s.%s, ", field);
+                            codegen_expression(ctx, value);
+                            EMIT(ctx, ", sizeof(_s.%s))", field);
+                        }
+                        else if (ctx->config->use_cpp)
                         {
                             const char *field = c_name(ctx, f->var_decl.name);
                             EMIT(ctx, "_s.%s = (__typeof__(_s.%s))(", field, field);
@@ -246,354 +260,347 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
     }
 }
 
-void handle_expr_binary(ParserContext *ctx, ASTNode *node)
+// `left = right` with fixed-size arrays. C cannot assign an array, so `right` is copied into a
+// temporary and the temporary's bytes into `left`; an array literal initializes the temporary,
+// since it is not an expression in C. An array of values that need dropping is moved, in the
+// order an assignment of a struct with Drop follows: the source is marked as moved out, and a
+// variable's old value is dropped before it takes the new one (so `a = a` keeps its value).
+static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *right)
 {
-    if (ctx->config->misra_mode)
+    Type *t = left->type_info;
+    char *c_type = c_type_spelling(ctx, t);
+    int drops = type_needs_drop(ctx, t);
+
+    EMIT(ctx, "({ ");
+    emit_var_decl_type(ctx, c_type, "_z_src");
+    if (right->kind == NODE_EXPR_ARRAY_LITERAL)
     {
-        EMIT(ctx, "(");
-    }
-    if (strncmp(node->binary.op, "??", 2) == 0 && strlen(node->binary.op) == 2)
-    {
-        EMIT(ctx, "({ ");
-        emit_auto_type(ctx, node->binary.left, node->token);
-        EMIT(ctx, " _l = (");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, "); _l ? _l : (");
-        codegen_expression(ctx, node->binary.right);
-        EMIT(ctx, "); })");
-    }
-    else if (strcmp(node->binary.op, "?\?=") == 0)
-    {
-        EMIT(ctx, "({ if (!(");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, ")) ");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, " = (");
-        codegen_expression(ctx, node->binary.right);
-        EMIT(ctx, "); ");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, "; })");
-    }
-    else if ((strcmp(node->binary.op, "==") == 0 || strcmp(node->binary.op, "!=") == 0))
-    {
-        char *t1 = infer_type(ctx, node->binary.left);
-        int is_ptr = 0;
-        char *fully_resolved = t1;
-        char *mangle_base = t1;
-        int found_opaque = 0;
-
-        if (t1)
-        {
-            char *curr = t1;
-            int depth = 0;
-            while (depth++ < 20)
-            {
-                if (strchr(curr, '*'))
-                {
-                    is_ptr = 1;
-                    break;
-                }
-
-                int resolved = 0;
-                TypeAlias *ta = find_type_alias_node(ctx, curr);
-                if (ta)
-                {
-                    if (ta->is_opaque)
-                    {
-                        if (!found_opaque)
-                        {
-                            mangle_base = ta->alias;
-                            found_opaque = 1;
-                        }
-                    }
-                    else if (!found_opaque)
-                    {
-                        mangle_base = type_mangle_spelling(ta->type_info);
-                    }
-
-                    curr = type_mangle_spelling(ta->type_info);
-                    resolved = 1;
-                }
-
-                if (!resolved)
-                {
-                    break;
-                }
-            }
-            fully_resolved = curr;
-        }
-
-        int is_basic = str_is_basic_type(fully_resolved);
-        ASTNode *def = t1 ? find_struct_def(ctx, t1) : NULL;
-
-        int is_simple_enum = 0;
-        if (def && def->kind == NODE_ENUM)
-        {
-            is_simple_enum = 1;
-            ASTNode *v = def->enm.variants;
-            while (v)
-            {
-                if (v->variant.payload)
-                {
-                    is_simple_enum = 0;
-                    break;
-                }
-                v = v->next;
-            }
-        }
-
-        if (t1 && (def || found_opaque) && !is_basic && !is_ptr && !is_simple_enum)
-        {
-            char *base = mangle_base;
-            if (strncmp(base, "struct ", 7) == 0)
-            {
-                base += 7;
-            }
-
-            if (strcmp(node->binary.op, "!=") == 0)
-            {
-                EMIT(ctx, "(!");
-            }
-            char meth[MAX_TYPE_NAME_LEN];
-            snprintf(meth, sizeof(meth), "%s__Eq__eq", base);
-            ZenSymbol *sym = find_symbol_in_all(ctx, meth);
-            FuncSig *sig = sym ? sym->data.sig : NULL;
-            if (!sig)
-            {
-                snprintf(meth, sizeof(meth), "%s__eq", base);
-                sym = find_symbol_in_all(ctx, meth);
-                sig = sym ? sym->data.sig : NULL;
-            }
-
-            const char *call_name = sig ? sig->name : NULL;
-            if (!call_name)
-            {
-                snprintf(meth, sizeof(meth), "%s__Eq__eq", base);
-                call_name = meth;
-            }
-
-            EMIT(ctx, "%s(", (sig && sig->link_name) ? sig->link_name : call_name);
-
-            if (node->binary.left->kind == NODE_EXPR_VAR ||
-                node->binary.left->kind == NODE_EXPR_INDEX ||
-                node->binary.left->kind == NODE_EXPR_MEMBER)
-            {
-                EMIT(ctx, "&");
-                codegen_expression(ctx, node->binary.left);
-            }
-            else
-            {
-                emit_rvalue_address(ctx, node->binary.left);
-            }
-
-            EMIT(ctx, ", ");
-
-            int needs_ptr = 1;
-            if (sig)
-            {
-                needs_ptr = (sig->total_args > 1 && sig->arg_types[1]->kind == TYPE_POINTER);
-            }
-
-            if (needs_ptr && (node->binary.right->kind == NODE_EXPR_VAR ||
-                              node->binary.right->kind == NODE_EXPR_INDEX ||
-                              node->binary.right->kind == NODE_EXPR_MEMBER))
-            {
-                EMIT(ctx, "&");
-                codegen_expression(ctx, node->binary.right);
-            }
-            else if (needs_ptr)
-            {
-                emit_rvalue_address(ctx, node->binary.right);
-            }
-            else
-            {
-                codegen_expression(ctx, node->binary.right);
-            }
-
-            EMIT(ctx, ")");
-            if (strcmp(node->binary.op, "!=") == 0)
-            {
-                EMIT(ctx, ")");
-            }
-        }
-        else if (t1 && (strcmp(t1, "string") == 0))
-        {
-            char *t2 = infer_type(ctx, node->binary.right);
-            if (t2 && (strcmp(t2, "string") == 0))
-            {
-                EMIT(ctx, "(strcmp(");
-                codegen_expression(ctx, node->binary.left);
-                EMIT(ctx, ", ");
-                codegen_expression(ctx, node->binary.right);
-                if (strcmp(node->binary.op, "==") == 0)
-                {
-                    EMIT(ctx, ") == 0)");
-                }
-                else
-                {
-                    EMIT(ctx, ") != 0)");
-                }
-            }
-            else
-            {
-                EMIT(ctx, "(");
-                codegen_expression(ctx, node->binary.left);
-                EMIT(ctx, " %s ", node->binary.op);
-                codegen_expression(ctx, node->binary.right);
-                EMIT(ctx, ")");
-            }
-        }
-        else
-        {
-            EMIT(ctx, "(");
-            codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, " %s ", node->binary.op);
-            codegen_expression(ctx, node->binary.right);
-            EMIT(ctx, ")");
-        }
-        if (t1)
-        {
-            zfree(t1);
-        }
-    }
-    else if (strcmp(node->binary.op, "**") == 0)
-    {
-        EMIT(ctx, "(_zc_pow((double)(");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, "), (double)(");
-        codegen_expression(ctx, node->binary.right);
-        EMIT(ctx, ")))");
-    }
-    else if (strcmp(node->binary.op, "**=") == 0)
-    {
-        EMIT(ctx, "({ ");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, " = _zc_pow((double)(");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, "), (double)(");
-        codegen_expression(ctx, node->binary.right);
-        EMIT(ctx, ")); ");
-        codegen_expression(ctx, node->binary.left);
-        EMIT(ctx, "; })");
+        EMIT(ctx, " = ");
+        codegen_expression(ctx, right);
+        EMIT(ctx, "; ");
     }
     else
     {
-        int is_assignment =
-            (node->binary.op[strlen(node->binary.op) - 1] == '=' &&
-             strcmp(node->binary.op, "==") != 0 && strcmp(node->binary.op, "!=") != 0 &&
-             strcmp(node->binary.op, "<=") != 0 && strcmp(node->binary.op, ">=") != 0);
-
-        int is_drop_assignment = 0;
-        char *clean_type = NULL;
-        if (is_assignment && strcmp(node->binary.op, "=") == 0 && ctx->config->use_cpp &&
-            node->binary.left->kind == NODE_EXPR_VAR)
+        EMIT(ctx, "; memcpy(_z_src, ");
+        codegen_expression(ctx, right);
+        EMIT(ctx, ", sizeof(%s)); ", c_type);
+        if (drops && emit_moved_out(ctx, right))
         {
-            char *type_name = infer_type(ctx, node->binary.left);
-            if (type_name)
+            EMIT(ctx, "; ");
+        }
+    }
+
+    const char *flag_name = (drops && left->kind == NODE_EXPR_VAR) ? left->var_ref.name : NULL;
+    if (flag_name)
+    {
+        EMIT(ctx, "if (__z_drop_flag_%s) { %s } ", flag_name,
+             drop_value_stmt(t, c_name(ctx, flag_name), 0));
+    }
+    EMIT(ctx, "memcpy(");
+    codegen_expression(ctx, left);
+    EMIT(ctx, ", _z_src, sizeof(%s)); ", c_type);
+    if (flag_name)
+    {
+        EMIT(ctx, "__z_drop_flag_%s = 1; ", flag_name);
+    }
+    EMIT(ctx, "})");
+}
+
+// `a ?? b`: `a` unless it is null or zero.
+static void emit_coalesce(ParserContext *ctx, ASTNode *node)
+{
+    EMIT(ctx, "({ ");
+    emit_auto_type(ctx, node->binary.left, node->token);
+    EMIT(ctx, " _l = (");
+    codegen_expression(ctx, node->binary.left);
+    EMIT(ctx, "); _l ? _l : (");
+    codegen_expression(ctx, node->binary.right);
+    EMIT(ctx, "); })");
+}
+
+// `==` and `!=`: a struct compares through its `eq` (or `neq`), anything else as in C.
+static void emit_equality(ParserContext *ctx, ASTNode *node)
+{
+    char *t1 = infer_type(ctx, node->binary.left);
+    int is_ptr = 0;
+    char *fully_resolved = t1;
+    char *mangle_base = t1;
+    int found_opaque = 0;
+
+    if (t1)
+    {
+        char *curr = t1;
+        int depth = 0;
+        while (depth++ < 20)
+        {
+            if (strchr(curr, '*'))
             {
-                if (strchr(type_name, '*') == NULL)
+                is_ptr = 1;
+                break;
+            }
+
+            int resolved = 0;
+            TypeAlias *ta = find_type_alias_node(ctx, curr);
+            if (ta)
+            {
+                if (ta->is_opaque)
                 {
-                    clean_type = xstrdup(type_name);
-                    char *base = clean_type;
-                    if (strncmp(base, "struct ", 7) == 0)
+                    if (!found_opaque)
                     {
-                        base += 7;
-                    }
-                    ASTNode *def = find_struct_def(ctx, base);
-                    if (def && def->type_info && def->type_info->traits.has_drop)
-                    {
-                        is_drop_assignment = 1;
-                        memmove(clean_type, base, strlen(base) + 1);
+                        mangle_base = ta->alias;
+                        found_opaque = 1;
                     }
                 }
-                zfree(type_name);
+                else if (!found_opaque)
+                {
+                    mangle_base = type_mangle_spelling(ta->type_info);
+                }
+
+                curr = type_mangle_spelling(ta->type_info);
+                resolved = 1;
+            }
+
+            if (!resolved)
+            {
+                break;
             }
         }
+        fully_resolved = curr;
+    }
 
-        if (is_drop_assignment)
+    int is_basic = str_is_basic_type(fully_resolved);
+    ASTNode *def = t1 ? find_struct_def(ctx, t1) : NULL;
+
+    int is_simple_enum = 0;
+    if (def && def->kind == NODE_ENUM)
+    {
+        is_simple_enum = 1;
+        ASTNode *v = def->enm.variants;
+        while (v)
         {
-            EMIT(ctx, "({ ");
-            EMIT(ctx, "ZC_AUTO _z_tmp = (");
-            codegen_expression_with_move(ctx, node->binary.right);
-            EMIT(ctx, "); ");
-
-            EMIT(ctx, "__typeof__((");
-            codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, "))* _z_dest = &(");
-            codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, "); ");
-
-            if (node->binary.left->kind == NODE_EXPR_VAR)
+            if (v->variant.payload)
             {
-                EMIT(ctx, "if (__z_drop_flag_%s) %s__Drop__glue(_z_dest); ",
-                     node->binary.left->var_ref.name, clean_type);
+                is_simple_enum = 0;
+                break;
+            }
+            v = v->next;
+        }
+    }
+
+    if (t1 && (def || found_opaque) && !is_basic && !is_ptr && !is_simple_enum)
+    {
+        char *base = mangle_base;
+        if (strncmp(base, "struct ", 7) == 0)
+        {
+            base += 7;
+        }
+
+        if (node->binary.op == OP_NE)
+        {
+            EMIT(ctx, "(!");
+        }
+        // `eq` of the Eq trait, or an inherent `eq`.
+        char *trait_eq = mangle_method_symbol(base, "Eq", "eq");
+        ZenSymbol *sym = find_symbol_in_all(ctx, trait_eq);
+        if (!sym || !sym->data.sig)
+        {
+            sym = find_symbol_in_all(ctx, mangle_method_symbol(base, NULL, "eq"));
+        }
+        FuncSig *sig = sym ? sym->data.sig : NULL;
+        const char *call_name = sig ? sig->name : trait_eq;
+
+        EMIT(ctx, "%s(", (sig && sig->link_name) ? sig->link_name : call_name);
+
+        if (node->binary.left->kind == NODE_EXPR_VAR ||
+            node->binary.left->kind == NODE_EXPR_INDEX ||
+            node->binary.left->kind == NODE_EXPR_MEMBER)
+        {
+            EMIT(ctx, "&");
+            codegen_expression(ctx, node->binary.left);
+        }
+        else
+        {
+            emit_rvalue_address(ctx, node->binary.left);
+        }
+
+        EMIT(ctx, ", ");
+
+        int needs_ptr = 1;
+        if (sig)
+        {
+            needs_ptr = (sig->total_args > 1 && sig->arg_types[1]->kind == TYPE_POINTER);
+        }
+
+        if (needs_ptr && (node->binary.right->kind == NODE_EXPR_VAR ||
+                          node->binary.right->kind == NODE_EXPR_INDEX ||
+                          node->binary.right->kind == NODE_EXPR_MEMBER))
+        {
+            EMIT(ctx, "&");
+            codegen_expression(ctx, node->binary.right);
+        }
+        else if (needs_ptr)
+        {
+            emit_rvalue_address(ctx, node->binary.right);
+        }
+        else
+        {
+            codegen_expression(ctx, node->binary.right);
+        }
+
+        EMIT(ctx, ")");
+        if (node->binary.op == OP_NE)
+        {
+            EMIT(ctx, ")");
+        }
+    }
+    else if (t1 && (strcmp(t1, "string") == 0))
+    {
+        char *t2 = infer_type(ctx, node->binary.right);
+        if (t2 && (strcmp(t2, "string") == 0))
+        {
+            EMIT(ctx, "(strcmp(");
+            codegen_expression(ctx, node->binary.left);
+            EMIT(ctx, ", ");
+            codegen_expression(ctx, node->binary.right);
+            if (node->binary.op == OP_EQ)
+            {
+                EMIT(ctx, ") == 0)");
             }
             else
             {
-                EMIT(ctx, "%s__Drop__glue(_z_dest); ", clean_type);
+                EMIT(ctx, ") != 0)");
             }
-
-            EMIT(ctx, "*_z_dest = _z_tmp; ");
-
-            if (node->binary.left->kind == NODE_EXPR_VAR)
-            {
-                EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
-            }
-
-            EMIT(ctx, "*_z_dest; })");
         }
         else
         {
             EMIT(ctx, "(");
-            if (is_assignment)
-            {
-                codegen_expression(ctx, node->binary.left);
-            }
-            else
-            {
-                codegen_expression_with_move(ctx, node->binary.left);
-            }
+            codegen_expression(ctx, node->binary.left);
+            EMIT(ctx, " %s ", operator_spelling(node->binary.op));
+            codegen_expression(ctx, node->binary.right);
+            EMIT(ctx, ")");
+        }
+    }
+    else
+    {
+        EMIT(ctx, "(");
+        codegen_expression(ctx, node->binary.left);
+        EMIT(ctx, " %s ", operator_spelling(node->binary.op));
+        codegen_expression(ctx, node->binary.right);
+        EMIT(ctx, ")");
+    }
+    if (t1)
+    {
+        zfree(t1);
+    }
+}
 
-            EMIT(ctx, " %s ", node->binary.op);
-            if (ctx->config->misra_mode ||
-                (ctx->config->use_cpp && is_assignment && strcmp(node->binary.op, "=") == 0))
+// `a ** b`, through _zc_pow.
+static void emit_pow(ParserContext *ctx, ASTNode *node)
+{
+    EMIT(ctx, "(_zc_pow((double)(");
+    codegen_expression(ctx, node->binary.left);
+    EMIT(ctx, "), (double)(");
+    codegen_expression(ctx, node->binary.right);
+    EMIT(ctx, ")))");
+}
+
+// The other binary operators and assignments, written as in C; an assignment drops the old
+// value of a variable with Drop, and copies a fixed-size array.
+static void emit_plain_binary(ParserContext *ctx, ASTNode *node)
+{
+    int is_assignment = is_assignment_operator(node->binary.op);
+
+    // Assigning to a variable that holds a value with Drop drops the old value first: the
+    // glue of a struct, enum or tuple, or the drop of a closure that owns its context.
+    char *drop_old = NULL;
+    if (is_assignment && node->binary.op == OP_ASSIGN && node->binary.left->kind == NODE_EXPR_VAR)
+    {
+        char *glue = value_drop_struct(ctx, node->binary.left);
+        if (glue)
+        {
+            size_t sz = strlen(glue) + 32;
+            drop_old = xmalloc(sz);
+            snprintf(drop_old, sz, "%s__Drop__glue(_z_dest);", glue);
+        }
+        else if (is_owning_closure(node->binary.left->type_info))
+        {
+            drop_old = drop_value_stmt(node->binary.left->type_info, "(*_z_dest)", 0);
+        }
+    }
+
+    if (is_assignment && node->binary.op == OP_ASSIGN &&
+        is_fixed_size_array(node->binary.left->type_info))
+    {
+        emit_array_assignment(ctx, node->binary.left, node->binary.right);
+    }
+    else if (drop_old)
+    {
+        // The variable's type, not ZC_AUTO: tcc has no __auto_type.
+        EMIT(ctx, "({ __typeof__((");
+        codegen_expression(ctx, node->binary.left);
+        EMIT(ctx, ")) _z_tmp = (");
+        codegen_expression_with_move(ctx, node->binary.right);
+        EMIT(ctx, "); ");
+
+        EMIT(ctx, "__typeof__((");
+        codegen_expression(ctx, node->binary.left);
+        EMIT(ctx, "))* _z_dest = &(");
+        codegen_expression(ctx, node->binary.left);
+        EMIT(ctx, "); ");
+
+        EMIT(ctx, "if (__z_drop_flag_%s) %s ", node->binary.left->var_ref.name, drop_old);
+        EMIT(ctx, "*_z_dest = _z_tmp; ");
+        EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
+
+        EMIT(ctx, "*_z_dest; })");
+    }
+    else
+    {
+        EMIT(ctx, "(");
+        if (is_assignment)
+        {
+            codegen_expression(ctx, node->binary.left);
+        }
+        else
+        {
+            codegen_expression_with_move(ctx, node->binary.left);
+        }
+
+        EMIT(ctx, " %s ", operator_spelling(node->binary.op));
+        if (ctx->config->misra_mode ||
+            (ctx->config->use_cpp && is_assignment && node->binary.op == OP_ASSIGN))
+        {
+            int should_cast = ctx->config->misra_mode;
+            if (!should_cast && node->binary.left->type_info)
             {
-                int should_cast = ctx->config->misra_mode;
-                if (!should_cast && node->binary.left->type_info)
+                TypeKind k = node->binary.left->type_info->kind;
+                if (k == TYPE_POINTER || k == TYPE_ENUM ||
+                    is_enum_type_name(ctx, type_def_name(node->binary.left->type_info)))
                 {
-                    TypeKind k = node->binary.left->type_info->kind;
-                    if (k == TYPE_POINTER || k == TYPE_ENUM ||
-                        is_enum_type_name(ctx, type_def_name(node->binary.left->type_info)))
-                    {
-                        should_cast = 1;
-                    }
+                    should_cast = 1;
                 }
+            }
 
-                if (should_cast)
+            if (should_cast)
+            {
+                char *c_type = NULL;
+                if (node->binary.left->type_info)
                 {
-                    char *c_type = NULL;
-                    if (node->binary.left->type_info)
-                    {
-                        c_type = c_type_spelling(ctx, node->binary.left->type_info);
-                    }
-                    if (c_type && strcmp(c_type, "unknown") != 0 && strcmp(c_type, "void") != 0)
-                    {
-                        EMIT(ctx, "(%s)(", c_type);
-                        codegen_expression_with_move(ctx, node->binary.right);
-                        EMIT(ctx, ")");
-                        zfree(c_type);
-                    }
-                    else
-                    {
-                        if (c_type)
-                        {
-                            zfree(c_type);
-                        }
-                        codegen_expression_with_move(ctx, node->binary.right);
-                    }
+                    c_type = c_type_spelling(ctx, node->binary.left->type_info);
+                }
+                if (c_type && strcmp(c_type, "unknown") != 0 && strcmp(c_type, "void") != 0)
+                {
+                    EMIT(ctx, "(%s)(", c_type);
+                    codegen_expression_with_move(ctx, node->binary.right);
+                    EMIT(ctx, ")");
+                    zfree(c_type);
                 }
                 else
                 {
+                    if (c_type)
+                    {
+                        zfree(c_type);
+                    }
                     codegen_expression_with_move(ctx, node->binary.right);
                 }
             }
@@ -601,13 +608,36 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             {
                 codegen_expression_with_move(ctx, node->binary.right);
             }
-            EMIT(ctx, ")");
         }
-
-        if (clean_type)
+        else
         {
-            zfree(clean_type);
+            codegen_expression_with_move(ctx, node->binary.right);
         }
+        EMIT(ctx, ")");
+    }
+}
+
+void handle_expr_binary(ParserContext *ctx, ASTNode *node)
+{
+    if (ctx->config->misra_mode)
+    {
+        EMIT(ctx, "(");
+    }
+    switch (node->binary.op)
+    {
+    case OP_COALESCE:
+        emit_coalesce(ctx, node);
+        break;
+    case OP_EQ:
+    case OP_NE:
+        emit_equality(ctx, node);
+        break;
+    case OP_POW:
+        emit_pow(ctx, node);
+        break;
+    default:
+        emit_plain_binary(ctx, node);
+        break;
     }
     if (ctx->config->misra_mode)
     {
@@ -622,30 +652,7 @@ static char *owned_temp_drop_type(ParserContext *ctx, ASTNode *arg)
     {
         return NULL;
     }
-    ASTNode *operand = arg->unary.operand;
-    char *tname = NULL;
-    if (operand->type_info && operand->type_info->kind == TYPE_STRUCT && operand->type_info->name)
-    {
-        tname = type_def_name(operand->type_info);
-    }
-    else
-    {
-        tname = infer_type(ctx, operand);
-    }
-    if (!tname || strchr(tname, '*'))
-    {
-        return NULL;
-    }
-    if (strncmp(tname, "struct ", 7) == 0)
-    {
-        tname += 7;
-    }
-    ASTNode *def = find_struct_def(ctx, tname);
-    if (def && def->kind == NODE_STRUCT && def->type_info && def->type_info->traits.has_drop)
-    {
-        return tname;
-    }
-    return NULL;
+    return value_drop_struct(ctx, arg->unary.operand);
 }
 
 // Emits a call that borrows temporaries with Drop (e.g. `a + make()` on an overloaded
@@ -807,255 +814,65 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             }
         }
 
-        char *type = infer_type(ctx, target);
-        if (type)
+        // The method's owner is the target's type, or the type it points to.
+        Type *target_type = target->type_info;
+        if (target_type && target_type->kind != TYPE_UNKNOWN)
         {
-            char *clean = xstrdup(type);
-            char *ptr = (char *)strchr(clean, '*');
-            if (ptr)
+            int is_pointer = target_type->kind == TYPE_POINTER;
+            char *base = type_impl_name(is_pointer ? target_type->inner : target_type);
+
+            const char *call_base = base;
+            char *resolved_method = NULL;
+            int need_cast = 0;
+            if (find_method_call_target(ctx, base, method, &call_base, &resolved_method))
             {
-                *ptr = '\0';
+                method = resolved_method;
+                // A mixed-in struct's method takes a pointer to that struct.
+                need_cast = call_base != base;
             }
 
-            char *base = clean;
-            if (strncmp(base, "struct ", 7) == 0)
+            emit_mangled_name(ctx, call_base, method);
+            EMIT(ctx, "(");
+            if (need_cast)
             {
-                base += 7;
+                EMIT(ctx, "(%s*)", call_base);
             }
-
-            if (ctx)
-            {
-                TypeAlias *ta = find_type_alias_node(ctx, base);
-                const char *alias =
-                    (ta && !ta->is_opaque) ? type_mangle_spelling(ta->type_info) : NULL;
-                if (alias)
-                {
-                    base = (char *)alias;
-                }
-            }
-
-            const char *normalized = normalize_type_name(base);
-            char *mangled_base = (char *)normalized;
-
-            char *lt = (char *)strchr(base, '<');
-            if (lt)
-            {
-                char *gt = (char *)strrchr(base, '>');
-                if (gt)
-                {
-                    ptrdiff_t prefix_len = lt - base;
-                    char prefix[MAX_TYPE_NAME_LEN];
-                    if (prefix_len >= 255)
-                    {
-                        prefix_len = 255;
-                    }
-                    strncpy(prefix, base, (size_t)(prefix_len));
-                    prefix[prefix_len] = 0;
-
-                    char *args_ptr = xstrdup(lt + 1);
-                    char *args_end = (char *)strrchr(args_ptr, '>');
-                    if (args_end)
-                    {
-                        *args_end = 0;
-                    }
-
-                    mangled_base = mangle_generic_name_from_arg_list(prefix, args_ptr);
-                    zfree(args_ptr);
-                }
-            }
-
-            if (!strchr(type, '*') &&
+            if (!is_pointer &&
                 (target->kind == NODE_EXPR_CALL || target->kind == NODE_EXPR_LITERAL ||
                  target->kind == NODE_EXPR_BINARY || target->kind == NODE_EXPR_UNARY ||
                  target->kind == NODE_EXPR_CAST || target->kind == NODE_EXPR_STRUCT_INIT))
             {
-                char *type_mangled = (char *)normalize_type_name(type);
-                if (type_mangled != type)
-                {
-                    mangled_base = type_mangled;
-                }
-
-                char *t_lt = (char *)strchr(type, '<');
-
-                if (t_lt)
-                {
-                    char *t_gt = (char *)strrchr(type, '>');
-                    if (t_gt)
-                    {
-                        ptrdiff_t p_len = t_lt - type;
-                        char prefix[MAX_TYPE_NAME_LEN];
-                        if (p_len >= 255)
-                        {
-                            p_len = 255;
-                        }
-                        strncpy(prefix, type, (size_t)(p_len));
-                        prefix[p_len] = 0;
-
-                        char *args_ptr = xstrdup(t_lt + 1);
-                        char *args_end = (char *)strrchr(args_ptr, '>');
-                        if (args_end)
-                        {
-                            *args_end = 0;
-                        }
-
-                        type_mangled = mangle_generic_name_from_arg_list(prefix, args_ptr);
-                        zfree(args_ptr);
-                    }
-                }
-
-                emit_mangled_name(ctx, mangled_base, method);
-                EMIT(ctx, "(");
-                // C names the instance just mangled; C++ needs no type (_z_rval)
+                // A temporary has no address: C names the instance just mangled;
+                // C++ needs no type (_z_rval)
                 if (ctx->config->use_cpp)
                 {
                     emit_rvalue_address(ctx, target);
                 }
                 else
                 {
-                    EMIT(ctx, "((%s[]){", type_mangled);
+                    EMIT(ctx, "((%s[]){", c_type_spelling(ctx, target_type));
                     codegen_expression(ctx, target);
                     EMIT(ctx, "})");
                 }
-                ASTNode *arg = node->call.args;
-                while (arg)
-                {
-                    EMIT(ctx, ", ");
-                    codegen_expression_with_move(ctx, arg);
-                    arg = arg->next;
-                }
-                EMIT(ctx, ")");
             }
             else
             {
-                char *call_base = mangled_base;
-
-                int need_cast = 0;
-                char *mixin_func_name_ptr = mangle_method_symbol(call_base, NULL, method);
-                char mixin_func_name[MAX_MANGLED_NAME_LEN * 2];
-                strncpy(mixin_func_name, mixin_func_name_ptr, sizeof(mixin_func_name) - 1);
-                mixin_func_name[sizeof(mixin_func_name) - 1] = 0;
-                zfree(mixin_func_name_ptr);
-
-                char *resolved_method_suffix = NULL;
-
-                if (!find_func(ctx, mixin_func_name))
-                {
-                    TypeAlias *ta = ctx->type_aliases;
-                    while (ta)
-                    {
-                        if (strcmp(type_mangle_spelling(ta->type_info), call_base) == 0)
-                        {
-                            char *alias_func_name = mangle_method_symbol(ta->alias, NULL, method);
-                            if (find_func(ctx, alias_func_name))
-                            {
-                                zfree(alias_func_name);
-                                break;
-                            }
-                            zfree(alias_func_name);
-                        }
-                        ta = ta->next;
-                    }
-                    StructRef *ref = ctx->parsed_impls_list;
-                    while (ref)
-                    {
-                        if (ref->node && ref->node->kind == NODE_IMPL_TRAIT &&
-                            strcmp(type_impl_name(ref->node->impl_trait.target), base) == 0)
-                        {
-                            char *trait_mangled = mangle_method_symbol(
-                                base, ref->node->impl_trait.trait_name, method);
-                            if (find_func(ctx, trait_mangled))
-                            {
-                                resolved_method_suffix = mangle_method_symbol(
-                                    ref->node->impl_trait.trait_name, NULL, method);
-                                zfree(trait_mangled);
-                                break;
-                            }
-                            zfree(trait_mangled);
-                        }
-                        ref = ref->next;
-                    }
-
-                    if (!resolved_method_suffix)
-                    {
-                        GenericImplTemplate *it = ctx->impl_templates;
-                        while (it)
-                        {
-                            char *tname = NULL;
-                            if (it->impl_node && it->impl_node->kind == NODE_IMPL_TRAIT)
-                            {
-                                tname = it->impl_node->impl_trait.trait_name;
-                                char *trait_mangled = mangle_method_symbol(base, tname, method);
-                                if (find_func(ctx, trait_mangled))
-                                {
-                                    resolved_method_suffix =
-                                        mangle_method_symbol(tname, NULL, method);
-                                    zfree(trait_mangled);
-                                    break;
-                                }
-                                zfree(trait_mangled);
-                            }
-                            it = it->next;
-                        }
-                    }
-
-                    if (resolved_method_suffix)
-                    {
-                        method = resolved_method_suffix;
-                    }
-                    else
-                    {
-                        ASTNode *def = find_struct_def(ctx, base);
-                        if (def && def->kind == NODE_STRUCT && def->strct.used_structs)
-                        {
-                            for (int k = 0; k < def->strct.used_struct_count; k++)
-                            {
-                                char *mixin_check =
-                                    mangle_method_symbol(def->strct.used_structs[k], NULL, method);
-                                if (find_func(ctx, mixin_check))
-                                {
-                                    call_base = def->strct.used_structs[k];
-                                    need_cast = 1;
-                                    zfree(mixin_check);
-                                    break;
-                                }
-                                zfree(mixin_check);
-                            }
-                        }
-                    }
-                }
-
-                emit_mangled_name(ctx, call_base, method);
-                EMIT(ctx, "(");
-                if (need_cast)
-                {
-                    EMIT(ctx, "(%s*)%s", call_base, strchr(type, '*') ? "" : "&");
-                }
-                else if (!strchr(type, '*'))
+                if (!is_pointer)
                 {
                     EMIT(ctx, "&");
                 }
                 codegen_expression(ctx, target);
-                ASTNode *arg = node->call.args;
-                while (arg)
-                {
-                    EMIT(ctx, ", ");
-                    codegen_expression_with_move(ctx, arg);
-                    arg = arg->next;
-                }
-                EMIT(ctx, ")");
-
-                if (resolved_method_suffix)
-                {
-                    zfree(resolved_method_suffix);
-                }
             }
-            zfree(clean);
-            zfree(type);
+            ASTNode *arg = node->call.args;
+            while (arg)
+            {
+                EMIT(ctx, ", ");
+                codegen_expression_with_move(ctx, arg);
+                arg = arg->next;
+            }
+            EMIT(ctx, ")");
+            zfree(resolved_method);
             return;
-        }
-        if (type)
-        {
-            zfree(type);
         }
     }
 
@@ -1127,33 +944,17 @@ skip_method_mangling:
         EMIT(ctx, "__zenc_panic");
         goto skip_callee_gen;
     }
-    else if (node->call.callee->kind == NODE_EXPR_VAR)
+#if FF_COMPATIBILITY_0_5
+    else if (node->call.callee->kind == NODE_EXPR_VAR &&
+             emit_legacy_variant_name(ctx, node->call.callee->var_ref.name))
     {
-        char *name = node->call.callee->var_ref.name;
-        char *underscore = (char *)strchr(name, '_');
-        if (underscore && underscore != name && *(underscore + 1) != '_' &&
-            strstr(name, "__") == NULL)
-        {
-            char base[MAX_TYPE_NAME_LEN];
-            size_t len = (size_t)(underscore - name);
-            if (len < sizeof(base))
-            {
-                strncpy(base, name, (size_t)(len));
-                base[len] = 0;
-                ASTNode *def = find_struct_def(ctx, base);
-                int is_common_enum =
-                    (strncmp(base, "Result", 6) == 0 || strncmp(base, "Option", 6) == 0 ||
-                     strncmp(base, "JsonType", 8) == 0);
-                if (is_common_enum || (def && def->kind == NODE_ENUM))
-                {
-                    emit_mangled_name(ctx, base, underscore + 1);
-                    goto skip_callee_gen;
-                }
-            }
-        }
+        goto skip_callee_gen;
     }
+#endif
 
-    g_emitting_callee = 1;
+    // Only a name can be a variant that gets its () from this call: a variant inside
+    // a longer callee (`table[Shape::Empty.tag].run`) still needs its own.
+    g_emitting_callee = node->call.callee->kind == NODE_EXPR_VAR;
     codegen_expression(ctx, node->call.callee);
     g_emitting_callee = 0;
 skip_callee_gen:
@@ -1180,39 +981,6 @@ skip_callee_gen:
         if (node->call.callee->kind == NODE_EXPR_VAR)
         {
             sig = find_func(ctx, node->call.callee->var_ref.name);
-            if (!sig && !find_struct_def(ctx, node->call.callee->var_ref.name))
-            {
-                const char *name = node->call.callee->var_ref.name;
-
-                // RFC 0001: print, println, eprint and eprintln are functions of std/io.zc, no
-                // longer keywords. Calling one without importing it is an error that says so
-                // (otherwise it reaches the C compiler as an undeclared function).
-                if (strcmp(name, "print") == 0 || strcmp(name, "println") == 0 ||
-                    strcmp(name, "eprint") == 0 || strcmp(name, "eprintln") == 0)
-                {
-                    char msg[MAX_SHORT_MSG_LEN];
-                    snprintf(msg, sizeof(msg),
-                             "'%s' is a function of std/io.zc, which is not imported", name);
-                    const char *hints[] = {"add import \"std/io.zc\"", NULL};
-                    zerror_with_hints(node->call.callee->token, msg, hints);
-                }
-
-                // A function pointer, or a variant without a payload (`Enum::Variant()`, whose
-                // value check_expr_var typed as the enum), is not a missing function.
-                Type *callee_type = node->call.callee->type_info
-                                        ? get_inner_type(node->call.callee->type_info)
-                                        : NULL;
-                int is_value = callee_type && (callee_type->kind == TYPE_FUNCTION ||
-                                               callee_type->kind == TYPE_ENUM);
-                if (!should_suppress_undef_warning(ctx, name) && !is_value)
-                {
-                    Token t = node->call.callee->token;
-                    char msg[MAX_SHORT_MSG_LEN];
-                    snprintf(msg, sizeof(msg), "Undefined function '%s'", name);
-                    const char *hint = get_missing_function_hint(ctx, name);
-                    zwarn_diag(DIAG_INTEROP_UNDEF_FUNC, t, msg, hint);
-                }
-            }
         }
 
         ASTNode *arg = node->call.args;

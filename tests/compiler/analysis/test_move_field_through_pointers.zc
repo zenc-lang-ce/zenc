@@ -1,0 +1,15 @@
+// EXPECT: FAIL
+// compiler/analysis: test_move_field_through_pointers  --  should fail compilation
+// `.` reaches the field through every pointer, so `pp.items`, with `pp: Bag**`, is
+// moved like `p.items`, and using it again is a use after move.
+import "std/vec.zc"
+
+struct Bag { items: Vec<int>; }
+
+fn main() {
+    let bag = Bag { items: Vec<int>::new() };
+    let p = &bag;
+    let pp = &p;
+    let taken = pp.items;
+    let again = pp.items;
+}

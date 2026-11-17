@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "../token.h"
+#include "../ast/operators.h"
 
 typedef struct Type Type;
 typedef struct ASTNode ASTNode;
@@ -26,7 +27,7 @@ void emit_misra_preamble(FILE *out);
 void misra_check_implicit_conversion(ParserContext *ctx, struct Type *target, struct Type *source,
                                      struct ASTNode *source_node, Token token);
 void misra_check_char_arithmetic(ParserContext *ctx, struct Type *left, struct Type *right,
-                                 const char *op, Token token);
+                                 OperatorKind op, Token token);
 void misra_check_bitwise_operand(ParserContext *ctx, struct Type *t, Token token);
 void misra_check_shift_amount(ParserContext *ctx, long long amount, int width, Token token);
 void misra_check_pointer_conversion(ParserContext *ctx, struct Type *target, struct Type *source,
@@ -37,7 +38,7 @@ void misra_check_cast(ParserContext *ctx, struct Type *target, struct Type *sour
                       bool is_composite);
 void misra_check_binary_op_essential_types(ParserContext *ctx, struct ASTNode *left,
                                            struct ASTNode *right, Token token);
-void misra_check_unsigned_wrap(ParserContext *ctx, const char *op, long long left, long long right,
+void misra_check_unsigned_wrap(ParserContext *ctx, OperatorKind op, long long left, long long right,
                                long long res, struct Type *type, Token token);
 
 // Section 13/14/15: Expressions & Control Flow
@@ -98,6 +99,10 @@ void misra_check_reserved_identifier(ParserContext *ctx, const char *name, Token
 void misra_check_banned_function(ParserContext *ctx, const char *name, Token tok);
 // Rule 21.6: an f-string is written with snprintf (as a value) or fprintf (printed).
 void misra_check_fstring(ParserContext *ctx, Token tok);
+// Rule 21.6: `assert` and `expect` report a failure with fprintf, and a `test` block counts
+// and prints its failures with it.
+void misra_check_assertion(ParserContext *ctx, Token tok);
+void misra_check_test(ParserContext *ctx, Token tok);
 void misra_check_file_dereference(ParserContext *ctx, struct Type *type, Token tok);
 void misra_check_tuple_size(ParserContext *ctx, struct Type *ret_type, Token token);
 void misra_check_string_compare(ParserContext *ctx, struct Type *left, struct Type *right,

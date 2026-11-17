@@ -1,0 +1,14 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A pointer compares with a `void*`, either way round, as it converts to and
+// from one.
+struct Box { x: int; }
+
+test "pointer and void* compare" {
+    let b = Box{x: 1};
+    let p: Box* = &b;
+    let v: void* = p;
+    let other: void* = NULL;
+    assert(p == v, "pointer == void*");
+    assert(v == p, "void* == pointer");
+    assert(p != other, "pointer != void*");
+}

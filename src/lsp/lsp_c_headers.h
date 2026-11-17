@@ -130,12 +130,4 @@ struct cJSON *lsp_c_headers_origin_location(const CHeaderOrigin *origin, CHeader
  */
 struct cJSON *lsp_c_headers_origin_range(const CHeaderOrigin *origin, CHeaderOriginKind kind);
 
-/**
- * @brief Adds a warning for every C header that the document's imported modules need and
- * that is only found through a directive of one of those modules: `zc build` only applies
- * the directives of the file it compiles.
- */
-void lsp_c_headers_add_diagnostics(const char *document_path, const char *source,
-                                   struct cJSON *diagnostics);
-
 #endif

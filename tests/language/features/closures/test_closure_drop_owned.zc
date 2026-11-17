@@ -1,0 +1,39 @@
+// features/closures: a closure stored in a struct field, or captured by value by another
+// closure, is dropped with what holds it, and so is what it captured by value.
+
+struct Tracked {
+    id: int;
+}
+
+let drops: int = 0;
+
+impl Drop for Tracked {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+struct Holder {
+    f: fn() -> int;
+}
+
+test "a closure in a struct field is dropped with the struct" {
+    drops = 0;
+    {
+        let t = Tracked { id: 1 };
+        let h = Holder { f: fn() -> int { return t.id; } };
+        assert(h.f() == 1, "called");
+    }
+    assert(drops == 1, "captured value dropped once");
+}
+
+test "a closure captured by value is dropped with the closure that holds it" {
+    drops = 0;
+    {
+        let t = Tracked { id: 2 };
+        let f = fn() -> int { return t.id; };
+        let g = fn() -> int { return f() + 1; };
+        assert(g() == 3, "called");
+    }
+    assert(drops == 1, "captured value dropped once");
+}

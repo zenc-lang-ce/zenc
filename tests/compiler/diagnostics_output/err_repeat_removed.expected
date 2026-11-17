@@ -5,4 +5,11 @@ error: 'repeat' was removed; use 'for _ in 0..n'
 3  |     repeat 3 {
    |     ^ here
    |
+warning: Undefined function 'println' (an error from 0.6; `zc check` reports it now)
+  --> tests/compiler/diagnostics_output/err_repeat_removed.zc:4:9
+   |
+4  |         println("no");
+   |         ^ here
+   |
+   = note: Check if the function is defined or imported
 [exit 1]

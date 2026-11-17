@@ -1,0 +1,9 @@
+// ARGS: transpile
+// A shift by 64 or more at comptime is an error, as in constant folding.
+
+comptime {
+    let _too_far = 1 << 64;
+}
+
+fn main() {
+}

@@ -12,6 +12,14 @@
 #include <ctype.h>
 #include <string.h>
 
+// Whether `op` is written with a `=`: the assignments and `== != <= >=`. The side-effect checks
+// below and the step of a `for` (check_loop_passes) used to test the operator's text for a `=`;
+// this keeps their rule as it was.
+int writes_with_equals(OperatorKind op)
+{
+    return is_assignment_operator(op) || op == OP_EQ || op == OP_NE || op == OP_LE || op == OP_GE;
+}
+
 // External helpers from parser
 
 int tc_expr_has_side_effects(ASTNode *node)
@@ -28,8 +36,9 @@ int tc_expr_has_side_effects(ASTNode *node)
         return 1;
 
     case NODE_EXPR_BINARY:
-        // Assignment operators are side effects
-        if (node->binary.op && strstr(node->binary.op, "="))
+        // Assignment operators are side effects. Any operator written with `=` counts, the
+        // comparisons `== != <= >=` too, as when this tested the text for a `=`.
+        if (writes_with_equals(node->binary.op))
         {
             return 1;
         }
@@ -38,9 +47,8 @@ int tc_expr_has_side_effects(ASTNode *node)
 
     case NODE_EXPR_UNARY:
         // Increment/Decrement are side effects (prefix and postfix)
-        if (node->unary.op &&
-            (strcmp(node->unary.op, "++") == 0 || strcmp(node->unary.op, "--") == 0 ||
-             strcmp(node->unary.op, "_post++") == 0 || strcmp(node->unary.op, "_post--") == 0))
+        if (node->unary.op == OP_PRE_INC || node->unary.op == OP_PRE_DEC ||
+            node->unary.op == OP_POST_INC || node->unary.op == OP_POST_DEC)
         {
             return 1;
         }
@@ -124,7 +132,7 @@ void collect_symbols(ASTNode *node, SymbolSet *reads, SymbolSet *writes)
     switch (node->kind)
     {
     case NODE_EXPR_BINARY:
-        if (node->binary.op && strstr(node->binary.op, "="))
+        if (writes_with_equals(node->binary.op))
         {
             // LHS is a write
             if (node->binary.left->kind == NODE_EXPR_VAR)
@@ -145,9 +153,8 @@ void collect_symbols(ASTNode *node, SymbolSet *reads, SymbolSet *writes)
         break;
 
     case NODE_EXPR_UNARY:
-        if (node->unary.op &&
-            (strcmp(node->unary.op, "++") == 0 || strcmp(node->unary.op, "--") == 0 ||
-             strcmp(node->unary.op, "_post++") == 0 || strcmp(node->unary.op, "_post--") == 0))
+        if (node->unary.op == OP_PRE_INC || node->unary.op == OP_PRE_DEC ||
+            node->unary.op == OP_POST_INC || node->unary.op == OP_POST_DEC)
         {
             if (node->unary.operand->kind == NODE_EXPR_VAR)
             {
@@ -357,9 +364,74 @@ static int tc_in_std(TypeChecker *tc, Token t)
     return tc_file_in_std(tc, t.file);
 }
 
+int tc_storage_depth(TypeChecker *tc, ASTNode *place)
+{
+    if (!place)
+    {
+        return tc->current_depth;
+    }
+    switch (place->kind)
+    {
+    case NODE_EXPR_VAR:
+    {
+        ZenSymbol *sym = tc_lookup(tc, place->var_ref.name);
+        return sym ? sym->scope_depth : tc->current_depth;
+    }
+    case NODE_EXPR_MEMBER:
+    {
+        ASTNode *holder = place->member.target;
+        Type *holder_type = get_inner_type(holder ? holder->type_info : NULL);
+        if (holder_type && holder_type->kind == TYPE_POINTER)
+        {
+            return holder->type_info->lifetime_depth;
+        }
+        return tc_storage_depth(tc, holder);
+    }
+    case NODE_EXPR_INDEX:
+    {
+        ASTNode *holder = place->index.array;
+        Type *holder_type = get_inner_type(holder ? holder->type_info : NULL);
+        if (holder_type && holder_type->kind == TYPE_ARRAY)
+        {
+            return tc_storage_depth(tc, holder);
+        }
+        return holder && holder->type_info ? holder->type_info->lifetime_depth : tc->current_depth;
+    }
+    case NODE_EXPR_UNARY:
+        if (place->unary.op == OP_DEREF && place->unary.operand && place->unary.operand->type_info)
+        {
+            return place->unary.operand->type_info->lifetime_depth;
+        }
+        return tc->current_depth;
+    default:
+        return tc->current_depth;
+    }
+}
+
+// A type error stops `zc check`; in `zc build` (0.5) it is a warning that says so.
+static int type_error_as_warning(TypeChecker *tc, Token t, const char *msg, const char *hint)
+{
+    if (!tc->type_errors_as_warnings)
+    {
+        return 0;
+    }
+    char text[MAX_ERROR_MSG_LEN];
+    snprintf(text, sizeof(text), "%s (an error from 0.6; `zc check` reports it now)", msg);
+    if (hint)
+    {
+        zwarn_with_suggestion(t, text, hint);
+    }
+    else
+    {
+        zwarn_at(t, "%s", text);
+    }
+    tc->warning_count++;
+    return 1;
+}
+
 void tc_error(TypeChecker *tc, Token t, const char *msg)
 {
-    if (tc->move_checks_only || tc_in_std(tc, t))
+    if (tc->rechecking || tc_in_std(tc, t) || type_error_as_warning(tc, t, msg, NULL))
     {
         return;
     }
@@ -396,9 +468,46 @@ void tc_warning(TypeChecker *tc, Token t, const char *msg)
     tc->warning_count++;
 }
 
+void tc_escape_error(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
+{
+    for (int i = 0; i < tc->escapes_reported_count; i++)
+    {
+        if (tc->escapes_reported[i] == t.start)
+        {
+            return;
+        }
+    }
+    tc->escapes_reported = xrealloc(
+        tc->escapes_reported, sizeof(const char *) * (size_t)(tc->escapes_reported_count + 1));
+    tc->escapes_reported[tc->escapes_reported_count++] = t.start;
+
+    int prev_rechecking = tc->rechecking;
+    tc->rechecking = 0;
+    tc_error_with_hints(tc, t, msg, hints);
+    tc->rechecking = prev_rechecking;
+}
+
+void tc_unreachable_code(TypeChecker *tc, Token t)
+{
+    if (tc->pctx->config->misra_mode)
+    {
+        const char *hints[] = {"Remove unreachable code or restructure control flow", NULL};
+        tc_error_with_hints(tc, t, "MISRA Rule 2.1: Unreachable code detected", hints);
+        return;
+    }
+    // The second pass over a loop body sees the same statements again.
+    if (tc->in_loop_pass2 || tc_in_std(tc, t))
+    {
+        return;
+    }
+    warn_unreachable_code(t);
+    tc->warning_count++;
+}
+
 void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
 {
-    if (tc->move_checks_only || tc_in_std(tc, t))
+    if (tc->rechecking || tc_in_std(tc, t) ||
+        type_error_as_warning(tc, t, msg, hints ? hints[0] : NULL))
     {
         return;
     }
@@ -416,13 +525,14 @@ void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *c
     zerror_with_hints(t, msg, hints);
 }
 
-void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
+void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints,
+                              const DiagnosticNote *note)
 {
     if (tc_in_std(tc, t))
     {
         return;
     }
-    zerror_with_hints(t, msg, hints);
+    zerror_with_note(t, msg, hints, note);
 }
 
 // tc_check_misra_10_4 moved to misra_check_binary_op_essential_types in misra.c
@@ -442,7 +552,7 @@ void tc_exit_scope(TypeChecker *tc)
     exit_scope(tc->pctx);
 }
 
-void tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int is_immutable)
+ZenSymbol *tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int is_immutable)
 {
     CompilerConfig *cfg = &tc->pctx->compiler->config;
     if (cfg->misra_mode)
@@ -457,6 +567,7 @@ void tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int i
         sym->is_immutable = is_immutable;
         sym->scope_depth = tc->current_depth;
     }
+    return sym;
 }
 
 ZenSymbol *tc_lookup(TypeChecker *tc, const char *name)
@@ -467,6 +578,28 @@ ZenSymbol *tc_lookup(TypeChecker *tc, const char *name)
         sym->is_used = 1;
     }
     return sym;
+}
+
+// Marks the struct or enum `name` as used, and the template it is an instance of
+// (`Maybe__int32_t` uses `Maybe`): MISRA Rule 2.4 reports the ones a program never uses. The
+// kind of a Type does not tell a struct from an enum (the type of `m: Mode` is a TYPE_STRUCT
+// even when Mode is an enum), so the name is looked up as either.
+static void mark_struct_or_enum_used(TypeChecker *tc, const char *name)
+{
+    ZenSymbol *sym = symbol_lookup_kind(tc->pctx->global_scope, name, SYM_STRUCT);
+    if (!sym)
+    {
+        sym = symbol_lookup_kind(tc->pctx->global_scope, name, SYM_ENUM);
+    }
+    if (sym)
+    {
+        sym->is_used = 1;
+    }
+    Instantiation *inst = find_instantiation(tc->pctx, name);
+    if (inst && inst->template_name && strcmp(inst->template_name, name) != 0)
+    {
+        mark_struct_or_enum_used(tc, inst->template_name);
+    }
 }
 
 void mark_type_as_used(TypeChecker *tc, Type *t)
@@ -489,18 +622,9 @@ void mark_type_as_used(TypeChecker *tc, Type *t)
         return;
     }
 
-    if (curr->kind == TYPE_STRUCT || curr->kind == TYPE_ENUM)
+    if ((curr->kind == TYPE_STRUCT || curr->kind == TYPE_ENUM) && curr->name)
     {
-        if (curr->name)
-        {
-            ZenSymbol *sym =
-                symbol_lookup_kind(tc->pctx->global_scope, curr->name,
-                                   (curr->kind == TYPE_STRUCT) ? SYM_STRUCT : SYM_ENUM);
-            if (sym)
-            {
-                sym->is_used = 1;
-            }
-        }
+        mark_struct_or_enum_used(tc, curr->name);
     }
     else if (curr->kind == TYPE_ALIAS)
     {

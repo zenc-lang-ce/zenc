@@ -1,0 +1,26 @@
+// features/traits: test_trait_method_double_underscore
+// A trait method whose name has `__` in it: the vtable field and the dynamic
+// call keep the whole name (the vtable used to declare it as `raw`).
+
+trait Source {
+    fn get__raw(self) -> int;
+}
+
+struct Cell {
+    v: int;
+}
+
+impl Source for Cell {
+    fn get__raw(self) -> int {
+        return self.v;
+    }
+}
+
+fn read_source(s: Source) -> int {
+    return s.get__raw();
+}
+
+test "trait_method_with_double_underscore" {
+    let c = Cell { v: 7 };
+    assert(read_source(&c) == 7, "the dynamic call reaches Cell's method");
+}

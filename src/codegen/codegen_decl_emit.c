@@ -104,8 +104,17 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
                     zfree(tname);
                 }
             }
+            else
+            {
+                // A global without a value is zeroed explicitly. Without an initializer it is a
+                // tentative definition, which some C compilers emit as a common symbol, with an
+                // alignment the linker derives from its size (Apple's clang and ld).
+                const char *zero = zero_initializer(ctx, node->type_info);
+                EMIT(ctx, " = %s", zero ? zero : (ctx->config->use_cpp ? "{}" : "{0}"));
+            }
             EMIT(ctx, ";\n");
-            if (ctx->config->use_cpp && node->kind == NODE_VAR_DECL)
+            // A global with Drop has a drop flag: assigning to it drops the old value.
+            if (node->kind == NODE_VAR_DECL)
             {
                 char *tname =
                     declared ? declared
@@ -185,7 +194,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
         {
             if (f->func.name && !f->func.body)
             {
-                if (strncmp(f->func.name, "_z_", 3) == 0 || strncmp(f->func.name, "_time_", 6) == 0)
+                if (strncmp(f->func.name, "_z_", 3) == 0)
                 {
                     f = f->next;
                     continue;
@@ -226,8 +235,10 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                     {
                         EMIT(ctx, "extern \"C\" ");
                     }
+                    prototype_span_begin(ctx, f, NULL);
                     emit_func_signature(ctx, f, NULL);
                     EMIT(ctx, ";\n");
+                    prototype_span_end(ctx);
                 }
             }
             if (f->cfg_condition)
@@ -243,8 +254,6 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 f = f->next;
                 continue;
             }
-            char *sname = type_impl_name(f->impl.target);
-
             if (f->cfg_condition)
             {
                 EMIT(ctx, "#if %s\n", f->cfg_condition);
@@ -261,17 +270,10 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 {
                     EMIT(ctx, "#if %s\n", m->cfg_condition);
                 }
-                char *fname = m->func.name;
-
-                // The prototype is `sname__method`: the method's name, or that name prefixed.
-                size_t slen = strlen(sname);
-                char *proto =
-                    strncmp(fname, sname, slen) == 0 && fname[slen] == '_' && fname[slen + 1] == '_'
-                        ? xstrdup(fname)
-                        : mangle_method_symbol(sname, NULL, fname);
-
-                emit_func_signature(ctx, m, proto);
+                prototype_span_begin(ctx, m, m->func.name);
+                emit_func_signature(ctx, m, m->func.name);
                 EMIT(ctx, ";\n");
+                prototype_span_end(ctx);
                 if (m->cfg_condition)
                 {
                     EMIT(ctx, "#endif\n");
@@ -309,8 +311,10 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 {
                     EMIT(ctx, "#if %s\n", m->cfg_condition);
                 }
+                prototype_span_begin(ctx, m, NULL);
                 emit_func_signature(ctx, m, NULL);
                 EMIT(ctx, ";\n");
+                prototype_span_end(ctx);
                 if (m->cfg_condition)
                 {
                     EMIT(ctx, "#endif\n");
@@ -441,24 +445,9 @@ void emit_impl_vtables(ParserContext *ctx)
             ASTNode *m = node->impl_trait.methods;
             while (m)
             {
-                // Calculate expected prefix: Struct__Trait__
-                size_t pre_sz = strlen(strct) + strlen(trait) + 6;
-                char *prefix = xmalloc(pre_sz);
-                snprintf(prefix, pre_sz, "%s__%s__", strct, trait);
-
-                const char *orig_name = m->func.name;
-                if (strncmp(orig_name, prefix, strlen(prefix)) == 0)
-                {
-                    orig_name += strlen(prefix);
-                }
-                else
-                {
-                    orig_name = parse_original_method_name(m->func.name);
-                }
-
-                EMIT(ctx, ".%s = (__typeof__(((%s_VTable*)0)->%s))%s", orig_name, trait, orig_name,
+                const char *method = m->func.method_name;
+                EMIT(ctx, ".%s = (__typeof__(((%s_VTable*)0)->%s))%s", method, trait, method,
                      m->func.name);
-                zfree(prefix);
                 if (m->next)
                 {
                     EMIT(ctx, ", ");

@@ -1,0 +1,17 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// A struct is not a pointer to another struct, even when their names start alike
+// (`shape_circle`, `shape_square`): no `&` is taken.
+
+struct shape_circle {
+    radius: int;
+}
+
+struct shape_square {
+    side: int;
+}
+
+fn main() {
+    let c = shape_circle { radius: 5 };
+    let _s: shape_square* = c;
+}

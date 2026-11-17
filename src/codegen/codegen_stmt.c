@@ -91,30 +91,7 @@ static char *discarded_drop_type(ParserContext *ctx, ASTNode *node)
         return NULL;
     }
 
-    char *tname = NULL;
-    if (node->type_info && node->type_info->kind == TYPE_STRUCT && node->type_info->name)
-    {
-        tname = type_def_name(node->type_info);
-    }
-    else
-    {
-        tname = infer_type(ctx, node);
-    }
-    if (!tname || strchr(tname, '*'))
-    {
-        return NULL;
-    }
-    if (strncmp(tname, "struct ", 7) == 0)
-    {
-        tname += 7;
-    }
-
-    ASTNode *def = find_struct_def(ctx, tname);
-    if (def && def->kind == NODE_STRUCT && def->type_info && def->type_info->traits.has_drop)
-    {
-        return tname;
-    }
-    return NULL;
+    return value_drop_struct(ctx, node);
 }
 
 void codegen_node_single(ParserContext *ctx, ASTNode *node)
@@ -153,7 +130,18 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     {
     case NODE_FOR:
     {
+        // The initializer is declared in the `for` header, not by handle_node_var_decl. One that
+        // names the variable it declares (`for (let i = i; ...)`) is evaluated into a temporary
+        // first, in a block around the loop, as the bounds of a range are.
+        ASTNode *init = node->for_stmt.init;
+        char *init_temp = NULL;
         codegen_loop_enter(ctx, node->for_stmt.loop_label);
+        if (init && init->kind == NODE_VAR_DECL &&
+            expr_names_var(init->var_decl.init_expr, init->var_decl.name))
+        {
+            EMIT(ctx, "{ ");
+            init_temp = emit_init_temp(ctx, init->var_decl.init_expr);
+        }
         EMIT(ctx, "for (");
         if (node->for_stmt.init)
         {
@@ -164,14 +152,14 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 if (declared)
                 {
                     EMIT(ctx, "%s %s = (%s)(", declared, c_name(ctx, v->var_decl.name), declared);
-                    codegen_expression(ctx, v->var_decl.init_expr);
+                    emit_expr_or_temp(ctx, v->var_decl.init_expr, init_temp);
                     EMIT(ctx, ")");
                 }
                 else
                 {
                     emit_auto_type(ctx, v->var_decl.init_expr, v->token);
                     EMIT(ctx, " %s = ", c_name(ctx, v->var_decl.name));
-                    codegen_expression(ctx, v->var_decl.init_expr);
+                    emit_expr_or_temp(ctx, v->var_decl.init_expr, init_temp);
                 }
             }
             else
@@ -192,6 +180,10 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, ") ");
         codegen_loop_body(ctx, node->for_stmt.body, node->for_stmt.loop_label, 1);
         codegen_loop_exit(ctx, node->for_stmt.loop_label);
+        if (init_temp)
+        {
+            EMIT(ctx, "}\n");
+        }
         break;
     }
     case NODE_BREAK:
@@ -254,20 +246,63 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     }
     case NODE_FOR_RANGE:
     {
+        // C puts the loop variable in scope at the end of its declarator, so a name `i` in the
+        // header of `for (T i = <start>; i < <end>; i += <step>)` is the loop variable, not the
+        // one it shadows (`for i in 0..i`). A bound or a step that names it is evaluated into a
+        // temporary first, in a block around the loop, while `i` still names the shadowed one.
+        // The start is evaluated before the end, as in the loop; an end that names the loop
+        // variable is then evaluated once, not before each check. The step is the text of one
+        // token, or of `-` and one token.
+        const char *var = node->for_range.var_name;
+        const char *step = node->for_range.step;
+        const char *step_name = (step && step[0] == '-') ? step + 1 : step;
+        int end_names_var = expr_names_var(node->for_range.end, var);
+        int start_names_var = end_names_var || expr_names_var(node->for_range.start, var);
+        int step_names_var = step_name && strcmp(step_name, var) == 0;
+        int hoist = start_names_var || end_names_var || step_names_var;
+        char *start_temp = NULL;
+        char *end_temp = NULL;
+        char *step_temp = NULL;
+
         codegen_loop_enter(ctx, node->for_range.loop_label);
+        if (hoist)
+        {
+            EMIT(ctx, "{ ");
+            if (start_names_var)
+            {
+                start_temp = emit_init_temp(ctx, node->for_range.start);
+            }
+            if (end_names_var)
+            {
+                end_temp = emit_init_temp(ctx, node->for_range.end);
+            }
+            if (step_names_var)
+            {
+                step_temp = xmalloc(32);
+                snprintf(step_temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
+                if (z_path_match_compiler(ctx->config->cc, "tcc"))
+                {
+                    EMIT(ctx, "__typeof__((%s)) %s = %s; ", step, step_temp, step);
+                }
+                else
+                {
+                    EMIT(ctx, "ZC_AUTO %s = %s; ", step_temp, step);
+                }
+            }
+        }
 
         EMIT(ctx, "for (");
         if (z_path_match_compiler(ctx->config->cc, "tcc"))
         {
             EMIT(ctx, "__typeof__((");
-            codegen_expression(ctx, node->for_range.start);
+            emit_expr_or_temp(ctx, node->for_range.start, start_temp);
             EMIT(ctx, ")) %s = ", c_name(ctx, node->for_range.var_name));
         }
         else
         {
             EMIT(ctx, "ZC_AUTO %s = ", c_name(ctx, node->for_range.var_name));
         }
-        codegen_expression(ctx, node->for_range.start);
+        emit_expr_or_temp(ctx, node->for_range.start, start_temp);
         if (node->for_range.step && node->for_range.step[0] == '-')
         {
             if (node->for_range.is_inclusive)
@@ -290,11 +325,11 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, "; %s < ", c_name(ctx, node->for_range.var_name));
             }
         }
-        codegen_expression(ctx, node->for_range.end);
+        emit_expr_or_temp(ctx, node->for_range.end, end_temp);
         EMIT(ctx, "; %s", c_name(ctx, node->for_range.var_name));
         if (node->for_range.step)
         {
-            EMIT(ctx, " += %s) ", node->for_range.step);
+            EMIT(ctx, " += %s) ", step_temp ? step_temp : node->for_range.step);
         }
         else
         {
@@ -302,6 +337,10 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         }
         codegen_loop_body(ctx, node->for_range.body, node->for_range.loop_label, 0);
         codegen_loop_exit(ctx, node->for_range.loop_label);
+        if (hoist)
+        {
+            EMIT(ctx, "}\n");
+        }
         break;
     }
 
@@ -503,72 +542,58 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     }
     case NODE_RETURN:
     {
-        // Suppress pending closure frees — returned closures escape the scope
-        ctx->cg.pending_closure_free_count = 0;
         int has_defers = (ctx->cg.defer_count > ctx->cg.func_defer_boundary);
         int handled = 0;
 
-        if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR)
+        if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR &&
+            moves_drop_value(ctx, node->ret.value))
         {
-            char *tname = infer_type(ctx, node->ret.value);
-            if (tname)
+            if (ctx->config->misra_mode)
             {
-                char *clean = tname;
-                if (strncmp(clean, "struct ", 7) == 0)
-                {
-                    clean += 7;
-                }
-
-                ASTNode *def = find_struct_def(ctx, clean);
-                if (def && def->type_info && def->type_info->traits.has_drop)
-                {
-                    if (ctx->config->misra_mode)
-                    {
-                        EMIT(ctx, "_misra_ret = ({ ");
-                    }
-                    else
-                    {
-                        EMIT(ctx, "return ({ ");
-                    }
-
-                    if (z_path_match_compiler(ctx->config->cc, "tcc"))
-                    {
-                        EMIT(ctx, "__typeof__(");
-                        codegen_expression(ctx, node->ret.value);
-                        EMIT(ctx, ")");
-                    }
-                    else
-                    {
-                        EMIT(ctx, "ZC_AUTO");
-                    }
-                    EMIT(ctx, " _z_ret_mv = ");
-                    if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-                    {
-                        EMIT(ctx, "*");
-                    }
-                    codegen_expression(ctx, node->ret.value);
-                    EMIT(ctx, "; memset(&");
-                    if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-                    {
-                        EMIT(ctx, "*");
-                    }
-                    codegen_expression(ctx, node->ret.value);
-                    EMIT(ctx, ", 0, sizeof(_z_ret_mv)); ");
-                    if (strcmp(node->ret.value->var_ref.name, "self") != 0)
-                    {
-                        EMIT(ctx, "__z_drop_flag_%s = 0; ", node->ret.value->var_ref.name);
-                    }
-                    emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
-                    EMIT(ctx, "_z_ret_mv; });\n");
-
-                    if (ctx->config->misra_mode)
-                    {
-                        EMIT(ctx, "goto _misra_end_of_func;\n");
-                    }
-                    handled = 1;
-                }
-                zfree(tname);
+                EMIT(ctx, "_misra_ret = ({ ");
             }
+            else
+            {
+                EMIT(ctx, "return ({ ");
+            }
+
+            if (z_path_match_compiler(ctx->config->cc, "tcc"))
+            {
+                EMIT(ctx, "__typeof__(");
+                codegen_expression(ctx, node->ret.value);
+                EMIT(ctx, ")");
+            }
+            else
+            {
+                EMIT(ctx, "ZC_AUTO");
+            }
+            EMIT(ctx, " _z_ret_mv = ");
+            if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
+            {
+                EMIT(ctx, "*");
+            }
+            codegen_expression(ctx, node->ret.value);
+            // A `const` variable is still owned: it is cleared through a mutable pointer.
+            Type *ret_type = node->ret.value->type_info;
+            EMIT(ctx, "; memset(%s&", (ret_type && ret_type->is_const) ? "(void *)" : "");
+            if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
+            {
+                EMIT(ctx, "*");
+            }
+            codegen_expression(ctx, node->ret.value);
+            EMIT(ctx, ", 0, sizeof(_z_ret_mv)); ");
+            if (strcmp(node->ret.value->var_ref.name, "self") != 0)
+            {
+                EMIT(ctx, "__z_drop_flag_%s = 0; ", node->ret.value->var_ref.name);
+            }
+            emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
+            EMIT(ctx, "_z_ret_mv; });\n");
+
+            if (ctx->config->misra_mode)
+            {
+                EMIT(ctx, "goto _misra_end_of_func;\n");
+            }
+            handled = 1;
         }
 
         if (!handled)
@@ -645,7 +670,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                     EMIT(ctx, "*");
                 }
                 else if (node->ret.value && node->ret.value->kind == NODE_EXPR_UNARY &&
-                         strcmp(node->ret.value->unary.op, "&") == 0 &&
+                         node->ret.value->unary.op == OP_ADDRESS &&
                          node->ret.value->unary.operand->kind == NODE_EXPR_VAR &&
                          strcmp(node->ret.value->unary.operand->var_ref.name, "self") == 0)
                 {
@@ -811,29 +836,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             codegen_expression(ctx, node);
             EMIT(ctx, ";\n");
         }
-        if (node->kind == NODE_EXPR_CALL && node->call.callee &&
-            ctx->cg.pending_closure_free_count > 0)
-        {
-            int is_thread_spawn = 0;
-            if (node->call.callee->kind == NODE_EXPR_VAR && node->call.callee->var_ref.name &&
-                strstr(node->call.callee->var_ref.name, "Thread::spawn"))
-            {
-                is_thread_spawn = 1;
-            }
-            else if (node->call.callee->kind == NODE_EXPR_MEMBER &&
-                     node->call.callee->member.target &&
-                     node->call.callee->member.target->kind == NODE_EXPR_VAR &&
-                     strcmp(node->call.callee->member.target->var_ref.name, "Thread") == 0 &&
-                     strcmp(node->call.callee->member.field, "spawn") == 0)
-            {
-                is_thread_spawn = 1;
-            }
-            if (is_thread_spawn)
-            {
-                ctx->cg.pending_closure_free_count = 0;
-            }
-        }
-        emit_pending_closure_frees(ctx);
     }
     }
 }

@@ -187,6 +187,34 @@ fi
 # Cleanup
 rm -f "${TEST_NAME%.zc}.cpp" "${TEST_NAME%.zc}" a.out
 
+#
+# Test 7: a C++ template in a parameter's @ctype is declared as written
+#
+
+TEST_NAME="_ctype_template_param.zc"
+echo -n "Testing $TEST_DIR/$TEST_NAME (@ctype with a C++ template)... "
+OUT="${TMPDIR:-/tmp}/zc_codegen_ctype_$$.cpp"
+
+if ! "$ZC" transpile "$TEST_DIR/$TEST_NAME" --cpp -o "$OUT" > /dev/null 2>&1; then
+    echo "FAIL (Transpile error)"
+    ((FAILED++))
+else
+    # The prototype and the definition, with the template's arguments and the reference
+    WHOLE=$(grep -c 'values_at(const std::map<int, std::vector<int>>& m, int32_t key)' "$OUT")
+    CUT=$(grep -c 'values_at(const std::map m' "$OUT")
+
+    if [ "$WHOLE" -eq 2 ] && [ "$CUT" -eq 0 ]; then
+        echo "PASS"
+        ((PASSED++))
+    else
+        echo "FAIL ($WHOLE declared as written, $CUT cut at the template)"
+        ((FAILED++))
+    fi
+fi
+
+# Cleanup
+rm -f "$OUT"
+
 echo "----------------------------------------"
 echo "Summary:"
 echo "-> Passed: $PASSED"

@@ -8,25 +8,6 @@
 
 // String manipulation
 
-const char *parse_original_method_name(const char *mangled)
-{
-    const char *sep = (char *)strstr(mangled, "__");
-    if (!sep)
-    {
-        return mangled;
-    }
-
-    const char *last_double = NULL;
-    const char *p = mangled;
-    while ((p = strstr(p, "__")))
-    {
-        last_double = p;
-        p += 2;
-    }
-
-    return last_double ? last_double + 2 : mangled;
-}
-
 char *replace_string_type(const char *args)
 {
     if (!args)

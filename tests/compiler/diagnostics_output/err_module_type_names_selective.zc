@@ -1,0 +1,10 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// A struct imported one by one under another name is shown by that name, `Spot`, not by its
+// own (`Point`) or its C name (`_points__Point`).
+import { Point as Spot } from "tests/compiler/diagnostics_output/modules/_points.zc";
+
+fn main() {
+    let p = Spot { x: 1 };
+    let _n: int = p;
+}

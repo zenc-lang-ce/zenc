@@ -13,7 +13,6 @@ fn level_of(value: Value) -> u8 {
         Value::Level(level) => { return level; },
         _ => { return 0; },
     }
-    return 0;
 }
 
 fn sum_of(value: Value) -> int {
@@ -21,7 +20,6 @@ fn sum_of(value: Value) -> int {
         Value::Point(x, y) => { return x + y; },
         _ => { return 0; },
     }
-    return 0;
 }
 
 fn label_of(value: Value) -> string {
@@ -29,7 +27,6 @@ fn label_of(value: Value) -> string {
         Value::Label(text) => { return text; },
         _ => { return ""; },
     }
-    return "";
 }
 
 fn bump(value: Value*) {

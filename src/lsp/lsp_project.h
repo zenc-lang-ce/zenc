@@ -8,18 +8,42 @@
 
 #include "parser.h"
 #include "lsp_index.h"
+#include "lsp_protocol.h"
 struct cJSON;
 
 /**
  * @brief Represents a tracked file in the LSP project.
  */
+/// A file that a file imports.
+typedef struct
+{
+    char *path;  ///< Resolved as the parser resolves it.
+    char *alias; ///< `geo` of `import "geo.zc" as geo`; NULL without one, or with `as *`.
+} FileImport;
+
 typedef struct ProjectFile
 {
-    char *path;      ///< Absolute file path.
-    char *uri;       ///< file:// URI.
+    char *path;      ///< Absolute file path: what identifies the file.
+    char *uri;       ///< Its file:// URI, percent-encoded, as responses give it (lsp_path_to_uri).
     char *source;    ///< Cached source content (in-memory).
     ASTNode *ast;    ///< Cached AST for semantic analysis.
     LSPIndex *index; ///< File-specific symbol index.
+    /// 1 for a module only imported from outside the workspace (the standard library): go to
+    /// definition and hover reach it, references, rename and workspace symbols leave it out.
+    int is_external;
+    /// The generic impls (`impl Vec<T>`) and functions (`fn id<T>`) its last parse declared:
+    /// templates, not nodes of `ast`.
+    ASTNode **generic_impls;
+    int generic_impl_count;
+    ASTNode **generic_functions;
+    int generic_function_count;
+    /// The type names its last parse read in it that name no type it sees, newest first: no type
+    /// of the program, or one that only files it does not import declare. A C header may still
+    /// declare them.
+    TypeUsage *unknown_types;
+    /// The files its text imports, in the order written.
+    FileImport *imports;
+    int import_count;
     struct ProjectFile *next;
 } ProjectFile;
 
@@ -49,8 +73,40 @@ void lsp_project_init(const char *root_path);
 // Perform full project indexing
 void lsp_project_index_workspace(void);
 
-// Find a file in the project
+// The path of a file:// URI as a client writes it: without the scheme, percent-decoded, and
+// without the `/` before a Windows drive (`file:///C:/x` is `C:/x`). Any other URI is copied as it
+// is. In the arena.
+char *lsp_uri_to_path(const char *uri);
+
+// The file:// URI of a path, percent-encoded, as a client expects it. In the arena.
+char *lsp_path_to_uri(const char *path);
+
+// The first declaration of `pf` at the top level of its file, the rest linked by `next`; NULL when
+// it has no AST. Declarations a parse made outside the AST, such as generic impls, are not there.
+ASTNode *lsp_project_top_level(const ProjectFile *pf);
+
+// Find a file in the project by its URI, however the client encodes it.
 ProjectFile *lsp_project_get_file(const char *uri);
+
+// Find a file in the project by its path, as tokens name it (Token.file); NULL if not there.
+ProjectFile *lsp_project_get_file_by_path(const char *path);
+
+// The module that `pf` imports as `alias` (`import "geo.zc" as geo`), as the last parse of `pf`
+// read its imports; NULL if no import has that alias or the server has not read the module.
+ProjectFile *lsp_project_aliased_module(const ProjectFile *pf, const char *alias);
+
+// The declaration of the type `name` (a struct, an enum, a trait or an alias, by the name the
+// parser gives it) that the file `path` sees: its own, or one of a file it imports, directly or
+// through another import. The server parses the whole workspace with one context, so a type of
+// that name in a file `path` does not import is not this one. NULL when no file it sees declares
+// it.
+ASTNode *lsp_project_visible_type(const char *path, const char *name);
+
+// Writes to `out` what an `import` in the file `importer` writes to import the file `target`: the
+// path from `std/` for a file of the standard library (`std/net/http.zc`), the path relative to
+// `importer` otherwise (`../shapes.zc`). Each is checked as the parser resolves an import. Returns
+// 0 when it leads to `target` neither way.
+int lsp_project_import_text(const char *importer, const char *target, char *out, size_t size);
 
 // Update a file (re-parse and re-index)
 void lsp_project_update_file(const char *uri, const char *src);
@@ -62,6 +118,11 @@ void lsp_project_track_document(const char *uri, const char *src);
 // Forget a document the client closed: a rebuild reads it from disk again.
 void lsp_project_untrack_document(const char *uri);
 
+// Calls `visit` with the URI and latest text of each open document, other than `uri`, whose file
+// sees the file of `uri`: imports it, directly or through another import.
+void lsp_project_visit_documents_seeing(const char *uri,
+                                        void (*visit)(const char *uri, const char *source));
+
 // Arena usage right after the last full build (workspace indexing or rebuild).
 size_t lsp_project_built_total(void);
 
@@ -70,14 +131,10 @@ size_t lsp_project_built_total(void);
 // arena taken after `base` is invalid afterwards.
 void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler);
 
-// Find definition globally
-typedef struct
-{
-    char *uri;
-    LSPRange *range;
-} DefinitionResult;
-
-DefinitionResult lsp_project_find_definition(const char *name);
+// The definition of the symbol that `r`, a range of `pf`, names: `r` itself if it is a definition.
+// NULL when the file that declares it has no definition there (a declaration not in the index,
+// such as one the parser generates). The file goes to *def_file, if given.
+LSPRange *lsp_project_definition(ProjectFile *pf, LSPRange *r, ProjectFile **def_file);
 
 typedef struct ReferenceResult
 {
@@ -86,32 +143,8 @@ typedef struct ReferenceResult
     struct ReferenceResult *next;
 } ReferenceResult;
 
-ReferenceResult *lsp_project_find_references(const char *name);
-
-// Semantic Tokens
-char *lsp_semantic_tokens_full(const char *uri);
-
-/** Severity of a published diagnostic, as the LSP specification numbers it. */
-typedef enum
-{
-    LSP_SEVERITY_ERROR = 1,
-    LSP_SEVERITY_WARNING = 2,
-    LSP_SEVERITY_INFORMATION = 3,
-    LSP_SEVERITY_HINT = 4
-} LspDiagnosticSeverity;
-
-// LSP analysis functions (declared here for cross-file visibility)
-void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d);
-void lsp_check_file(const char *uri, const char *src);
-void lsp_close_file(const char *uri);
-void lsp_goto_definition(const char *uri, int line, int col, const struct cJSON *id);
-void lsp_hover(const char *uri, int line, int col, const struct cJSON *id);
-void lsp_completion(const char *uri, int line, int col, const struct cJSON *id);
-void lsp_document_symbol(const char *uri, const struct cJSON *id);
-void lsp_workspace_symbol(const char *query, const struct cJSON *id);
-void lsp_references(const char *uri, int line, int col, const struct cJSON *id);
-void lsp_signature_help(const char *uri, int line, int col, const struct cJSON *id);
-void lsp_rename(const char *uri, int line, int col, const char *new_name, const struct cJSON *id);
-void lsp_code_action(const char *uri, struct cJSON *diagnostics, const struct cJSON *id);
+// The ranges of the workspace's files that name the symbol declared at `definition` (see
+// lsp_range_names): its declaration and its uses.
+ReferenceResult *lsp_project_find_references(Token definition);
 
 #endif

@@ -1,0 +1,15 @@
+// ARGS: check
+// Every match is exhaustive: one on an integer needs a `_` case, also when it
+// is a statement followed by more code.
+
+fn name(n: int) -> int {
+    match n {
+        1 => { return 10; },
+        2 => { return 20; },
+    }
+    return 0;
+}
+
+fn main() {
+    name(1);
+}

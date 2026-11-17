@@ -1,0 +1,85 @@
+// ARGS: check
+// Code no path reaches is a warning (an error only under --misra). A label, or a loop a
+// `break` leaves, makes the code after it reachable again.
+
+fn after_return() -> int {
+    return 1;
+    let dead = 2;
+    return dead;
+}
+
+fn after_match(n: int) -> int {
+    match n {
+        0 => { return 10; },
+        _ => { return 20; },
+    }
+    return 30;
+}
+
+fn after_endless_loop() -> int {
+    loop { }
+    return 0;
+}
+
+fn jump_over() -> int {
+    let x = 0;
+    goto done;
+    x = 100;
+done:
+    return x;
+}
+
+fn reachable_label() -> int {
+    let x = 0;
+    let target = &&second;
+    goto first;
+first:
+    x = x + 1;
+    goto *target;
+second:
+    return x;
+}
+
+fn break_inside_if() -> int {
+    let i = 0;
+    loop {
+        i = i + 1;
+        if i >= 5 {
+            break;
+        }
+    }
+    return i;
+}
+
+fn labeled_break() -> int {
+    let count = 0;
+    outer: loop {
+        loop {
+            count = count + 1;
+            break outer;
+        }
+    }
+    return count;
+}
+
+fn break_in_lambda() -> int {
+    loop {
+        let f = fn() -> int {
+            loop {
+                break;
+            }
+            return 1;
+        };
+        return f();
+    }
+}
+
+fn main() {
+    after_return();
+    after_match(1);
+    jump_over();
+    reachable_label();
+    break_inside_if();
+    labeled_break();
+    break_in_lambda();
+}

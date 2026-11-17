@@ -60,9 +60,8 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
             continue;
         }
         ATTACH_DOC_COMMENT(ctx, f);
-        char *mangled = mangle_method_symbol(type_name, trait_name, f->func.name);
-        zfree(f->func.name);
-        f->func.name = mangled;
+        f->func.method_name = f->func.name;
+        f->func.name = mangle_method_symbol(type_name, trait_name, f->func.method_name);
 
         if (attrs.cfg_condition)
         {
@@ -75,23 +74,6 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         if (template_param)
         {
             register_func_template(ctx, f->func.name, template_param, f);
-
-            // `self` is a Type<T>*.
-            if (f->func.count > 0 && f->func.param_names &&
-                strcmp(f->func.param_names[0], "self") == 0)
-            {
-                Type *t_struct = type_new(TYPE_STRUCT);
-                t_struct->name = xstrdup(type_name);
-                t_struct->count = 1;
-                t_struct->args = xmalloc(sizeof(Type *));
-                t_struct->args[0] = type_new(TYPE_GENERIC);
-                t_struct->args[0]->name = xstrdup(template_param);
-
-                Type *t_ptr = type_new(TYPE_POINTER);
-                t_ptr->inner = t_struct;
-
-                f->func.arg_types[0] = t_ptr;
-            }
         }
         else if (f->func.generic_params)
         {
@@ -101,7 +83,8 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         {
             register_func(ctx, ctx->current_scope, f->func.name, f->func.count,
                           f->func.default_values, f->func.arg_types, f->func.ret_type_info,
-                          f->func.is_varargs, f->func.pure, f->link_name, f->token, 0);
+                          f->func.is_varargs, f->func.pure, f->link_name, f->func.method_name,
+                          f->token, 0);
         }
 
         if (!h)
@@ -117,11 +100,15 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
     return h;
 }
 
-// The type an impl adds methods to: the struct or enum of that name (a template by its name
-// alone), or the type an alias stands for (a plain alias the type it names, an opaque alias
-// itself).
+// The type an impl adds methods to: a primitive (`impl f64`), the struct or enum of that name
+// (a template by its name alone), or the type an alias stands for (a plain alias the type it
+// names, an opaque alias itself).
 static Type *impl_target(ParserContext *ctx, const char *name)
 {
+    if (is_primitive_type_name(name))
+    {
+        return type_new(get_primitive_type_kind(name));
+    }
     ASTNode *def = find_type_alias_node(ctx, name) ? NULL : find_struct_def(ctx, name);
     int is_template = def && ((def->kind == NODE_STRUCT && def->strct.is_template) ||
                               (def->kind == NODE_ENUM && def->enm.is_template));
@@ -132,6 +119,11 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 {
 
     lexer_next(l); // eat impl
+
+    // `register_generic` skips a name that is already a generic parameter, as the `T` of
+    // `impl<T> Show for Box<T>` is the second time: what the impl registers is undone by
+    // restoring the count, not by subtracting what it declared.
+    int generics_before = ctx->known_generics_count;
 
     // Handle impl<T> Struct<T> syntax: generic param declared before struct name
     char *gen_param = NULL;
@@ -145,7 +137,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             zpanic_at(lexer_peek(l), "Expected >");
             return NULL;
         }
-        register_generic(ctx, gen_param);
+        register_generic(ctx, gt);
     }
 
     Token t1 = lexer_next(l);
@@ -170,13 +162,13 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             zpanic_at(lexer_peek(l), "Expected >");
             return NULL;
         }
-        register_generic(ctx, gen_param);
+        register_generic(ctx, gt);
     }
     else if (gen_param && lexer_peek(l).kind == TOK_LANGLE)
     {
         // impl<T> Struct<T> syntax: skip redundant <T> on struct name
-        lexer_next(l); // eat <
-        lexer_next(l); // eat T
+        lexer_next(l);                                    // eat <
+        record_generic_parameter_use(ctx, lexer_next(l)); // eat T
         if (lexer_next(l).kind != TOK_RANGLE)
         {
             zpanic_at(lexer_peek(l), "Expected >");
@@ -184,19 +176,11 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         }
     }
 
-    // Check for "for" (Trait impl)
+    // `impl Trait for Type`: `for` is read by its text (see keywords.c).
     Token pk = lexer_peek(l);
-    if (pk.kind == TOK_FOR ||
-        (pk.kind == TOK_IDENT && strncmp(pk.start, "for", 3) == 0 && pk.len == 3))
+    if (pk.kind == TOK_IDENT && pk.len == 3 && strncmp(pk.start, "for", 3) == 0)
     {
-        if (pk.kind != TOK_FOR)
-        {
-            lexer_next(l);
-        }
-        else
-        {
-            lexer_next(l); // eat for
-        }
+        lexer_next(l); // eat for
         Token t2 = lexer_next(l);
         char *name2 = token_strdup(t2);
 
@@ -211,14 +195,22 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
                 zpanic_at(lexer_peek(l), "Expected > in impl struct generic");
                 return NULL;
             }
-            register_generic(ctx, target_gen_param);
+            register_generic(ctx, gt);
+        }
+        // A type imported one by one, or in a module its own type (`impl Drop for Arena` of a
+        // module imported with `as`).
+        char *type_name = type_declaration_name(ctx, name2);
+        if (type_name)
+        {
+            zfree(name2);
+            name2 = type_name;
         }
         Type *target = impl_target(ctx, name2);
         name2 = type_impl_name(target);
 
         // Check for common error: swapped Struct and Trait
         // impl MyStruct for MyTrait (Wrong) vs impl MyTrait for MyStruct (Correct)
-        if (!is_trait(name1) && is_trait(name2))
+        if (!is_trait(ctx, name1) && is_trait(ctx, name2))
         {
             zpanic_at(t1,
                       "Incorrect usage of impl. Did you mean 'impl %s for %s'? Syntax is 'impl "
@@ -273,7 +265,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             }
         }
 
-        ctx->current_impl_struct = name2;
+        ctx->current_impl_target = target;
 
         lexer_next(l);
 
@@ -300,10 +292,12 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             zfree(full_target_name); // It was strdup/ref. Wait, xstrdup needs free.
         }
 
-        ctx->current_impl_struct = NULL; // Restore context
+        ctx->current_impl_target = NULL; // Restore context
         ASTNode *n = ast_create(NODE_IMPL_TRAIT);
         n->impl_trait.trait_name = name1;
         n->impl_trait.target = target;
+        n->impl_trait.trait_token = t1;
+        n->impl_trait.target_token = t2;
         n->impl_trait.methods = h;
         add_to_impl_list(ctx, n);
 
@@ -328,32 +322,33 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             register_impl_template(ctx, name2, gp, n);
         }
 
-        if (gen_param)
-        {
-            ctx->known_generics_count--;
-        }
-        if (target_gen_param)
-        {
-            ctx->known_generics_count--;
-        }
+        ctx->known_generics_count = generics_before;
         return n;
     }
     else
     {
         // Regular impl Struct (impl Box or impl Box<T>)
 
-        // Auto-prefix struct name if in module context
-        if (ctx->imports.current_module_prefix && !gen_param && !is_extern_symbol(ctx, name1))
+        // A type imported one by one, or in a module its own type.
+        char *type_name = type_declaration_name(ctx, name1);
+        if (type_name)
         {
-            char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name1);
             zfree(name1);
-            name1 = prefixed_name;
+            name1 = type_name;
         }
 
         Type *target = impl_target(ctx, name1);
         name1 = type_impl_name(target);
 
-        ctx->current_impl_struct = name1; // For patch_self_args inside parse_function
+        // The type of `self` in its methods: in `impl Vec<T>`, a `Vec<T>`.
+        ctx->current_impl_target = target;
+        if (gen_param)
+        {
+            Type **args = xmalloc(sizeof(Type *));
+            args[0] = type_new(TYPE_GENERIC);
+            args[0]->name = xstrdup(gen_param);
+            ctx->current_impl_target = type_new_instance(name1, args, 1);
+        }
 
         if (gen_param)
         {
@@ -373,13 +368,11 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             ASTNode *n = ast_create(NODE_IMPL);
             n->token = t1;
             n->impl.target = target;
+            n->impl.target_token = t1;
             n->impl.methods = h;
             register_impl_template(ctx, name1, gen_param, n);
-            ctx->current_impl_struct = NULL;
-            if (gen_param)
-            {
-                ctx->known_generics_count--;
-            }
+            ctx->current_impl_target = NULL;
+            ctx->known_generics_count = generics_before;
             return NULL; // Do not emit generic template
         }
         else
@@ -387,16 +380,14 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             // REGULAR IMPL
             lexer_next(l);
             ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, NULL);
-            ctx->current_impl_struct = NULL;
+            ctx->current_impl_target = NULL;
             ASTNode *n = ast_create(NODE_IMPL);
             n->impl.target = target;
+            n->impl.target_token = t1;
             n->impl.methods = h;
             add_to_impl_list(ctx, n);
 
-            if (gen_param)
-            {
-                ctx->known_generics_count--;
-            }
+            ctx->known_generics_count = generics_before;
             return n;
         }
     }

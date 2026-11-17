@@ -131,11 +131,10 @@ static void emit_fstring_expr(ParserContext *ctx, ASTNode *part, const char *wri
         }
         if (struct_name)
         {
-            char mangled[MAX_TYPE_NAME_LEN];
-            snprintf(mangled, sizeof(mangled), "%s__to_string", struct_name);
+            char *mangled = mangle_method_symbol(struct_name, NULL, "to_string");
             if (find_func(ctx, mangled))
             {
-                to_string = xstrdup(mangled);
+                to_string = mangled;
             }
         }
     }
@@ -192,11 +191,13 @@ static void emit_fstring_expr(ParserContext *ctx, ASTNode *part, const char *wri
     }
     else
     {
-        // A pointer that is not a string is written as an address.
-        Type *named = t ? t : part->fstring_part.symbol_type;
-        char *type_name = named ? type_to_string(named) : NULL;
-        if (type_name && strstr(type_name, "*") && !strstr(type_name, "char") &&
-            strcmp(type_name, "string") != 0 && strcmp(type_name, "str") != 0)
+        // A pointer that is not a string, or a raw function pointer, is written as an address.
+        Type *named = resolve_alias(t ? t : part->fstring_part.symbol_type);
+        Type *pointee = named && named->kind == TYPE_POINTER ? resolve_alias(named->inner) : NULL;
+        int is_string = pointee && (pointee->kind == TYPE_CHAR || pointee->kind == TYPE_C_CHAR ||
+                                    pointee->kind == TYPE_C_UCHAR);
+        if (named && ((named->kind == TYPE_POINTER && !is_string) ||
+                      (named->kind == TYPE_FUNCTION && named->is_raw)))
         {
             format_spec = "p";
         }
@@ -230,6 +231,16 @@ static void emit_fstring_expr(ParserContext *ctx, ASTNode *part, const char *wri
                  "_z_drop(_z_interp_val); }); ",
                  rw, writer, to_string, addr);
         }
+    }
+    else if (force_simple && ctx->config->use_cpp)
+    {
+        // In C++, `_z_str` is a function and evaluates its argument: copy the value once, so
+        // that the expression is evaluated once. The copy is not dropped: the value is of a
+        // simple type or borrowed. A copy, not a reference, also reads a packed field.
+        EMIT(ctx,
+             "({ ZC_AUTO_INIT(_z_interp_val, %s); %s_z_str(_z_interp_val), "
+             "_z_arg(_z_interp_val)); }); ",
+             rw, writer);
     }
     else if (force_simple)
     {

@@ -1,0 +1,38 @@
+// features/memory: a `const` parameter of a type with Drop is owned by the function like any
+// other: returning it moves it out, and keeping it drops it once, at the end of the function.
+
+struct Res {
+    id: int;
+}
+
+let drops: int = 0;
+
+impl Drop for Res {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+fn pass(r: const Res) -> Res {
+    return r;
+}
+
+fn keep(r: const Res) -> int {
+    return r.id;
+}
+
+test "a returned const parameter is moved out, not dropped" {
+    drops = 0;
+    {
+        let r = pass(Res { id: 1 });
+        assert(r.id == 1, "returned");
+        assert(drops == 0, "not dropped by pass");
+    }
+    assert(drops == 1, "dropped once by the caller");
+}
+
+test "a const parameter that is kept is dropped once" {
+    drops = 0;
+    assert(keep(Res { id: 2 }) == 2, "kept");
+    assert(drops == 1, "dropped by keep");
+}

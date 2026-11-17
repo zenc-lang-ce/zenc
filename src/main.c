@@ -101,6 +101,43 @@ static void report_unknown_backend(const char *name)
     fprintf(stderr, "\n");
 }
 
+// Reports an option that needs a value (`what`) and is the last argument, so it has none.
+static void report_missing_option_value(const char *option, const char *what)
+{
+    fprintf(stderr, COLOR_BOLD COLOR_RED "error" COLOR_RESET ": missing %s after '%s'\n", what,
+            option);
+}
+
+// Sets the mode of a command that compiles the input: build, run, debug, check or transpile.
+// Returns 0 when `name` is none of them.
+static int set_compile_command(CompilerConfig *cfg, const char *name)
+{
+    if (strcmp(name, "transpile") == 0)
+    {
+        cfg->mode_transpile = 1;
+        cfg->emit_c = 1; // Transpile implies emitting C
+    }
+    else if (strcmp(name, "run") == 0)
+    {
+        cfg->mode_run = 1;
+    }
+    else if (strcmp(name, "debug") == 0)
+    {
+        cfg->mode_debug = 1;
+        cfg->debug_info = 1;
+        cfg->mode_run = 1;
+    }
+    else if (strcmp(name, "check") == 0)
+    {
+        cfg->mode_check = 1;
+    }
+    else if (strcmp(name, "build") != 0) // Building is the default mode.
+    {
+        return 0;
+    }
+    return 1;
+}
+
 int main(int argc, char **argv)
 {
     ZenCompiler compiler = {0};
@@ -108,12 +145,10 @@ int main(int argc, char **argv)
     z_compiler_setup(&compiler);
 
     int i;
-    const char *optimization_level = NULL;
     char *input_file_copy;
 
     i = 0;
     (void)i;
-    (void)optimization_level;
     (void)input_file_copy;
 
     if (argc < 2)
@@ -125,6 +160,7 @@ int main(int argc, char **argv)
     // Parse command
     char *command = argv[1];
     int arg_start = 2;
+    int command_given = 0;
     int refresh_c_headers = 0;
 
     if (strcmp(command, "lsp") == 0)
@@ -143,23 +179,9 @@ int main(int argc, char **argv)
     {
         return exec_tool("format", "zc-format", argc, argv);
     }
-    else if (strcmp(command, "transpile") == 0 || strcmp(command, "-c") == 0)
+    else if (set_compile_command(cfg, strcmp(command, "-c") == 0 ? "transpile" : command))
     {
-        cfg->mode_transpile = 1;
-        cfg->emit_c = 1; // Transpile implies emitting C
-    }
-    else if (strcmp(command, "run") == 0)
-    {
-        cfg->mode_run = 1;
-    }
-    else if (strcmp(command, "debug") == 0)
-    {
-        cfg->mode_debug = 1;
-        cfg->mode_run = 1;
-    }
-    else if (strcmp(command, "check") == 0)
-    {
-        cfg->mode_check = 1;
+        command_given = 1;
     }
     else if (strcmp(command, "cache") == 0)
     {
@@ -200,23 +222,9 @@ int main(int argc, char **argv)
     }
     else if (command[0] == '-')
     {
-        // implicit build or run? assume build if starts with flag, but usually
-        // command first If file provided directly: "zc file.zc" -> build
-        if (strchr(command, '.'))
-        {
-            // treat as filename
-            cfg->input_file = command;
-            arg_start = 2; // already consumed
-        }
-        else
-        {
-            // Flags
-            arg_start = 1;
-        }
-    }
-    else if (strcmp(command, "build") == 0)
-    {
-        // Building is the default mode.
+        // Options before the command (`zc -g build app.zc`): the command is the first argument
+        // the option loop does not take as an option or its value.
+        arg_start = 1;
     }
     else if (strchr(command, '.'))
     {
@@ -238,12 +246,6 @@ int main(int argc, char **argv)
     {
         if (strcmp(argv[i], "--") == 0)
         {
-            if (!cfg->mode_run)
-            {
-                fprintf(stderr, COLOR_BOLD COLOR_RED "error" COLOR_RESET
-                                                     ": `--` is only for zc run and zc debug\n");
-                return 1;
-            }
             arg_end = i;
             break;
         }
@@ -342,8 +344,13 @@ int main(int argc, char **argv)
             zvec_push_Str(&cfg->cfg_defines, xstrdup("misra"));
             zvec_push_Str(&cfg->cfg_defines, xstrdup("ZC_MISRA"));
         }
-        else if (strcmp(arg, "--backend") == 0 && i + 1 < argc)
+        else if (strcmp(arg, "--backend") == 0)
         {
+            if (i + 1 >= argc)
+            {
+                report_missing_option_value(arg, "backend name");
+                return 1;
+            }
             cfg->backend_name = argv[++i];
             if (!codegen_find_backend(cfg->backend_name))
             {
@@ -355,8 +362,13 @@ int main(int argc, char **argv)
                 cfg->use_cpp = 1;
             }
         }
-        else if (strcmp(arg, "--backend-opt") == 0 && i + 1 < argc)
+        else if (strcmp(arg, "--backend-opt") == 0)
         {
+            if (i + 1 >= argc)
+            {
+                report_missing_option_value(arg, "backend option");
+                return 1;
+            }
             zvec_push_Str(&cfg->backend_opts, xstrdup(argv[++i]));
         }
         else if (strcmp(arg, "--freestanding") == 0)
@@ -372,6 +384,10 @@ int main(int argc, char **argv)
         else if (strcmp(arg, "--no-suppress-warnings") == 0)
         {
             cfg->no_suppress_warnings = 1;
+        }
+        else if (strcmp(arg, "--prune-unused") == 0)
+        {
+            cfg->prune_unused = 1;
         }
         else if (strcmp(arg, "--cpp") == 0)
         {
@@ -466,30 +482,32 @@ int main(int argc, char **argv)
         }
         else if (strcmp(arg, "--cc") == 0)
         {
-            if (i + 1 < argc)
+            if (i + 1 >= argc)
             {
-                char *cc_arg = argv[++i];
-                // Handle "zig" shorthand for "zig cc"
-                if (strcmp(cc_arg, "zig") == 0)
+                report_missing_option_value(arg, "compiler");
+                return 1;
+            }
+            char *cc_arg = argv[++i];
+            // Handle "zig" shorthand for "zig cc"
+            if (strcmp(cc_arg, "zig") == 0)
+            {
+                if (z_is_windows())
                 {
-                    if (z_is_windows())
-                    {
-                        strncpy(cfg->cc, "zig.exe cc", sizeof(cfg->cc) - 1);
-                        cfg->cc[sizeof(cfg->cc) - 1] = '\0';
-                    }
-                    else
-                    {
-                        strncpy(cfg->cc, "zig cc", sizeof(cfg->cc) - 1);
-                        cfg->cc[sizeof(cfg->cc) - 1] = '\0';
-                    }
+                    strncpy(cfg->cc, "zig.exe cc", sizeof(cfg->cc) - 1);
+                    cfg->cc[sizeof(cfg->cc) - 1] = '\0';
                 }
                 else
                 {
-                    snprintf(cfg->cc, sizeof(cfg->cc), "%s", cc_arg);
-                    if (z_is_windows() && !z_path_has_extension(cfg->cc, ".exe"))
-                    {
-                        strcat(cfg->cc, ".exe");
-                    }
+                    strncpy(cfg->cc, "zig cc", sizeof(cfg->cc) - 1);
+                    cfg->cc[sizeof(cfg->cc) - 1] = '\0';
+                }
+            }
+            else
+            {
+                snprintf(cfg->cc, sizeof(cfg->cc), "%s", cc_arg);
+                if (z_is_windows() && !z_path_has_extension(cfg->cc, ".exe"))
+                {
+                    strcat(cfg->cc, ".exe");
                 }
             }
         }
@@ -505,8 +523,7 @@ int main(int argc, char **argv)
             }
             else
             {
-                fprintf(stderr, COLOR_BOLD COLOR_RED "error" COLOR_RESET
-                                                     ": missing output filename after '-o'\n");
+                report_missing_option_value(arg, "output filename");
                 return 1;
             }
         }
@@ -521,11 +538,13 @@ int main(int argc, char **argv)
             {
                 i_path = argv[++i];
             }
-            if (i_path)
+            else
             {
-                append_flag(cfg->gcc_flags, sizeof(cfg->gcc_flags), arg, NULL);
-                zvec_push_Str(&cfg->include_paths, xstrdup(i_path));
+                report_missing_option_value(arg, "directory");
+                return 1;
             }
+            append_flag(cfg->gcc_flags, sizeof(cfg->gcc_flags), "-I", i_path);
+            zvec_push_Str(&cfg->include_paths, xstrdup(i_path));
         }
         else if (strncmp(arg, "-L", 2) == 0 || strncmp(arg, "-l", 2) == 0)
         {
@@ -538,51 +557,57 @@ int main(int argc, char **argv)
             {
                 append_flag(compiler.link_flags, MAX_FLAGS_SIZE, prefix, argv[++i]);
             }
+            else
+            {
+                report_missing_option_value(arg, arg[1] == 'L' ? "directory" : "library");
+                return 1;
+            }
         }
         else if (strncmp(arg, "-O", 2) == 0)
         {
-            if (strlen(arg) > 2)
-            {
-                optimization_level = arg + 2;
-                append_flag(cfg->gcc_flags, sizeof(cfg->gcc_flags), "-O", optimization_level);
-            }
-            else if (i + 1 < argc)
-            {
-                optimization_level = argv[++i];
-                append_flag(cfg->gcc_flags, sizeof(cfg->gcc_flags), "-O", optimization_level);
-            }
+            // The level goes with the option (`-O2`); a bare `-O` is the C compiler's own `-O`
+            // and does not take the next argument.
+            append_flag(cfg->gcc_flags, sizeof(cfg->gcc_flags), arg, NULL);
         }
         else if (strcmp(arg, "-g") == 0)
         {
             cfg->mode_debug = 1;
+            cfg->debug_info = 1;
         }
         else if (strcmp(arg, "-g0") == 0 || strcmp(arg, "--no-debug") == 0)
         {
             cfg->mode_debug = 0;
+            cfg->debug_info = 0;
         }
         else if (strcmp(arg, "--release") == 0)
         {
             cfg->mode_debug = 0;
+            cfg->debug_info = 0;
             append_flag(cfg->gcc_flags, sizeof(cfg->gcc_flags), "-O3", NULL);
         }
         else if (strncmp(arg, "-D", 2) == 0)
         {
-            const char *def = (strlen(arg) > 2) ? arg + 2 : NULL;
-            if (!def && i + 1 < argc)
+            const char *def = NULL;
+            if (strlen(arg) > 2)
             {
-                i++;
-                def = argv[i];
+                def = arg + 2;
             }
-            if (def)
+            else if (i + 1 < argc)
             {
-                char *name = xstrdup(def);
-                char *eq = (char *)strchr(name, '=');
-                if (eq)
-                {
-                    *eq = '\0';
-                }
-                zvec_push_Str(&cfg->cfg_defines, name);
+                def = argv[++i];
             }
+            else
+            {
+                report_missing_option_value(arg, "macro name");
+                return 1;
+            }
+            char *name = xstrdup(def);
+            char *eq = (char *)strchr(name, '=');
+            if (eq)
+            {
+                *eq = '\0';
+            }
+            zvec_push_Str(&cfg->cfg_defines, name);
             append_flag(cfg->gcc_flags, sizeof(cfg->gcc_flags), "-D", def);
         }
         else if (strncmp(arg, "-Wno-", 5) == 0)
@@ -630,7 +655,11 @@ int main(int argc, char **argv)
         }
         else if (arg[0] != '\0')
         {
-            if (!cfg->input_file)
+            if (!command_given && !cfg->input_file && set_compile_command(cfg, arg))
+            {
+                command_given = 1;
+            }
+            else if (!cfg->input_file)
             {
                 cfg->input_file = arg;
             }
@@ -643,6 +672,12 @@ int main(int argc, char **argv)
                 zvec_push_Str(&cfg->extra_files, arg);
             }
         }
+    }
+    if (arg_end < argc && !cfg->mode_run)
+    {
+        fprintf(stderr, COLOR_BOLD COLOR_RED "error" COLOR_RESET
+                                             ": `--` is only for zc run and zc debug\n");
+        return 1;
     }
     for (i = arg_end + 1; i < argc; i++)
     {

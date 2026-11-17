@@ -1,0 +1,23 @@
+// language/features/methods: the methods of a struct whose name ends in "__"
+// are declared under the same C name as they are defined.
+
+struct Point__ {
+    x: int
+}
+
+impl Point__ {
+    fn twice(self) -> int {
+        return self.x * 2;
+    }
+
+    fn to_string(self) -> string {
+        return "point";
+    }
+}
+
+test "methods of a struct whose name ends in underscores" {
+    let p = Point__ { x: 21 };
+    assert(p.twice() == 42, "method call");
+    let s = f"{p}";
+    assert(strcmp(s, "point") == 0, "f-string uses to_string");
+}

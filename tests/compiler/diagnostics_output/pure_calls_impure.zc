@@ -1,0 +1,17 @@
+// ARGS: check
+// A @pure function cannot call a function that is not @pure; the error points
+// at the call.
+import "std/io.zc"
+
+fn impure_func() {
+    println("I am impure");
+}
+
+@pure
+fn pure_func() {
+    impure_func();
+}
+
+fn main() {
+    pure_func();
+}

@@ -47,16 +47,16 @@ static Type *option_result_binding_type(ASTNode *def, const char *variant, int c
 
 // What a `return` in `from`, a function or a lambda, must give: the name of its return type
 // ("void" when it returns nothing) and the type itself (NULL when unknown).
-static void return_target(ASTNode *from, const char **name, Type **type)
+static void return_target(ParserContext *ctx, ASTNode *from, const char **name, Type **type)
 {
     if (from->kind == NODE_LAMBDA)
     {
         Type *fn = get_inner_type(from->type_info);
         *type = (fn && fn->kind == TYPE_FUNCTION) ? fn->inner : NULL;
-        *name = *type ? type_to_string(*type) : NULL;
+        *name = *type ? zen_c_type_spelling(ctx, *type) : NULL;
         return;
     }
-    *name = type_to_string(from->func.ret_type_info);
+    *name = zen_c_type_spelling(ctx, from->func.ret_type_info);
     *type = from->func.ret_type_info;
 }
 
@@ -212,6 +212,9 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
     case NODE_VAR_DECL:
         check_var_decl(tc, node, depth + 1);
         break;
+    case NODE_CONST:
+        check_def(tc, node, depth + 1);
+        break;
     case NODE_FUNCTION:
         check_function(tc, node, depth + 1);
         break;
@@ -258,13 +261,16 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             tc->is_stmt_context = 0;
             check_node(tc, node->ret.value, depth + 1);
             tc->is_stmt_context = old_stmt_ctx;
+            // Only this move rule applies to a returned value for now: what returning an index
+            // or a dereference does is left to the memory model.
+            check_match_binding_move(tc, node->ret.value);
         }
         // Check the returned value against the function or lambda the `return` belongs to
         if (tc->returns_from)
         {
             const char *ret_type = NULL;
             Type *ret_type_info = NULL;
-            return_target(tc->returns_from, &ret_type, &ret_type_info);
+            return_target(tc->pctx, tc->returns_from, &ret_type, &ret_type_info);
             int func_is_void = !ret_type || strcmp(ret_type, "void") == 0;
 
             if (func_is_void && node->ret.value)
@@ -439,12 +445,19 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                                 {
                                     bt = type_new(TYPE_UNSAFE_ANY);
                                 }
-                                if (mcase->match_case.binding_refs &&
-                                    mcase->match_case.binding_refs[i])
+                                int is_ref = mcase->match_case.binding_refs &&
+                                             mcase->match_case.binding_refs[i];
+                                if (is_ref)
                                 {
                                     bt = type_new_ptr(bt);
                                 }
-                                tc_add_symbol(tc, bname, bt, mcase->token, 0);
+                                ZenSymbol *sym = tc_add_symbol(tc, bname, bt, mcase->token, 0);
+                                if (sym && !is_ref)
+                                {
+                                    // Bound by value, the binding is a copy of the payload: the
+                                    // matched value still owns it, and drops it.
+                                    sym->is_borrowed = 1;
+                                }
                             }
                         }
                     }
@@ -621,18 +634,12 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 node->type_info = type_clone(slice_element(t));
                 node->type_info->lifetime_depth = node->index.array->type_info->lifetime_depth;
             }
-            else if (t->kind == TYPE_ARRAY || t->kind == TYPE_POINTER || t->kind == TYPE_VECTOR)
+            else if (t->kind == TYPE_ARRAY || t->kind == TYPE_POINTER ||
+                     vector_type_of(tc->pctx, t))
             {
-                if (t->kind == TYPE_VECTOR && !t->inner && t->name)
-                {
-                    ASTNode *def = find_struct_def(tc->pctx, type_def_name(t));
-                    if (def && def->kind == NODE_STRUCT && def->strct.fields)
-                    {
-                        t->inner = def->strct.fields->type_info;
-                    }
-                }
+                Type *vector = vector_type_of(tc->pctx, t);
                 // Propagate lifetime from array/slice to the indexed element
-                node->type_info = type_clone(t->inner);
+                node->type_info = type_clone(vector ? vector->inner : t->inner);
                 if (node->type_info && node->index.array->type_info)
                 {
                     node->type_info->lifetime_depth = node->index.array->type_info->lifetime_depth;
@@ -666,7 +673,33 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         }
         if (node->member.target && node->member.target->type_info)
         {
+            // Not for `?.` (is_pointer_access 2), which tests its target for null.
+            if (node->member.is_pointer_access != 2)
+            {
+                node->member.target = deref_to_one_pointer(node->member.target);
+            }
+            else
+            {
+                // Which level `?.` would test is not decided, and the C emitted for it is not
+                // valid. Reported in a build too, which would otherwise fail in the C compiler.
+                Type *t = get_inner_type(node->member.target->type_info);
+                Type *pointee = t && t->kind == TYPE_POINTER ? get_inner_type(t->inner) : NULL;
+                if (pointee && pointee->kind == TYPE_POINTER)
+                {
+                    const char *hints[] = {
+                        "Dereference it first: `(*p)?.field` tests the pointer `p` points to",
+                        NULL};
+                    tc_ctrl_flow_error(tc, node->token,
+                                       "'?.' on a pointer to a pointer is not supported", hints);
+                }
+            }
             Type *target_type = get_inner_type(node->member.target->type_info);
+            // `p.field` reads through the pointer (deref_to_one_pointer left at most one).
+            int through_pointer = target_type->kind == TYPE_POINTER && target_type->inner;
+            if (through_pointer)
+            {
+                target_type = get_inner_type(target_type->inner);
+            }
             Type *tuple = tuple_of(node->member.target->type_info);
             Type *element = tuple ? tuple_element_type(tuple, node->member.field) : NULL;
             if (element)
@@ -674,7 +707,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 node->type_info = type_clone(element);
                 node->type_info->lifetime_depth = node->member.target->type_info->lifetime_depth;
             }
-            else if (target_type->kind == TYPE_STRUCT && target_type->name)
+            else if ((target_type->kind == TYPE_STRUCT || target_type->kind == TYPE_ENUM) &&
+                     target_type->name)
             {
                 if (tc->pctx->config->misra_mode)
                 {
@@ -686,7 +720,15 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     }
                 }
                 ASTNode *struct_def = find_struct_def(tc->pctx, type_def_name(target_type));
-                if (struct_def)
+                if (struct_def && struct_def->kind == NODE_ENUM)
+                {
+                    // The member of an enum value is its tag, a constant of a C `enum`: an int.
+                    if (strcmp(node->member.field, "tag") == 0)
+                    {
+                        node->type_info = type_new(TYPE_C_INT);
+                    }
+                }
+                else if (struct_def)
                 {
                     ASTNode *field = struct_def->strct.fields;
                     while (field)
@@ -696,7 +738,9 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                         {
                             // Propagate lifetime from struct container to the member access result
                             node->type_info = type_clone(field->type_info);
-                            if (node->type_info && node->member.target->type_info)
+                            // Through a pointer the field is not in the container: it keeps
+                            // its own depth (where escape analysis looks is its own question).
+                            if (node->type_info && !through_pointer)
                             {
                                 // Depth must be at least that of the container.
                                 // (If field itself is static/global, it will be 0, but container's
@@ -759,6 +803,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         break;
     case NODE_EXPECT:
     case NODE_ASSERT:
+        misra_check_assertion(tc->pctx, node->token);
         // Check assert/expect condition
         {
             int old_stmt_ctx = tc->is_stmt_context;
@@ -786,6 +831,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         break;
     case NODE_TEST:
     {
+        misra_check_test(tc->pctx, node->token);
         MoveState *prev_move_state = tc->pctx->move_state;
         tc->pctx->move_state = move_state_create(NULL);
 
@@ -831,6 +877,13 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             }
             mark_type_as_used(tc, target_type);
         }
+        // A cast points where its operand points.
+        if (node->type_info && node->cast.expr && node->cast.expr->type_info &&
+            node->cast.expr->type_info->lifetime_depth != node->type_info->lifetime_depth)
+        {
+            node->type_info = type_clone(node->type_info);
+            node->type_info->lifetime_depth = node->cast.expr->type_info->lifetime_depth;
+        }
         break;
     case NODE_EXPR_ARRAY_LITERAL:
     {
@@ -841,6 +894,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         while (elem)
         {
             check_node(tc, elem, depth + 1);
+            check_move_for_rvalue(tc, elem);
             if (!elem_type && elem->type_info && elem->type_info->kind != TYPE_UNKNOWN)
             {
                 elem_type = elem->type_info;
@@ -856,6 +910,15 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         {
             node->type_info = type_new_array(type_new(TYPE_UNKNOWN), count);
         }
+        // An array points where the deepest of its elements points.
+        for (elem = node->array_literal.elements; elem; elem = elem->next)
+        {
+            if (elem->type_info &&
+                elem->type_info->lifetime_depth > node->type_info->lifetime_depth)
+            {
+                node->type_info->lifetime_depth = elem->type_info->lifetime_depth;
+            }
+        }
     }
     break;
     case NODE_EXPR_TUPLE_LITERAL:
@@ -865,6 +928,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         while (elem)
         {
             check_node(tc, elem, depth + 1);
+            check_move_for_rvalue(tc, elem);
             elem = elem->next;
         }
     }
@@ -1031,8 +1095,17 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             misra_check_iteration_termination(tc->pctx, node->token);
         }
         tc->loop_break_count++;
+        for (LoopFrame *loop = tc->current_loop; loop; loop = loop->outer)
+        {
+            const char *target = node->break_stmt.target_label;
+            if (!target || (loop->label && strcmp(loop->label, target) == 0))
+            {
+                loop->has_break = 1;
+                break;
+            }
+        }
 
-        if (tc->move_checks_only)
+        if (tc->rechecking)
         {
             // No-op
         }
@@ -1077,8 +1150,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         misra_check_fstring(tc->pctx, node->token);
         // The `{...}` expressions were parsed and typed when the string was; check them
         // only for moves (use after move, consumed values).
-        int prev_move_checks_only = tc->move_checks_only;
-        tc->move_checks_only = 1;
+        int prev_rechecking = tc->rechecking;
+        tc->rechecking = 1;
         ASTNode *part = node->fstring.parts;
         while (part)
         {
@@ -1088,7 +1161,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             }
             part = part->next;
         }
-        tc->move_checks_only = prev_move_checks_only;
+        tc->rechecking = prev_rechecking;
         break;
     }
     case NODE_PREPROC_DIRECTIVE:
@@ -1110,18 +1183,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         break;
     case NODE_COMPTIME:
     {
-        // Register comptime builtins for the body
-        register_comptime_builtins(tc->pctx);
-
-        // Type-check the comptime body
-        ASTNode *stmt = node->comptime.body;
-        while (stmt)
-        {
-            check_node(tc, stmt, depth + 1);
-            stmt = stmt->next;
-        }
-
-        // Interpret the comptime body
+        // The body runs in the comptime interpreter, with its own rules (`+` joins strings) and
+        // its own errors; only the code it yields is program code to check.
         char *output =
             interpret_comptime(tc->pctx, node->comptime.body, tc->pctx->current_filename);
         if (!output)
@@ -1163,13 +1226,6 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     default:
-        // Generic recursion for lists and other nodes.
-        // Special case for Return to trigger move?
-        if (node->kind == NODE_RETURN && node->ret.value)
-        {
-            // If returning a value, check if it can be moved.
-            check_move_for_rvalue(tc, node->ret.value);
-        }
         break;
     }
     RECURSION_EXIT(tc->pctx);
@@ -1345,6 +1401,8 @@ int check_program(ParserContext *ctx, ASTNode *root)
 {
     TypeChecker tc = {0};
     tc.pctx = ctx;
+    // `zc build` reports type errors as warnings in 0.5, except under --misra (use_typecheck).
+    tc.type_errors_as_warnings = !ctx->config->mode_check && !ctx->config->use_typecheck;
     ctx->current_scope = ctx->global_scope;
 
     if (!ctx->move_state)
@@ -1365,7 +1423,9 @@ int check_program(ParserContext *ctx, ASTNode *root)
         ctx->move_state = NULL;
     }
 
-    if (tc.pctx->config->misra_mode)
+    // The whole-program MISRA audits ran in `zc check` only; in 0.5 `zc build` keeps not running
+    // them.
+    if (tc.pctx->config->misra_mode && !tc.type_errors_as_warnings)
     {
         misra_audit_unused_symbols(tc.pctx);
         misra_audit_block_scope(tc.pctx);
@@ -1374,6 +1434,10 @@ int check_program(ParserContext *ctx, ASTNode *root)
 
     if (ctx->compiler->error_count > 0)
     {
+        if (tc.type_errors_as_warnings)
+        {
+            return 1; // A build reports its errors as it always did, without this summary.
+        }
         fprintf(stderr,
                 COLOR_BOLD COLOR_RED "     error" COLOR_RESET
                                      ": semantic analysis found %d error%s\n",
@@ -1382,29 +1446,4 @@ int check_program(ParserContext *ctx, ASTNode *root)
     }
 
     return 0;
-}
-
-int check_moves_only(ParserContext *ctx, ASTNode *root)
-{
-    TypeChecker tc = {0};
-    tc.pctx = ctx;
-    tc.move_checks_only = 1;
-    ctx->current_scope = ctx->global_scope;
-
-    if (!ctx->move_state)
-    {
-        ctx->move_state = move_state_create(NULL);
-    }
-
-    check_node(&tc, root, 0);
-    check_implicit_std_imports(&tc);
-    check_instantiations(&tc);
-
-    if (ctx->move_state)
-    {
-        move_state_free(ctx->move_state);
-        ctx->move_state = NULL;
-    }
-
-    return ctx->compiler->error_count;
 }

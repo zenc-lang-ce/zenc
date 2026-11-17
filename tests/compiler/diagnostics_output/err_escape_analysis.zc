@@ -1,0 +1,90 @@
+// ARGS: check
+// Escape analysis: a pointer to a local cannot leave the scope of the local,
+// whether returned directly, through an array, a struct field, a call or a
+// method that returns what it was given, or assigned to an outer variable,
+// also when the assignment that makes it point there comes later in a loop.
+// The valid cases at the end must not be reported.
+
+struct PtrBox {
+    ptr: int*
+}
+
+struct S {
+    x: int
+}
+
+impl S {
+    fn get_x_ptr(self) -> int* {
+        return &self.x;
+    }
+}
+
+fn identity(p: int*) -> int* {
+    return p;
+}
+
+fn return_local_pointer() -> int* {
+    let x = 42;
+    return &x;
+}
+
+fn assign_to_outer() {
+    let p: int* = NULL;
+    {
+        let x = 10;
+        p = &x;
+    }
+}
+
+fn escape_through_array() -> int* {
+    let x = 10;
+    let a: [int*; 1] = [&x];
+    return a[0];
+}
+
+fn escape_through_field() -> int* {
+    let x = 10;
+    let b = PtrBox { ptr: &x };
+    return b.ptr;
+}
+
+fn escape_through_call() -> int* {
+    let x = 10;
+    return identity(&x);
+}
+
+fn escape_through_method() -> int* {
+    let s = S { x: 42 };
+    return s.get_x_ptr();
+}
+
+fn escape_through_variable() -> int* {
+    let x = 10;
+    let p = identity(&x);
+    return p;
+}
+
+fn escape_in_a_later_iteration(out: int**) {
+    let x = 1;
+    let q: int* = NULL;
+    for i in 0..2 {
+        *out = q;
+        q = &x;
+    }
+}
+
+fn valid_cases(arg_p: int*) -> int* {
+    let x = 10;
+    let _same_scope = &x;
+    let y = 20;
+    {
+        let _inner_points_out = &y;
+    }
+    let s = S { x: 1 };
+    let _from_method = s.get_x_ptr();
+    let _from_call = identity(&x);
+    return arg_p;
+}
+
+fn main() {
+}

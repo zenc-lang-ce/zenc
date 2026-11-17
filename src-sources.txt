@@ -37,6 +37,7 @@ src/parser/utils/utils_template_replace.c
 src/parser/utils/utils_template_inst.c
 src/parser/utils/utils_rewrite.c
 src/parser/utils/utils_validation.c
+src/parser/utils/utils_syntax_hints.c
 src/parser/utils/utils_c_types.c
 src/parser/utils/utils_audit.c
 src/parser/utils/utils_plugins.c
@@ -48,6 +49,7 @@ src/parser/expr/expr_field.c
 src/parser/expr/expr_prec.c
 src/parser/expr/expr_lambda.c
 src/ast/ast.c
+src/ast/operators.c
 src/ast/primitives.c
 src/ast/symbols.c
 src/codegen/codegen.c
@@ -68,6 +70,7 @@ src/codegen/codegen_decl_emit.c
 src/codegen/codegen_decl_defs.c
 src/codegen/codegen_main.c
 src/codegen/codegen_utils.c
+src/codegen/codegen_prune.c
 src/utils/emitter.c
 src/utils/format_expr.c
 src/utils/utils.c
@@ -84,6 +87,7 @@ src/utils/c_headers.c
 src/utils/c_header_cache.c
 src/diagnostics/diagnostics.c
 src/lexer/token.c
+src/lexer/keywords.c
 src/analysis/typecheck.c
 src/analysis/typecheck_utils.c
 src/analysis/typecheck_expr.c
@@ -98,13 +102,13 @@ src/lsp/lsp_analysis.c
 src/lsp/lsp_semantic.c
 src/lsp/lsp_index.c
 src/lsp/lsp_locals.c
-src/lsp/lsp_formatter.c
 src/lsp/lsp_project.c
 src/lsp/lsp_c_headers.c
 src/lsp/lsp_config.c
 src/utils/cJSON.c
 src/tools/tool_common.c
 src/zen/zen_doc.c
+src/zen/zen_format.c
 src/repl/repl.c
 src/repl/repl_highlight.c
 src/repl/repl_readline.c

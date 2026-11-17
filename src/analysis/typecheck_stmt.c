@@ -5,20 +5,20 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
 {
     tc_enter_scope(tc);
     ASTNode *stmt = block->block.statements;
-    int seen_terminator = 0;
-    Token terminator_token = {0};
+    int reported = 0;
 
     while (stmt)
     {
-        // Warn if we see code after a terminating statement
-        if (seen_terminator && stmt->kind != NODE_LABEL)
+        // A label can be reached by a jump, so it makes the code after it reachable again.
+        if (stmt->kind == NODE_LABEL)
         {
-            const char *rule = tc->pctx->config->misra_mode ? "MISRA Rule 2.1: " : "";
-            const char *hints[] = {"Remove unreachable code or restructure control flow", NULL};
-            char msg[256];
-            snprintf(msg, sizeof(msg), "%sUnreachable code detected", rule);
-            tc_error_with_hints(tc, stmt->token, msg, hints);
-            seen_terminator = 0; // Only warn once per block
+            tc->is_unreachable = 0;
+            reported = 0;
+        }
+        else if (tc->is_unreachable && !reported)
+        {
+            tc_unreachable_code(tc, stmt->token);
+            reported = 1; // Only once per unreachable stretch
         }
 
         if (tc->pctx->config->misra_mode)
@@ -40,18 +40,45 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
         check_node(tc, stmt, depth + 1);
         tc->is_stmt_context = old_stmt_ctx;
 
-        // Track terminating statements
-        if (stmt->kind == NODE_RETURN || stmt->kind == NODE_BREAK || stmt->kind == NODE_CONTINUE ||
-            stmt->kind == NODE_GOTO)
-        {
-            seen_terminator = 1;
-            terminator_token = stmt->token;
-        }
-
         stmt = stmt->next;
     }
-    (void)terminator_token; // May be used for enhanced diagnostics later
     tc_exit_scope(tc);
+}
+
+// The initial value `*value` of a declaration whose type is `declared` (NULL when it is inferred).
+// A value with no type of its own takes the declared one, and a lambda the declared function
+// type (adopt_context_type); any other value keeps its type and is compared with the declared one,
+// where a constant without a suffix takes it (check_type_compatibility).
+static void check_initial_value(TypeChecker *tc, Type *declared, ASTNode **value, Token t,
+                                int depth)
+{
+    if (declared && !(*value)->type_info)
+    {
+        (*value)->type_info = declared;
+    }
+    adopt_context_type(*value, declared);
+    int old_stmt_ctx = tc->is_stmt_context;
+    tc->is_stmt_context = 0;
+    check_node(tc, *value, depth + 1);
+    tc->is_stmt_context = old_stmt_ctx;
+
+    if (declared && (*value)->type_info)
+    {
+        apply_implicit_struct_pointer_conversions(tc, value, declared);
+        // A variable points where its value points, so a declaration cannot make its value
+        // escape; where the variable lives is its symbol's scope depth (tc_storage_depth).
+        declared->lifetime_depth = (*value)->type_info->lifetime_depth;
+        check_type_compatibility(tc, declared, (*value)->type_info, t, *value, 0);
+    }
+}
+
+// A `def`: its value is checked as a `let`'s is. The node keeps the declared type in type_info.
+void check_def(TypeChecker *tc, ASTNode *node, int depth)
+{
+    if (node->var_decl.init_expr)
+    {
+        check_initial_value(tc, node->type_info, &node->var_decl.init_expr, node->token, depth);
+    }
 }
 
 void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
@@ -64,40 +91,27 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
     // MISRA: Mark type as used
     mark_type_as_used(tc, node->var_decl.type_info);
 
-    // Initialize lifetime depth for escape analysis if this is a local variable
-    if (node->var_decl.type_info && tc->current_func)
+    // Escape analysis: where a local variable points (one in a function or in a `test` block, as
+    // the depth its symbol gets says; 0 is global). A variable with a value points where the
+    // value points (below); one without a value is taken to point here. An assignment makes it
+    // point as deep as what it assigns (check_expr_binary); in a loop, the second pass reads
+    // what the end of the body assigned.
+    int in_local_scope = tc->current_depth > 0;
+    if (node->var_decl.type_info && !node->var_decl.init_expr && in_local_scope)
     {
         node->var_decl.type_info->lifetime_depth = tc->current_depth;
     }
 
     if (node->var_decl.init_expr)
     {
-        if (node->type_info)
-        {
-            node->var_decl.init_expr->type_info = node->type_info;
-        }
-        int old_stmt_ctx = tc->is_stmt_context;
-        tc->is_stmt_context = 0;
-        check_node(tc, node->var_decl.init_expr, depth + 1);
-        tc->is_stmt_context = old_stmt_ctx;
+        check_initial_value(tc, node->var_decl.type_info, &node->var_decl.init_expr, node->token,
+                            depth);
 
         Type *decl_type = node->var_decl.type_info;
         Type *init_type = node->var_decl.init_expr->type_info;
 
         if (decl_type && init_type)
         {
-            apply_implicit_struct_pointer_conversions(tc, &node->var_decl.init_expr, decl_type);
-            init_type = node->var_decl.init_expr->type_info;
-
-            // The declared type retains its original lifetime metadata (from init or explicit decl)
-
-            // If initialization exists, check compatibility
-            if (node->var_decl.type_info)
-            {
-                check_type_compatibility(tc, node->var_decl.type_info, init_type, node->token,
-                                         node->var_decl.init_expr, 0);
-            }
-
             if (tc->pctx->config->misra_mode)
             {
                 misra_check_pointer_conversion(tc->pctx, decl_type, init_type, node->token);
@@ -129,12 +143,8 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
     Type *t = node->type_info;
     if (!t && node->var_decl.init_expr)
     {
+        // A clone of the value's type, which keeps where the value points.
         t = type_clone(node->var_decl.init_expr->type_info);
-        // Ensure inferred local variables get the correct scope depth for escape analysis
-        if (t && tc->current_func)
-        {
-            t->lifetime_depth = tc->current_depth;
-        }
         node->type_info = t;
         node->var_decl.type_info = t;
     }
@@ -390,6 +400,8 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     int prev_unreachable = tc->is_unreachable;
     tc->is_unreachable = 0;
     tc->func_return_count = 0;
+    LoopFrame *prev_loop = tc->current_loop;
+    tc->current_loop = NULL;
 
     MoveState *prev_move_state = tc->pctx->move_state;
     tc->pctx->move_state = move_state_create(NULL);
@@ -496,6 +508,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     tc->is_unreachable = prev_unreachable;
+    tc->current_loop = prev_loop;
     tc_exit_scope(tc);
     tc->current_func = NULL;
     tc->returns_from = NULL;
@@ -531,6 +544,23 @@ void tc_check_impl_trait(TypeChecker *tc, ASTNode *node, int depth)
     }
 }
 
+static const char *loop_label(ASTNode *loop)
+{
+    switch (loop->kind)
+    {
+    case NODE_WHILE:
+        return loop->while_stmt.loop_label;
+    case NODE_FOR:
+        return loop->for_stmt.loop_label;
+    case NODE_FOR_RANGE:
+        return loop->for_range.loop_label;
+    case NODE_LOOP:
+        return loop->loop_stmt.loop_label;
+    default:
+        return NULL;
+    }
+}
+
 void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
 {
     if (!node)
@@ -557,6 +587,9 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
 
     int outer_in_pass2 = tc->in_loop_pass2;
     tc->in_loop_pass2 = 0;
+
+    LoopFrame frame = {loop_label(node), 0, tc->current_loop};
+    tc->current_loop = &frame;
 
     int outer_break_count = tc->loop_break_count;
     tc->loop_break_count = 0;
@@ -650,8 +683,8 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
         {
             if (node->for_stmt.step->kind == NODE_EXPR_BINARY)
             {
-                const char *step_op = node->for_stmt.step->binary.op;
-                if (strstr(step_op, "=") && node->for_stmt.step->binary.left->type_info)
+                if (writes_with_equals(node->for_stmt.step->binary.op) &&
+                    node->for_stmt.step->binary.left->type_info)
                 {
                     misra_check_loop_counter_float(tc->pctx,
                                                    node->for_stmt.step->binary.left->type_info,
@@ -703,8 +736,8 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
     // Pass 2: Re-run with next_iter_state to catch use-after-move across iterations
     if (next_iter_state)
     {
-        int prev_move_checks_only = tc->move_checks_only;
-        tc->move_checks_only = 1; // suppress type errors
+        int prev_rechecking = tc->rechecking;
+        tc->rechecking = 1; // the first pass reported the type errors
         tc->in_loop_pass2 = 1;
 
         tc->pctx->move_state = move_state_clone(next_iter_state);
@@ -748,7 +781,7 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
             move_state_free(tc->loop_continue_state);
         }
 
-        tc->move_checks_only = prev_move_checks_only;
+        tc->rechecking = prev_rechecking;
     }
 
     // Compute final move state exiting the loop
@@ -794,19 +827,9 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
         tc_exit_scope(tc);
     }
 
-    // If the loop is an infinite loop and has no breaks, it is unconditionally unreachable after.
-    if (node->kind == NODE_LOOP && !final_state)
-    {
-        tc->is_unreachable = 1;
-    }
-    else if (final_state)
-    {
-        tc->is_unreachable = 0;
-    }
-    else
-    {
-        tc->is_unreachable = initial_unreachable;
-    }
+    // Only a `break` leaves a `loop`; the other loops also end when their condition fails.
+    tc->current_loop = frame.outer;
+    tc->is_unreachable = initial_unreachable || (node->kind == NODE_LOOP && !frame.has_break);
 
     if (tc->pctx->move_state)
     {

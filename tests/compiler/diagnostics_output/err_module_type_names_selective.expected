@@ -1,0 +1,12 @@
+   Compiling tests/compiler/diagnostics_output/err_module_type_names_selective.zc...
+error: Type mismatch: expected 'i32', but found 'Spot'
+  --> tests/compiler/diagnostics_output/err_module_type_names_selective.zc:9:9
+   |
+9  |     let _n: int = p;
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+     error: semantic analysis found 1 error
+       Check failed with 1 errors
+[exit 1]

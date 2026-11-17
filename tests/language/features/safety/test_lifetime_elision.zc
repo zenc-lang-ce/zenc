@@ -1,6 +1,10 @@
 // safety: test_lifetime_elision
+// A function or method that returns a pointer it was given (or one into self)
+// returns it with the lifetime of what it was given, so the caller can keep it
+// in the same scope. Letting it escape that scope is an error:
+// tests/compiler/diagnostics_output/err_escape_analysis.zc.
 fn identity(p: int*) -> int* {
-    return p; // Should inherit depth from p
+    return p;
 }
 
 struct S {
@@ -9,34 +13,18 @@ struct S {
 
 impl S {
     fn get_x_ptr(self) -> int* {
-        return &self.x; // Should inherit depth from self
+        return &self.x;
     }
 }
 
 test "Function Lifetime Elision" {
     let x = 10;
-    let p = identity(&x); // SAFE: p and x both depth 1
-    assert(*p == 10, "Identity failed");
+    let p = identity(&x);
+    assert(*p == 10, "identity(&x) should return a pointer usable in the scope of x");
 }
 
 test "Method Lifetime Elision" {
     let s = S { x: 42 };
-    let p = s.get_x_ptr(); // SAFE: p and s both depth 1
-    assert(*p == 42, "Method elision failed");
-}
-
-fn test_elision_escape() -> int* {
-    let x = 10;
-    return identity(&x); // ERROR: identity returns depth 1, returning to depth 0 is escape
-}
-
-fn test_method_escape() -> int* {
-    let s = S { x: 42 };
-    return s.get_x_ptr(); // ERROR: get_x_ptr returns depth 1 (from s), escapes
-}
-
-fn test_manual_escape() -> int* {
-    let x = 10;
-    let p = identity(&x);
-    return p; // ERROR: manual escape
+    let p = s.get_x_ptr();
+    assert(*p == 42, "s.get_x_ptr() should return a pointer usable in the scope of s");
 }

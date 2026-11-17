@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "lsp_config.h"
+#include "json_rpc.h"
 #include "../utils/cJSON.h"
 #include "../utils/utils.h"
 #include "../constants.h"
@@ -45,15 +46,7 @@ static void config_warn(const char *fmt, ...)
     cJSON *params = cJSON_AddObjectToObject(root, "params");
     cJSON_AddNumberToObject(params, "type", 2);
     cJSON_AddStringToObject(params, "message", msg);
-
-    char *str = cJSON_PrintUnformatted(root);
-    if (str)
-    {
-        fprintf(stdout, "Content-Length: %zu\r\n\r\n%s", strlen(str), str);
-        fflush(stdout);
-        zfree(str);
-    }
-    cJSON_Delete(root);
+    lsp_send_message(root);
 }
 
 static const char *apply_include_paths(const cJSON *value, const char *root_path,

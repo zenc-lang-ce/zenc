@@ -1,0 +1,31 @@
+// language/features/functions: functions: test_default_args_names
+// A default value can name globals and functions; a call sees the same values the function does.
+let base: int = 5;
+
+fn twice(x: int) -> int {
+    return x * 2;
+}
+
+fn pick(b: int = base, c: int = twice(base) + 1) -> int {
+    return b + c;
+}
+
+struct Counter {
+    n: int;
+}
+
+impl Counter {
+    fn add(self, k: int = base) -> int {
+        return self.n + k;
+    }
+}
+
+test "default_values_use_globals_and_functions" {
+    let other = 100;
+    let c = Counter { n: 1 };
+    expect_eq(pick(), 16, "pick() should use base and twice(base) + 1");
+    expect_eq(pick(1), 12, "pick(1) should use twice(base) + 1 for c");
+    expect_eq(pick(1, 2), 3, "pick(1, 2) should use no default value");
+    expect_eq(c.add(), 6, "c.add() should use base for k");
+    expect_eq(other, 100, "a local of the caller should not change");
+}

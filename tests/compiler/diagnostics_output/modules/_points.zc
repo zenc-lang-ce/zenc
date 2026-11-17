@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: MIT
+// A module for err_module_type_names_selective.zc.
+struct Point {
+    x: int;
+}

@@ -1,0 +1,19 @@
+// codegen: a parameter whose @ctype names a C++ template is declared with the type as written,
+// with its nested arguments and its reference, not cut at the first `<`.
+
+include <map>
+include <vector>
+
+raw {
+    static int count_at(const std::map<int, std::vector<int>>& m, int key) {
+        auto found = m.find(key);
+        return found == m.end() ? 0 : (int)found->second.size();
+    }
+}
+
+fn values_at(@ctype("const std::map<int, std::vector<int>>&") m: void*, key: int) -> int {
+    return count_at(m, key);
+}
+
+fn main() {
+}

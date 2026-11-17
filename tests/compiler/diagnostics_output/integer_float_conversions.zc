@@ -1,0 +1,18 @@
+// ARGS: check
+// An integer converts to a float without a cast, with a warning when the float
+// cannot hold every value of the integer; a constant is judged by its value. A
+// float to an integer needs a cast.
+
+def EXACT: i64 = 9007199254740992;
+def ROUNDED: i64 = 9007199254740993;
+
+fn main() {
+    let wide: i64 = 9007199254740993;
+    let count: u32 = 16777217;
+    let ok: f64 = count;
+    let _rounded: f64 = wide;
+    let _rounded32: f32 = count;
+    let _exact_constant: f64 = EXACT;
+    let _rounded_constant: f64 = ROUNDED;
+    let _truncated: i32 = ok;
+}

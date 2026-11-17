@@ -67,15 +67,6 @@ UTEST(mangle_generic_name, joins_the_sanitized_arguments)
     ASSERT_STREQ("Map__K__V", mangle_generic_name("Map_", two, 2));
 }
 
-// The argument list is split at the commas outside a nested <>, so it gives the same
-// name as the arguments one by one (sanitizing "K, V" at once would give K____V).
-UTEST(mangle_generic_name_from_arg_list, splits_at_the_top_level_commas)
-{
-    ASSERT_STREQ("Map__K__V", mangle_generic_name_from_arg_list("Map", "K, V"));
-    ASSERT_STREQ("Map__K__Vec__A", mangle_generic_name_from_arg_list("Map", "K, Vec<A>"));
-    ASSERT_STREQ("Vec__int", mangle_generic_name_from_arg_list("Vec", " int "));
-}
-
 // The name codegen defines for a trait object's vtable, without merging underscores.
 UTEST(mangle_vtable_symbol, struct_trait_and_suffix)
 {

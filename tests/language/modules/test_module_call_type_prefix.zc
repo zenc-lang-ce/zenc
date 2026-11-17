@@ -1,0 +1,46 @@
+// language/modules: `module::f` and `Type::f` call that function, not one of another
+// type whose name starts like the module or the type.
+import "./test_modules/_geo.zc" as geo;
+
+struct GeoBuilder {
+    n: int;
+}
+
+impl GeoBuilder {
+    fn create() -> GeoBuilder {
+        return GeoBuilder { n: 7 };
+    }
+}
+
+struct LaterBuilder {
+    n: int;
+}
+
+impl LaterBuilder {
+    fn create() -> LaterBuilder {
+        return LaterBuilder { n: 7 };
+    }
+}
+
+struct Later {
+    n: int;
+}
+
+// `Later::create` is declared below this generic body.
+fn make<T>(x: T) -> Later {
+    return Later::create(x, 1);
+}
+
+impl Later {
+    fn create(a: int, b: int) -> Later {
+        return Later { n: a + b };
+    }
+}
+
+test "a module function, with a type named like the module and a method of the same name" {
+    assert(geo::create() == 42, "geo::create is the module's, not GeoBuilder's or geo's Builder's");
+}
+
+test "a method, with a type whose name starts like the type" {
+    assert(make<int>(41).n == 42, "Later::create is Later's, not LaterBuilder's");
+}

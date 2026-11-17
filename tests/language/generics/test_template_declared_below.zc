@@ -1,0 +1,20 @@
+// generics: a generic struct used in a signature before the struct is declared
+import "std/vec.zc";
+
+struct Item {
+    n: int;
+}
+
+fn total(v: Vec<Holder<Item>>*) -> int {
+    return v.get(0).value.n;
+}
+
+struct Holder<T> {
+    value: T;
+}
+
+test "template declared below its use in a signature" {
+    let v = Vec<Holder<Item>>::new();
+    v.push(Holder<Item> { value: Item { n: 4 } });
+    assert(total(&v) == 4, "template below");
+}

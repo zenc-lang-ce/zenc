@@ -1,0 +1,14 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A field holding a function pointer is called with the arguments written: the
+// struct is not passed as a receiver, as it is to a method.
+struct Api {
+    report: fn*(Api*, int) -> int,
+}
+fn twice(a: Api*, x: int) -> int { return x * 2; }
+test "calls through a function pointer field" {
+    let api = Api{report: twice};
+    let p = &api;
+    let r = p.report(p, 21);
+    let s = api.report(&api, 1);
+    assert(r == 42 && s == 2, "calls through a field");
+}

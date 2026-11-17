@@ -1,0 +1,79 @@
+// ARGS: build
+// SPDX-License-Identifier: MIT
+// A call to a method that the struct or enum of the value does not have is reported where
+// the call names it, in a build too, instead of emitting a call to the mangled name that the
+// C compiler rejects: on a value, through a pointer, on an enum, on a generic instance (the
+// `Option` that `ok()` gives, not its value) and on a value that a call returns. The methods
+// the type has are not reported: its own, a trait's, a mixed-in struct's, and a field that
+// holds a function.
+
+import "std/option.zc"
+
+struct Frame {
+    n: int;
+}
+
+impl Frame {
+    fn size(self) -> int {
+        return self.n;
+    }
+}
+
+trait Named {
+    fn name(self) -> int;
+}
+
+impl Named for Frame {
+    fn name(self) -> int {
+        return 7;
+    }
+}
+
+struct Base {
+    v: int;
+}
+
+impl Base {
+    fn base_value(self) -> int {
+        return self.v;
+    }
+}
+
+struct Derived {
+    use Base;
+    w: int;
+}
+
+struct Holder {
+    apply: fn*(int) -> int;
+}
+
+enum Color {
+    Red,
+    Green
+}
+
+fn twice(x: int) -> int {
+    return x * 2;
+}
+
+fn make() -> Frame {
+    return Frame { n: 4 };
+}
+
+fn main() {
+    let f = Frame { n: 1 };
+    let p = &f;
+    let d = Derived { v: 3, w: 4 };
+    let h = Holder { apply: twice };
+    let c = Color::Red;
+    let o = Option<Frame>::Some(make());
+
+    let _found = f.size() + p.size() + f.name() + d.base_value() + h.apply(2);
+
+    let _a = f.missing();
+    let _b = p.missing();
+    let _c = c.code();
+    let _d = o.size();
+    let _e = make().gone();
+}

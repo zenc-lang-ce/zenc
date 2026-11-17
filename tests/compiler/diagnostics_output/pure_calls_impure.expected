@@ -1,0 +1,11 @@
+   Compiling tests/compiler/diagnostics_output/pure_calls_impure.zc...
+error: Pure function 'pure_func' cannot call non-pure or dynamic function 'impure_func'
+  --> tests/compiler/diagnostics_output/pure_calls_impure.zc:12:5
+   |
+12 |     impure_func();
+   |     ^ here
+   |
+   = help: Mark the called function as @pure, or remove @pure from the caller
+     error: semantic analysis found 1 error
+       Check failed with 1 errors
+[exit 1]

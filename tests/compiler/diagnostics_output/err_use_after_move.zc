@@ -1,0 +1,45 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// The use of a moved value says where it was moved.
+import "std/vec.zc";
+
+struct Header { size: int; }
+impl Header {
+    fn from_rom(data: Vec<int>) -> Header { return Header { size: (int)data.length() }; }
+}
+
+fn take(v: Vec<int>) -> int { return (int)v.length(); }
+
+fn by_function() -> int {
+    let v = Vec<int>::new();
+    let n = take(v);
+    return n + (int)v.length();
+}
+
+fn by_static_method() -> int {
+    let data = Vec<int>::new();
+    let h = Header::from_rom(data);
+    return h.size + (int)data.length();
+}
+
+fn in_a_branch(flag: bool) -> int {
+    let v = Vec<int>::new();
+    if flag {
+        let _w = v;
+    }
+    return (int)v.length();
+}
+
+fn in_a_loop() {
+    let v = Vec<int>::new();
+    for _ in 0..2 {
+        take(v);
+    }
+}
+
+fn main() {
+    by_function();
+    by_static_method();
+    in_a_branch(true);
+    in_a_loop();
+}

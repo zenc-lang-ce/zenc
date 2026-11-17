@@ -75,7 +75,15 @@ char *get_node_path(ASTNode *node, int depth, ParserContext *ctx)
     }
     else if (node->kind == NODE_EXPR_MEMBER)
     {
-        char *target_path = get_node_path(node->member.target, depth + 1, ctx);
+        // `(*pp).items` is the place `pp.items` is: `.` reaches the field through every
+        // pointer, and checking turns the target `pp` of `pp.items` into `*pp`
+        // (deref_to_one_pointer).
+        ASTNode *target = node->member.target;
+        while (target && target->kind == NODE_EXPR_UNARY && target->unary.op == OP_DEREF)
+        {
+            target = target->unary.operand;
+        }
+        char *target_path = get_node_path(target, depth + 1, ctx);
         if (target_path)
         {
             char buffer[MAX_ERROR_MSG_LEN];
@@ -116,27 +124,26 @@ static void mark_moved_in_state(MoveState *state, const char *path, Token t)
     state->entries = new_entry;
 }
 
-MoveStatus get_move_status(MoveState *state, const char *path)
+// The entry of `path` in `state` or in the states it is nested in; NULL when there is none.
+static MoveEntry *find_move_entry(MoveState *state, const char *path)
 {
-    if (!path)
+    for (MoveState *s = path ? state : NULL; s; s = s->parent)
     {
-        return MOVE_STATE_VALID;
-    }
-    MoveState *s = state;
-    while (s)
-    {
-        MoveEntry *e = s->entries;
-        while (e)
+        for (MoveEntry *e = s->entries; e; e = e->next)
         {
             if (strcmp(e->symbol_name, path) == 0)
             {
-                return e->status;
+                return e;
             }
-            e = e->next;
         }
-        s = s->parent;
     }
-    return MOVE_STATE_VALID;
+    return NULL;
+}
+
+MoveStatus get_move_status(MoveState *state, const char *path)
+{
+    MoveEntry *e = find_move_entry(state, path);
+    return e ? e->status : MOVE_STATE_VALID;
 }
 
 void move_state_merge(MoveState *target, MoveState *a, MoveState *b)
@@ -224,7 +231,6 @@ int is_type_copy(ParserContext *ctx, Type *t)
     {
         switch (t->kind)
         {
-        case TYPE_INT:
         case TYPE_I8:
         case TYPE_I16:
         case TYPE_I32:
@@ -242,10 +248,13 @@ int is_type_copy(ParserContext *ctx, Type *t)
         case TYPE_FUNCTION:
             result = 1;
             break;
-        case TYPE_ENUM:
         case TYPE_BITINT:
         case TYPE_UBITINT:
             result = 1;
+            break;
+        case TYPE_ENUM:
+            // An enum with Drop, or with a payload that needs dropping, is moved.
+            result = !type_needs_drop(ctx, t);
             break;
         case TYPE_STRUCT:
             if (check_impl(ctx, "Copy", type_def_name(t)))
@@ -276,6 +285,12 @@ int is_type_copy(ParserContext *ctx, Type *t)
         case TYPE_ARRAY:
             result = is_type_copy(ctx, t->inner);
             break;
+        case TYPE_TUPLE:
+            for (int i = 0; i < t->count && result; i++)
+            {
+                result = is_type_copy(ctx, t->args[i]);
+            }
+            break;
         case TYPE_ALIAS:
             if (t->alias.is_opaque_alias)
             {
@@ -304,12 +319,8 @@ void check_path_validity(TypeChecker *tc, const char *path, Token t)
 
     // Check Flow-Sensitive State
     ParserContext *ctx = tc->pctx;
-    MoveStatus status = MOVE_STATE_VALID;
-
-    if (ctx && ctx->move_state)
-    {
-        status = get_move_status(ctx->move_state, path);
-    }
+    MoveEntry *entry = ctx && ctx->move_state ? find_move_entry(ctx->move_state, path) : NULL;
+    MoveStatus status = entry ? entry->status : MOVE_STATE_VALID;
 
     if (status == MOVE_STATE_MOVED || status == MOVE_STATE_MAYBE_MOVED)
     {
@@ -332,10 +343,29 @@ void check_path_validity(TypeChecker *tc, const char *path, Token t)
         char msg[MAX_ERROR_MSG_LEN];
         snprintf(msg, 255, "Use of moved value '%s'", path);
 
-        const char *hints[] = {"This type owns resources and cannot be implicitly copied",
-                               "Consider using a reference ('&') to borrow the value instead",
-                               NULL};
-        tc_move_error_with_hints(tc, t, msg, hints);
+        // Where it was moved: the use alone does not say which line to change.
+        Token m = entry->moved_at;
+        int known = m.line > 0;
+        // The use moves it too, on the iteration before: `take(v)` in a loop.
+        int same_place = known && m.line == t.line && m.col == t.col &&
+                         (!m.file || !t.file || strcmp(m.file, t.file) == 0);
+        char moved_here[MAX_ERROR_MSG_LEN];
+        snprintf(moved_here, sizeof(moved_here),
+                 same_place ? "'%s' was moved here in an earlier iteration of the loop"
+                            : "'%s' was moved here",
+                 path);
+        DiagnosticNote note = {m, moved_here};
+
+        const char *hints[4];
+        int hint_count = 0;
+        if (same_place)
+        {
+            hints[hint_count++] = moved_here;
+        }
+        hints[hint_count++] = "This type owns resources and cannot be implicitly copied";
+        hints[hint_count++] = "Consider using a reference ('&') to borrow the value instead";
+        hints[hint_count] = NULL;
+        tc_move_error_with_hints(tc, t, msg, hints, known && !same_place ? &note : NULL);
     }
 }
 

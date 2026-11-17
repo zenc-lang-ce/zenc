@@ -1,0 +1,17 @@
+// A struct literal of a type a C header declares, whether the header is imported or
+// included: `zc check` accepts what `zc run` builds. The header's fields are the C
+// compiler's to check.
+import "tests/compiler/check_clean/test_c_header_struct_literal.h"
+
+fn sum(p: CPair) -> int {
+    return p.x + p.y;
+}
+
+test "struct literals of types from an imported C header" {
+    let p = CPair { x: 1, y: 2 };
+    let n = CNamed { id: 7 };
+    let u = CNumber { i: 3 };
+    assert(sum(p) == 3, "CPair fields");
+    assert(n.id == 7, "CNamed field");
+    assert(u.i == 3, "CNumber field");
+}

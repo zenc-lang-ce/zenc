@@ -453,6 +453,26 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
     register_in_all_symbols(ctx, sym);
 }
 
+Type *vector_type_named(ParserContext *ctx, const char *name)
+{
+    ASTNode *def = name ? find_struct_def(ctx, name) : NULL;
+    if (!def || def->kind != NODE_STRUCT || !def->type_info || def->type_info->kind != TYPE_VECTOR)
+    {
+        return NULL;
+    }
+    return def->type_info;
+}
+
+Type *vector_type_of(ParserContext *ctx, Type *t)
+{
+    t = resolve_alias(t);
+    if (!t || !t->name || (t->kind != TYPE_STRUCT && t->kind != TYPE_VECTOR))
+    {
+        return NULL;
+    }
+    return vector_type_named(ctx, type_def_name(t));
+}
+
 ASTNode *find_struct_def(ParserContext *ctx, const char *name)
 {
     if (ctx)
@@ -576,6 +596,34 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name)
     return NULL;
 }
 
+int is_simple_enum(ParserContext *ctx, const char *enum_name)
+{
+    if (!ctx || !enum_name)
+    {
+        return 0;
+    }
+    const char *clean = enum_name;
+    if (strncmp(clean, "struct ", 7) == 0)
+    {
+        clean += 7;
+    }
+    ASTNode *def = find_struct_def(ctx, clean);
+    if (!def || def->kind != NODE_ENUM)
+    {
+        return 0;
+    }
+    ASTNode *v = def->enm.variants;
+    while (v)
+    {
+        if (v->variant.payload)
+        {
+            return 0;
+        }
+        v = v->next;
+    }
+    return 1;
+}
+
 #undef CACHE_RESULT
 
 ASTNode *find_trait_def(ParserContext *ctx, const char *name)
@@ -596,6 +644,31 @@ ASTNode *find_trait_def(ParserContext *ctx, const char *name)
         r = r->next;
     }
     return NULL;
+}
+
+int is_trait(ParserContext *ctx, const char *name)
+{
+    if (!name)
+    {
+        return 0;
+    }
+    if (strncmp(name, "struct ", 7) == 0)
+    {
+        name += 7;
+    }
+    else if (strncmp(name, "union ", 6) == 0)
+    {
+        name += 6;
+    }
+    char base[MAX_MANGLED_NAME_LEN];
+    size_t length = strcspn(name, "*");
+    if (length >= sizeof(base))
+    {
+        return 0; // Longer than any name the program declares
+    }
+    memcpy(base, name, length);
+    base[length] = 0;
+    return find_trait_def(ctx, base) != NULL;
 }
 
 ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name)
@@ -651,6 +724,148 @@ Module *find_module(ParserContext *ctx, const char *alias)
 {
     Module **mod_ptr = zmap_get(&ctx->imports.modules, alias);
     return mod_ptr ? *mod_ptr : NULL;
+}
+
+char *module_written_name(ParserContext *ctx, const char *name)
+{
+    const char *alias = ctx->imports.current_module_alias;
+    if (!alias)
+    {
+        // Imported one by one: by the name the import gives it (`GeoVec` of
+        // `import { Vector as GeoVec }`), registered before the module is parsed.
+        zmap_iter_SelMap it = zmap_iter_init(SelMap, &ctx->imports.selective_imports);
+        const char *local_name;
+        SelectiveImport *imported;
+        while (zmap_iter_next(&it, &local_name, &imported))
+        {
+            if (ctx->imports.current_module_prefix && imported->source_module &&
+                strcmp(imported->source_module, ctx->imports.current_module_prefix) == 0 &&
+                strcmp(imported->symbol, name) == 0)
+            {
+                return xstrdup(local_name);
+            }
+        }
+        return xstrdup(name);
+    }
+    size_t size = strlen(alias) + strlen(name) + 3;
+    char *written = xmalloc(size);
+    snprintf(written, size, "%s::%s", alias, name);
+    return written;
+}
+
+// The name the module being parsed registered its own `name` under (`prefix__name`), when
+// `declares` finds it; NULL outside a module parsed with a prefix or when the module has none.
+static char *module_own_name(ParserContext *ctx, const char *name,
+                             int (*declares)(ParserContext *, const char *))
+{
+    if (!ctx->imports.current_module_prefix)
+    {
+        return NULL;
+    }
+    char *own = mangle_module_symbol(ctx->imports.current_module_prefix, name);
+    if (declares(ctx, own))
+    {
+        return own;
+    }
+    zfree(own);
+    return NULL;
+}
+
+static int declares_type(ParserContext *ctx, const char *name)
+{
+    return find_struct_def(ctx, name) != NULL;
+}
+
+static int declares_function(ParserContext *ctx, const char *name)
+{
+    return find_func(ctx, name) != NULL;
+}
+
+char *module_type_name(ParserContext *ctx, const char *name)
+{
+    // Names no module declares: a generic parameter, a primitive, `Self`, a C type.
+    if (is_known_generic(ctx, name) || is_primitive_type_name(name) ||
+        strcasecmp(name, "Self") == 0 || is_extern_symbol(ctx, name))
+    {
+        return NULL;
+    }
+    char *own = module_own_name(ctx, name, declares_type);
+    if (own || !ctx->imports.current_module_prefix)
+    {
+        return own;
+    }
+    if (find_struct_def(ctx, name) || find_type_alias(ctx, name))
+    {
+        return NULL;
+    }
+    // Not declared yet anywhere: a type the module declares further down (`next: Node*`).
+    return mangle_module_symbol(ctx->imports.current_module_prefix, name);
+}
+
+char *type_declaration_name(ParserContext *ctx, const char *name)
+{
+    // Imported one by one, or with `as *`: the module's type, by the name the import gives it.
+    if (!ctx->imports.current_module_prefix)
+    {
+        SelectiveImport *imported = find_selective_import(ctx, name);
+        if (imported)
+        {
+            return mangle_module_symbol(imported->source_module, imported->symbol);
+        }
+    }
+    return module_type_name(ctx, name);
+}
+
+static char *module_member_name(ParserContext *ctx, Module *mod, const char *name)
+{
+    // A C header's names are C's own.
+    if (mod->is_c_header)
+    {
+        register_extern_symbol(ctx, name);
+        return xstrdup(name);
+    }
+    if (is_extern_symbol(ctx, name))
+    {
+        return xstrdup(name);
+    }
+    return mangle_module_symbol(mod->base_name, name);
+}
+
+char *qualified_type_name(ParserContext *ctx, const char *scope, const char *name)
+{
+    Module *mod = find_module(ctx, scope);
+    return mod ? module_member_name(ctx, mod, name) : mangle_module_symbol(scope, name);
+}
+
+char *module_function_name(ParserContext *ctx, const char *name)
+{
+    ZenSymbol *local = find_symbol_entry(ctx, name);
+    if (local && local->is_local)
+    {
+        return NULL;
+    }
+    return module_own_name(ctx, name, declares_function);
+}
+
+// The name programs write for the struct or enum `name`, kept when its C name got a module
+// prefix; NULL for one written as it is named.
+static const char *written_type_name(void *context, const char *name)
+{
+    ASTNode *def = find_struct_def((ParserContext *)context, name);
+    if (def && def->kind == NODE_STRUCT)
+    {
+        return def->strct.written_name;
+    }
+    if (def && def->kind == NODE_ENUM)
+    {
+        return def->enm.written_name;
+    }
+    return NULL;
+}
+
+char *zen_c_type_spelling(ParserContext *ctx, Type *t)
+{
+    return type_to_zen_c_string_with(t, written_type_name, ctx);
 }
 
 void register_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
@@ -850,39 +1065,14 @@ void register_impl(ParserContext *ctx, const char *trait, const char *strct)
 
 int check_impl(ParserContext *ctx, const char *trait, const char *strct)
 {
-    ImplReg *r = ctx->registered_impls;
-    while (r)
+    for (ImplReg *r = ctx->registered_impls; r; r = r->next)
     {
         if (r->trait[0] == trait[0] && strcmp(r->trait, trait) == 0 && r->strct[0] == strct[0] &&
             strcmp(r->strct, strct) == 0)
         {
             return 1;
         }
-        r = r->next;
     }
-
-    r = ctx->registered_impls;
-    while (r)
-    {
-        char *base_reg = xstrdup(r->strct);
-        char *ptr2 = (char *)strchr(base_reg, '<');
-        if (ptr2)
-        {
-            *ptr2 = 0;
-            size_t blen = strlen(base_reg);
-            if (strncmp(strct, base_reg, (size_t)(blen)) == 0 && strct[blen] == '_')
-            {
-                if (r->trait[0] == trait[0] && strcmp(r->trait, trait) == 0)
-                {
-                    zfree(base_reg);
-                    return 1;
-                }
-            }
-        }
-        zfree(base_reg);
-        r = r->next;
-    }
-
     return 0;
 }
 
@@ -909,8 +1099,9 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
             if (n->kind == NODE_FUNCTION && n->func.name[0] == name[0] &&
                 strcmp(n->func.name, name) == 0)
             {
-                FuncSig *sig = xmalloc(sizeof(FuncSig));
+                FuncSig *sig = xcalloc(1, sizeof(FuncSig));
                 sig->name = n->func.name;
+                sig->own_name = n->func.method_name;
                 sig->decl_token = n->token;
                 sig->total_args = n->func.count;
                 sig->default_values = n->func.default_values;

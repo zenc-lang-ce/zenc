@@ -86,6 +86,18 @@ else
     check "unknown flag reports error" 0
 fi
 
+# An option that needs a value, given as the last argument, is an error: it is not ignored, nor
+# passed to the C compiler on its own.
+missing_ok=1
+for option in -o -I -L -l -D --cc --backend --backend-opt; do
+    out=$("$ZC" build "$ZC/does_not_exist.zc" "$option" 2>&1)
+    if [ $? -eq 0 ] || ! echo "$out" | grep -q "missing .* after '$option'"; then
+        echo "    $option: $out"
+        missing_ok=0
+    fi
+done
+check "an option without its value reports error" "$missing_ok"
+
 # --- Compile + run smoke test ----------------------------------------------
 
 workdir="$(mktemp -d)"
@@ -120,6 +132,87 @@ if [ -s "$workdir/smoke_out.c" ]; then
     check "zc transpile emits C source" 1
 else
     check "zc transpile emits C source" 0
+fi
+
+# `-I <dir>` with a space reaches the C compiler as `-I<dir>`, not as a bare `-I` that would
+# take the next flag as its directory.
+mkdir -p "$workdir/hdr"
+printf '#define CLI_INCLUDE_VALUE 42\n' > "$workdir/hdr/cli_include.h"
+printf 'include "cli_include.h"\nfn main() {\n    let x: int = CLI_INCLUDE_VALUE;\n}\n' \
+    > "$workdir/include_dir.zc"
+out=$("$ZC" build -v -I "$workdir/hdr" "$workdir/include_dir.zc" -o "$workdir/include_dir" 2>&1)
+if [ -x "$workdir/include_dir" ] && echo "$out" | grep -q -- " -I$workdir/hdr " &&
+    ! echo "$out" | grep -qE -- ' -I( |$)'; then
+    check "-I with a space passes the directory with the flag" 1
+else
+    check "-I with a space passes the directory with the flag" 0
+fi
+
+# A bare `-O` is the C compiler's `-O`: it does not take the next argument (here, the input file).
+out=$("$ZC" build -v -O "$workdir/smoke.zc" -o "$workdir/smoke_o" 2>&1)
+if [ -x "$workdir/smoke_o" ] && echo "$out" | grep -qE -- ' -O( |$)'; then
+    check "a bare -O does not take the next argument" 1
+else
+    check "a bare -O does not take the next argument" 0
+fi
+
+# Options can come before the command, as the usage line shows; one that takes a value (`-o`)
+# takes it there too, and `--` still goes with `run`.
+"$ZC" -q -o "$workdir/before" build "$workdir/smoke.zc" > /dev/null 2>&1
+if [ -x "$workdir/before" ] && "$workdir/before" | grep -q "cli-smoke-ok"; then
+    check "options before the command" 1
+else
+    check "options before the command" 0
+fi
+
+out=$("$ZC" -q run "$workdir/args.zc" -o "$workdir/args_before" -- --version 2>&1)
+if [ "$out" = "[--version]" ]; then
+    check "-- after options before the command" 1
+else
+    check "-- after options before the command" 0
+fi
+
+# `-g` gives the C compiler `-g`, so a debugger finds the .zc lines; without it, or after
+# `-g0`, it does not.
+out_g=$("$ZC" build -v -g "$workdir/smoke.zc" -o "$workdir/smoke_g" 2>&1)
+out_plain=$("$ZC" build -v "$workdir/smoke.zc" -o "$workdir/smoke_plain" 2>&1)
+out_g0=$("$ZC" build -v -g -g0 "$workdir/smoke.zc" -o "$workdir/smoke_g0" 2>&1)
+if echo "$out_g" | grep -qE -- ' -g( |$)' && ! echo "$out_plain" | grep -qE -- ' -g( |$)' &&
+    ! echo "$out_g0" | grep -qE -- ' -g( |$)'; then
+    check "-g passes -g to the C compiler" 1
+else
+    check "-g passes -g to the C compiler" 0
+fi
+
+# --- zc-doc ------------------------------------------------------------------
+
+# A declaration of a module is titled as its importer writes it (`geo::Vector`), its code
+# block keeps the name it declares (`struct Vector`), and a name with `__` stays whole.
+ZC_DOC="${ZC_DOC:-$(dirname "$ZC")/zc-doc}"
+if [ -x "$ZC_DOC" ]; then
+    printf 'struct Vector { x: int; }\nfn helper() -> int { return 1; }\n' > "$workdir/_doc_geo.zc"
+    printf 'import "./_doc_geo.zc" as geo;\nfn split__name() -> int { return 0; }\nfn main() { }\n' \
+        > "$workdir/doc.zc"
+    out=$("$ZC_DOC" "$workdir/doc.zc" 2>/dev/null)
+    if echo "$out" | grep -qF '## struct `geo::Vector`' && echo "$out" | grep -qF 'struct Vector {' &&
+        echo "$out" | grep -qF '## function `geo::helper`' &&
+        echo "$out" | grep -qF 'fn helper() -> i32;' &&
+        echo "$out" | grep -qF '## function `split__name`'; then
+        check "zc-doc writes names as the program does" 1
+    else
+        check "zc-doc writes names as the program does" 0
+    fi
+
+    # A method's signature has its parameters, and the receiver as the program writes it.
+    printf 'struct P { x: int; }\nimpl P {\n    fn len(self) -> int { return self.x; }\n    fn %s\n}\nfn main() { }\n' \
+        'scaled(const self, k: int) -> int { return self.x * k; }' > "$workdir/doc_methods.zc"
+    out=$("$ZC_DOC" "$workdir/doc_methods.zc" 2>/dev/null)
+    if echo "$out" | grep -qF 'fn len(self) -> i32;' &&
+        echo "$out" | grep -qF 'fn scaled(const self, k: i32) -> i32;'; then
+        check "zc-doc writes a method's signature" 1
+    else
+        check "zc-doc writes a method's signature" 0
+    fi
 fi
 
 # --- Program output ----------------------------------------------------------
@@ -364,6 +457,168 @@ if echo "$line" | grep -q 'lib/counter.zc"'; then
     check "emit-c #line of an imported method names the imported file" 1
 else
     check "emit-c #line of an imported method names the imported file" 0
+fi
+
+# main's last mapped statement and helper are both on line 3, in different files.
+printf '// helper module\n\nfn helper() -> int { return 7; }\n' > "$workdir/same_line_helper.zc"
+printf 'import "same_line_helper.zc"\nfn main() {\n    printf("%%d\\n", helper());\n}\n' > "$workdir/same_line_main.zc"
+"$ZC" build --emit-c "$workdir/same_line_main.zc" -o "$workdir/same_line_out" >/dev/null 2>&1
+line=$(awk '/#line/{l=$0} /^ZC_FUNC int32_t helper\(void\)$/{print l; exit}' "$workdir/same_line_out.c" 2>/dev/null)
+if echo "$line" | grep -q 'same_line_helper.zc"'; then
+    check "emit-c #line changes with the file when the line number is the same" 1
+else
+    check "emit-c #line changes with the file when the line number is the same" 0
+fi
+
+# Calls and methods by the name the program writes, not cut from the C name
+# (`Pool__with_capacity`, `Pool__get__raw`, `Shape__Rect`).
+cat > "$workdir/own_names.zc" <<'ZC'
+enum Shape {
+    Rect(int),
+}
+
+struct Pool {
+    n: int;
+}
+
+impl Pool {
+    fn with_capacity(n: int) -> Pool {
+        return Pool { n: n };
+    }
+    fn get__raw(self) -> int {
+        return self.n;
+    }
+}
+
+fn main() {
+    let p = Pool::with_capacity(4);
+    let n = p.get__raw();
+    let s = Shape.Rect(n);
+}
+ZC
+"$ZC" transpile --backend ast-dump "$workdir/own_names.zc" -o "$workdir/own_names.ast" >/dev/null 2>&1
+if grep -q "CALL 'with_capacity'" "$workdir/own_names.ast" && grep -q "CALL 'get__raw'" "$workdir/own_names.ast" &&
+    grep -q "CALL 'Rect'" "$workdir/own_names.ast"; then
+    check "ast-dump names a call as the program writes it" 1
+else
+    check "ast-dump names a call as the program writes it" 0
+fi
+if "$ZC" doc "$workdir/own_names.zc" 2>/dev/null | grep -q 'method `get__raw`'; then
+    check "doc names a method with __ in it whole" 1
+else
+    check "doc names a method with __ in it whole" 0
+fi
+
+# --- Build directives of imported modules -------------------------------------
+
+# A module's `//> include:`, `link:` and OS-guarded directives reach the build of a program
+# that imports it, also through another module.
+mkdir -p "$workdir/directives/vendor/include/probe" "$workdir/directives/lib"
+printf 'int zc_directive_probe(void);\n' > "$workdir/directives/vendor/include/probe/probe.h"
+printf 'int zc_directive_probe(void) { return 42; }\n' > "$workdir/directives/vendor/probe.c"
+cat > "$workdir/directives/lib/probe.zc" <<EOF
+//> include: $workdir/directives/vendor/include
+//> link: $workdir/directives/vendor/probe.c
+//> linux: define: ZC_DIRECTIVE_OS=1
+//> windows: define: ZC_DIRECTIVE_OS=1
+//> macos: define: ZC_DIRECTIVE_OS=1
+include <probe/probe.h>
+
+fn probe() -> int { return zc_directive_probe(); }
+EOF
+printf 'import "probe.zc"\n\nfn wrapped() -> int { return probe(); }\n' > "$workdir/directives/lib/wrap.zc"
+printf 'import "lib/wrap.zc"\n\nfn main() {\n    printf("value=%%d os=%%d\\n", wrapped(), ZC_DIRECTIVE_OS);\n}\n' \
+    > "$workdir/directives/main.zc"
+zc_path="$(cd "$(dirname "$ZC")" && pwd)/$(basename "$ZC")"
+out=$(cd "$workdir/directives" && XDG_CACHE_HOME="$workdir/directives/cache" "$zc_path" run -q main.zc -o main 2>&1)
+if echo "$out" | grep -q "value=42 os=1"; then
+    check "the build directives of an imported module apply" 1
+else
+    check "the build directives of an imported module apply" 0
+fi
+
+# --- Linkage of the program's functions --------------------------------------
+
+# With --prune-unused, a build of the generated C alone makes the functions that are not `main`
+# or @export static, so the C compiler leaves out the ones nothing calls.
+mkdir -p "$workdir/linkage"
+printf 'fn used() -> int { return 1; }\nfn never_called() -> int { return 7; }\n@export fn api() -> int { return 2; }\nfn main() {\n    if used() + api() != 3 { exit(1); }\n}\n' > "$workdir/linkage/whole.zc"
+"$ZC" build -w --prune-unused "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" >/dev/null 2>&1
+if [ -x "$workdir/linkage/whole" ] && "$workdir/linkage/whole"; then
+    check "a whole-program build runs" 1
+else
+    check "a whole-program build runs" 0
+fi
+if command -v nm >/dev/null 2>&1 && [ -x "$workdir/linkage/whole" ]; then
+    syms=$(nm "$workdir/linkage/whole" 2>/dev/null)
+    if ! echo "$syms" | grep -q 'never_called' && echo "$syms" | grep -Eq ' T _?api$'; then
+        check "a whole-program build drops unused functions and keeps @export ones" 1
+    else
+        check "a whole-program build drops unused functions and keeps @export ones" 0
+    fi
+fi
+
+# A function of the program that a C header of the preamble also declares (`abs`) keeps external
+# linkage: C rejects a static definition after an extern declaration.
+printf 'fn abs(n: int) -> int {\n    if n < 0 { return -n; }\n    return n;\n}\nfn main() {\n    if abs(-3) != 3 { exit(1); }\n}\n' > "$workdir/linkage/own_abs.zc"
+"$ZC" build -w --prune-unused "$workdir/linkage/own_abs.zc" -o "$workdir/linkage/own_abs" >/dev/null 2>&1
+if [ -x "$workdir/linkage/own_abs" ] && "$workdir/linkage/own_abs"; then
+    check "a whole-program build defines a function a C header declares" 1
+else
+    check "a whole-program build defines a function a C header declares" 0
+fi
+# zc also leaves those functions out of the C it compiles (kept here with --emit-c), but not
+# one that the C runtime calls without its name.
+"$ZC" build -w --prune-unused --emit-c "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" >/dev/null 2>&1
+if [ -f "$workdir/linkage/whole.c" ] && ! grep -q 'never_called' "$workdir/linkage/whole.c" &&
+    grep -q ' used(void)' "$workdir/linkage/whole.c"; then
+    check "a whole-program build leaves unused functions out of its C" 1
+else
+    check "a whole-program build leaves unused functions out of its C" 0
+fi
+printf 'let ready: int = 0;\n@constructor\nfn set_ready() {\n    ready = 1;\n}\nfn main() {\n    if ready != 1 { exit(1); }\n}\n' > "$workdir/linkage/ctor.zc"
+"$ZC" build -w --prune-unused "$workdir/linkage/ctor.zc" -o "$workdir/linkage/ctor" >/dev/null 2>&1
+if [ -x "$workdir/linkage/ctor" ] && "$workdir/linkage/ctor"; then
+    check "a whole-program build keeps a @constructor nothing calls" 1
+else
+    check "a whole-program build keeps a @constructor nothing calls" 0
+fi
+
+# A C file of the user may call any function of the program by name: with one, they keep
+# external linkage.
+printf 'extern fn from_c() -> c_int;\nfn called_from_c() -> int { return 40; }\nfn main() {\n    if from_c() != 42 { exit(1); }\n}\n' > "$workdir/linkage/with_c.zc"
+printf 'int called_from_c(void);\nint from_c(void) { return called_from_c() + 2; }\n' > "$workdir/linkage/helper.c"
+"$ZC" build -w --prune-unused "$workdir/linkage/with_c.zc" "$workdir/linkage/helper.c" -o "$workdir/linkage/with_c" >/dev/null 2>&1
+if [ -x "$workdir/linkage/with_c" ] && "$workdir/linkage/with_c"; then
+    check "a C file of the user calls a function of the program" 1
+else
+    check "a C file of the user calls a function of the program" 0
+fi
+
+# Without --prune-unused, zc writes every function.
+"$ZC" build -w --emit-c "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" >/dev/null 2>&1
+if [ -f "$workdir/linkage/whole.c" ] && grep -q 'never_called' "$workdir/linkage/whole.c"; then
+    check "a build without --prune-unused keeps unused functions in its C" 1
+else
+    check "a build without --prune-unused keeps unused functions in its C" 0
+fi
+# --prune-unused reports how many functions it left out, and -v which ones.
+out=$("$ZC" build -w --prune-unused -v "$workdir/linkage/whole.zc" -o "$workdir/linkage/whole" 2>&1)
+if echo "$out" | grep -Eq 'Pruned [0-9]+ of [0-9]+ functions \([0-9]+%\)' &&
+    echo "$out" | grep -Eq '^ +never_called$'; then
+    check "--prune-unused reports the functions it left out" 1
+else
+    check "--prune-unused reports the functions it left out" 0
+    echo "$out" | head -5
+fi
+# It warns when the build is not a whole program, instead of doing nothing silently.
+out=$("$ZC" build -w --prune-unused "$workdir/linkage/with_c.zc" "$workdir/linkage/helper.c" \
+    -o "$workdir/linkage/with_c" 2>&1)
+if echo "$out" | grep -q -- '--prune-unused has no effect with'; then
+    check "--prune-unused warns when other code may call the program" 1
+else
+    check "--prune-unused warns when other code may call the program" 0
+    echo "$out" | head -5
 fi
 
 # --- Installed layout ------------------------------------------------------

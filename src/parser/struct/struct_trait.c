@@ -26,13 +26,13 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
     strncpy(name, n.start, n.len);
     name[n.len] = 0;
 
-    // Generics <T>
-    char **generic_params = NULL;
-    int generic_count = 0;
+    // Generics <T>. `register_generic` skips a name that is already a generic parameter: what
+    // the trait registers is undone by restoring the count, not by subtracting what it declared.
+    int generics_before = ctx->known_generics_count;
+    zvec_Text generic_params = {0};
     if (lexer_peek(l).kind == TOK_LANGLE)
     {
-        lexer_next(l);                                // eat <
-        generic_params = xmalloc(sizeof(char *) * 8); // simplified
+        lexer_next(l); // eat <
         while (1)
         {
             Token p = lexer_next(l);
@@ -42,10 +42,8 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
                 zpanic_at(p, "Expected generic parameter name");
                 return NULL;
             }
-            generic_params[generic_count] = xmalloc(p.len + 1);
-            strncpy(generic_params[generic_count], p.start, p.len);
-            generic_params[generic_count][p.len] = 0;
-            generic_count++;
+            zvec_push_Text(&generic_params, token_strdup(p));
+            register_generic(ctx, p);
 
             Token sep = lexer_peek(l);
             if (sep.kind == TOK_EOF)
@@ -68,14 +66,6 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
                 zpanic_at(sep, "Expected , or > in generic params");
                 return NULL;
             }
-        }
-    }
-
-    if (generic_count > 0)
-    {
-        for (int i = 0; i < generic_count; i++)
-        {
-            register_generic(ctx, generic_params[i]);
         }
     }
 
@@ -123,7 +113,7 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
         int is_varargs = 0;
         // The parameters belong to the signature, as a function's: not to the enclosing scope.
         enter_scope(ctx);
-        parse_and_convert_args(ctx, l, &default_values, &count, &arg_types, &param_names,
+        parse_and_convert_args(ctx, l, &default_values, &count, &arg_types, &param_names, NULL,
                                &is_varargs, NULL);
         exit_scope(ctx);
 
@@ -146,6 +136,7 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
             m->token = ft;
             m->func.param_names = param_names;
             m->func.name = mname;
+            m->func.method_name = mname;
             m->func.default_values = default_values;
             m->func.count = count;
             m->func.arg_types = arg_types;
@@ -176,15 +167,11 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
     n_node->token = n;
     n_node->trait.name = name;
     n_node->trait.methods = methods;
-    n_node->trait.generic_params = generic_params;
-    n_node->trait.generic_param_count = generic_count;
+    n_node->trait.generic_params = generic_params.data;
+    n_node->trait.generic_param_count = (int)generic_params.length;
 
-    if (generic_count > 0)
-    {
-        ctx->known_generics_count -= generic_count;
-    }
+    ctx->known_generics_count = generics_before;
 
-    register_trait(name);
-    add_to_global_list(ctx, n_node); // Track for codegen (VTable emission)
+    add_to_global_list(ctx, n_node); // Track for codegen (VTable emission) and is_trait
     return n_node;
 }

@@ -1,0 +1,18 @@
+// EXPECT: Rule 21.6
+// A `test` block counts and prints its failures with fprintf (<stdio.h>), which
+// Rule 21.6 bans.
+
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+
+test "add" {
+    let r: int = add(1, 2);
+    if (r != 3) {
+        return;
+    }
+}
+
+fn main() -> int {
+    return add(1, 2) - 3;
+}

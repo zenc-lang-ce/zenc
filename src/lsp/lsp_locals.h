@@ -19,11 +19,20 @@
 ASTNode *lsp_find_local_decl(ASTNode *func, const char *name);
 
 /**
- * @brief Whether a loop (while, for, for-in, loop, repeat, do-while) starts in the body of
+ * @brief Whether a loop (while, for, for-in, loop) starts in the body of
  *        `func` at or before `line`.
  *
  * `line` is compared with the line of the loop's token as it is.
  */
 int lsp_has_loop_before(ASTNode *func, int line);
+
+/**
+ * @brief Calls `found` with each `let` and `def` of the body of `func` written at or before
+ *        `line` (0-based), in the bodies of its statements too, in source order.
+ *
+ * Not in the body of a lambda: its locals are not the function's.
+ */
+void lsp_for_each_local(ASTNode *func, int line, void (*found)(ASTNode *decl, void *data),
+                        void *data);
 
 #endif

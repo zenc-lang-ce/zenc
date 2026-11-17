@@ -9,70 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Local trait registry — avoids dependency on g_parser_ctx.
-static TraitReg *registered_traits_local = NULL;
-
-void register_trait(const char *name)
-{
-    TraitReg *r = xmalloc(sizeof(TraitReg));
-    r->name = xstrdup(name);
-    r->next = registered_traits_local;
-    registered_traits_local = r;
-}
-
-void clear_registered_traits(void)
-{
-    // The TraitReg nodes are arena-allocated, so the arena reset/restore in the
-    // fuzz harness and the LSP reclaims them. The list head must be cleared
-    // there too, otherwise it dangles into reused arena memory and is_trait()
-    // walks a cyclic list forever.
-    registered_traits_local = NULL;
-}
-
-int is_trait(const char *name)
-{
-    if (!name)
-    {
-        return 0;
-    }
-
-    // Strip trailing stars for pointer types (e.g., IAnimal*)
-    char *base = xstrdup(name);
-
-    // Strip "struct " or "union " if present
-    if (strncmp(base, "struct ", 7) == 0)
-    {
-        char *nb = xstrdup(base + 7);
-        zfree(base);
-        base = nb;
-    }
-    else if (strncmp(base, "union ", 6) == 0)
-    {
-        char *nb = xstrdup(base + 6);
-        zfree(base);
-        base = nb;
-    }
-
-    char *p = (char *)strchr(base, '*');
-    if (p)
-    {
-        *p = '\0';
-    }
-
-    TraitReg *r = registered_traits_local;
-    while (r)
-    {
-        if (0 == strcmp(r->name, base))
-        {
-            zfree(base);
-            return 1;
-        }
-        r = r->next;
-    }
-    zfree(base);
-    return 0;
-}
-
 ASTNode *ast_create(NodeType type)
 {
     ASTNode *node = xmalloc(sizeof(ASTNode));
@@ -311,6 +247,151 @@ ASTChildren ast_children(ASTNode *node)
     }
     return c;
 }
+
+ZEN_CONST
+const char *ast_kind_name(NodeType kind)
+{
+    switch (kind)
+    {
+    case NODE_ROOT:
+        return "ROOT";
+    case NODE_FUNCTION:
+        return "FUNCTION";
+    case NODE_BLOCK:
+        return "BLOCK";
+    case NODE_RETURN:
+        return "RETURN";
+    case NODE_VAR_DECL:
+        return "VAR_DECL";
+    case NODE_FIELD_INIT:
+        return "FIELD_INIT";
+    case NODE_CONST:
+        return "CONST";
+    case NODE_TYPE_ALIAS:
+        return "TYPE_ALIAS";
+    case NODE_IF:
+        return "IF";
+    case NODE_WHILE:
+        return "WHILE";
+    case NODE_FOR:
+        return "FOR";
+    case NODE_FOR_RANGE:
+        return "FOR_RANGE";
+    case NODE_LOOP:
+        return "LOOP";
+    case NODE_BREAK:
+        return "BREAK";
+    case NODE_CONTINUE:
+        return "CONTINUE";
+    case NODE_MATCH:
+        return "MATCH";
+    case NODE_MATCH_CASE:
+        return "MATCH_CASE";
+    case NODE_EXPR_BINARY:
+        return "BINARY";
+    case NODE_EXPR_UNARY:
+        return "UNARY";
+    case NODE_EXPR_LITERAL:
+        return "LITERAL";
+    case NODE_EXPR_VAR:
+        return "VAR";
+    case NODE_EXPR_CALL:
+        return "CALL";
+    case NODE_EXPR_MEMBER:
+        return "MEMBER";
+    case NODE_EXPR_INDEX:
+        return "INDEX";
+    case NODE_EXPR_CAST:
+        return "CAST";
+    case NODE_EXPR_SIZEOF:
+        return "SIZEOF";
+    case NODE_EXPR_STRUCT_INIT:
+        return "STRUCT_INIT";
+    case NODE_EXPR_ARRAY_LITERAL:
+        return "ARRAY_LIT";
+    case NODE_EXPR_TUPLE_LITERAL:
+        return "TUPLE";
+    case NODE_EXPR_SLICE:
+        return "SLICE";
+    case NODE_STRUCT:
+        return "STRUCT";
+    case NODE_FIELD:
+        return "FIELD";
+    case NODE_ENUM:
+        return "ENUM";
+    case NODE_ENUM_VARIANT:
+        return "ENUM_VARIANT";
+    case NODE_TRAIT:
+        return "TRAIT";
+    case NODE_IMPL:
+        return "IMPL";
+    case NODE_IMPL_TRAIT:
+        return "IMPL_TRAIT";
+    case NODE_INCLUDE:
+        return "INCLUDE";
+    case NODE_IMPORT:
+        return "IMPORT";
+    case NODE_RAW_STMT:
+        return "RAW";
+    case NODE_EXPR_FSTRING:
+        return "FSTRING";
+    case NODE_FSTRING_PART:
+        return "FSTRING_PART";
+    case NODE_GOTO:
+        return "GOTO";
+    case NODE_LABEL:
+        return "LABEL";
+    case NODE_DEFER:
+        return "DEFER";
+    case NODE_TEST:
+        return "TEST";
+    case NODE_ASSERT:
+        return "ASSERT";
+    case NODE_EXPECT:
+        return "EXPECT";
+    case NODE_DESTRUCT_VAR:
+        return "DESTRUCT_VAR";
+    case NODE_LAMBDA:
+        return "LAMBDA";
+    case NODE_PLUGIN:
+        return "PLUGIN";
+    case NODE_TERNARY:
+        return "TERNARY";
+    case NODE_TYPEOF:
+        return "TYPEOF";
+    case NODE_TRY:
+        return "TRY";
+    case NODE_REFLECTION:
+        return "REFLECTION";
+    case NODE_REPL_PRINT:
+        return "REPL_PRINT";
+    case NODE_CUDA_LAUNCH:
+        return "CUDA_LAUNCH";
+    case NODE_VA_START:
+        return "VA_START";
+    case NODE_VA_END:
+        return "VA_END";
+    case NODE_VA_COPY:
+        return "VA_COPY";
+    case NODE_VA_ARG:
+        return "VA_ARG";
+    case NODE_LINK:
+        return "LINK";
+    case NODE_ASM:
+        return "ASM";
+    case NODE_PREPROC_DIRECTIVE:
+        return "PREPROC_DIRECTIVE";
+    case NODE_COMPTIME:
+        return "COMPTIME";
+    case NODE_AST_COMMENT:
+        return "AST_COMMENT";
+    case NODE_ERRONEOUS:
+        return "ERRONEOUS";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 #if defined(__GNUC__) && !defined(__TINYC__)
 #pragma GCC diagnostic pop
 #endif
@@ -376,6 +457,26 @@ int type_is_generic_param(Type *t, const char *param)
     // Parsed outside its template's body, a parameter is still a struct of its name.
     return t && param && (t->kind == TYPE_GENERIC || t->kind == TYPE_STRUCT) && t->name &&
            strcmp(t->name, param) == 0;
+}
+
+int type_names_param(Type *t, const char *param)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    if (type_is_generic_param(t, param) || type_names_param(t->inner, param))
+    {
+        return 1;
+    }
+    for (int i = 0; t->args && i < t->count; i++)
+    {
+        if (type_names_param(t->args[i], param))
+        {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 char *type_def_name(Type *t)
@@ -549,6 +650,13 @@ const char *c_safe_name(const char *name, int cpp)
     return safe;
 }
 
+Type *type_new_enum(const char *name)
+{
+    Type *t = type_new(TYPE_ENUM);
+    t->name = xstrdup(name);
+    return t;
+}
+
 Type *type_new_instance(const char *tpl, Type **args, int count)
 {
     Type *t = type_new(TYPE_STRUCT);
@@ -574,6 +682,11 @@ Type *slice_element(Type *t)
         return t->args[0];
     }
     return NULL;
+}
+
+int is_owning_closure(Type *t)
+{
+    return t && t->kind == TYPE_FUNCTION && t->traits.has_drop && !t->is_raw;
 }
 
 Type *tuple_of(Type *t)
@@ -633,8 +746,9 @@ static int is_char_ptr(Type *t)
     {
         return 0;
     }
-    // Handle both primitive char* and legacy struct char*.
-    if (TYPE_POINTER == t->kind && t->inner && TYPE_CHAR == t->inner->kind)
+    // Handle both primitive char* and legacy struct char*. `c_char` is C's char too.
+    if (TYPE_POINTER == t->kind && t->inner &&
+        (TYPE_CHAR == t->inner->kind || TYPE_C_CHAR == t->inner->kind))
     {
         return 1;
     }
@@ -659,16 +773,15 @@ int is_integer_type(Type *t)
     }
 
     int res =
-        (t->kind == TYPE_INT || t->kind == TYPE_CHAR || t->kind == TYPE_BOOL ||
-         t->kind == TYPE_I8 || t->kind == TYPE_U8 || t->kind == TYPE_I16 || t->kind == TYPE_U16 ||
-         t->kind == TYPE_I32 || t->kind == TYPE_U32 || t->kind == TYPE_I64 || t->kind == TYPE_U64 ||
-         t->kind == TYPE_USIZE || t->kind == TYPE_ISIZE || t->kind == TYPE_BYTE ||
-         t->kind == TYPE_RUNE || t->kind == TYPE_UINT || t->kind == TYPE_I128 ||
-         t->kind == TYPE_U128 || t->kind == TYPE_BITINT || t->kind == TYPE_UBITINT ||
-         t->kind == TYPE_C_INT || t->kind == TYPE_C_UINT || t->kind == TYPE_C_LONG ||
-         t->kind == TYPE_C_ULONG || t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_ULONGLONG ||
-         t->kind == TYPE_C_SHORT || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_CHAR ||
-         t->kind == TYPE_C_UCHAR ||
+        (t->kind == TYPE_CHAR || t->kind == TYPE_BOOL || t->kind == TYPE_I8 || t->kind == TYPE_U8 ||
+         t->kind == TYPE_I16 || t->kind == TYPE_U16 || t->kind == TYPE_I32 || t->kind == TYPE_U32 ||
+         t->kind == TYPE_I64 || t->kind == TYPE_U64 || t->kind == TYPE_USIZE ||
+         t->kind == TYPE_ISIZE || t->kind == TYPE_BYTE || t->kind == TYPE_RUNE ||
+         t->kind == TYPE_I128 || t->kind == TYPE_U128 || t->kind == TYPE_BITINT ||
+         t->kind == TYPE_UBITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_UINT ||
+         t->kind == TYPE_C_LONG || t->kind == TYPE_C_ULONG || t->kind == TYPE_C_LONGLONG ||
+         t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_USHORT ||
+         t->kind == TYPE_C_CHAR || t->kind == TYPE_C_UCHAR ||
          (t->kind == TYPE_STRUCT && t->name &&
           (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "uint8_t") ||
            0 == strcmp(t->name, "int16_t") || 0 == strcmp(t->name, "uint16_t") ||
@@ -691,15 +804,14 @@ int is_unsigned_type(Type *t)
         return is_unsigned_type(t->inner);
     }
 
-    int res =
-        (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 || t->kind == TYPE_U64 ||
-         t->kind == TYPE_USIZE || t->kind == TYPE_UINT || t->kind == TYPE_U128 ||
-         t->kind == TYPE_UBITINT || t->kind == TYPE_C_UINT || t->kind == TYPE_C_ULONG ||
-         t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_UCHAR ||
-         (t->kind == TYPE_STRUCT && t->name &&
-          (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
-           0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
-           0 == strcmp(t->name, "size_t"))));
+    int res = (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 ||
+               t->kind == TYPE_U64 || t->kind == TYPE_USIZE || t->kind == TYPE_U128 ||
+               t->kind == TYPE_UBITINT || t->kind == TYPE_C_UINT || t->kind == TYPE_C_ULONG ||
+               t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_UCHAR ||
+               (t->kind == TYPE_STRUCT && t->name &&
+                (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
+                 0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
+                 0 == strcmp(t->name, "size_t"))));
     return res;
 }
 
@@ -718,6 +830,20 @@ Type *resolve_alias(Type *t)
 {
     while (t && t->kind == TYPE_ALIAS && t->inner)
     {
+        t = t->inner;
+    }
+    return t;
+}
+
+Type *type_seen_from(Type *t, const char *file)
+{
+    while (t && t->kind == TYPE_ALIAS && t->inner)
+    {
+        if (t->alias.is_opaque_alias && (!file || !t->alias.alias_defined_in_file ||
+                                         strcmp(t->alias.alias_defined_in_file, file) != 0))
+        {
+            break;
+        }
         t = t->inner;
     }
     return t;
@@ -744,8 +870,6 @@ int integer_type_width(Type *t)
         return 16;
     case TYPE_I32:
     case TYPE_U32:
-    case TYPE_INT:
-    case TYPE_UINT:
     case TYPE_RUNE:
     case TYPE_C_INT:
     case TYPE_C_UINT:
@@ -781,11 +905,12 @@ Type *common_integer_type(Type *a, Type *b)
     return (is_unsigned_type(resolve_alias(b)) && !is_unsigned_type(resolve_alias(a))) ? b : a;
 }
 
-// An integer literal written without a suffix (`15`), whose type adapts to the other operand.
+// An integer literal written without a suffix (`15`) whose value fits in an i32, its default
+// type: its type adapts to the other operand. A larger one (`3000000000`) is an i64 and does not.
 static int is_plain_int_literal(ASTNode *n)
 {
-    return n && n->kind == NODE_EXPR_LITERAL && n->literal.kind == LITERAL_INT && n->type_info &&
-           n->type_info->kind == TYPE_INT;
+    return n && n->kind == NODE_EXPR_LITERAL && n->literal.kind == LITERAL_INT &&
+           n->literal.is_untyped && n->literal.int_val <= (unsigned long long)INT32_MAX;
 }
 
 Type *integer_operation_type(ASTNode *left, ASTNode *right)
@@ -813,15 +938,14 @@ int is_signed_type(Type *t)
         return is_signed_type(t->inner);
     }
 
-    int res =
-        (t->kind == TYPE_I8 || t->kind == TYPE_I16 || t->kind == TYPE_I32 || t->kind == TYPE_I64 ||
-         t->kind == TYPE_ISIZE || t->kind == TYPE_INT || t->kind == TYPE_I128 ||
-         t->kind == TYPE_BITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_LONG ||
-         t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_CHAR ||
-         (t->kind == TYPE_STRUCT && t->name &&
-          (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "int16_t") ||
-           0 == strcmp(t->name, "int32_t") || 0 == strcmp(t->name, "int64_t") ||
-           0 == strcmp(t->name, "ssize_t") || 0 == strcmp(t->name, "ptrdiff_t"))));
+    int res = (t->kind == TYPE_I8 || t->kind == TYPE_I16 || t->kind == TYPE_I32 ||
+               t->kind == TYPE_I64 || t->kind == TYPE_ISIZE || t->kind == TYPE_I128 ||
+               t->kind == TYPE_BITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_LONG ||
+               t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_CHAR ||
+               (t->kind == TYPE_STRUCT && t->name &&
+                (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "int16_t") ||
+                 0 == strcmp(t->name, "int32_t") || 0 == strcmp(t->name, "int64_t") ||
+                 0 == strcmp(t->name, "ssize_t") || 0 == strcmp(t->name, "ptrdiff_t"))));
     return res;
 }
 
@@ -852,8 +976,30 @@ int is_float_type(Type *t)
         return is_float_type(t->inner);
     }
 
-    int res = (t->kind == TYPE_FLOAT || t->kind == TYPE_F32 || t->kind == TYPE_F64);
+    int res = (t->kind == TYPE_F32 || t->kind == TYPE_F64);
     return res;
+}
+
+int float_significand_bits(Type *t)
+{
+    return resolve_alias(t)->kind == TYPE_F32 ? 24 : 53;
+}
+
+int float_holds_integer_type(Type *float_type, Type *integer_type)
+{
+    int width = integer_type_width(resolve_alias(integer_type));
+    if (width <= 0)
+    {
+        return 1;
+    }
+    int magnitude = is_unsigned_type(integer_type) ? width : width - 1;
+    return magnitude <= float_significand_bits(float_type);
+}
+
+int float_holds_integer(Type *float_type, long long value)
+{
+    long long limit = 1LL << float_significand_bits(float_type);
+    return value >= -limit && value <= limit;
 }
 
 int is_incomplete_type(struct ParserContext *ctx, Type *t)
@@ -1006,7 +1152,15 @@ int type_eq(Type *a, Type *b)
     return 1;
 }
 
-static char *type_spelling(Type *t, int c_names);
+// How a type is spelled.
+typedef enum
+{
+    SPELLING_READABLE, // type_to_string: primitives by their Zen C name, instances by C name.
+    SPELLING_C,        // type_mangle_spelling: as the C names built from the type spell it.
+    SPELLING_ZEN_C,    // type_to_zen_c_string_with: as the program writes it, for people.
+} TypeSpelling;
+
+static char *type_spelling(Type *t, TypeSpelling spelling, WrittenNameLookup lookup, void *context);
 
 // The name of the C struct a tuple is: `Tuple__` and its elements' names, as `(int, bool*)`
 // gives `Tuple__int__boolPtr`.
@@ -1016,7 +1170,7 @@ static char *tuple_struct_name(Type *t)
     char **elements = xmalloc(sizeof(char *) * (size_t)(t->count > 0 ? t->count : 1));
     for (int i = 0; i < t->count; i++)
     {
-        elements[i] = type_spelling(t->args[i], 1);
+        elements[i] = type_spelling(t->args[i], SPELLING_C, NULL, NULL);
         length += strlen(elements[i]) + 2;
     }
     char *signature = xmalloc(length + 1);
@@ -1039,17 +1193,40 @@ static char *tuple_struct_name(Type *t)
     return name;
 }
 
-static char *type_spelling_impl(Type *t, int c_names);
+static char *type_spelling_impl(Type *t, TypeSpelling spelling, WrittenNameLookup lookup,
+                                void *context);
 
-// A type as type_to_string spells it, or, with `c_names`, as the C names built from it spell
-// it (type_mangle_spelling).
-static char *type_spelling(Type *t, int c_names)
+// The types of a list (a generic's arguments, a tuple's elements) as `a, b`.
+static char *type_spelling_list(Type **types, int count, TypeSpelling spelling,
+                                WrittenNameLookup lookup, void *context)
+{
+    char **parts = xmalloc(sizeof(char *) * (size_t)(count > 0 ? count : 1));
+    size_t size = 1;
+    for (int i = 0; i < count; i++)
+    {
+        parts[i] = type_spelling(types[i], spelling, lookup, context);
+        size += strlen(parts[i]) + 2;
+    }
+    char *out = xmalloc(size);
+    out[0] = 0;
+    for (int i = 0; i < count; i++)
+    {
+        if (i > 0)
+        {
+            strcat(out, ", ");
+        }
+        strcat(out, parts[i]);
+    }
+    return out;
+}
+
+static char *type_spelling(Type *t, TypeSpelling spelling, WrittenNameLookup lookup, void *context)
 {
     if (!t)
     {
         return xstrdup("void");
     }
-    char *res = type_spelling_impl(t, c_names);
+    char *res = type_spelling_impl(t, spelling, lookup, context);
     if (t->is_const)
     {
         char *final = xmalloc(strlen(res) + 7);
@@ -1062,15 +1239,21 @@ static char *type_spelling(Type *t, int c_names)
 
 char *type_to_string(Type *t)
 {
-    return type_spelling(t, 0);
+    return type_spelling(t, SPELLING_READABLE, NULL, NULL);
 }
 
 char *type_mangle_spelling(Type *t)
 {
-    return type_spelling(t, 1);
+    return type_spelling(t, SPELLING_C, NULL, NULL);
 }
 
-static char *type_spelling_impl(Type *t, int c_names)
+char *type_to_zen_c_string_with(Type *t, WrittenNameLookup lookup, void *context)
+{
+    return type_spelling(t, SPELLING_ZEN_C, lookup, context);
+}
+
+static char *type_spelling_impl(Type *t, TypeSpelling spelling, WrittenNameLookup lookup,
+                                void *context)
 {
     if (!t)
     {
@@ -1079,7 +1262,7 @@ static char *type_spelling_impl(Type *t, int c_names)
 
     // People read a fixed-width primitive by the name the program writes (`i32`); a C name
     // spells it as C does (`Vec__int32_t`).
-    const char *zen_name = c_names ? NULL : primitive_zen_name(t->kind);
+    const char *zen_name = spelling == SPELLING_C ? NULL : primitive_zen_name(t->kind);
     if (zen_name)
     {
         return xstrdup(zen_name);
@@ -1128,8 +1311,6 @@ static char *type_spelling_impl(Type *t, int c_names)
     case TYPE_RUNE:
         // Not `int32_t`, which `int` also is: an instance of `rune` is not one of `int`.
         return xstrdup("rune");
-    case TYPE_UINT:
-        return xstrdup("unsigned int");
 
     // Portable C Types
     case TYPE_C_INT:
@@ -1153,10 +1334,6 @@ static char *type_spelling_impl(Type *t, int c_names)
     case TYPE_C_UCHAR:
         return xstrdup("c_uchar");
 
-    case TYPE_INT:
-        return xstrdup("int");
-    case TYPE_FLOAT:
-        return xstrdup("float");
     case TYPE_BITINT:
     {
         char *res = xmalloc(32);
@@ -1176,7 +1353,7 @@ static char *type_spelling_impl(Type *t, int c_names)
         {
             return xstrdup(t->name);
         }
-        char *inner = type_spelling(t->inner, c_names);
+        char *inner = type_spelling(t->inner, spelling, lookup, context);
         char *res = xmalloc(strlen(inner) + 20);
         sprintf(res, "%sx%d", inner, t->array_size); /* safe */
         zfree(inner);
@@ -1185,7 +1362,7 @@ static char *type_spelling_impl(Type *t, int c_names)
 
     case TYPE_POINTER:
     {
-        char *inner = type_spelling(t->inner, c_names);
+        char *inner = type_spelling(t->inner, spelling, lookup, context);
         if (t->is_restrict)
         {
             char *res = xmalloc(strlen(inner) + 16);
@@ -1218,7 +1395,7 @@ static char *type_spelling_impl(Type *t, int c_names)
             base = base->inner;
         }
 
-        char *inner = type_spelling(base, c_names);
+        char *inner = type_spelling(base, spelling, lookup, context);
         size_t total_len = strlen(inner) + 1;
         for (int i = 0; i < dims_count; i++)
         {
@@ -1248,7 +1425,7 @@ static char *type_spelling_impl(Type *t, int c_names)
         if (t->is_raw)
         {
             // fn*(Args)->Ret
-            char *ret = type_spelling(t->inner, c_names);
+            char *ret = type_spelling(t->inner, spelling, lookup, context);
             char *res = xmalloc(strlen(ret) + 64);
             snprintf(res, strlen(ret) + 64, "fn*(");
 
@@ -1261,7 +1438,7 @@ static char *type_spelling_impl(Type *t, int c_names)
                     zfree(res);
                     res = tmp;
                 }
-                char *arg = type_spelling(t->args[i], c_names);
+                char *arg = type_spelling(t->args[i], spelling, lookup, context);
                 char *tmp = xmalloc(strlen(res) + strlen(arg) + 1);
                 sprintf(tmp, "%s%s", res, arg); /* safe */
                 zfree(res);
@@ -1284,7 +1461,7 @@ static char *type_spelling_impl(Type *t, int c_names)
         }
 
         // fn(Args) -> Ret
-        char *ret = type_spelling(t->inner, c_names);
+        char *ret = type_spelling(t->inner, spelling, lookup, context);
         char *res = xmalloc(strlen(ret) + 64);
         snprintf(res, strlen(ret) + 64, "fn(");
 
@@ -1297,7 +1474,7 @@ static char *type_spelling_impl(Type *t, int c_names)
                 zfree(res);
                 res = tmp;
             }
-            char *arg = type_spelling(t->args[i], c_names);
+            char *arg = type_spelling(t->args[i], spelling, lookup, context);
             char *tmp = xmalloc(strlen(res) + strlen(arg) + 1);
             sprintf(tmp, "%s%s", res, arg); /* safe */
             zfree(res);
@@ -1316,20 +1493,37 @@ static char *type_spelling_impl(Type *t, int c_names)
     case TYPE_ENUM:
     case TYPE_GENERIC:
     {
-        // An instance of a generic is named after its template and its arguments.
-        if (t->count > 0 && t->args && t->name &&
-            (t->kind != TYPE_GENERIC || strstr(t->name, "__") == NULL))
+        // An instance of a generic is named after its template and its arguments: as the
+        // program writes it (`Vec<Vec<f64>>`), or by the C name of the instance.
+        if (t->count > 0 && t->args && t->name)
         {
+            if (spelling == SPELLING_ZEN_C)
+            {
+                char *args = type_spelling_list(t->args, t->count, spelling, lookup, context);
+                char *res = xmalloc(strlen(t->name) + strlen(args) + 3);
+                sprintf(res, "%s<%s>", t->name, args); /* safe */
+                return res;
+            }
             char **args = xmalloc((size_t)t->count * sizeof(char *));
             for (int i = 0; i < t->count; i++)
             {
-                args[i] = type_spelling(t->args[i], 1);
+                args[i] = type_spelling(t->args[i], SPELLING_C, NULL, NULL);
             }
             return mangle_generic_name(t->name, args, t->count);
         }
-        return xstrdup(t->name);
+        // A struct or enum of a module, as its importer writes it (`math::Vector`).
+        const char *written =
+            (spelling == SPELLING_ZEN_C && lookup && t->name) ? lookup(context, t->name) : NULL;
+        return xstrdup(written ? written : t->name);
     }
     case TYPE_TUPLE:
+        if (spelling == SPELLING_ZEN_C)
+        {
+            char *elements = type_spelling_list(t->args, t->count, spelling, lookup, context);
+            char *res = xmalloc(strlen(elements) + 3);
+            sprintf(res, "(%s)", elements); /* safe */
+            return res;
+        }
         return tuple_struct_name(t);
     case TYPE_ALIAS:
         // The name the program uses: a @link_name only shows in C (type_to_c_string).
@@ -1450,8 +1644,6 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         return xstrdup("unsigned __int128");
     case TYPE_RUNE:
         return xstrdup("int32_t");
-    case TYPE_UINT:
-        return xstrdup("unsigned int");
 
     // Portable C Types (Map directly to C types)
     case TYPE_C_INT:
@@ -1475,12 +1667,6 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
     case TYPE_C_UCHAR:
         return xstrdup(misra_mode ? "uint8_t" : "unsigned char");
 
-    case TYPE_INT:
-        // 'int' in Zen C maps to 'i32' now for portability.
-        // FFI should use c_int.
-        return xstrdup("int32_t");
-    case TYPE_FLOAT:
-        return xstrdup("float");
     case TYPE_BITINT:
     {
         char *res = xmalloc(32);
@@ -1667,6 +1853,24 @@ Type *get_inner_type(Type *t)
     return t;
 }
 
+ASTNode *deref_to_one_pointer(ASTNode *expr)
+{
+    Type *t = get_inner_type(expr->type_info);
+    Type *pointee = t && t->kind == TYPE_POINTER ? get_inner_type(t->inner) : NULL;
+    while (pointee && pointee->kind == TYPE_POINTER)
+    {
+        ASTNode *deref = ast_create(NODE_EXPR_UNARY);
+        deref->unary.op = OP_DEREF;
+        deref->unary.operand = expr;
+        deref->type_info = t->inner;
+        deref->token = expr->token;
+        expr = deref;
+        t = pointee;
+        pointee = get_inner_type(t->inner);
+    }
+    return expr;
+}
+
 // Type inference — resolve an expression node to its C type string.
 // (Moved from codegen_utils.c this is part of core, not codegen)
 
@@ -1735,7 +1939,11 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
             }
 
             // Check for enum variants (constructors)
-            EnumVariantReg *ev = find_enum_variant(ctx, node->call.callee->var_ref.name);
+            TypeMember *variant = &node->call.callee->var_ref.variant;
+            EnumVariantReg *ev =
+                variant->member
+                    ? find_enum_variant_of(ctx, type_def_name(variant->owner), variant->member)
+                    : find_enum_variant(ctx, node->call.callee->var_ref.name);
             if (ev)
             {
                 return ev->enum_name;
@@ -1895,18 +2103,16 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
 
     if (node->kind == NODE_EXPR_BINARY)
     {
-        if (strcmp(node->binary.op, "??") == 0)
+        if (node->binary.op == OP_COALESCE)
         {
             return infer_type(ctx, node->binary.left);
         }
 
-        const char *op = node->binary.op;
+        OperatorClass op_class = operator_class(node->binary.op);
         char *left_type = infer_type(ctx, node->binary.left);
         char *right_type = infer_type(ctx, node->binary.right);
 
-        int is_logical = (strcmp(op, "&&") == 0 || strcmp(op, "||") == 0 || strcmp(op, "==") == 0 ||
-                          strcmp(op, "!=") == 0 || strcmp(op, "<") == 0 || strcmp(op, ">") == 0 ||
-                          strcmp(op, "<=") == 0 || strcmp(op, ">=") == 0);
+        int is_logical = op_class == OPERATOR_LOGICAL || op_class == OPERATOR_COMPARISON;
 
         if (is_logical)
         {
@@ -1979,7 +2185,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
 
     if (node->kind == NODE_EXPR_UNARY)
     {
-        if (strcmp(node->unary.op, "&") == 0)
+        if (node->unary.op == OP_ADDRESS)
         {
             char *inner = infer_type(ctx, node->unary.operand);
             if (inner)
@@ -1989,7 +2195,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
                 return buf;
             }
         }
-        if (strcmp(node->unary.op, "*") == 0)
+        if (node->unary.op == OP_DEREF)
         {
             char *inner = infer_type(ctx, node->unary.operand);
             if (inner)
@@ -2095,3 +2301,113 @@ char *get_field_type_str(ParserContext *ctx, const char *struct_name, const char
 }
 
 // Type inference.
+
+// The character a one-letter escape (`\n`, `\t`...) stands for, or -1.
+static int simple_escape(char c)
+{
+    switch (c)
+    {
+    case 'n':
+        return '\n';
+    case 't':
+        return '\t';
+    case 'r':
+        return '\r';
+    case 'a':
+        return '\a';
+    case 'b':
+        return '\b';
+    case 'f':
+        return '\f';
+    case 'v':
+        return '\v';
+    case 'e':
+        return 27;
+    default:
+        return -1;
+    }
+}
+
+static int is_hex_digit(char c)
+{
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+// A string literal's string_val holds its text as written in C (escapes
+// included), ready for codegen. At compile time we need the characters
+// themselves: `code("];\n")` must yield a newline, not `\` and `n`.
+static char *unescape_c_string(const char *s)
+{
+    char *out = xmalloc(strlen(s) + 1);
+    char *p = out;
+    while (*s)
+    {
+        if (*s != '\\' || !s[1])
+        {
+            *p++ = *s++;
+            continue;
+        }
+        s++;
+        char c = *s++;
+        int simple = simple_escape(c);
+        if (simple >= 0)
+        {
+            *p++ = (char)simple;
+        }
+        else if (c == 'x')
+        {
+            unsigned int val = 0;
+            for (int digits = 0; digits < 2 && is_hex_digit(*s); digits++, s++)
+            {
+                val = (val << 4) | (unsigned int)(*s <= '9' ? *s - '0' : (*s | 0x20) - 'a' + 10);
+            }
+            *p++ = (char)val;
+        }
+        else if (c >= '0' && c <= '7')
+        {
+            unsigned int val = (unsigned int)(c - '0');
+            for (int k = 0; k < 2 && *s >= '0' && *s <= '7'; k++)
+            {
+                val = (val << 3) | (unsigned int)(*s++ - '0');
+            }
+            *p++ = (char)val;
+        }
+        else
+        {
+            // \\, \", \' and anything unknown: the character itself.
+            *p++ = c;
+        }
+    }
+    *p = '\0';
+    return out;
+}
+
+char *string_literal_text(ASTNode *literal)
+{
+    const char *text = literal->literal.string_val ? literal->literal.string_val : "";
+    if (literal->literal.kind == LITERAL_RAW_STRING)
+    {
+        return xstrdup(text);
+    }
+    return unescape_c_string(text);
+}
+
+int is_pointer_type(Type *t)
+{
+    t = resolve_alias(t);
+    return t && (t->kind == TYPE_POINTER || t->kind == TYPE_STRING);
+}
+
+Type *pointee_of(Type *t)
+{
+    t = resolve_alias(t);
+    if (!t)
+    {
+        return NULL;
+    }
+    if (t->kind == TYPE_POINTER)
+    {
+        return t->inner;
+    }
+    return t->kind == TYPE_STRING ? type_new(TYPE_CHAR) : NULL;
+}

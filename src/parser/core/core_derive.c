@@ -22,15 +22,11 @@ static int type_has_clone_method(ParserContext *ctx, const char *type_name)
     {
         return 1;
     }
+    Instantiation *inst = find_instantiation(ctx, type_name);
+    const char *template_name = inst ? inst->template_name : type_name;
     for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
     {
-        size_t base_len = strlen(it->struct_name);
-        if (strncmp(type_name, it->struct_name, base_len) != 0)
-        {
-            continue;
-        }
-        const char *rest = type_name + base_len;
-        if (*rest != 0 && strncmp(rest, "__", 2) != 0)
+        if (strcmp(it->struct_name, template_name) != 0)
         {
             continue;
         }
@@ -45,6 +41,16 @@ static int type_has_clone_method(ParserContext *ctx, const char *type_name)
         }
     }
     return 0;
+}
+
+// Whether a field of type `t` is a `Vec<String>`, which the JSON derives read and write as an
+// array of strings.
+static int is_vec_of_string(Type *t)
+{
+    t = resolve_alias(t);
+    return type_is_instance_of(t, "Vec") && t->count == 1 && t->args[0] &&
+           t->args[0]->kind == TYPE_STRUCT && t->args[0]->name &&
+           strcmp(t->args[0]->name, "String") == 0;
 }
 
 // The traits `generate_derive_impls` knows how to derive.
@@ -352,7 +358,8 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                         else if (!is_ptr && fdef && fdef->kind == NODE_STRUCT)
                         {
                             // Struct field: use __eq function
-                            snprintf(cmp, sizeof(cmp), "%s__eq(&self.%s, &other.%s)", ft, fn,
+                            snprintf(cmp, sizeof(cmp), "%s(&self.%s, &other.%s)",
+                                     mangle_method_symbol(ft, NULL, "eq"), fn,
                                      fn); /* TODO: check buffer size */
                         }
                         else
@@ -406,8 +413,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             body[0] = 0;
 
             // Track Vec<String> fields for forget calls
-            char *vec_fields[32];
-            int vec_field_count = 0;
+            zvec_Text vec_fields = {0};
 
             // Build field assignments
             ASTNode *f = strct->strct.fields;
@@ -468,13 +474,10 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                                 "String::new((*j).get_string(\"%s\").unwrap_or(\"\"));\n",
                                 fn, fn);
                     }
-                    else if (ft && strstr(ft, "Vec") && strstr(ft, "String"))
+                    else if (is_vec_of_string(f->type_info))
                     {
                         // Track this field for forget() call later
-                        if (vec_field_count < 32)
-                        {
-                            vec_fields[vec_field_count++] = fn;
-                        }
+                        zvec_push_Text(&vec_fields, fn);
                         sprintf(/* TODO: check buffer size */
                                 assign,
                                 "let _f_%s = Vec<String>::new();\n"
@@ -531,9 +534,9 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                     char init[128];
                     // Check if this is a Vec<String> field - clone it to avoid double-free
                     int is_vec_field = 0;
-                    for (int vi = 0; vi < vec_field_count; vi++)
+                    for (size_t vi = 0; vi < vec_fields.length; vi++)
                     {
-                        if (strcmp(vec_fields[vi], f->field.name) == 0)
+                        if (strcmp(vec_fields.data[vi], f->field.name) == 0)
                         {
                             is_vec_field = 1;
                             break;
@@ -628,7 +631,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                                                                                           size */
                             fn, fn);
                     }
-                    else if (ft && strstr(ft, "Vec") && strstr(ft, "String"))
+                    else if (is_vec_of_string(f->type_info))
                     {
                         snprintf(
                             set_call, sizeof(set_call), /* TODO: check buffer size */

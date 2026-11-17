@@ -6,6 +6,7 @@
 #include "utils/utils.h"
 #include "constants.h"
 #include "ast/primitives.h"
+#include "lexer/keywords.h"
 #include <ctype.h>
 #include "analysis/const_fold.h"
 #include <stdlib.h>
@@ -115,7 +116,7 @@ char *ast_to_string_recursive(ASTNode *node, int depth)
     {
         char *l = ast_to_string_recursive(node->binary.left, depth + 1);
         char *r = ast_to_string_recursive(node->binary.right, depth + 1);
-        snprintf(buf, buf_size, "(%s %s %s)", l, node->binary.op ? node->binary.op : "?", r);
+        snprintf(buf, buf_size, "(%s %s %s)", l, operator_spelling(node->binary.op), r);
         zfree(l);
         zfree(r);
         break;
@@ -123,7 +124,7 @@ char *ast_to_string_recursive(ASTNode *node, int depth)
     case NODE_EXPR_UNARY:
     {
         char *o = ast_to_string_recursive(node->unary.operand, depth + 1);
-        snprintf(buf, buf_size, "(%s%s)", node->unary.op ? node->unary.op : "?", o);
+        snprintf(buf, buf_size, "(%s%s)", operator_spelling(node->unary.op), o);
         zfree(o);
         break;
     }
@@ -244,32 +245,43 @@ char *token_strdup(Token t)
     return s;
 }
 
-char *token_get_string_content(Token t)
+int token_string_content_offset(Token t, int *end_offset)
 {
     int is_multi = 0;
     int is_fstring = (t.kind == TOK_FSTRING);
     int is_raw = (t.kind == TOK_RAW_STRING);
     int start_offset = 1;
-    int end_offset = 1;
+    int closing = 1;
 
     if (is_fstring)
     {
         is_multi = (t.len >= 7 && t.start[1] == '"' && t.start[2] == '"' && t.start[3] == '"');
         start_offset = is_multi ? 4 : 2;
-        end_offset = is_multi ? 3 : 1;
+        closing = is_multi ? 3 : 1;
     }
     else if (is_raw)
     {
         is_multi = (t.len >= 7 && t.start[1] == '"' && t.start[2] == '"' && t.start[3] == '"');
         start_offset = is_multi ? 4 : 2;
-        end_offset = is_multi ? 3 : 1;
+        closing = is_multi ? 3 : 1;
     }
     else
     {
         is_multi = (t.len >= 6 && t.start[0] == '"' && t.start[1] == '"' && t.start[2] == '"');
         start_offset = is_multi ? 3 : 1;
-        end_offset = is_multi ? 3 : 1;
+        closing = is_multi ? 3 : 1;
     }
+    if (end_offset)
+    {
+        *end_offset = closing;
+    }
+    return start_offset;
+}
+
+char *token_get_string_content(Token t)
+{
+    int end_offset = 1;
+    int start_offset = token_string_content_offset(t, &end_offset);
 
     int content_len = (int)(t.len) - start_offset - end_offset;
     if (content_len < 0)
@@ -402,48 +414,18 @@ const char *normalize_type_name(const char *name)
 
 int is_reserved_keyword(Token t)
 {
-    switch (t.kind)
+    // A keyword with a token of its own is that token whatever its text, `TOK_DEF` for `def`.
+    int count = 0;
+    const ZenKeyword *keywords = zen_keywords(&count);
+    for (int i = 0; t.kind != TOK_IDENT && i < count; i++)
     {
-    case TOK_TEST:
-    case TOK_ASSERT:
-    case TOK_SIZEOF:
-    case TOK_DEF:
-    case TOK_DEFER:
-    case TOK_USE:
-    case TOK_TRAIT:
-    case TOK_IMPL:
-    case TOK_AND:
-    case TOK_OR:
-    case TOK_FOR:
-    case TOK_COMPTIME:
-    case TOK_UNION:
-    case TOK_ASM:
-    case TOK_VOLATILE:
-    case TOK_ALIAS:
-    case TOK_OPAQUE:
-        return 1;
-    default:
-        break;
-    }
-
-    if (t.kind == TOK_IDENT)
-    {
-        static const char *pseudo_keywords[] = {
-            "let",      "static", "const",  "return", "if",    "else",   "while", "break",
-            "continue", "loop",   "repeat", "unless", "guard", "launch", "do",    "goto",
-            "plugin",   "fn",     "struct", "enum",   "self",  NULL};
-
-        for (int i = 0; pseudo_keywords[i] != NULL; i++)
+        if (keywords[i].kind == t.kind)
         {
-            if (t.len == strlen(pseudo_keywords[i]) &&
-                strncmp(t.start, pseudo_keywords[i], t.len) == 0)
-            {
-                return 1;
-            }
+            return keywords[i].is_reserved;
         }
     }
-
-    return 0;
+    const ZenKeyword *keyword = t.kind == TOK_IDENT ? zen_keyword_find(t.start, t.len) : NULL;
+    return keyword && keyword->kind == TOK_IDENT && keyword->is_reserved;
 }
 
 void check_reserved_keyword(Token t)

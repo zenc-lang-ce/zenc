@@ -1,0 +1,52 @@
+// features/memory: assigning a new value to a variable of a type with Drop drops the old value
+// first, in C as with --cpp; a moved-out variable is not dropped again when assigned.
+
+struct Res {
+    id: int;
+}
+
+let drops: int = 0;
+let last: int = 0;
+
+impl Drop for Res {
+    fn drop(self) {
+        drops = drops + 1;
+        last = self.id;
+    }
+}
+
+let g: Res = Res { id: 10 };
+
+fn take(r: Res) -> int {
+    return r.id;
+}
+
+test "assigning to a local drops the old value" {
+    drops = 0;
+    {
+        let r = Res { id: 1 };
+        r = Res { id: 2 };
+        assert(drops == 1 && last == 1, "old value dropped");
+        assert(r.id == 2, "new value kept");
+    }
+    assert(drops == 2 && last == 2, "new value dropped at the end");
+}
+
+test "assigning to a moved-out local drops nothing" {
+    drops = 0;
+    {
+        let r = Res { id: 3 };
+        assert(take(r) == 3, "moved");
+        assert(drops == 1, "dropped by take");
+        r = Res { id: 4 };
+        assert(drops == 1, "nothing to drop");
+    }
+    assert(drops == 2 && last == 4, "new value dropped at the end");
+}
+
+test "assigning to a global drops the old value" {
+    drops = 0;
+    g = Res { id: 11 };
+    assert(drops == 1 && last == 10, "old value dropped");
+    assert(g.id == 11, "new value kept");
+}

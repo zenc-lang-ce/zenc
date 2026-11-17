@@ -2,6 +2,7 @@
 #include "json_rpc.h"
 #include "lsp_main.h"
 #include "lsp_project.h"
+#include "lsp_analysis.h"
 #include "../constants.h"
 #include "../platform/os.h"
 #include "zprep.h"
@@ -72,9 +73,8 @@ int lsp_main(ZenCompiler *compiler, int argc, char **argv)
 #else
         const char *null_device = "/dev/null";
 #endif
-        if (!freopen(null_device, "w", stderr))
-        {
-        }
+        // If it cannot be reopened, stderr stays as it is.
+        (void)!freopen(null_device, "w", stderr);
     }
 
     cfg->mode_lsp = 1;
@@ -139,12 +139,11 @@ int lsp_main(ZenCompiler *compiler, int argc, char **argv)
         g_lsp_request_is_readonly = 1;
 
         // Process JSON-RPC.
-        handle_request(body);
+        lsp_handle_message(body);
 
         if (g_lsp_request_is_readonly)
         {
             zarena_restore(&g_arena, arena_mark);
-            clear_registered_traits();
         }
         else if (g_project)
         {

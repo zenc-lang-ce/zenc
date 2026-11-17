@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_for_lookahead_long.zc...
+error: Type validation failed. Expected 'i32', but got 'string'
+  --> tests/compiler/diagnostics_output/err_for_lookahead_long.zc:6:70
+   |
+6  |     for let longname = 0; longname < 2; longname += 1 { let q: int = "text"; }
+   |                                                                      ^ here
+   |
+[exit 1]

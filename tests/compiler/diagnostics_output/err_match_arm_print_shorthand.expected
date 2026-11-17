@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_match_arm_print_shorthand.zc...
+error: Expected ',' or '}' after match arm
+  --> tests/compiler/diagnostics_output/err_match_arm_print_shorthand.zc:10:22
+   |
+10 |         1 => println "one",
+   |                      ^ here
+   |
+[exit 1]

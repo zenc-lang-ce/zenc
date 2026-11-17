@@ -47,6 +47,7 @@ typedef struct CompilerConfig
 
     int mode_run;
     int mode_debug;
+    int debug_info; // Pass -g to the C compiler (`zc -g`, `zc debug`)
     int mode_check;
     int mode_transpile;
     int emit_c;
@@ -62,6 +63,7 @@ typedef struct CompilerConfig
     int use_typecheck;
     int warn_as_errors;
     int no_suppress_warnings;
+    int prune_unused; ///< --prune-unused: a whole program leaves out what nothing reaches.
     int misra_mode;
     ZcProfile profile;
     int misra_output; ///< 1 = prefer MISRA-conforming generated C.

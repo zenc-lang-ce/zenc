@@ -208,6 +208,11 @@ int z_isatty(int fd);
 void repl_enable_raw_mode(void);
 void repl_disable_raw_mode(void);
 int repl_read_char(char *c);
+/**
+ * @brief Wait up to timeout_ms for input.
+ * @return Non-zero if repl_read_char would return without blocking.
+ */
+int repl_input_pending(int timeout_ms);
 int repl_get_window_size(int *rows, int *cols);
 
 // Dynamic Library Loading

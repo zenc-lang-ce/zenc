@@ -82,6 +82,7 @@ static void emitter_flush_buffered(Emitter *e, const char *data, size_t len)
         {
             e->pending_indent = 1;
             e->output_line++;
+            e->newline_count++;
         }
     }
 }
@@ -97,6 +98,7 @@ void emitter_init_file(Emitter *e, FILE *file)
     e->indent_level = 0;
     e->pending_indent = 1;
     e->output_line = 1;
+    e->newline_count = 0;
     e->saved_count = 0;
 }
 
@@ -113,6 +115,7 @@ void emitter_init_buffer(Emitter *e)
     e->indent_level = 0;
     e->pending_indent = 1;
     e->output_line = 1;
+    e->newline_count = 0;
     e->saved_count = 0;
 }
 

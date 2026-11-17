@@ -5,7 +5,7 @@ raw {
     struct sockaddr { char data[16]; };
     typedef struct sockaddr sockaddr;
     int af_inet = 2;
-    void ws2__WSAStringToAddressA(void* str, int af, void* p, void* sa, void* sz) {}
+    void WSAStringToAddressA(char* str, int32_t af, void* p, void* sa, void* sz) {}
 }
 
 // Case 1: Local struct mangling

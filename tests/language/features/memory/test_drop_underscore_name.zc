@@ -1,0 +1,23 @@
+// features/memory: the drop glue calls the drop of a struct whose name ends
+// in "__", whose method names merge that run of underscores.
+
+let drops = 0;
+
+struct Res__ {
+    id: int
+}
+
+impl Drop for Res__ {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+test "drop of a struct whose name ends in underscores" {
+    drops = 0;
+    {
+        let r = Res__ { id: 1 };
+        assert(r.id == 1, "the value is built");
+    }
+    assert(drops == 1, "the value is dropped at the end of its scope");
+}

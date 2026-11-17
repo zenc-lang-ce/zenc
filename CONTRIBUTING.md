@@ -3,6 +3,98 @@
 Thanks for contributing! This file covers the repository's expectations,
 especially for changes to the compiler itself (`src/`).
 
+Formatting and naming are in [STYLE.md](STYLE.md), the mangling scheme in
+[MANGLING.md](MANGLING.md), and how tests are laid out in
+[tests/DOCS.md](tests/DOCS.md). If you work with an AI agent, it follows
+[AGENTS.md](AGENTS.md), which builds on this file.
+
+## Architecture
+
+The compiler runs in phases: the lexer, the parser (`src/parser/`), the
+typechecker (`src/analysis/`) and the backends (`src/codegen/`: C, and the C++,
+CUDA and Objective-C dialects; json, dot, ast-dump and lisp for tooling).
+
+### How the phases run
+
+- `zc check`, `zc build` and `zc run` run the same typechecker
+  (`check_program`). In `zc check` a type error (`tc_error`) is an error; in
+  `zc build` and `zc run` it is a warning until 0.6 (an error with `--misra`).
+  Move errors, control-flow errors and MISRA checks stop both. The
+  typechecker also **rewrites the AST** before codegen: index operators become
+  calls, implicit `&`/`*` nodes are inserted, `comptime` blocks are expanded,
+  and so on.
+- The language server only runs the parser (`parse_program`).
+
+So:
+
+- A check that reports through `tc_error` stops `zc check` and warns in a
+  build (it stops a build from 0.6).
+- A change to `check_node`, or to anything it calls, can change the C a build
+  emits.
+- To verify a fix, run the program with `zc run`, not only `zc check`: the
+  backends still read things the typechecker does not check.
+
+### Rules
+
+The compiler grew with its semantics spread across the phases. These rules
+describe where it is heading. New code moves toward them, never away from
+them; code that does not follow them yet is not a precedent.
+
+- **One responsibility per phase.** The parser builds the AST. The typechecker
+  decides what the program means: types, moves, semantic diagnostics. The
+  backends only write output. A new semantic check belongs in the
+  typechecker, not in the parser or in codegen. If `zc build` must reject the
+  program too, a `tc_error` is not enough today (see above): say so in the PR
+  and agree there on where the check goes.
+- **In the AST, a type is a `Type` with source names.** Only a backend writes
+  C text (`size_t`, mangled names), when it emits. Do not store C type
+  strings in AST nodes. The one exception is C written by the user
+  (`@ctype`, `@crepr`).
+- **Decide on kinds, not on names.** Compare `Type.kind` and `node->kind`,
+  not the names of types, functions, methods or fields. `strcmp(type, "Vec")
+  == 0` is wrong both ways: it takes a user type called `Vec` for the standard
+  one, and it misses an alias.
+- **A backend receives structured data and never analyzes strings.**
+  Everything a backend needs to decide (the type of an expression, which
+  declaration a name resolves to, which function a call targets, what to
+  drop) must already be in the AST as structured data, put there by the
+  parser or the typechecker. A backend does not parse, compare or search
+  names or type text to find out what something is. If it lacks a datum, add
+  it to the AST where it is produced; do not rebuild it from a string when
+  emitting. Code that does this today is debt, not a precedent.
+- **The compiler does not know the standard library.** Do not hard-code std
+  type, function, field or method names; go through traits and protocols.
+  Some places still do it; do not add new ones.
+- **One mechanism per concern.** Before writing a helper, look for the
+  existing one. Examples: `mangle_method_symbol` for method symbols,
+  `ast_children` to walk a node's children, `should_suppress_undef_warning`
+  for calls to undeclared C functions. If you find two copies of the same
+  rule, merge them. If a rule only holds because each caller remembers to
+  apply it, put it behind one entry point that every caller goes through;
+  adding the call to one more caller fixes a case, not the rule. Do not pass
+  a decision by writing it into a node for a later step to respect (a
+  `type_info` set before the node is checked): every reader then has to
+  cooperate, and the one that does not is the next bug.
+- **Fix the cause, not the reported input.** An issue shows one input; the
+  bug is the rule in the compiler that handles it wrong. Find where the wrong
+  state is produced, and check the fix against variants of the input: another
+  name, another literal, another position, `zc run` as well as `zc check`. If
+  a variant still fails in the same way, the fix covers a case, not the bug.
+  Signs of a patch: the fix tests for a name or a literal that appears in the
+  issue, the PR leaves inputs that fail in the same way out of scope, it adds
+  the same call to one more place, or it changes a reader so that it respects
+  something another step left. Passing tests and lower metrics show that a
+  fix works, not that it fixes the cause.
+- **Prefer the fix that simplifies the compiler.** Between fixes for the same
+  bug, choose the one that leaves less code and fewer special cases: fix a
+  wrong value where it is produced instead of patching every reader. A patch
+  for a single case is a last resort: the PR says why the general fix is not
+  possible, and an issue tracks it.
+- **Small functions, focused files.** Some functions are already hundreds of
+  lines long. Do not make them longer: put what you add in a helper. Put a
+  new file's code around one concern; do not add to catch-all modules such as
+  `utils.c`.
+
 ## Compiler conventions
 
 The compiler is intentionally written to be **coherent**: one rule per
@@ -68,5 +160,104 @@ concern, applied everywhere. When changing compiler code, follow these.
 - `make` builds the compiler; `make test` runs the full suite.
 - `make fuzz-libfuzzer-build` builds the libFuzzer target; the nightly
   `Scheduled Fuzzing` workflow runs it.
-- Keep changes in small, focused commits. The `std` library (Zen C), the
-  website docs, and the awesome-zenc examples live in separate repositories.
+- Keep changes in small, focused commits, and one topic per PR. The website
+  docs and the awesome-zenc examples live in separate repositories.
+
+### Testing a change
+
+Which checks a change needs, besides its tests (each one is explained below):
+
+| The change touches | Run |
+| --- | --- |
+| Anything in `src/` | `make test`, `compare_compilers.sh` and `measure_all.sh` against `main` |
+| Codegen (`src/codegen/`) | also `cpp_cmp.sh` |
+| The typechecker (`src/analysis/`) | also `make test-check-vs-run`, and add the program to `check_clean` |
+| Any C file, before pushing | `validate_gcc14.sh` with the files you changed |
+| Code you believe is dead, before removing it | `trace_all.sh` |
+
+The scripts in `scripts/` are bash and run on macOS and Linux; on Windows,
+run them from WSL. `validate_gcc14.sh` also needs docker. They write to
+`$ZC_WORK` (default `$TMPDIR/zc-work`, or `/tmp/zc-work`) and delete what
+they generate as they go, keeping only reports and what differs; a full run
+over the suite produces hundreds of MB, so point `ZC_WORK` at a disk with
+room. `check_vs_run.sh` and `tests/scripts/compare_compilers.sh` use a
+temporary directory instead. Each script's header explains its arguments.
+
+- **Add a test** with every fix: the program that failed, in the folder of
+  its area (see [tests/DOCS.md](tests/DOCS.md)), and at least one variant of
+  it that reaches the same code (see "Fix the cause, not the reported input"
+  above). A typechecker fix also adds its program to
+  `tests/compiler/check_clean/`, which `zc check` must accept with no errors
+  (`make test-check`).
+- **Run the suite:** `make test`.
+- **Compare with `main`.** Build `main` apart, for example
+  `git archive main | tar -x -C ../zc-ref && make -C ../zc-ref`, and compare:
+  - `tests/scripts/compare_compilers.sh ../zc-ref/zc ./zc`: tests that pass
+    with one binary and fail with the other. Exits 1 on any regression.
+  - `scripts/measure_all.sh ../zc-ref/zc ./zc TAG`: the generated C and the
+    diagnostics of every test, MISRA program and awesome-zenc example (with
+    `../awesome-zenc` next to the checkout). For a change meant for `main`,
+    the only differences should be the ones the fix intends.
+  - `scripts/cpp_cmp.sh ../zc-ref/zc ./zc`: the same for the C++ of `--cpp`.
+- **Typechecker changes:** `make test-check-vs-run` (`scripts/check_vs_run.sh
+  -v`) lists the tests that pass with `zc run` but that `zc check` rejects,
+  grouped by error. There are none, and the CI fails if one appears: `zc
+  check` and a build follow one semantics.
+- **Run the CI's Linux checks before pushing a change in C.** macOS's clang
+  misses warnings that fail the CI (`-Wformat-truncation`,
+  `-Wsuggest-attribute=const`, `-Wnull-dereference`, the static analyzer).
+  `scripts/validate_gcc14.sh FILES...` runs the gcc-14 sanitizer and analyzer
+  builds, the suite (also with `--cpp` and tcc) and the diagnostic output
+  tests in a container, then formats FILES with the CI's clang-format. Build
+  its image once with
+  `docker build -t zc-validate -f scripts/validate.Dockerfile scripts`.
+- **Formatting and lint:** `make format`, `make lint`, `make check-codebase`.
+- The `.expected` files of `tests/compiler/diagnostics_output/` are generated
+  on Linux (`UPDATE=1 tests/scripts/run_diagnostic_output_tests.sh`): on
+  macOS the linker adds a warning line, so some of them always fail there.
+- To show that a code path is dead before removing it, add temporary traces
+  and run `scripts/trace_all.sh` (its header explains how).
+
+## Versioning
+
+Zen C follows [semantic versioning](https://semver.org) (`MAJOR.MINOR.PATCH`).
+
+- **Patch** (`0.5.x`): bug fixes and internal changes. A program that builds
+  and works with an earlier `0.5.x` release builds with the new one and
+  behaves the same.
+- **Minor** (`0.6.0`): language changes, including new features. While Zen C
+  is pre-1.0, a minor release may break existing programs: new or changed
+  syntax, different semantics, or new errors on code that used to compile
+  and work.
+
+From 1.0 on, minor releases will stay backwards compatible, and only a major
+release will be allowed to break existing programs.
+
+Rejecting code that the compiler used to accept but silently miscompiled
+(generated C that failed to build, wrong behavior at run time) is a fix, not
+a breaking change: those programs were already broken. The same goes for
+clearer or more detailed diagnostics.
+
+Each line has its own branch. Base your branch on the one your PR targets:
+
+| Branch | Holds | Target it when your change… |
+| :-- | :-- | :-- |
+| `main` | the current patch line (`0.5.x`) | fixes a bug or refactors without changing what working programs do |
+| `next/<version>` (now `next/0.6`) | the next minor release | changes the language, or rejects programs that used to compile and work |
+
+- If a change does both, split it: the fix to `main`, the language change to
+  `next/<version>`.
+- If an existing test must change for your PR to pass, it probably belongs
+  in `next/<version>`.
+- `next/<version>` is kept up to date by rebasing it onto `main`. If your
+  branch starts from it, rebase your branch too; don't merge.
+- Label PRs that target `next/<version>` with `language`, and add
+  `breaking-change` if they break existing programs.
+
+When a change must be in both branches but behave differently in each, guard
+the old behavior with a compatibility flag in `src/feature_flags.h` (for
+example `FF_COMPATIBILITY_0_5`): it is `1` on `main` and `0` on
+`next/<version>`, and the flag is removed with all its `#if` blocks when the
+minor version is released. Tests that depend on a flag mention it, so
+`grep -rn FF_COMPATIBILITY_0_5 src tests` finds everything to remove.
+

@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_match_arm_name_then_string.zc...
+error: Expected ',' or '}' after match arm
+  --> tests/compiler/diagnostics_output/err_match_arm_name_then_string.zc:10:18
+   |
+10 |         1 => foo "one",
+   |                  ^ here
+   |
+[exit 1]

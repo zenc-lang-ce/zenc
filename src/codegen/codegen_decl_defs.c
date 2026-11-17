@@ -98,20 +98,13 @@ void emit_includes_and_aliases(ParserContext *ctx, ASTNode *node, VisitedModules
 }
 
 // Emit type aliases (after struct defs so the aliased types exist)
-// `typedef <type> <alias>;`. A function pointer type (`int (*)(int)`) takes the alias name
-// inside it.
+// `typedef <type> <alias>;`, with the alias where a declaration puts its name: inside a function
+// pointer type (`int (*)(int)`), and before the brackets of an array (`int32_t Row[3]`).
 static void emit_alias_typedef(ParserContext *ctx, Type *type, const char *alias)
 {
-    const char *c_type = c_type_spelling(ctx, type);
-    const char *ptr = strstr(c_type, "(*)");
-    if (ptr)
-    {
-        EMIT(ctx, "typedef %.*s (*%s)%s;\n", (int)(ptr - c_type), c_type, alias, ptr + 3);
-    }
-    else
-    {
-        EMIT(ctx, "typedef %s %s;\n", c_type, alias);
-    }
+    EMIT(ctx, "typedef ");
+    emit_c_decl(ctx, c_type_spelling(ctx, type), alias);
+    EMIT(ctx, ";\n");
 }
 
 static void emit_type_aliases_internal(ParserContext *ctx, ASTNode *node, VisitedModules **visited,
@@ -162,11 +155,15 @@ void emit_type_aliases(ParserContext *ctx, ASTNode *node, VisitedModules **visit
 
 void emit_global_aliases(ParserContext *ctx)
 {
-    TypeAlias *ta = ctx->type_aliases;
-    while (ta)
+    // An alias written in Zen C is emitted with its declaration (emit_type_aliases, which keeps
+    // its @cfg); here only those that have none: the names of C structs and unions read from
+    // headers, which are registered without a file.
+    for (TypeAlias *ta = ctx->type_aliases; ta; ta = ta->next)
     {
-        emit_alias_typedef(ctx, ta->type_info, ta->alias);
-        ta = ta->next;
+        if (!ta->defined_in_file)
+        {
+            emit_alias_typedef(ctx, ta->type_info, ta->alias);
+        }
     }
 }
 
@@ -289,13 +286,9 @@ void emit_lambda_defs(ParserContext *ctx)
                 int by_ref = node->lambda.capture_modes && node->lambda.capture_modes[i] == 1;
                 emit_lambda_ctx_field(ctx, capture_c_type(ctx, node, i),
                                       c_name(ctx, node->lambda.captured_vars[i]), by_ref);
-                if (!by_ref)
+                if (!by_ref && capture_needs_drop(ctx, node, i))
                 {
-                    ASTNode *fdef = capture_struct_def(ctx, node, i);
-                    if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
-                    {
-                        EMIT(ctx, "int __z_drop_flag_%s;\n", node->lambda.captured_vars[i]);
-                    }
+                    EMIT(ctx, "int __z_drop_flag_%s;\n", node->lambda.captured_vars[i]);
                 }
             }
             emitter_dedent(&ctx->cg.emitter);
@@ -309,15 +302,23 @@ void emit_lambda_defs(ParserContext *ctx)
 
             for (int i = 0; i < node->lambda.capture_count; i++)
             {
-                if (node->lambda.capture_modes && node->lambda.capture_modes[i] == 0)
+                if (node->lambda.capture_modes && node->lambda.capture_modes[i] == 0 &&
+                    capture_needs_drop(ctx, node, i))
                 {
-                    ASTNode *fdef = capture_struct_def(ctx, node, i);
-                    if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
+                    const char *flag = node->lambda.captured_vars[i];
+                    const char *var = c_name(ctx, flag);
+                    Type *captured = node->lambda.captured_types_info[i];
+                    if (is_owning_closure(captured))
                     {
-                        EMIT(ctx, "if (ctx->__z_drop_flag_%s) %s__Drop__glue(&ctx->%s);\n",
-                             node->lambda.captured_vars[i],
-                             type_def_name(node->lambda.captured_types_info[i]),
-                             c_name(ctx, node->lambda.captured_vars[i]));
+                        EMIT(ctx,
+                             "if (ctx->__z_drop_flag_%s && ctx->%s.drop) "
+                             "ctx->%s.drop(ctx->%s.ctx);\n",
+                             flag, var, var, var);
+                    }
+                    else
+                    {
+                        EMIT(ctx, "if (ctx->__z_drop_flag_%s) %s__Drop__glue(&ctx->%s);\n", flag,
+                             drop_glue_name(captured), var);
                     }
                 }
             }

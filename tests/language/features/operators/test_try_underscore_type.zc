@@ -1,0 +1,60 @@
+// language/features/operators: `?` returns the error of a Result, or of an enum with an `Err`
+// variant, whose type name ends in "__": the names of the error constructor and of its tag
+// merge that run of underscores, as where they are defined.
+
+import "std/result.zc"
+
+struct Res__ {
+    id: int;
+}
+
+fn make(ok: bool) -> Result<Res__> {
+    if ok {
+        return Result<Res__>::Ok(Res__ { id: 1 });
+    }
+    return Result<Res__>::Err("no");
+}
+
+fn twice(ok: bool) -> Result<Res__> {
+    let r = make(ok)?;
+    return Result<Res__>::Ok(Res__ { id: r.id * 2 });
+}
+
+enum Outcome__ {
+    Ok(int),
+    Err(int),
+}
+
+fn outcome(ok: bool) -> Outcome__ {
+    if ok {
+        return Outcome__::Ok(3);
+    }
+    return Outcome__::Err(7);
+}
+
+fn doubled(ok: bool) -> Outcome__ {
+    let v = outcome(ok)?;
+    return Outcome__::Ok(v * 2);
+}
+
+test "try on a Result of a type whose name ends in underscores" {
+    let ok = twice(true);
+    assert(ok.is_ok(), "the value goes on");
+    assert(ok.val.id == 2, "and is used");
+    assert(twice(false).is_err(), "the error is returned");
+}
+
+test "try on an enum whose name ends in underscores" {
+    let value = 0;
+    match doubled(true) {
+        Outcome__::Ok(v) => { value = v; },
+        Outcome__::Err(_e) => { value = -1; },
+    }
+    assert(value == 6, "the value goes on");
+    let err = 0;
+    match doubled(false) {
+        Outcome__::Ok(_v) => { err = -1; },
+        Outcome__::Err(e) => { err = e; },
+    }
+    assert(err == 7, "the error is returned");
+}

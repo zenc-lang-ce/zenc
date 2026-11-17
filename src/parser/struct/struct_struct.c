@@ -17,6 +17,9 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
 {
 
     lexer_next(l); // eat struct or union
+    // `register_generic` skips a name that is already a generic parameter: what the struct
+    // registers is undone by restoring the count, not by subtracting what it declared.
+    int generics_before = ctx->known_generics_count;
     Token n = lexer_next(l);
     check_identifier(n);
     char *name = token_strdup(n);
@@ -40,6 +43,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             check_identifier(g);
             gps = realloc(gps, sizeof(char *) * (size_t)(gp_count + 1));
             gps[gp_count++] = token_strdup(g);
+            register_generic(ctx, g);
 
             Token next = lexer_peek(l);
             if (next.kind == TOK_EOF)
@@ -61,11 +65,6 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
                 zpanic_at(next, "Expected ',' or '>' in generic parameter list");
                 return NULL;
             }
-        }
-
-        for (int i = 0; i < gp_count; i++)
-        {
-            register_generic(ctx, gps[i]);
         }
     }
 
@@ -93,8 +92,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     ASTNode *h = 0, *tl = 0;
 
     // Temp storage for used structs
-    char **temp_used_structs = NULL;
-    int temp_used_count = 0;
+    zvec_Text temp_used_structs = {0};
 
     while (1)
     {
@@ -161,6 +159,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
 
                 ASTNode *nf = ast_create(NODE_FIELD);
                 ATTACH_DOC_COMMENT(ctx, nf);
+                nf->token = field_name;
                 nf->field.name = token_strdup(field_name);
                 nf->type_info = ft;
 
@@ -201,17 +200,15 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
 
             if (def && def->kind == NODE_STRUCT)
             {
-                if (!temp_used_structs)
-                {
-                    temp_used_structs = xmalloc(sizeof(char *) * 8);
-                }
-                temp_used_structs[temp_used_count++] = xstrdup(use_name);
+                zvec_push_Text(&temp_used_structs, xstrdup(use_name));
 
                 ASTNode *f = def->strct.fields;
                 while (f)
                 {
                     ASTNode *nf = ast_create(NODE_FIELD);
+                    nf->token = f->token; // Declared in the struct it comes from.
                     nf->field.name = xstrdup(f->field.name);
+                    nf->field.mixed_in_from = f;
                     nf->type_info = f->type_info;
 
                     if (!h)
@@ -230,7 +227,8 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             continue;
         }
 
-        if (t.kind == TOK_IDENT)
+        // `name {` is not a field: an anonymous `struct { }` (reported below).
+        if (t.kind == TOK_IDENT && lexer_peek2(l).kind != TOK_LBRACE)
         {
             Token f_name = lexer_next(l);
             check_identifier(f_name);
@@ -242,6 +240,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             }
             ASTNode *f = ast_create(NODE_FIELD);
             ATTACH_DOC_COMMENT(ctx, f);
+            f->token = f_name;
             f->field.name = token_strdup(f_name);
             f->type_info = ft;
             f->field.bit_width = 0;
@@ -276,14 +275,16 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
         }
         else
         {
-            lexer_next(l);
+            report_not_a_field(l, t);
         }
     }
 
     // Auto-prefix struct name if in module context
+    char *written_name = NULL;
     if (ctx->imports.current_module_prefix && gp_count == 0 && !is_extern &&
         !is_extern_symbol(ctx, name))
     { // Don't prefix generic templates
+        written_name = module_written_name(ctx, name);
         char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name);
         zfree(name);
         name = prefixed_name;
@@ -333,6 +334,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     node->doc_comment = pending_doc; // struct-level /// doc (captured on entry)
 
     node->strct.name = name;
+    node->strct.written_name = written_name;
 
     // Initialize Type Info so we can track traits (like Drop)
     node->type_info = type_new(TYPE_STRUCT);
@@ -355,14 +357,14 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     node->strct.is_union = is_union;
     node->strct.is_opaque = is_opaque;
     node->strct.is_export = is_export;
-    node->strct.used_structs = temp_used_structs;
-    node->strct.used_struct_count = temp_used_count;
+    node->strct.used_structs = temp_used_structs.data;
+    node->strct.used_struct_count = (int)temp_used_structs.length;
     node->strct.defined_in_file = ctx->current_filename ? xstrdup(ctx->current_filename) : NULL;
 
     if (gp_count > 0)
     {
         node->strct.is_template = 1;
-        ctx->known_generics_count -= gp_count;
+        ctx->known_generics_count = generics_before;
         register_template(ctx, name, node);
     }
 

@@ -1,0 +1,11 @@
+   Compiling tests/compiler/diagnostics_output/err_match_int_without_default.zc...
+error: Match may not be exhaustive (no default case)
+  --> tests/compiler/diagnostics_output/err_match_int_without_default.zc:6:5
+   |
+6  |     match n {
+   |     ^ here
+   |
+   = help: Add a default '_' case to handle all possibilities
+     error: semantic analysis found 1 error
+       Check failed with 1 errors
+[exit 1]

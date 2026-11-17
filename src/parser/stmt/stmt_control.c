@@ -38,7 +38,7 @@ static void check_assignment_condition(ASTNode *cond)
     }
     if (cond->kind == NODE_EXPR_BINARY)
     {
-        if (cond->binary.op && strcmp(cond->binary.op, "=") == 0)
+        if (cond->binary.op == OP_ASSIGN)
         {
             zwarn_at(cond->token, "Assignment in condition");
             fprintf(stderr, COLOR_CYAN "   = note: " COLOR_RESET "Did you mean '=='?\n");
@@ -165,11 +165,12 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
 
     if (lexer_peek(l).kind == TOK_IDENT)
     {
-        int saved_pos = l->pos;
+        Lexer saved_lexer = *l;
         Token var = lexer_next(l);
 
         char *enum_idx_name = NULL;
         Token val_tok = {0};
+        Token index_tok = {0}; // `i` of `for i, x in ...`.
         if (lexer_peek(l).kind == TOK_COMMA)
         {
             lexer_next(l);
@@ -177,6 +178,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
             enum_idx_name = xmalloc(var.len + 1);
             strncpy(enum_idx_name, var.start, var.len);
             enum_idx_name[var.len] = 0;
+            index_tok = var;
             var = val_tok;
         }
 
@@ -209,6 +211,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     n->for_range.var_name = xmalloc(var.len + 1);
                     strncpy(n->for_range.var_name, var.start, var.len);
                     n->for_range.var_name[var.len] = 0;
+                    n->for_range.var_token = var;
                     n->for_range.start = start_expr;
                     n->for_range.end = end_expr;
                     n->for_range.is_inclusive = is_inclusive;
@@ -242,10 +245,10 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     }
 
                     enter_scope(ctx);
-                    add_symbol(ctx, n->for_range.var_name, type_new(TYPE_INT), 0);
+                    add_symbol_with_token(ctx, n->for_range.var_name, type_new(TYPE_I32), var, 0);
                     if (enum_idx_name)
                     {
-                        add_symbol(ctx, enum_idx_name, type_new(TYPE_INT), 0);
+                        add_symbol_with_token(ctx, enum_idx_name, type_new(TYPE_I32), index_tok, 0);
                     }
 
                     ASTNode *user_body = NULL;
@@ -268,7 +271,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                         ASTNode *idx_decl = ast_create(NODE_VAR_DECL);
                         idx_decl->token = tk;
                         idx_decl->var_decl.name = xstrdup("__zc_enum_idx");
-                        idx_decl->type_info = type_new(TYPE_INT);
+                        idx_decl->type_info = type_new(TYPE_I32);
                         idx_decl->var_decl.type_info = idx_decl->type_info;
                         ASTNode *zero_lit = ast_create(NODE_EXPR_LITERAL);
                         zero_lit->literal.kind = LITERAL_INT;
@@ -277,16 +280,16 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                         idx_decl->var_decl.init_expr = zero_lit;
 
                         ASTNode *idx_bind = ast_create(NODE_VAR_DECL);
-                        idx_bind->token = tk;
+                        idx_bind->token = index_tok;
                         idx_bind->var_decl.name = enum_idx_name;
-                        idx_bind->type_info = type_new(TYPE_INT);
+                        idx_bind->type_info = type_new(TYPE_I32);
                         idx_bind->var_decl.type_info = idx_bind->type_info;
                         ASTNode *idx_ref = ast_create(NODE_EXPR_VAR);
                         idx_ref->var_ref.name = xstrdup("__zc_enum_idx");
                         idx_bind->var_decl.init_expr = idx_ref;
 
                         ASTNode *idx_inc = ast_create(NODE_EXPR_UNARY);
-                        idx_inc->unary.op = xstrdup("++");
+                        idx_inc->unary.op = OP_PRE_INC;
                         ASTNode *idx_ref2 = ast_create(NODE_EXPR_VAR);
                         idx_ref2->var_ref.name = xstrdup("__zc_enum_idx");
                         idx_inc->unary.operand = idx_ref2;
@@ -344,8 +347,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 char *iter_method = "iterator";
                 ASTNode *slice_decl = NULL;
 
-                if (obj_expr->kind == NODE_EXPR_UNARY && obj_expr->unary.op &&
-                    strcmp(obj_expr->unary.op, "&") == 0)
+                if (obj_expr->kind == NODE_EXPR_UNARY && obj_expr->unary.op == OP_ADDRESS)
                 {
                     obj_expr = obj_expr->unary.operand;
                     iter_method = "iter_ref";
@@ -375,7 +377,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     from_array_call->call.callee = static_method;
 
                     ASTNode *arr_addr = ast_create(NODE_EXPR_UNARY);
-                    arr_addr->unary.op = xstrdup("&");
+                    arr_addr->unary.op = OP_ADDRESS;
                     arr_addr->unary.operand = obj_expr;
 
                     ASTNode *arr_cast = ast_create(NODE_EXPR_CAST);
@@ -510,7 +512,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 APPEND_STMT(if_break);
 
                 ASTNode *user_var_decl = ast_create(NODE_VAR_DECL);
-                user_var_decl->token = tk;
+                user_var_decl->token = var;
                 user_var_decl->var_decl.name = var_name;
                 user_var_decl->type_info = elem_type;
                 user_var_decl->var_decl.type_info = elem_type;
@@ -533,9 +535,9 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 if (enum_idx_name)
                 {
                     ASTNode *idx_bind = ast_create(NODE_VAR_DECL);
-                    idx_bind->token = tk;
+                    idx_bind->token = index_tok;
                     idx_bind->var_decl.name = enum_idx_name;
-                    idx_bind->type_info = type_new(TYPE_INT);
+                    idx_bind->type_info = type_new(TYPE_I32);
                     idx_bind->var_decl.type_info = idx_bind->type_info;
                     ASTNode *idx_ref = ast_create(NODE_EXPR_VAR);
                     idx_ref->var_ref.name = xstrdup("__zc_enum_idx");
@@ -546,10 +548,10 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 APPEND_STMT(user_var_decl);
 
                 enter_scope(ctx);
-                add_symbol(ctx, var_name, elem_type, 0);
+                add_symbol_with_token(ctx, var_name, elem_type, var, 0);
                 if (enum_idx_name)
                 {
-                    add_symbol(ctx, enum_idx_name, type_new(TYPE_INT), 0);
+                    add_symbol_with_token(ctx, enum_idx_name, type_new(TYPE_I32), index_tok, 0);
                 }
 
                 ASTNode *stmt = parse_statement(ctx, l);
@@ -567,7 +569,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 if (enum_idx_name)
                 {
                     ASTNode *idx_inc = ast_create(NODE_EXPR_UNARY);
-                    idx_inc->unary.op = xstrdup("++");
+                    idx_inc->unary.op = OP_PRE_INC;
                     ASTNode *idx_ref3 = ast_create(NODE_EXPR_VAR);
                     idx_ref3->var_ref.name = xstrdup("__zc_enum_idx");
                     idx_inc->unary.operand = idx_ref3;
@@ -585,7 +587,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     enum_idx_decl_node = ast_create(NODE_VAR_DECL);
                     enum_idx_decl_node->token = tk;
                     enum_idx_decl_node->var_decl.name = xstrdup("__zc_enum_idx");
-                    enum_idx_decl_node->type_info = type_new(TYPE_INT);
+                    enum_idx_decl_node->type_info = type_new(TYPE_I32);
                     enum_idx_decl_node->var_decl.type_info = enum_idx_decl_node->type_info;
                     ASTNode *zero_lit = ast_create(NODE_EXPR_LITERAL);
                     zero_lit->literal.kind = LITERAL_INT;
@@ -629,7 +631,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 return outer_block;
             }
         }
-        l->pos = saved_pos;
+        *l = saved_lexer;
     }
 
     enter_scope(ctx);

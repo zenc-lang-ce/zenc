@@ -13,7 +13,9 @@
 #include "../platform/misra.h"
 
 static int last_source_mapping_line = -1;
+static const char *last_source_mapping_file = NULL;
 static NodeType last_source_mapping_type = NODE_ROOT;
+static size_t last_source_mapping_newlines = 0;
 static int allow_duplicate_source_mapping = 0;
 
 int should_emit_source_mapping(ASTNode *node)
@@ -27,6 +29,12 @@ void emit_source_mapping_duplicate(ParserContext *ctx, ASTNode *node)
     allow_duplicate_source_mapping++;
     emit_source_mapping(ctx, node);
     allow_duplicate_source_mapping--;
+}
+
+void forget_source_mapping(void)
+{
+    last_source_mapping_line = -1;
+    last_source_mapping_file = NULL;
 }
 
 void emit_source_mapping(ParserContext *ctx, ASTNode *node)
@@ -45,7 +53,12 @@ void emit_source_mapping(ParserContext *ctx, ASTNode *node)
 
     if (allow_duplicate_source_mapping <= 0)
     {
-        if (node->token.line == last_source_mapping_line)
+        // A newline written after the last #line makes the C compiler count the next
+        // line from there, so the same Zen C line needs its directive again.
+        if (node->token.line == last_source_mapping_line &&
+            ctx->cg.emitter.newline_count == last_source_mapping_newlines &&
+            (!node->token.file || !last_source_mapping_file ||
+             strcmp(node->token.file, last_source_mapping_file) == 0))
         {
             return;
         }
@@ -60,11 +73,13 @@ void emit_source_mapping(ParserContext *ctx, ASTNode *node)
     }
 
     last_source_mapping_line = node->token.line;
+    last_source_mapping_file = node->token.file;
     last_source_mapping_type = node->kind;
 
     if (!ctx->config->misra_mode)
     {
         char *safe_file = sanitize_path_for_c_string(node->token.file);
         EMIT(ctx, "\n#line %i \"%s\"\n", node->token.line, safe_file);
+        last_source_mapping_newlines = ctx->cg.emitter.newline_count;
     }
 }

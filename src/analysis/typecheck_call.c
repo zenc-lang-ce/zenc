@@ -1,10 +1,259 @@
 // SPDX-License-Identifier: MIT
 #include "typecheck_internal.h"
 #include "../utils/utils.h"
+#include <ctype.h>
+
+// Reports `value.method()` when the struct or enum of `value`, declared in Zen C, has no such
+// method: there is no function for codegen to call. Reported in a build too, which would
+// otherwise fail in the C compiler, on the mangled name.
+static void report_missing_method(TypeChecker *tc, ASTNode *call)
+{
+    ASTNode *callee = call->call.callee;
+    ASTNode *target = callee->member.target;
+    // A field found is called through its value (a function pointer or a closure).
+    if (!target || !target->type_info || !callee->type_info ||
+        callee->type_info->kind != TYPE_UNKNOWN)
+    {
+        return;
+    }
+    // The receiver's type, as codegen takes it to name the method.
+    Type *owner = target->type_info;
+    if (owner->kind == TYPE_POINTER)
+    {
+        owner = owner->inner;
+    }
+    Type *t = get_inner_type(owner);
+    if (!t || (t->kind != TYPE_STRUCT && t->kind != TYPE_ENUM) || !t->name)
+    {
+        return;
+    }
+    // A value of a trait calls through its table; a generic one is named for each instance.
+    const char *name = type_def_name(t);
+    ASTNode *def = find_struct_def(tc->pctx, name);
+    if (!def || is_trait(tc->pctx, name) || type_is_generic_dependent(tc->pctx, t) ||
+        (def->kind == NODE_STRUCT && def->strct.is_template) ||
+        (def->kind == NODE_ENUM && def->enm.is_template))
+    {
+        return;
+    }
+    const char *method_owner = NULL;
+    char *method = NULL;
+    if (find_method_call_target(tc->pctx, type_impl_name(owner), callee->member.field,
+                                &method_owner, &method))
+    {
+        zfree(method);
+        return;
+    }
+    char *spelled = zen_c_type_spelling(tc->pctx, t);
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "No method '%s' on '%s'", callee->member.field, spelled);
+    zfree(spelled);
+    tc_ctrl_flow_error(tc, callee->token, msg, NULL);
+}
+
+// Warning W701 (`-Wstyle`): an argument of printf, sprintf, fprintf or dprintf that does not
+// match its conversion in a literal format. It runs once the arguments are checked, when each one
+// has its type.
+static void check_format_string(TypeChecker *tc, ASTNode *call)
+{
+    Token t = call->token;
+    if (tc_file_in_std(tc, t.file))
+    {
+        return;
+    }
+    ASTNode *callee = call->call.callee;
+    if (callee->kind != NODE_EXPR_VAR)
+    {
+        return;
+    }
+
+    char *fname = callee->var_ref.name;
+    if (!fname)
+    {
+        return;
+    }
+
+    if (strcmp(fname, "printf") != 0 && strcmp(fname, "sprintf") != 0 &&
+        strcmp(fname, "fprintf") != 0 && strcmp(fname, "dprintf") != 0)
+    {
+        return;
+    }
+
+    int fmt_idx = 0;
+    if (strcmp(fname, "fprintf") == 0 || strcmp(fname, "sprintf") == 0 ||
+        strcmp(fname, "dprintf") == 0)
+    {
+        fmt_idx = 1;
+    }
+
+    ASTNode *args = call->call.args;
+    ASTNode *fmt_arg = args;
+    for (int i = 0; i < fmt_idx; i++)
+    {
+        if (!fmt_arg)
+        {
+            return;
+        }
+        fmt_arg = fmt_arg->next;
+    }
+    if (!fmt_arg)
+    {
+        return;
+    }
+
+    if (fmt_arg->kind != NODE_EXPR_LITERAL || fmt_arg->literal.kind != LITERAL_STRING)
+    {
+        return;
+    }
+
+    const char *fmt = fmt_arg->literal.string_val;
+
+    ASTNode *curr_arg = fmt_arg->next;
+    int arg_num = fmt_idx + 2;
+
+    for (int i = 0; fmt[i]; i++)
+    {
+        if (fmt[i] == '%')
+        {
+            i++;
+            if (fmt[i] == 0)
+            {
+                break;
+            }
+            if (fmt[i] == '%')
+            {
+                continue;
+            }
+
+            // Flags.
+            while (fmt[i] == '-' || fmt[i] == '+' || fmt[i] == ' ' || fmt[i] == '#' ||
+                   fmt[i] == '0')
+            {
+                i++;
+            }
+
+            // Width.
+            while (isdigit(fmt[i]))
+            {
+                i++;
+            }
+
+            if (fmt[i] == '*')
+            {
+                i++;
+                if (!curr_arg)
+                {
+                    warn_format_string(t, arg_num, "width(int)", "missing");
+                }
+                else
+                {
+                    /* check int */
+                    curr_arg = curr_arg->next;
+                    arg_num++;
+                }
+            }
+
+            // Precision.
+            if (fmt[i] == '.')
+            {
+                i++;
+                while (isdigit(fmt[i]))
+                {
+                    i++;
+                }
+
+                if (fmt[i] == '*')
+                {
+                    i++;
+                    if (!curr_arg)
+                    {
+                        warn_format_string(t, arg_num, "precision(int)", "missing");
+                    }
+                    else
+                    {
+                        /* check int */
+                        curr_arg = curr_arg->next;
+                        arg_num++;
+                    }
+                }
+            }
+
+            // Length.
+            if (fmt[i] == 'h' || fmt[i] == 'l' || fmt[i] == 'L' || fmt[i] == 'z' || fmt[i] == 'j' ||
+                fmt[i] == 't')
+            {
+                if (fmt[i] == 'h' && fmt[i + 1] == 'h')
+                {
+                    i++;
+                }
+                else if (fmt[i] == 'l' && fmt[i + 1] == 'l')
+                {
+                    i++;
+                }
+                i++;
+            }
+
+            char spec = fmt[i];
+
+            if (!curr_arg)
+            {
+                warn_format_string(t, arg_num, "argument", "missing");
+                continue;
+            }
+
+            // What printf reads is the C value, and an alias is a typedef there, also an opaque
+            // one: the conversion is checked against the type under the aliases. The warning
+            // names the type as written.
+            Type *written = curr_arg->type_info;
+            char *got_type = written ? zen_c_type_spelling(tc->pctx, written) : "?";
+            Type *vt = resolve_alias(written);
+
+            if (spec == 'd' || spec == 'i' || spec == 'u' || spec == 'x' || spec == 'X' ||
+                spec == 'o')
+            {
+                // An enum written as a type has the kind of a struct, so its definition decides.
+                if (vt && !is_integer_type(vt) && !is_simple_enum(tc->pctx, vt->name))
+                {
+                    warn_format_string(t, arg_num, "integer", got_type);
+                }
+            }
+            else if (spec == 's')
+            {
+                if (vt && vt->kind != TYPE_STRING && vt->kind != TYPE_POINTER &&
+                    vt->kind != TYPE_ARRAY)
+                {
+                    warn_format_string(t, arg_num, "string", got_type);
+                }
+            }
+            else if (spec == 'f' || spec == 'F' || spec == 'e' || spec == 'E' || spec == 'g' ||
+                     spec == 'G')
+            {
+                if (vt && !is_float_type(vt))
+                {
+                    warn_format_string(t, arg_num, "float", got_type);
+                }
+            }
+            else if (spec == 'p')
+            {
+                if (vt && vt->kind != TYPE_POINTER && vt->kind != TYPE_ARRAY &&
+                    vt->kind != TYPE_STRING)
+                {
+                    warn_format_string(t, arg_num, "pointer", got_type);
+                }
+            }
+
+            curr_arg = curr_arg->next;
+            arg_num++;
+        }
+    }
+}
 
 void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
 {
+    int prev_callee = tc->is_callee;
+    tc->is_callee = node->call.callee && node->call.callee->kind == NODE_EXPR_VAR;
     check_node(tc, node->call.callee, depth + 1);
+    tc->is_callee = prev_callee;
 
     const char *func_name = NULL;
     FuncSig *sig = NULL;
@@ -81,26 +330,6 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                     node->type_info = c_return;
                 }
             }
-
-            if (!sym)
-            {
-                ZenSymbol *global_sym = find_symbol_in_all(tc->pctx, func_name);
-                if (!global_sym && !should_suppress_undef_warning(tc->pctx, func_name))
-                {
-                    char msg[MAX_SHORT_MSG_LEN];
-                    if (tc->pctx->config->misra_mode)
-                    {
-                        snprintf(msg, sizeof(msg), "Undefined function '%s' (MISRA Rule 17.3)",
-                                 func_name);
-                    }
-                    else
-                    {
-                        snprintf(msg, sizeof(msg), "Undefined function '%s'", func_name);
-                    }
-                    const char *hints[] = {"Check if the function is defined or imported", NULL};
-                    tc_error_with_hints(tc, node->call.callee->token, msg, hints);
-                }
-            }
         }
     }
     else if (node->call.callee && node->call.callee->kind == NODE_EXPR_MEMBER)
@@ -115,7 +344,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         if (!sig && node->call.callee->member.target && node->call.callee->member.target->type_info)
         {
             Type *target_type = get_inner_type(node->call.callee->member.target->type_info);
-            if (target_type->name && is_trait(type_def_name(target_type)))
+            if (target_type->name && is_trait(tc->pctx, type_def_name(target_type)))
             {
                 ASTNode *trait_def = find_trait_def(tc->pctx, type_def_name(target_type));
                 if (trait_def)
@@ -134,6 +363,19 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
         }
+        report_missing_method(tc, node);
+    }
+
+    // `a.f(...)` calls a method, which takes `a` as its first argument, unless `f` is a field
+    // holding a function pointer: that call passes only the arguments written.
+    Type *member_type = node->call.callee && node->call.callee->kind == NODE_EXPR_MEMBER
+                            ? get_inner_type(node->call.callee->type_info)
+                            : NULL;
+    int calls_field = member_type && !sig && member_type->kind == TYPE_FUNCTION;
+    int passes_receiver = member_type && !calls_field;
+    if (calls_field && !func_name)
+    {
+        func_name = node->call.callee->member.field;
     }
 
     // Count arguments
@@ -144,9 +386,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         count++;
         arg = arg->next;
     }
-
-    // Member call (a.b()) counts as +1 arg (the receiver)
-    if (node->call.callee && node->call.callee->kind == NODE_EXPR_MEMBER)
+    if (passes_receiver)
     {
         count++;
     }
@@ -194,9 +434,10 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
             }
         }
     }
-    else if (node->call.callee && node->call.callee->kind == NODE_EXPR_VAR && callee_type &&
-             callee_type->kind == TYPE_FUNCTION)
+    else if (node->call.callee && (node->call.callee->kind == NODE_EXPR_VAR || calls_field) &&
+             callee_type && get_inner_type(callee_type)->kind == TYPE_FUNCTION)
     {
+        callee_type = get_inner_type(callee_type);
         min_args = max_args = callee_type->count;
         is_varargs = callee_type->is_varargs;
     }
@@ -226,7 +467,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     int sig_arg_idx = 0;
 
     // For member calls, the first signature argument is the receiver
-    if (node->call.callee && node->call.callee->kind == NODE_EXPR_MEMBER)
+    if (passes_receiver)
     {
         if (sig && sig->total_args > 0 && sig->arg_types && sig->arg_types[0])
         {
@@ -340,11 +581,9 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     // Propagate return type from function signature
     if (sig && sig->ret_type)
     {
-        if (!node->type_info)
-        {
-            // Deep clone return type to ensure caller doesn't modify callee's metadata
-            node->type_info = type_clone(sig->ret_type);
-        }
+        // The call's own copy: its depth is set below, and the parser may have left the
+        // signature's return type itself here, which every call and `return` shares.
+        node->type_info = type_clone(node->type_info ? node->type_info : sig->ret_type);
 
         // Apply Lifetime Elision
         if (sig->elide_from_idx != -1 && node->type_info->kind == TYPE_POINTER)
@@ -353,9 +592,18 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
             if (node->call.callee && node->call.callee->kind == NODE_EXPR_MEMBER &&
                 sig->elide_from_idx == 0)
             {
-                if (node->call.callee->member.target->type_info)
+                // `self` is the receiver's address: the result may point into the receiver
+                // (where it lives) or where the receiver points.
+                ASTNode *receiver = node->call.callee->member.target;
+                if (receiver->type_info)
                 {
-                    target_depth = node->call.callee->member.target->type_info->lifetime_depth;
+                    target_depth = receiver->type_info->lifetime_depth;
+                    Type *receiver_type = get_inner_type(receiver->type_info);
+                    int lives_at = tc_storage_depth(tc, receiver);
+                    if (receiver_type->kind != TYPE_POINTER && lives_at > target_depth)
+                    {
+                        target_depth = lives_at;
+                    }
                 }
             }
             else
@@ -410,6 +658,8 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                             ? node->call.callee->member.target
                             : NULL;
     check_all_args_side_effects(tc, receiver, node->call.args, node->token);
+
+    check_format_string(tc, node);
 
     // Evaluation order check: function call arguments should not have conflicting side effects
     if (tc->pctx->config->misra_mode)

@@ -67,7 +67,20 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result);
 // Utility functions (codegen_utils.c + codegen_shared.c).
 #include "codegen_shared.h"
 
+#if FF_COMPATIBILITY_0_5
+/**
+ * @brief Writes the C name of a 0.5.1 `Enum_Variant` or `Enum_Variant_Tag` spelling.
+ * @return 1 if `name` is one (and was written), 0 if it is a name of its own.
+ */
+int emit_legacy_variant_name(ParserContext *ctx, const char *name);
+#endif
+
 void emit_var_decl_type(ParserContext *ctx, const char *type_str, const char *var_name);
+/**
+ * @brief Writes `type name` as a C declaration: the name goes inside a function pointer's
+ * `(*)` and before an array's brackets (`int32_t name[3]`), not after the whole type.
+ */
+void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name);
 /**
  * @brief The type of a struct field spelled in C: from its Type (a @link_name struct by its C
  *        name), or from its text when the compiler made the field without one.
@@ -86,22 +99,93 @@ const char *c_name(ParserContext *ctx, const char *name);
  */
 char *declared_c_type(ParserContext *ctx, ASTNode *decl);
 /**
+ * @brief Whether `t`, through its aliases, is a fixed-size array (`int[3]`), not a slice. C
+ *        cannot initialize or assign such an array from another one: codegen copies its bytes.
+ */
+int is_fixed_size_array(Type *t);
+/**
+ * @brief Whether `expr` names the variable `name`, in a lambda it holds or an f-string too.
+ */
+int expr_names_var(ASTNode *expr, const char *name);
+/**
+ * @brief Emits `ZC_AUTO _z_init_N = <expr>; ` and returns the temporary's name. A
+ *        `for` header that names the variable it declares reads it from there: C puts a variable
+ *        in scope at the end of its declarator, so in `for (ZC_AUTO i = 0; i < i; i++)` both are
+ *        the new i. The temporary has the C type of the expression, with its integer promotions
+ *        (`i + 10` of a `u8` is an `int`), as the header would compute it.
+ */
+char *emit_init_temp(ParserContext *ctx, ASTNode *expr);
+/**
+ * @brief Emits `temp` if there is one, otherwise `expr`.
+ */
+void emit_expr_or_temp(ParserContext *ctx, ASTNode *expr, const char *temp);
+/**
+ * @brief The C initializer that zeroes a value of type `t` (`{0}`, `0`, `0.0`, `false`...), or
+ *        NULL for a type it has none for (a pointer, an enum, a closure...).
+ */
+const char *zero_initializer(ParserContext *ctx, Type *t);
+/**
  * @brief The type of capture `index` of a lambda spelled in C; `int` when the parser found no
  *        type for it.
  */
 char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index);
 /**
- * @brief The struct that capture `index` of a lambda holds by value, or NULL.
+ * @brief Whether the value of capture `index` of a lambda needs dropping with the lambda's
+ *        context, if it is captured by value: a struct or enum with Drop, or an owning closure.
  */
-ASTNode *capture_struct_def(ParserContext *ctx, ASTNode *lambda, int index);
+int capture_needs_drop(ParserContext *ctx, ASTNode *lambda, int index);
 void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t);
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr);
 void emit_rvalue_address(ParserContext *ctx, ASTNode *expr);
 void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_override);
+/**
+ * @brief The C name of `func` when a whole program may leave it out: nothing outside the
+ *        generated C calls it (it is not `main`, an @export...), and the C runtime and the
+ *        linker do not reach it without a call by that name (@constructor, @section...).
+ *        Otherwise NULL.
+ */
+const char *omissible_function_name(ParserContext *ctx, ASTNode *func, const char *name_override);
+/**
+ * @brief Mark the start and the end of the prototype of `func` in the C file being written,
+ *        when a whole program may leave the function out; remove_unused_prototypes reads them.
+ *        Nothing is recorded when the code goes to a buffer.
+ */
+void prototype_span_begin(ParserContext *ctx, ASTNode *func, const char *name_override);
+void prototype_span_end(ParserContext *ctx);
+/**
+ * @brief Writes the bodies of `funcs`, the functions and impls of the program. For a whole
+ *        program written to a file (cg.emit_reached_only), only those the program reaches: the
+ *        C written so far (main, tests, vtables, drop glue, raw blocks, initializers) names the
+ *        functions it uses, and each body written names the ones it calls. Bodies keep their
+ *        order.
+ */
+void emit_function_bodies(ParserContext *ctx, ASTNode *funcs);
+/**
+ * @brief Rewrites the C file `path`, just written by emit_function_bodies, without the
+ *        prototypes of the functions whose bodies it left out. Returns the number of functions
+ *        left out, or -1 if the file could not be rewritten.
+ */
+int remove_unused_prototypes(ParserContext *ctx, const char *path);
+/** @brief Name of the drop glue of the value `value` holds by value, when it is a struct with
+ * Drop or a tuple that needs dropping (the glue is `<name>__Drop__glue`); otherwise NULL. */
+char *value_drop_struct(ParserContext *ctx, ASTNode *value);
+/** @brief A C statement that drops `lvalue`, of type `t`, which needs dropping: its glue, a
+ * closure's `drop`, or a loop over the elements of an array (`depth` names its index). */
+char *drop_value_stmt(Type *t, const char *lvalue, int depth);
+/** @brief The struct or enum definition the named type `t` refers to, or NULL. */
+ASTNode *named_type_def(ParserContext *ctx, Type *t);
+/** @brief Name of the drop glue of a value of type `t` that needs dropping: a struct's name, or
+ * the C name of a tuple's struct. The glue is `<name>__Drop__glue`. */
+char *drop_glue_name(Type *t);
+/** @brief Whether using `node` by value moves a value that is dropped, so the place it was read
+ * from must be invalidated: a closure that owns its context, or a struct or enum with Drop. */
+int moves_drop_value(ParserContext *ctx, ASTNode *node);
 int emit_move_invalidation(ParserContext *ctx, ASTNode *node);
+/** @brief Marks `node`, a variable or a field whose value was moved, as moved out: clears the
+ * variable's drop flag, or zeroes the field. Returns 0 when it emitted nothing. */
+int emit_moved_out(ParserContext *ctx, ASTNode *node);
 void codegen_expression_with_move(ParserContext *ctx, ASTNode *node);
 void emit_mangled_name(ParserContext *ctx, const char *base, const char *method);
-int is_simple_enum(ParserContext *ctx, const char *enum_name);
 int is_enum_type_name(ParserContext *ctx, const char *name);
 
 // Declaration emission  (codegen_decl.c).
@@ -135,6 +219,8 @@ void emit_simple_enum(ParserContext *ctx, ASTNode *node);
  * @brief Emits C preprocessor directives for source mapping.
  */
 void emit_source_mapping(ParserContext *ctx, ASTNode *node);
+/** @brief The next emit_source_mapping writes its #line even if it repeats the last one. */
+void forget_source_mapping(void);
 /**
  * @brief Emits C preprocessor directives for source mapping.
  * Special override for emit_source_mapping that allows duplicate source mappings for 1:N expression
@@ -147,8 +233,6 @@ enum
 {
     MAX_DEFER = 1024
 };
-
-void emit_pending_closure_frees(ParserContext *ctx);
 
 /**
  * @brief Whether an impl adds methods to a template (`impl Vec<T>`, `impl Show for Box<T>`):

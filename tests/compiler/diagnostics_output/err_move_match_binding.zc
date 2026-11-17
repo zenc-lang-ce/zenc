@@ -1,0 +1,49 @@
+// ARGS: check
+// SPDX-License-Identifier: MIT
+// A value bound by a match arm is a copy of the payload, which the matched value still owns
+// and drops: moving the binding (as an argument, or returning it) is an error. Bound with
+// `ref`, it is a borrow.
+
+struct Res {
+    id: int;
+}
+
+impl Drop for Res {
+    fn drop(self) {}
+}
+
+enum Slot {
+    Empty,
+    Full(Res),
+}
+
+fn take(r: Res) -> int {
+    return r.id;
+}
+
+fn unwrap(s: Slot) -> Res {
+    match s {
+        Full(r) => {
+            return r;
+        },
+        Empty => {
+            return Res { id: 0 };
+        },
+    }
+}
+
+fn main() {
+    let s = Slot::Full(Res { id: 1 });
+    match s {
+        Full(r) => {
+            let _n = take(r);
+        },
+        Empty => {},
+    }
+    match s {
+        Full(ref r) => {
+            let _n = r.id;
+        },
+        Empty => {},
+    }
+}

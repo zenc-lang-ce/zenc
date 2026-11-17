@@ -108,13 +108,12 @@ static int get_type_width(Type *t)
     }
     Type *res = resolve_alias(t);
     static const int widths[] = {
-        [TYPE_I8] = 8,        [TYPE_U8] = 8,          [TYPE_CHAR] = 8,         [TYPE_C_CHAR] = 8,
-        [TYPE_C_UCHAR] = 8,   [TYPE_I16] = 16,        [TYPE_U16] = 16,         [TYPE_C_SHORT] = 16,
-        [TYPE_C_USHORT] = 16, [TYPE_I32] = 32,        [TYPE_U32] = 32,         [TYPE_INT] = 32,
-        [TYPE_UINT] = 32,     [TYPE_C_INT] = 32,      [TYPE_C_UINT] = 32,      [TYPE_I64] = 64,
-        [TYPE_U64] = 64,      [TYPE_USIZE] = 64,      [TYPE_ISIZE] = 64,       [TYPE_C_LONG] = 64,
-        [TYPE_C_ULONG] = 64,  [TYPE_C_LONGLONG] = 64, [TYPE_C_ULONGLONG] = 64, [TYPE_F32] = 32,
-        [TYPE_F64] = 64};
+        [TYPE_I8] = 8,           [TYPE_U8] = 8,      [TYPE_CHAR] = 8,     [TYPE_C_CHAR] = 8,
+        [TYPE_C_UCHAR] = 8,      [TYPE_I16] = 16,    [TYPE_U16] = 16,     [TYPE_C_SHORT] = 16,
+        [TYPE_C_USHORT] = 16,    [TYPE_I32] = 32,    [TYPE_U32] = 32,     [TYPE_C_INT] = 32,
+        [TYPE_C_UINT] = 32,      [TYPE_I64] = 64,    [TYPE_U64] = 64,     [TYPE_USIZE] = 64,
+        [TYPE_ISIZE] = 64,       [TYPE_C_LONG] = 64, [TYPE_C_ULONG] = 64, [TYPE_C_LONGLONG] = 64,
+        [TYPE_C_ULONGLONG] = 64, [TYPE_F32] = 32,    [TYPE_F64] = 64};
     if (res->kind < (int)(sizeof(widths) / sizeof(widths[0])))
     {
         return widths[res->kind];
@@ -188,7 +187,7 @@ void misra_check_implicit_conversion(struct ParserContext *ctx, struct Type *tar
     }
 }
 
-void misra_check_char_arithmetic(ParserContext *ctx, Type *left, Type *right, const char *op,
+void misra_check_char_arithmetic(ParserContext *ctx, Type *left, Type *right, OperatorKind op,
                                  Token token)
 {
     if (!ctx->config->misra_mode)
@@ -200,7 +199,7 @@ void misra_check_char_arithmetic(ParserContext *ctx, Type *left, Type *right, co
 
     if (cl == ESS_CHAR || cr == ESS_CHAR)
     {
-        if (strcmp(op, "-") == 0)
+        if (op == OP_SUB)
         {
             // char - char is allowed (Rule 10.2)
             if (cl == ESS_CHAR && cr == ESS_CHAR)
@@ -573,9 +572,9 @@ void misra_check_function_return_usage(ParserContext *ctx, ASTNode *node)
         Type *rt = resolve_alias(node->type_info);
         if (rt->kind != TYPE_VOID)
         {
+            // A `Result` or an `Option` carries error information.
             if (rt->kind == TYPE_STRUCT && rt->name &&
-                (strstr(rt->name, "Result") || strstr(rt->name, "Option") ||
-                 strstr(rt->name, "Error")))
+                (strcmp(rt->name, "Result") == 0 || strcmp(rt->name, "Option") == 0))
             {
                 zerror_at(node->token, "MISRA Dir 4.7: error information is not tested");
             }
@@ -711,7 +710,7 @@ void misra_check_struct_decl(ParserContext *ctx, ASTNode *node)
                 if (t->kind != TYPE_BOOL && t->kind != TYPE_U8 && t->kind != TYPE_U16 &&
                     t->kind != TYPE_U32 && t->kind != TYPE_U64 && t->kind != TYPE_I8 &&
                     t->kind != TYPE_I16 && t->kind != TYPE_I32 && t->kind != TYPE_I64 &&
-                    t->kind != TYPE_UINT && t->kind != TYPE_INT && t->kind != TYPE_BYTE)
+                    t->kind != TYPE_BYTE)
                 {
                     zerror_at(field->token, "MISRA Rule 6.1");
                 }
@@ -1261,7 +1260,7 @@ void misra_check_reserved_identifier(struct ParserContext *ctx, const char *name
     }
 }
 
-void misra_check_unsigned_wrap(struct ParserContext *ctx, const char *op, long long left,
+void misra_check_unsigned_wrap(struct ParserContext *ctx, OperatorKind op, long long left,
                                long long right, long long res, struct Type *type, Token token)
 {
     (void)res;
@@ -1303,21 +1302,21 @@ void misra_check_unsigned_wrap(struct ParserContext *ctx, const char *op, long l
     unsigned long long l = (unsigned long long)left;
     unsigned long long r = (unsigned long long)right;
 
-    if (strcmp(op, "+") == 0)
+    if (op == OP_ADD)
     {
         if (l > max_val - r)
         {
             wrap = true;
         }
     }
-    else if (strcmp(op, "-") == 0)
+    else if (op == OP_SUB)
     {
         if (r > l)
         {
             wrap = true;
         }
     }
-    else if (strcmp(op, "*") == 0)
+    else if (op == OP_MUL)
     {
         if (l != 0 && r > max_val / l)
         {
@@ -1447,6 +1446,24 @@ void misra_check_fstring(struct ParserContext *ctx, Token tok)
     {
         zerror_at(tok, "MISRA Rule 21.6: an f-string is formatted with <stdio.h> "
                        "(snprintf/fprintf)");
+    }
+}
+
+void misra_check_assertion(struct ParserContext *ctx, Token tok)
+{
+    if (ctx->config->misra_mode)
+    {
+        zerror_at(tok, "MISRA Rule 21.6: an assertion reports its failure with <stdio.h> "
+                       "(fprintf)");
+    }
+}
+
+void misra_check_test(struct ParserContext *ctx, Token tok)
+{
+    if (ctx->config->misra_mode)
+    {
+        zerror_at(tok, "MISRA Rule 21.6: a test block reports its failures with <stdio.h> "
+                       "(fprintf)");
     }
 }
 

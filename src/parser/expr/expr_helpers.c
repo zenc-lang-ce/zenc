@@ -141,14 +141,11 @@ int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b)
         return 0;
     }
 
-    RECURSION_GUARD(ctx, NULL, 0); // null lexer, return 0 on fail
-
     int a_is_opaque = (a->kind == TYPE_ALIAS && a->alias.is_opaque_alias);
     int b_is_opaque = (b->kind == TYPE_ALIAS && b->alias.is_opaque_alias);
 
     if (!a_is_opaque && !b_is_opaque)
     {
-        RECURSION_EXIT(ctx);
         return 1;
     }
 
@@ -157,38 +154,12 @@ int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b)
     // type, not to the other.
     if (a_is_opaque && b_is_opaque)
     {
-        RECURSION_EXIT(ctx);
         return a->name && b->name && strcmp(a->name, b->name) == 0;
     }
 
-    if (a_is_opaque)
-    {
-        if (a->alias.alias_defined_in_file && ctx->current_filename &&
-            strcmp(a->alias.alias_defined_in_file, ctx->current_filename) == 0)
-        {
-            int res = check_opaque_alias_compat(ctx, a->inner, b);
-            RECURSION_EXIT(ctx);
-            return res;
-        }
-        RECURSION_EXIT(ctx);
-        return 0;
-    }
-
-    if (b_is_opaque)
-    {
-        if (b->alias.alias_defined_in_file && ctx->current_filename &&
-            strcmp(b->alias.alias_defined_in_file, ctx->current_filename) == 0)
-        {
-            int res = check_opaque_alias_compat(ctx, a, b->inner);
-            RECURSION_EXIT(ctx);
-            return res;
-        }
-        RECURSION_EXIT(ctx);
-        return 0;
-    }
-
-    RECURSION_EXIT(ctx);
-    return 0;
+    // One opaque alias converts to and from its underlying type only where that is what it is.
+    Type *seen = type_seen_from(a_is_opaque ? a : b, ctx->current_filename);
+    return !(seen->kind == TYPE_ALIAS && seen->alias.is_opaque_alias);
 }
 
 #include "../zen/zen_facts.h"
@@ -256,15 +227,19 @@ ASTNode *find_function_definition(ParserContext *ctx, const char *name)
 void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
                      char **out_var_ref_name)
 {
-    if (node->kind == NODE_EXPR_UNARY && strcmp(node->unary.op, "&") == 0 &&
+    if (node->kind == NODE_EXPR_UNARY && node->unary.op == OP_ADDRESS &&
         node->unary.operand->kind == NODE_EXPR_VAR)
     {
         *out_var_ref_name = node->unary.operand->var_ref.name;
-        *out_struct_name = find_symbol_type(ctx, *out_var_ref_name);
+        ASTNode *operand = node->unary.operand;
+        Type *t =
+            operand->type_info ? operand->type_info : find_symbol_type_info(ctx, *out_var_ref_name);
+        *out_struct_name = t ? type_mangle_spelling(t) : NULL;
     }
     else if (node->kind == NODE_EXPR_VAR)
     {
-        Type *rhs_t = find_symbol_type_info(ctx, node->var_ref.name);
+        Type *rhs_t =
+            node->type_info ? node->type_info : find_symbol_type_info(ctx, node->var_ref.name);
         if (rhs_t && rhs_t->kind == TYPE_POINTER && rhs_t->inner &&
             rhs_t->inner->kind == TYPE_STRUCT)
         {
@@ -273,7 +248,7 @@ void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
         }
         else
         {
-            char *rhs_type_str = find_symbol_type(ctx, node->var_ref.name);
+            char *rhs_type_str = rhs_t ? type_mangle_spelling(rhs_t) : NULL;
             if (rhs_type_str)
             {
                 char *clean_rhs = rhs_type_str;
@@ -319,21 +294,10 @@ static Type *instance_type(Type *t)
     return t;
 }
 
-// An instance's arguments as the message spells them: `int32_t,String`.
-static char *instance_args_text(Type *instance)
-{
-    char **spelled = xmalloc(sizeof(char *) * (size_t)instance->count);
-    for (int i = 0; i < instance->count; i++)
-    {
-        spelled[i] = type_to_string(instance->args[i]);
-    }
-    return join_with_commas(spelled, instance->count);
-}
-
 // Two instances of one generic with different arguments (`Handle<A>` and
 // `Handle<B>`) are different types even when their fields are the same, also
 // behind pointers (where C only warns, and `-w` hides it).
-static void check_generic_instance_argument(Type *expected, ASTNode *arg)
+static void check_generic_instance_argument(ParserContext *ctx, Type *expected, ASTNode *arg)
 {
     Type *want_type = expected;
     Type *have_type = arg->type_info;
@@ -356,8 +320,8 @@ static void check_generic_instance_argument(Type *expected, ASTNode *arg)
     const char *stars = STARS + (8 - depth);
     char want_text[MAX_SHORT_MSG_LEN];
     char have_text[MAX_SHORT_MSG_LEN];
-    snprintf(want_text, sizeof(want_text), "%s<%s>%s", want->name, instance_args_text(want), stars);
-    snprintf(have_text, sizeof(have_text), "%s<%s>%s", have->name, instance_args_text(have), stars);
+    snprintf(want_text, sizeof(want_text), "%s%s", zen_c_type_spelling(ctx, want), stars);
+    snprintf(have_text, sizeof(have_text), "%s%s", zen_c_type_spelling(ctx, have), stars);
     zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want_text,
               have_text);
     return;
@@ -370,7 +334,7 @@ void check_argument_type(ParserContext *ctx, Type *expected, ASTNode *arg)
     {
         return;
     }
-    check_generic_instance_argument(expected, arg);
+    check_generic_instance_argument(ctx, expected, arg);
     int expected_opaque = expected->kind == TYPE_ALIAS && expected->alias.is_opaque_alias;
     int got_opaque = got->kind == TYPE_ALIAS && got->alias.is_opaque_alias;
     if (!expected_opaque && !got_opaque)
@@ -385,8 +349,8 @@ void check_argument_type(ParserContext *ctx, Type *expected, ASTNode *arg)
     {
         return;
     }
-    char *want = type_to_string(expected);
-    char *have = type_to_string(got);
+    char *want = zen_c_type_spelling(ctx, expected);
+    char *have = zen_c_type_spelling(ctx, got);
     zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want, have);
     return;
 }
@@ -423,7 +387,8 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
 
             if (arg && arg->kind == NODE_EXPR_VAR)
             {
-                Type *inner_t = find_symbol_type_info(ctx, arg->var_ref.name);
+                Type *inner_t =
+                    arg->type_info ? arg->type_info : find_symbol_type_info(ctx, arg->var_ref.name);
                 if (!inner_t)
                 {
                     ZenSymbol *s = find_symbol_entry(ctx, arg->var_ref.name);
@@ -447,7 +412,7 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
             if (sig && sig->arg_types && res.count < sig->total_args && arg)
             {
                 Type *expected = sig->arg_types[res.count];
-                if (expected && expected->name && is_trait(type_def_name(expected)))
+                if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
                 {
                     arg = transform_to_trait_object(ctx, type_def_name(expected), arg);
                 }
@@ -501,7 +466,7 @@ ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait,
         *p = '\0';
     }
 
-    if (!is_trait(clean_trait))
+    if (!is_trait(ctx, clean_trait))
     {
         zfree(clean_trait);
         return source_expr;
@@ -526,7 +491,7 @@ ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait,
             char *code = xmalloc(512);
             char *v_mangled = mangle_vtable_symbol(clean_struct_type, clean_trait);
 
-            if (source_expr->kind == NODE_EXPR_UNARY && strcmp(source_expr->unary.op, "&") == 0)
+            if (source_expr->kind == NODE_EXPR_UNARY && source_expr->unary.op == OP_ADDRESS)
             {
                 snprintf(code, 512, "(%s){.self=(void*)&%s, .vtable=&%s}", clean_trait,
                          var_ref_name, v_mangled);
@@ -568,7 +533,7 @@ ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait,
                 }
 
                 ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                addr->unary.op = xstrdup("&");
+                addr->unary.op = OP_ADDRESS;
                 addr->unary.operand = wrapper;
                 addr->token = source_expr->token;
 
@@ -654,7 +619,7 @@ int type_is_unsigned(Type *t)
 
     return (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 ||
             t->kind == TYPE_U64 || t->kind == TYPE_USIZE || t->kind == TYPE_BYTE ||
-            t->kind == TYPE_U128 || t->kind == TYPE_UINT ||
+            t->kind == TYPE_U128 ||
             (t->kind == TYPE_STRUCT && t->name &&
              (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
               0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
@@ -687,7 +652,6 @@ static const char *scan_conversion(Type *t)
     case TYPE_C_USHORT:
         return "%hu";
     case TYPE_U32:
-    case TYPE_UINT:
     case TYPE_C_UINT:
         return "%u";
     case TYPE_I64:
@@ -705,7 +669,6 @@ static const char *scan_conversion(Type *t)
     case TYPE_USIZE:
         return "%zu";
     case TYPE_F32:
-    case TYPE_FLOAT:
         return "%f";
     case TYPE_F64:
         return "%lf";
@@ -745,193 +708,6 @@ char *infer_scan_format(ParserContext *ctx, ASTNode **args, int ac)
         }
     }
     return fmt;
-}
-
-void check_format_string(ASTNode *call, Token t)
-{
-    if (call->kind != NODE_EXPR_CALL)
-    {
-        return;
-    }
-    ASTNode *callee = call->call.callee;
-    if (callee->kind != NODE_EXPR_VAR)
-    {
-        return;
-    }
-
-    char *fname = callee->var_ref.name;
-    if (!fname)
-    {
-        return;
-    }
-
-    if (strcmp(fname, "printf") != 0 && strcmp(fname, "sprintf") != 0 &&
-        strcmp(fname, "fprintf") != 0 && strcmp(fname, "dprintf") != 0)
-    {
-        return;
-    }
-
-    int fmt_idx = 0;
-    if (strcmp(fname, "fprintf") == 0 || strcmp(fname, "sprintf") == 0 ||
-        strcmp(fname, "dprintf") == 0)
-    {
-        fmt_idx = 1;
-    }
-
-    ASTNode *args = call->call.args;
-    ASTNode *fmt_arg = args;
-    for (int i = 0; i < fmt_idx; i++)
-    {
-        if (!fmt_arg)
-        {
-            return;
-        }
-        fmt_arg = fmt_arg->next;
-    }
-    if (!fmt_arg)
-    {
-        return;
-    }
-
-    if (fmt_arg->kind != NODE_EXPR_LITERAL || fmt_arg->literal.kind != 2)
-    {
-        return;
-    }
-
-    const char *fmt = fmt_arg->literal.string_val;
-
-    ASTNode *curr_arg = fmt_arg->next;
-    int arg_num = fmt_idx + 2;
-
-    for (int i = 0; fmt[i]; i++)
-    {
-        if (fmt[i] == '%')
-        {
-            i++;
-            if (fmt[i] == 0)
-            {
-                break;
-            }
-            if (fmt[i] == '%')
-            {
-                continue;
-            }
-
-            // Flags.
-            while (fmt[i] == '-' || fmt[i] == '+' || fmt[i] == ' ' || fmt[i] == '#' ||
-                   fmt[i] == '0')
-            {
-                i++;
-            }
-
-            // Width.
-            while (isdigit(fmt[i]))
-            {
-                i++;
-            }
-
-            if (fmt[i] == '*')
-            {
-                i++;
-                if (!curr_arg)
-                {
-                    warn_format_string(t, arg_num, "width(int)", "missing");
-                }
-                else
-                {
-                    /* check int */
-                    curr_arg = curr_arg->next;
-                    arg_num++;
-                }
-            }
-
-            // Precision.
-            if (fmt[i] == '.')
-            {
-                i++;
-                while (isdigit(fmt[i]))
-                {
-                    i++;
-                }
-
-                if (fmt[i] == '*')
-                {
-                    i++;
-                    if (!curr_arg)
-                    {
-                        warn_format_string(t, arg_num, "precision(int)", "missing");
-                    }
-                    else
-                    {
-                        /* check int */
-                        curr_arg = curr_arg->next;
-                        arg_num++;
-                    }
-                }
-            }
-
-            // Length.
-            if (fmt[i] == 'h' || fmt[i] == 'l' || fmt[i] == 'L' || fmt[i] == 'z' || fmt[i] == 'j' ||
-                fmt[i] == 't')
-            {
-                if (fmt[i] == 'h' && fmt[i + 1] == 'h')
-                {
-                    i++;
-                }
-                else if (fmt[i] == 'l' && fmt[i + 1] == 'l')
-                {
-                    i++;
-                }
-                i++;
-            }
-
-            char spec = fmt[i];
-
-            if (!curr_arg)
-            {
-                warn_format_string(t, arg_num, "argument", "missing");
-                continue;
-            }
-
-            Type *vt = curr_arg->type_info;
-            char *got_type = vt ? type_to_string(vt) : "?";
-
-            if (spec == 'd' || spec == 'i' || spec == 'u' || spec == 'x' || spec == 'X' ||
-                spec == 'o')
-            {
-                if (vt && !is_integer_type(vt))
-                {
-                    warn_format_string(t, arg_num, "integer", got_type);
-                }
-            }
-            else if (spec == 's')
-            {
-                if (vt && vt->kind != TYPE_STRING && vt->kind != TYPE_POINTER &&
-                    vt->kind != TYPE_ARRAY)
-                {
-                    warn_format_string(t, arg_num, "string", got_type);
-                }
-            }
-            else if (spec == 'f' || spec == 'F' || spec == 'e' || spec == 'E' || spec == 'g' ||
-                     spec == 'G')
-            {
-                if (vt && vt->kind != TYPE_FLOAT && vt->kind != TYPE_F64)
-                {
-                    warn_format_string(t, arg_num, "float", got_type);
-                }
-            }
-            else if (spec == 'p')
-            {
-                if (vt && vt->kind != TYPE_POINTER && vt->kind != TYPE_ARRAY)
-                {
-                    warn_format_string(t, arg_num, "pointer", got_type);
-                }
-            }
-
-            curr_arg = curr_arg->next;
-            arg_num++;
-        }
-    }
 }
 
 int slice_follows(Lexer *l)

@@ -1,0 +1,17 @@
+// EXPECT: FAIL
+// compiler/analysis: test_move_enum_payload  --  should fail compilation
+// An enum with a payload that needs dropping is moved, like a struct with such a field.
+import "std/string.zc"
+
+enum Slot {
+    Empty,
+    Full(String),
+}
+
+fn consume(s: Slot) {}
+
+fn main() {
+    let s = Slot::Full(String::new("hello"));
+    consume(s);
+    consume(s);
+}

@@ -65,18 +65,7 @@ void handle_expr_member(ParserContext *ctx, ASTNode *node)
     }
     else
     {
-        if (node->member.target->kind == NODE_EXPR_VAR)
-        {
-            ASTNode *def = find_struct_def(ctx, node->member.target->var_ref.name);
-            if (def && def->kind == NODE_ENUM)
-            {
-                const char *enum_c_name =
-                    def->link_name ? def->link_name : node->member.target->var_ref.name;
-                EMIT(ctx, "%s", mangle_variant_symbol(enum_c_name, node->member.field));
-                return;
-            }
-        }
-
+        // `Color.Red` never gets here: the parser reads it as `Color::Red` (next_is_dot_variant).
         codegen_expression(ctx, node->member.target);
         char *lt = infer_type(ctx, node->member.target);
         int actually_ptr = 0;

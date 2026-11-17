@@ -1,0 +1,2 @@
+tests/compiler/diagnostics_output/line_directive_same_source_line.zc:3: Index out of bounds: 5 (limit 3)
+[exit 1]

@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include "../../src/utils/cJSON.h"
 #include "../../src/platform/compiler.h"
+#include "../../src/lsp/lsp_protocol.h"
 
 #define MAX_BUFFER (2 * 1024 * 1024)
 
@@ -206,6 +207,27 @@ static void test_initialize()
     {
         fail("Init response missing capabilities");
     }
+    // The server's version is the compiler's (ZEN_VERSION, the same for both builds), not a
+    // number of its own. Without tags, as in a shallow clone, it does not start with `v`.
+    if (!strstr(resp, "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\":\"" ZEN_VERSION "\""))
+    {
+        printf("Initialize response: %s\n", resp);
+        fail("Init response must give the compiler's version");
+    }
+    // The legend of the semantic tokens: a token's type is an index of tokenTypes, and its
+    // modifiers bits by the index of tokenModifiers (test_semantic_token_modifiers).
+    if (!strstr(resp, "\"tokenTypes\":[\"variable\",\"function\",") ||
+        !strstr(resp, "\"tokenModifiers\":[\"declaration\",\"definition\",\"readonly\","))
+    {
+        printf("Initialize response: %s\n", resp);
+        fail("Init response must give the legend of the semantic tokens");
+    }
+    // `.` opens the members of a value and `:` those of a type (`Color::`).
+    if (!strstr(resp, "\"completionProvider\":{\"triggerCharacters\":[\".\",\":\"]}"))
+    {
+        printf("Initialize response: %s\n", resp);
+        fail("Init response must give `.` and `:` as the characters that open the completion");
+    }
     printf("PASS: test_initialize\n");
     free(resp);
 }
@@ -297,6 +319,649 @@ static void test_hover_signature(void)
     printf("PASS: test_hover_signature\n");
 }
 
+static void expect_hover_in(const char *uri, int id, int line, int character, const char *expected)
+{
+    char req[512];
+    snprintf(req, sizeof(req),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/hover\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"%s\"}, "
+             "\"position\": {\"line\": %d, \"character\": %d}}}",
+             id, uri, line, character);
+    send_request(req);
+    char *resp = wait_for_response(id);
+    if (!resp || !strstr(resp, expected))
+    {
+        printf("Expected hover \"%s\" at %d:%d, got: %s\n", expected, line, character,
+               resp ? resp : "(no response)");
+        fail("Hover must show the symbol under the cursor");
+    }
+    free(resp);
+}
+
+static void test_fstring_interpolation_lookup(void)
+{
+    printf("Running test_fstring_interpolation_lookup...\n");
+    // Line 0: fn add(a: int, b: int) -> int { return a + b; }
+    // Line 1: fn main() {
+    // Line 2:     let x = add(2, 3);
+    // Line 3:     let s = f"sum {add(2, 3)} {x}";
+    // Line 4:     let t = f"a\t{x} {{b}} {add(x, 1)}";
+    // Line 5: }
+    const char *uri = "file:///tmp/test_fstring_lookup.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_fstring_lookup.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"fn add(a: int, b: int) -> int { return a + b; }\\nfn main() {\\n    let x = "
+                 "add(2, 3);\\n    let s = f\\\"sum {add(2, 3)} {x}\\\";\\n    let t = "
+                 "f\\\"a\\\\t{x} {{b}} {add(x, 1)}\\\";\\n}\\n\"}}}");
+    usleep(100000);
+
+    // A call and a variable, as outside the f-string.
+    expect_hover_in(uri, 301, 3, 19, "fn add(a: int, b: int) -> int");
+    expect_hover_in(uri, 302, 3, 31, "let x");
+    // After an escape, after `{{b}}`, and as the argument of a call.
+    expect_hover_in(uri, 303, 4, 18, "let x");
+    expect_hover_in(uri, 304, 4, 28, "fn add(a: int, b: int) -> int");
+    expect_hover_in(uri, 305, 4, 32, "let x");
+
+    // Go to definition leads to the declaration, in this file.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 306, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/test_fstring_lookup.zc\"}, "
+                 "\"position\": {\"line\": 3, \"character\": 31}}}");
+    char *resp = wait_for_response(306);
+    if (!resp || !strstr(resp, "test_fstring_lookup.zc"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition must work on a variable inside an f-string interpolation");
+    }
+    free(resp);
+    printf("PASS: test_fstring_interpolation_lookup\n");
+}
+
+static void test_hover_parameters(void)
+{
+    printf("Running test_hover_parameters...\n");
+    // Line 0: struct Counter { total: int; }
+    // Line 1: impl Counter {
+    // Line 2:     fn add(self, n: int) -> int {
+    // Line 3:         self.total = self.total + n;
+    // Line 4:         return self.total;
+    // Line 5:     }
+    // Line 6: }
+    // Line 7: fn twice(value: f64) -> f64 { return value * 2.0; }
+    const char *uri = "file:///tmp/test_hover_params.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_hover_params.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Counter { total: int; }\\nimpl Counter {\\n    fn add(self, n: int) -> "
+                 "int {\\n        self.total = self.total + n;\\n        return self.total;\\n    "
+                 "}\\n}\\nfn twice(value: f64) -> f64 { return value * 2.0; }\\nfn run() -> f64 { "
+                 "return twice(1.0); }\\nfn other() { let q = 2; let x = 3; }\\nfn lambdas() "
+                 "{\\n    let a = fn(q: int) -> int { return q * 2; };\\n    let b = (m: int, n: "
+                 "int) => m + n;\\n    let c = x => x * 2;\\n}\\n\"}}}");
+    usleep(100000);
+
+    // `self` has the type of its impl, where it is declared and where it is used.
+    expect_hover_in(uri, 311, 2, 12, "self: Counter*");
+    expect_hover_in(uri, 312, 3, 9, "self: Counter*");
+    expect_hover_in(uri, 313, 4, 16, "self: Counter*");
+    // A parameter has its own type, not the one of a variable of that name elsewhere.
+    expect_hover_in(uri, 314, 2, 17, "n: i32");
+    expect_hover_in(uri, 315, 3, 34, "n: i32");
+    // The whole hover: the function's signature has `value: f64` in it too.
+    expect_hover_in(uri, 316, 7, 38, "```zc\\nvalue: f64\\n```");
+
+    // A parameter is not an occurrence of its function: renaming `twice` edits its
+    // declaration and its call, and nothing in the parameter list.
+    // Line 7: fn twice(value: f64) -> f64 { return value * 2.0; }
+    // Line 8: fn run() -> f64 { return twice(1.0); }
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 317, \"method\": \"textDocument/rename\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_hover_params.zc\"}, "
+                 "\"position\": {\"line\": 7, \"character\": 4}, \"newName\": \"renamed\"}}");
+    char *resp = wait_for_response(317);
+    int edits = 0;
+    for (const char *p = resp; p && (p = strstr(p, "newText")) != NULL; p++)
+    {
+        edits++;
+    }
+    if (edits != 2)
+    {
+        printf("Expected 2 edits when renaming `twice`, got %d: %s\n", edits,
+               resp ? resp : "(no response)");
+        fail("Renaming a function must not edit its parameters");
+    }
+    free(resp);
+
+    // The parameters of a lambda, in its three forms, are not the `let q` and `let x` of
+    // `other`. Line 9: fn other() { let q = 2; let x = 3; }
+    // Line 11: let a = fn(q: int) -> int { return q * 2; };
+    // Line 12: let b = (m: int, n: int) => m + n;
+    // Line 13: let c = x => x * 2;
+    expect_hover_in(uri, 318, 11, 39, "```zc\\nq: i32\\n```");
+    expect_hover_in(uri, 319, 12, 32, "```zc\\nm: i32\\n```");
+    expect_hover_in(uri, 320, 12, 36, "```zc\\nn: i32\\n```");
+    expect_hover_in(uri, 321, 13, 17, "```zc\\nx: i32\\n```");
+
+    // `self` is not renamed: with another name the method has no receiver.
+    // Line 3:         self.total = self.total + n;
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 322, \"method\": \"textDocument/rename\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_hover_params.zc\"}, "
+                 "\"position\": {\"line\": 3, \"character\": 9}, \"newName\": \"this\"}}");
+    resp = wait_for_response(322);
+    if (!resp || !strstr(resp, "\"result\":null"))
+    {
+        printf("Renaming `self` answered: %s\n", resp ? resp : "(no response)");
+        fail("Rename must refuse `self`");
+    }
+    free(resp);
+    printf("PASS: test_hover_parameters\n");
+}
+
+static int compare_ints(const void *a, const void *b)
+{
+    return *(const int *)a - *(const int *)b;
+}
+
+// The lines where the ranges of `items` (locations, or the edits of a rename) start, in order, as
+// a string such as "1,2": empty when there are none. The server answers in the order of its
+// index, which says nothing.
+static void range_lines(const cJSON *items, char *out, size_t size)
+{
+    int lines[64];
+    int count = 0;
+    const cJSON *item = NULL;
+    cJSON_ArrayForEach(item, items)
+    {
+        const cJSON *range = cJSON_GetObjectItem(item, "range");
+        const cJSON *start = range ? cJSON_GetObjectItem(range, "start") : NULL;
+        const cJSON *line = start ? cJSON_GetObjectItem(start, "line") : NULL;
+        if (cJSON_IsNumber(line) && count < 64)
+        {
+            lines[count++] = line->valueint;
+        }
+    }
+    qsort(lines, (size_t)count, sizeof(int), compare_ints);
+
+    size_t used = 0;
+    out[0] = 0;
+    for (int i = 0; i < count && used + 16 < size; i++)
+    {
+        used += (size_t)snprintf(out + used, size - used, "%s%d", used ? "," : "", lines[i]);
+    }
+}
+
+// Sends a references (or rename) request at (line, character) of `uri` and checks the lines of
+// what it answers.
+static void expect_occurrence_lines(const char *uri, int id, const char *method, int line,
+                                    int character, const char *expected)
+{
+    char req[512];
+    snprintf(req, sizeof(req),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/%s\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"%s\"}, "
+             "\"position\": {\"line\": %d, \"character\": %d}, "
+             "\"context\": {\"includeDeclaration\": true}, \"newName\": \"renamed\"}}",
+             id, method, uri, line, character);
+    send_request(req);
+    char *resp = wait_for_response(id);
+    cJSON *json = resp ? cJSON_Parse(resp) : NULL;
+    const cJSON *result = json ? cJSON_GetObjectItem(json, "result") : NULL;
+    if (strcmp(method, "rename") == 0)
+    {
+        const cJSON *changes = result ? cJSON_GetObjectItem(result, "changes") : NULL;
+        result = changes ? cJSON_GetObjectItem(changes, uri) : NULL;
+    }
+    char lines[256];
+    range_lines(result, lines, sizeof(lines));
+    if (strcmp(lines, expected) != 0)
+    {
+        printf("Expected %s at %d:%d on lines \"%s\", got \"%s\": %s\n", method, line, character,
+               expected, lines, resp ? resp : "(no response)");
+        fail("References and rename must find the symbol under the cursor, not its name");
+    }
+    cJSON_Delete(json);
+    free(resp);
+}
+
+static void test_occurrences_by_scope(void)
+{
+    printf("Running test_occurrences_by_scope...\n");
+    // Line 0: fn first() -> int {
+    // Line 1:     let count = 1;
+    // Line 2:     return count;
+    // Line 3: }
+    // Line 4: fn second() -> int {
+    // Line 5:     let count = 2;
+    // Line 6:     return count + 1;
+    // Line 7: }
+    // Line 8: fn take(count: int) -> int { return count * 2; }
+    const char *uri = "file:///tmp/test_occurrences_scope.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_occurrences_scope.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"fn first() -> int {\\n    let count = 1;\\n    return count;\\n}\\n"
+                 "fn second() -> int {\\n    let count = 2;\\n    return count + 1;\\n}\\n"
+                 "fn take(count: int) -> int { return count * 2; }\\n\"}}}");
+    usleep(100000);
+
+    // Each `count` is its own: a local of `first`, one of `second`, and a parameter.
+    expect_occurrence_lines(uri, 331, "rename", 1, 8, "1,2");
+    expect_occurrence_lines(uri, 332, "references", 6, 11, "5,6");
+    expect_occurrence_lines(uri, 333, "rename", 8, 8, "8,8");
+    expect_occurrence_lines(uri, 334, "references", 8, 36, "8,8");
+
+    // The use of the parameter leads to the parameter, not to the first `count` of the file.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 335, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/test_occurrences_scope.zc\"}, "
+                 "\"position\": {\"line\": 8, \"character\": 36}}}");
+    char *resp = wait_for_response(335);
+    if (!resp || !strstr(resp, "\"start\":{\"line\":8,\"character\":8}"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition on a parameter's use must lead to the parameter");
+    }
+    free(resp);
+    printf("PASS: test_occurrences_by_scope\n");
+}
+
+static void test_enum_rename(void)
+{
+    printf("Running test_enum_rename...\n");
+    // Line 0: enum Mode { On, Off }
+    // Line 1: fn flip(m: Mode) -> Mode {
+    // Line 2:     match m { Mode::On => { return Mode::Off; }, _ => {} }
+    // Line 3:     return Mode::On;
+    // Line 4: }
+    // Line 5: impl Mode { fn on() -> Mode { return Mode::On; } }
+    const char *uri = "file:///tmp/test_enum_rename.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_enum_rename.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"enum Mode { On, Off }\\nfn flip(m: Mode) -> Mode {\\n"
+                 "    match m { Mode::On => { return Mode::Off; }, _ => {} }\\n"
+                 "    return Mode::On;\\n}\\n"
+                 "impl Mode { fn on() -> Mode { return Mode::On; } }\\n\"}}}");
+    usleep(100000);
+
+    // Every place that writes the enum's name, once: its declaration, the types, the patterns,
+    // the variants of expressions and the impl.
+    expect_occurrence_lines(uri, 345, "rename", 0, 6, "0,1,1,2,2,3,5,5,5");
+    printf("PASS: test_enum_rename\n");
+}
+
+static void test_field_occurrences(void)
+{
+    printf("Running test_field_occurrences...\n");
+    // Line 0: struct Point { x: int; y: int; }
+    // Line 1: struct Size { x: int; }
+    // Line 2: impl Point {
+    // Line 3:     fn sum(self) -> int { return self.x + self.y; }
+    // Line 4: }
+    // Line 5: fn make() -> Point { return Point { x: 1, y: 2 }; }
+    // Line 6: fn width(s: Size*) -> int { return s.x; }
+    // Line 7: fn read(p: Point) -> int { let q = &p; return p.x + q.x; }
+    // Line 8: fn grow(p: Point*) { p.x = p.x + 1; }
+    // Line 9: fn split(p: Point) -> int { let Point{x: a, y: b} = p; return a + b; }
+    // Line 10: fn short(p: Point) -> int { let Point{x, y} = p; return x + y; }
+    // Line 11: struct Base { v: int; }
+    // Line 12: struct Derived { use Base; w: int; }
+    // Line 13: fn mix(d: Derived) -> int { return d.v + Derived { v: 1, w: 2 }.v; }
+    const char *uri = "file:///tmp/test_field_occurrences.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_field_occurrences.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Point { x: int; y: int; }\\nstruct Size { x: int; }\\nimpl Point {\\n"
+                 "    fn sum(self) -> int { return self.x + self.y; }\\n}\\n"
+                 "fn make() -> Point { return Point { x: 1, y: 2 }; }\\n"
+                 "fn width(s: Size*) -> int { return s.x; }\\n"
+                 "fn read(p: Point) -> int { let q = &p; return p.x + q.x; }\\n"
+                 "fn grow(p: Point*) { p.x = p.x + 1; }\\n"
+                 "fn split(p: Point) -> int { let Point{x: a, y: b} = p; return a + b; }\\n"
+                 "fn short(p: Point) -> int { let Point{x, y} = p; return x + y; }\\n"
+                 "struct Base { v: int; }\\nstruct Derived { use Base; w: int; }\\n"
+                 "fn mix(d: Derived) -> int { return d.v + Derived { v: 1, w: 2 }.v; }\\n\"}}}");
+    usleep(100000);
+
+    // The `x` of Point, from its declaration, a literal, a use through a pointer and a
+    // destructuring; the `x` of Size is another field.
+    expect_occurrence_lines(uri, 336, "references", 0, 15, "0,3,5,7,7,8,8,9,10");
+    expect_occurrence_lines(uri, 337, "rename", 0, 15, "0,3,5,7,7,8,8,9,10");
+    expect_occurrence_lines(uri, 338, "rename", 5, 36, "0,3,5,7,7,8,8,9,10");
+    expect_occurrence_lines(uri, 339, "rename", 8, 29, "0,3,5,7,7,8,8,9,10");
+    expect_occurrence_lines(uri, 340, "rename", 9, 38, "0,3,5,7,7,8,8,9,10");
+    expect_occurrence_lines(uri, 341, "rename", 6, 37, "1,6");
+    // A field mixed in with `use` is declared once, by the struct it comes from.
+    expect_occurrence_lines(uri, 342, "rename", 13, 37, "11,13,13,13");
+
+    // In `Point{x, y}` the field's name is the variable's too: the variable keeps it.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 343, \"method\": \"textDocument/rename\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/test_field_occurrences.zc\"}, "
+                 "\"position\": {\"line\": 0, \"character\": 15}, \"newName\": \"col\"}}");
+    char *resp = wait_for_response(343);
+    if (!resp || !strstr(resp, "\"newText\":\"col: x\""))
+    {
+        printf("Renaming a field destructured as `Point{x}` answered: %s\n",
+               resp ? resp : "(no response)");
+        fail("Rename must keep the variable of a shorthand destructuring");
+    }
+    free(resp);
+
+    // `let {x} = p` cannot name the variable apart from its field: rename refuses.
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_field_anonymous.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Spot { z: int; }\\n"
+                 "fn take(s: Spot) -> int { let {z} = s; return z; }\\n\"}}}");
+    usleep(100000);
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 344, \"method\": \"textDocument/rename\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_field_anonymous.zc\"}, "
+                 "\"position\": {\"line\": 0, \"character\": 14}, \"newName\": \"col\"}}");
+    resp = wait_for_response(344);
+    if (!resp || !strstr(resp, "\"result\":null"))
+    {
+        printf("Renaming a field destructured as `{z}` answered: %s\n",
+               resp ? resp : "(no response)");
+        fail("Rename must refuse a field that `let {z}` destructures");
+    }
+    free(resp);
+    printf("PASS: test_field_occurrences\n");
+}
+
+static void test_hover_beside_generated_code(void)
+{
+    printf("Running test_hover_beside_generated_code...\n");
+    // `@derive` writes its methods as a text of their own and parses it: their tokens have the
+    // name of this file and the positions of that text, from line 1. They are not in the file,
+    // and they must not hide what is written on its first line.
+    // Line 0: struct Point { x: int; } fn helper(count: int) -> int { return count; }
+    // Line 1: @derive(Eq, Clone)
+    // Line 2: struct Pair { a: int; b: int; }
+    const char *uri = "file:///tmp/test_hover_generated.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_hover_generated.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Point { x: int; } fn helper(count: int) -> int { return count; "
+                 "}\\n@derive(Eq, Clone)\\nstruct Pair { a: int; b: int; }\\n\"}}}");
+    usleep(100000);
+
+    expect_hover_in(uri, 323, 0, 28, "fn helper(count: int) -> int");
+    expect_hover_in(uri, 324, 0, 35, "```zc\\ncount: i32\\n```");
+    expect_hover_in(uri, 325, 0, 63, "```zc\\ncount: i32\\n```");
+    printf("PASS: test_hover_beside_generated_code\n");
+}
+
+static void test_hover_type_names(void)
+{
+    printf("Running test_hover_type_names...\n");
+    // Line 0: struct Holder<T> { v: T; }
+    // Line 1: fn take(b: Holder<Holder<f64>>, t: (int, bool)) -> int { return 0; }
+    const char *uri = "file:///tmp/test_hover_type_names.zc";
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+        "{\"textDocument\": {\"uri\": \"file:///tmp/test_hover_type_names.zc\", "
+        "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+        "\"struct Holder<T> { v: T; }\\nfn take(b: Holder<Holder<f64>>, t: (int, bool)) -> int "
+        "{ return 0; }\\n\"}}}");
+    usleep(100000);
+
+    // As the program writes them, not by the C name of the instance (`Holder__Holder__double`) or
+    // of the tuple (`Tuple__int32_t__bool`).
+    expect_hover_in(uri, 331, 1, 8, "```zc\\nb: Holder<Holder<f64>>\\n```");
+    expect_hover_in(uri, 332, 1, 32, "```zc\\nt: (i32, bool)\\n```");
+    printf("PASS: test_hover_type_names\n");
+}
+
+static void test_hover_module_type_names(void)
+{
+    printf("Running test_hover_module_type_names...\n");
+    int fd = open("/tmp/_hover_geo.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0)
+    {
+        fail("Could not write /tmp/_hover_geo.zc");
+    }
+    const char *module = "struct Knot { x: int; }\nenum Phase { Low, High }\n";
+    write(fd, module, strlen(module));
+    close(fd);
+
+    // Line 0: import "./_hover_geo.zc" as geo;
+    // Line 1: fn take(k: geo::Knot, p: geo::Phase) -> int { return 0; }
+    const char *uri = "file:///tmp/test_hover_module_types.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_hover_module_types.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"import \\\"./_hover_geo.zc\\\" as geo;\\nfn take(k: geo::Knot, p: "
+                 "geo::Phase) -> int { return 0; }\\n\"}}}");
+    usleep(100000);
+
+    // A struct and an enum of a module, as the importer writes them, not by their C names
+    // (`_hover_geo__Knot`, `_hover_geo__Phase`).
+    expect_hover_in(uri, 341, 1, 8, "```zc\\nk: geo::Knot\\n```");
+    expect_hover_in(uri, 342, 1, 22, "```zc\\np: geo::Phase\\n```");
+    printf("PASS: test_hover_module_type_names\n");
+}
+
+static void test_type_path_lookup(void)
+{
+    printf("Running test_type_path_lookup...\n");
+    // Line 0: struct Ticket { v: int; }
+    // Line 1: impl Ticket { fn of(v: int) -> Ticket { return Ticket { v: v }; } }
+    // Line 2: struct Crate<T> { v: T; }
+    // Line 3: impl Crate<T> { fn make(v: T) -> Crate<T> { return Crate<T> { v: v }; } }
+    // Line 4: fn paths() { let a = Ticket::of(1); let b = Crate<Ticket>::make(a); }
+    const char *uri = "file:///tmp/test_type_paths.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_type_paths.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Ticket { v: int; }\\nimpl Ticket { fn of(v: int) -> Ticket { return "
+                 "Ticket { v: v }; } }\\nstruct Crate<T> { v: T; }\\nimpl Crate<T> { fn make(v: T) "
+                 "-> Crate<T> { return Crate<T> { v: v }; } }\\nfn paths() { let a = "
+                 "Ticket::of(1); let b = Crate<Ticket>::make(a); }\\n\"}}}");
+    usleep(100000);
+
+    // In a path, the type is the type and its member the function: the method of a generic
+    // impl too, which is a template and not a function until it is instantiated.
+    expect_hover_in(uri, 351, 4, 21, "struct Ticket");
+    expect_hover_in(uri, 352, 4, 29, "fn of(v: int) -> Ticket");
+    expect_hover_in(uri, 353, 4, 44, "struct Crate");
+    expect_hover_in(uri, 354, 4, 59, "fn make(v: T) -> Crate<T>");
+    printf("PASS: test_type_path_lookup\n");
+}
+
+static void test_definition_in_other_file(void)
+{
+    printf("Running test_definition_in_other_file...\n");
+    int fd = open("/tmp/_paths_bin.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0)
+    {
+        fail("Could not write /tmp/_paths_bin.zc");
+    }
+    // Line 2 of this file declares `new` where the importer below declares its own.
+    const char *module = "struct Bin<T> { v: T; }\nimpl Bin<T> {\n    fn new() -> Bin<T> { "
+                         "return Bin<T> { v: (T)0 }; }\n}\n";
+    write(fd, module, strlen(module));
+    close(fd);
+    // Open too, as a file of the workspace would be indexed.
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/_paths_bin.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Bin<T> { v: T; }\\nimpl Bin<T> {\\n    fn new() -> Bin<T> { return "
+                 "Bin<T> { v: (T)0 }; }\\n}\\n\"}}}");
+
+    // Line 0: import "./_paths_bin.zc"
+    // Line 1: impl Slot {
+    // Line 2:     fn new() -> Slot {
+    // Line 3:         return Slot { b: Bin<int>::new() };
+    // Line 4:     }
+    // Line 5: }
+    // Line 6: struct Slot { b: Bin<int>; }
+    const char *uri = "file:///tmp/test_paths_other_file.zc";
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+        "{\"textDocument\": {\"uri\": \"file:///tmp/test_paths_other_file.zc\", "
+        "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+        "\"import \\\"./_paths_bin.zc\\\"\\nimpl Slot {\\n    fn new() -> Slot {\\n        "
+        "return Slot { b: Bin<int>::new() };\\n    }\\n}\\nstruct Slot { b: Bin<int>; "
+        "}\\n\"}}}");
+    usleep(100000);
+
+    // The definition is the one at that position in the other file, not the one at the same
+    // position in this file (`fn new() -> Slot`).
+    expect_hover_in(uri, 361, 3, 35, "fn new() -> Bin<T>");
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 362, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/test_paths_other_file.zc\"}, "
+                 "\"position\": {\"line\": 3, \"character\": 35}}}");
+    char *resp = wait_for_response(362);
+    if (!resp || !strstr(resp, "_paths_bin.zc"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition must reach the file that declares the method");
+    }
+    free(resp);
+    printf("PASS: test_definition_in_other_file\n");
+}
+
+static void test_type_name_lookup(void)
+{
+    printf("Running test_type_name_lookup...\n");
+    // Line 0: struct Box { v: int; }
+    // Line 1: enum Mode { On, Off }
+    // Line 2: alias Id = int;
+    // Line 3: fn show(b: Box, m: Mode) -> Box {
+    // Line 4:     let c: Box = Box { v: 1 };
+    // Line 5:     let a = Mode::On;
+    // Line 6:     let i: Id = 3;
+    // Line 7:     return c;
+    // Line 8: }
+    const char *uri = "file:///tmp/test_type_lookup.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_type_lookup.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Box { v: int; }\\nenum Mode { On, Off }\\nalias Id = int;\\n"
+                 "fn show(b: Box, m: Mode) -> Box {\\n    let c: Box = Box { v: 1 };\\n    "
+                 "let a = Mode::On;\\n    let i: Id = 3;\\n    return c;\\n}\\n\"}}}");
+    usleep(100000);
+
+    // The name of a type in a parameter, a return type and a variable's type.
+    expect_hover_in(uri, 401, 3, 11, "struct Box");
+    expect_hover_in(uri, 402, 3, 19, "enum Mode");
+    expect_hover_in(uri, 403, 3, 28, "struct Box");
+    expect_hover_in(uri, 404, 4, 11, "struct Box");
+    // In a struct literal, in the path of an enum's variant, and an alias.
+    expect_hover_in(uri, 405, 4, 17, "struct Box");
+    expect_hover_in(uri, 406, 5, 12, "enum Mode");
+    expect_hover_in(uri, 407, 6, 11, "alias Id");
+    // The alias's own name is a definition too.
+    expect_hover_in(uri, 408, 2, 6, "alias Id");
+
+    // Go to definition leads to the declaration of the type.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 409, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_type_lookup.zc\"}, "
+                 "\"position\": {\"line\": 4, \"character\": 17}}}");
+    char *resp = wait_for_response(409);
+    if (!resp || !strstr(resp, "\"line\":0") || !strstr(resp, "test_type_lookup.zc"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition on a type name must lead to the struct's declaration");
+    }
+    free(resp);
+    printf("PASS: test_type_name_lookup\n");
+}
+
+static void test_impl_header_lookup(void)
+{
+    printf("Running test_impl_header_lookup...\n");
+    // Line 0: struct Box { v: int; }
+    // Line 1: trait Show { fn show(self) -> int; }
+    // Line 2: impl Box { fn get(self) -> int { return self.v; } }
+    // Line 3: impl Show for Box { fn show(self) -> int { return self.v; } }
+    const char *uri = "file:///tmp/test_impl_header.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_impl_header.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Box { v: int; }\\ntrait Show { fn show(self) -> int; }\\n"
+                 "impl Box { fn get(self) -> int { return self.v; } }\\n"
+                 "impl Show for Box { fn show(self) -> int { return self.v; } }\\n\"}}}");
+    usleep(100000);
+
+    // The type of `impl Box`, and the trait and the type of `impl Show for Box`.
+    expect_hover_in(uri, 421, 2, 6, "struct Box");
+    expect_hover_in(uri, 422, 3, 6, "trait Show");
+    expect_hover_in(uri, 423, 3, 15, "struct Box");
+
+    // Go to definition leads to the trait's declaration.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 424, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_impl_header.zc\"}, "
+                 "\"position\": {\"line\": 3, \"character\": 6}}}");
+    char *resp = wait_for_response(424);
+    if (!resp || !strstr(resp, "\"line\":1") || !strstr(resp, "test_impl_header.zc"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition on the trait of an impl must lead to the trait's declaration");
+    }
+    free(resp);
+    printf("PASS: test_impl_header_lookup\n");
+}
+
+static void test_unclosed_include_keeps_server_alive(void)
+{
+    printf("Running test_unclosed_include_keeps_server_alive...\n");
+    // `include <stdio.h` without its `>`, as the line is while it is being typed, used to read
+    // every token of the file into a 256 byte buffer: the server died. The file needs more
+    // than 256 characters of tokens after the `<`.
+    char request[2048];
+    int used =
+        snprintf(request, sizeof(request),
+                 "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_unclosed_include.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"include <stdio.h\\n");
+    for (int i = 0; i < 24; i++)
+    {
+        used += snprintf(request + used, sizeof(request) - (size_t)used, "let value_%02d = %d;\\n",
+                         i, i);
+    }
+    snprintf(request + used, sizeof(request) - (size_t)used, "\"}}}");
+    send_request(request);
+    usleep(100000);
+
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 601, \"method\": \"textDocument/hover\", "
+        "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_unclosed_include.zc\"}, "
+        "\"position\": {\"line\": 2, \"character\": 5}}}");
+    char *resp = wait_for_response(601);
+    if (!resp)
+    {
+        fail("The server must still answer after a document with an unclosed include path");
+    }
+    free(resp);
+    printf("PASS: test_unclosed_include_keeps_server_alive\n");
+}
+
+static void test_generic_impls_keep_server_alive(void)
+{
+    printf("Running test_generic_impls_keep_server_alive...\n");
+    // `impl<T> A for Cell<T>` names `T` twice. The count of generic parameters in scope went
+    // below zero, and the methods of `impl B for Cell` read it as a length: the server died.
+    // Line 0: trait A { fn a(self) -> int; }
+    // Line 1: trait B { fn b(self) -> int; }
+    // Line 2: struct Cell<T> { v: T; }
+    // Line 3: impl<T> A for Cell<T> { fn a(self) -> int { return 1; } }
+    // Line 4: impl B for Cell { fn b(self) -> int { return 2; } }
+    const char *uri = "file:///tmp/test_generic_impls.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_generic_impls.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"trait A { fn a(self) -> int; }\\ntrait B { fn b(self) -> int; }\\nstruct "
+                 "Cell<T> { v: T; }\\nimpl<T> A for Cell<T> { fn a(self) -> int { return 1; } "
+                 "}\\nimpl B for Cell { fn b(self) -> int { return 2; } }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 501, 2, 8, "struct Cell");
+    printf("PASS: test_generic_impls_keep_server_alive\n");
+}
+
 static void test_definition_partial_code()
 {
     printf("Running test_definition_partial_code...\n");
@@ -353,12 +1018,17 @@ static void test_references_partial_code()
 static void test_request_unopened_file()
 {
     printf("Running test_request_unopened_file...\n");
-    // Hover on a URI that was never didOpen'd — tests null-pointer guards.
-    // The server may not respond, so verify it's still alive via a hover on
-    // a known-opened file (test_lsp.zc from test_hover).
+    // Hover on a URI that was never didOpen'd — tests null-pointer guards. The answer is null.
     send_request("{\"jsonrpc\": \"2.0\", \"id\": 102, \"method\": \"textDocument/hover\", "
                  "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_nonexistent.zc\"}, "
                  "\"position\": {\"line\": 0, \"character\": 0}}}");
+    char *unknown = wait_for_response(102);
+    if (!unknown || !strstr(unknown, "\"result\":null"))
+    {
+        printf("Hover on a file never opened answered: %s\n", unknown ? unknown : "(nothing)");
+        fail("A request on a file the server does not know is answered with null");
+    }
+    free(unknown);
 
     // Hover on a known file to verify server is still alive
     send_request("{\"jsonrpc\": \"2.0\", \"id\": 103, \"method\": \"textDocument/hover\", "
@@ -375,6 +1045,90 @@ static void test_request_unopened_file()
         printf("WARN: test_request_unopened_file: %s\n", resp ? resp : "no response");
     }
     free(resp);
+}
+
+// Sends `request` (with id `id`) and waits for its response; returns 1 if it arrives, 0 if not.
+// A request the server does not answer would keep wait_for_response waiting forever, so a
+// request that is always answered goes right after it, and the wait ends with that one.
+static int send_and_wait_for_response(const char *request, int id)
+{
+    send_request(request);
+    int sentinel = id + 1000;
+    char check[160];
+    snprintf(check, sizeof(check),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"workspace/symbol\", "
+             "\"params\": {\"query\": \"\"}}",
+             sentinel);
+    send_request(check);
+    int answered = 0;
+    for (int i = 0; i < 500; i++)
+    {
+        char *msg = read_message();
+        if (!msg)
+        {
+            break;
+        }
+        cJSON *json = cJSON_Parse(msg);
+        free(msg);
+        const cJSON *got = json ? cJSON_GetObjectItem(json, "id") : NULL;
+        int got_id = cJSON_IsNumber(got) ? got->valueint : -1;
+        cJSON_Delete(json);
+        if (got_id == id)
+        {
+            answered = 1;
+        }
+        else if (got_id == sentinel)
+        {
+            break;
+        }
+    }
+    return answered;
+}
+
+static void test_every_request_answered(void)
+{
+    printf("Running test_every_request_answered...\n");
+    // On a file the server does not know, and with parameters missing: the client waits for
+    // an answer to each request, so each gets one.
+    const char *methods[] = {"textDocument/definition",
+                             "textDocument/declaration",
+                             "textDocument/hover",
+                             "textDocument/completion",
+                             "textDocument/documentSymbol",
+                             "textDocument/references",
+                             "textDocument/signatureHelp",
+                             "textDocument/rename",
+                             "textDocument/semanticTokens/full",
+                             "textDocument/formatting"};
+    int id = 1101;
+    for (size_t i = 0; i < sizeof(methods) / sizeof(methods[0]); i++, id++)
+    {
+        char request[512];
+        snprintf(request, sizeof(request),
+                 "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"%s\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/never_opened.zc\"}, "
+                 "\"position\": {\"line\": 0, \"character\": 0}, "
+                 "\"newName\": \"other\", \"context\": {\"diagnostics\": []}}}",
+                 id, methods[i]);
+        if (!send_and_wait_for_response(request, id))
+        {
+            printf("No answer to %s on a file the server does not know\n", methods[i]);
+            fail("Every request gets an answer");
+        }
+    }
+    for (size_t i = 0; i < sizeof(methods) / sizeof(methods[0]); i++, id++)
+    {
+        char request[256];
+        snprintf(request, sizeof(request),
+                 "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"%s\", \"params\": {}}", id,
+                 methods[i]);
+        if (!send_and_wait_for_response(request, id))
+        {
+            printf("No answer to %s without its parameters\n", methods[i]);
+            fail("Every request gets an answer");
+        }
+    }
+    printf("PASS: test_every_request_answered\n");
 }
 
 static void test_empty_source()
@@ -484,8 +1238,8 @@ static void test_did_change()
     free(resp2);
 }
 
-// Reads messages until the diagnostics published for test_recursion.zc, and returns them.
-static char *wait_for_recursion_diagnostics(void)
+// Reads messages until the diagnostics published for the file named `file_name`, and returns them.
+static char *wait_for_diagnostics(const char *file_name)
 {
     for (int i = 0; i < 50; i++)
     {
@@ -494,7 +1248,7 @@ static char *wait_for_recursion_diagnostics(void)
         {
             return NULL;
         }
-        if (strstr(msg, "publishDiagnostics") && strstr(msg, "test_recursion.zc"))
+        if (strstr(msg, "publishDiagnostics") && strstr(msg, file_name))
         {
             return msg;
         }
@@ -513,7 +1267,7 @@ static void test_type_errors_keep_recursion_depth(void)
                  "{\"textDocument\": {\"uri\": \"file:///tmp/test_recursion.zc\", "
                  "\"languageId\": \"zenc\", \"version\": 1, "
                  "\"text\": \"fn f(x: (int int)) {}\\n\"}}}");
-    free(wait_for_recursion_diagnostics());
+    free(wait_for_diagnostics("/test_recursion.zc"));
 
     char request[512];
     for (int version = 2; version < 1102; version++)
@@ -526,58 +1280,20 @@ static void test_type_errors_keep_recursion_depth(void)
             version);
         send_request(request);
         // Read each answer, or the server blocks once the pipe is full
-        free(wait_for_recursion_diagnostics());
+        free(wait_for_diagnostics("/test_recursion.zc"));
     }
 
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didChange\", \"params\": "
                  "{\"textDocument\": {\"uri\": \"file:///tmp/test_recursion.zc\", "
                  "\"version\": 2000}, \"contentChanges\": "
                  "[{\"text\": \"fn g(x: int) -> int {\\n    return x;\\n}\\n\"}]}}");
-    char *diagnostics = wait_for_recursion_diagnostics();
+    char *diagnostics = wait_for_diagnostics("/test_recursion.zc");
     if (!diagnostics || strstr(diagnostics, "Recursion limit exceeded"))
     {
         fail("Valid code reported 'Recursion limit exceeded' after many type errors");
     }
     free(diagnostics);
     printf("PASS: test_type_errors_keep_recursion_depth\n");
-}
-
-static void test_code_action()
-{
-    printf("Running test_code_action...\n");
-    // Open a file with 'var' to trigger deprecation diagnostics
-    int fd = open("/tmp/test_action.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd >= 0)
-    {
-        const char *code = "fn main() { var x: int = 5; }";
-        write(fd, code, strlen(code));
-        close(fd);
-    }
-
-    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
-                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_action.zc\", \"languageId\": "
-                 "\"zenc\", \"version\": 1, \"text\": \"fn main() { var x: int = 5; }\"}}}");
-    usleep(100000);
-
-    // Request code actions. The diagnostic is provided by the client
-    // matching what the server would emit for 'var' deprecation.
-    send_request("{\"jsonrpc\": \"2.0\", \"id\": 107, \"method\": \"textDocument/codeAction\", "
-                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_action.zc\"}, "
-                 "\"context\": {\"diagnostics\": [{\"range\": {\"start\": {\"line\": 0, "
-                 "\"character\": 12}, \"end\": {\"line\": 0, \"character\": 15}}, "
-                 "\"code\": \"W42\", \"message\": \"'var' is deprecated for declarations. "
-                 "Use 'let' instead.\"}]}}}");
-
-    char *resp = wait_for_response(107);
-    if (resp && strstr(resp, "Replace 'var' with 'let'"))
-    {
-        printf("PASS: test_code_action (var -> let action)\n");
-    }
-    else
-    {
-        printf("WARN: test_code_action: %s\n", resp ? resp : "no response");
-    }
-    free(resp);
 }
 
 static void test_completion_prefix()
@@ -935,6 +1651,28 @@ static void open_document(const char *path, const char *text)
     cJSON_Delete(message);
 }
 
+// Sends the new text of an open document, as an editor does on every edit, without saving it.
+static void change_document(const char *path, int version, const char *text)
+{
+    char uri[512];
+    snprintf(uri, sizeof(uri), "file://%s", path);
+
+    cJSON *message = cJSON_CreateObject();
+    cJSON_AddStringToObject(message, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(message, "method", "textDocument/didChange");
+    cJSON *params = cJSON_AddObjectToObject(message, "params");
+    cJSON *document = cJSON_AddObjectToObject(params, "textDocument");
+    cJSON_AddStringToObject(document, "uri", uri);
+    cJSON_AddNumberToObject(document, "version", version);
+    cJSON *change = cJSON_CreateObject();
+    cJSON_AddStringToObject(change, "text", text);
+    cJSON_AddItemToArray(cJSON_AddArrayToObject(params, "contentChanges"), change);
+    char *json = cJSON_PrintUnformatted(message);
+    send_request(json);
+    free(json);
+    cJSON_Delete(message);
+}
+
 // Sends a position request and returns the whole response; the caller deletes it.
 static cJSON *position_request(int id, const char *method, const char *path, int line,
                                int character)
@@ -1115,6 +1853,50 @@ static void test_c_header_symbols(void)
     printf("PASS: test_c_header_symbols (alias and header name)\n");
 }
 
+// The diagnostics a type name that names nothing gets: a warning, unless a C header the
+// document includes declares it.
+static void test_unknown_type_warning(void)
+{
+    printf("Running test_unknown_type_warning...\n");
+    write_c_header_fixtures();
+    open_document(C_TEST_DIR "/unknown_types.zc",
+                  "//> include: " C_TEST_DIR "/include\n"
+                  "include <fake.h>\n"
+                  "struct Known { x: int; }\n"
+                  "struct Pak { a: Knwn; b: FakePoint; c: Known; }\n");
+    char *diagnostics = NULL;
+    for (int i = 0; i < 20 && !diagnostics; i++)
+    {
+        char *message = read_message();
+        if (!message)
+        {
+            break;
+        }
+        if (strstr(message, "publishDiagnostics") && strstr(message, "unknown_types.zc"))
+        {
+            diagnostics = message;
+        }
+        else
+        {
+            free(message);
+        }
+    }
+    if (!diagnostics)
+    {
+        fail("No diagnostics for unknown_types.zc");
+    }
+    if (!strstr(diagnostics, "Unknown type 'Knwn'") || !strstr(diagnostics, "Did you mean 'Known'"))
+    {
+        fail("A type name that names nothing must warn, with the closest name");
+    }
+    if (strstr(diagnostics, "'FakePoint'") || strstr(diagnostics, "Unknown type 'Known'"))
+    {
+        fail("A type of the program or of an included C header must not warn");
+    }
+    free(diagnostics);
+    printf("PASS: test_unknown_type_warning\n");
+}
+
 static void test_c_header_reexports(void)
 {
     printf("Running test_c_header_reexports...\n");
@@ -1130,29 +1912,26 @@ static void test_c_header_reexports(void)
                             "    md::mod_function();\n"
                             "}\n");
 
-    // The directive of gfx_a.zc does not apply when building use_a.zc.
+    // `zc build use_a.zc` applies the directive of gfx_a.zc too: nothing to warn about.
+    int published = 0;
     int warned = 0;
-    for (int i = 0; i < 20 && !warned; i++)
+    for (int i = 0; i < 20 && !published; i++)
     {
         char *message = read_message();
         if (!message)
         {
             break;
         }
-        if (strstr(message, "publishDiagnostics") && strstr(message, "use_a.zc") &&
-            strstr(message, "modonly.h"))
+        if (strstr(message, "publishDiagnostics") && strstr(message, "use_a.zc"))
         {
-            warned = 1;
+            published = 1;
+            warned = strstr(message, "modonly.h") != NULL;
         }
         free(message);
-        if (!warned && i > 0)
-        {
-            break;
-        }
     }
-    if (!warned)
+    if (!published || warned)
     {
-        fail("No warning for a header only found through an imported module's directive");
+        fail("A header found through an imported module's directive must not warn");
     }
 
     expect_definition(820, "re-exported name", use_path, 3, 10, "/include_mod/modonly.h", 0);
@@ -1279,6 +2058,84 @@ static void test_signature_as_written(void)
     printf("PASS: test_signature_as_written\n");
 }
 
+// The label of the signature help at (line, character) of `path`; NULL when it shows none.
+static char *signature_label_at(int id, const char *path, int line, int character)
+{
+    cJSON *response = position_request(id, "textDocument/signatureHelp", path, line, character);
+    cJSON *result = cJSON_GetObjectItem(response, "result");
+    cJSON *sig = cJSON_GetArrayItem(cJSON_GetObjectItem(result, "signatures"), 0);
+    const char *label = cJSON_GetStringValue(cJSON_GetObjectItem(sig, "label"));
+    char *copy = label ? strdup(label) : NULL;
+    cJSON_Delete(response);
+    return copy;
+}
+
+static void expect_signature_label(int id, const char *path, int line, int character,
+                                   const char *expected)
+{
+    char *label = signature_label_at(id, path, line, character);
+    if (!label || strcmp(label, expected) != 0)
+    {
+        printf("Signature help at %d:%d: %s (expected %s)\n", line, character,
+               label ? label : "(none)", expected);
+        fail("Signature help must show the function that the call calls");
+    }
+    free(label);
+}
+
+// Signature help shows the function the call calls, as the hover finds it: a method called through
+// its type or on a value, not another function of the same name.
+static void test_signature_of_the_called_function(void)
+{
+    printf("Running test_signature_of_the_called_function...\n");
+    const char *path = "/tmp/test_signature_of_the_called_function.zc";
+    open_document(path, "fn create(size: int) -> int {\n"
+                        "    return size;\n"
+                        "}\n"
+                        "struct Item {\n"
+                        "    code: int;\n"
+                        "}\n"
+                        "impl Item {\n"
+                        "    fn create(code: int, name: string) -> Item {\n"
+                        "        return Item { code: code };\n"
+                        "    }\n"
+                        "    fn scaled(self, factor: int) -> int {\n"
+                        "        return self.code * factor;\n"
+                        "    }\n"
+                        "}\n"
+                        "fn main() {\n"
+                        "    let item = Item::create(1, \"a\");\n"
+                        "    let size = create(2);\n"
+                        "    let big = item.scaled(3);\n"
+                        "}\n");
+    usleep(100000);
+
+    expect_signature_label(142, path, 15, 28, "fn create(code: int, name: string) -> Item");
+    expect_signature_label(143, path, 16, 22, "fn create(size: int) -> int");
+    expect_signature_label(144, path, 17, 26, "fn scaled(self, factor: int) -> int");
+
+    // While a call is written, the last parse has not read it and the index has no use there:
+    // the type before `::` still decides which `create` it calls.
+    const char *written = "/tmp/test_signature_of_a_call_being_written.zc";
+    open_document(written, "fn create(size: int) -> int {\n"
+                           "    return size;\n"
+                           "}\n"
+                           "struct Item {\n"
+                           "    code: int;\n"
+                           "}\n"
+                           "impl Item {\n"
+                           "    fn create(code: int, name: string) -> Item {\n"
+                           "        return Item { code: code };\n"
+                           "    }\n"
+                           "}\n"
+                           "fn main() {\n"
+                           "    let item = Item::create(\n"
+                           "}\n");
+    usleep(100000);
+    expect_signature_label(145, written, 12, 28, "fn create(code: int, name: string) -> Item");
+    printf("PASS: test_signature_of_the_called_function\n");
+}
+
 static void test_c_header_completion(void)
 {
     printf("Running test_c_header_completion...\n");
@@ -1299,6 +2156,1092 @@ static void test_c_header_completion(void)
     // A header re-exported by an imported module (use_a.zc, from test_c_header_reexports).
     expect_completion(834, C_TEST_DIR "/use_a.zc", 3, 11, "mod_function", 3);
     printf("PASS: test_c_header_completion\n");
+}
+
+// The kind of the completion item `label` at (line, character) of `path`, or -1 if there is none.
+static int completion_kind(int id, const char *path, int line, int character, const char *label)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    int kind = -1;
+    for (int i = 0; i < cJSON_GetArraySize(items) && kind < 0; i++)
+    {
+        cJSON *item = cJSON_GetArrayItem(items, i);
+        cJSON *item_label = cJSON_GetObjectItem(item, "label");
+        if (cJSON_IsString(item_label) && strcmp(item_label->valuestring, label) == 0)
+        {
+            kind = cJSON_GetObjectItem(item, "kind")->valueint;
+        }
+    }
+    cJSON_Delete(response);
+    return kind;
+}
+
+static void test_qualified_member_completion(void)
+{
+    printf("Running test_qualified_member_completion...\n");
+    // The members after `.` are those of the type the value has, `const` and pointers aside.
+    // Line 0: struct Inner { depth: int; }
+    // Line 1: struct Pak { size: int; inner: Inner; }
+    // Line 2: impl Pak { fn total(self) -> int { return self.size; } }
+    // Line 3: fn use_pak(p: Pak) {
+    // Line 4:     let a: const Pak = p;
+    // Line 5:     let b: const Pak* = &a;
+    // Line 6:     a.size;
+    // Line 7:     b.size;
+    // Line 8:     a.inner.depth;
+    // Line 9: }
+    const char *path = "/tmp/test_qualified_member_completion.zc";
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+        "{\"textDocument\": {\"uri\": \"file:///tmp/test_qualified_member_completion.zc\", "
+        "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"struct Inner { depth: int; "
+        "}\\nstruct Pak { size: int; inner: Inner; }\\nimpl Pak { fn total(self) -> int { "
+        "return self.size; } }\\nfn use_pak(p: Pak) {\\n    let a: const Pak = p;\\n    "
+        "let b: const Pak* = &a;\\n    a.size;\\n    b.size;\\n    a.inner.depth;\\n}\\n\"}}}");
+    usleep(100000);
+    expect_completion(978, path, 6, 6, "size", 5);  // Field
+    expect_completion(979, path, 6, 6, "total", 2); // Method
+    expect_completion(980, path, 7, 6, "size", 5);
+    expect_completion(981, path, 8, 12, "depth", 5);
+    printf("PASS: test_qualified_member_completion\n");
+}
+
+static void test_type_position_completion(void)
+{
+    printf("Running test_type_position_completion...\n");
+    // Where a type goes, completion offers the types (primitives, structs, aliases) and not the
+    // functions; at the top level too, where it offered no primitive. The value of a field in a
+    // struct literal is no type.
+    const char *path = "/tmp/test_type_position_completion.zc";
+    open_document(path, "struct Unit { size: u16; }\n"                                 // Line 0
+                        "alias Word = u16;\n"                                          // Line 1
+                        "fn use_unit(unit: Unit, word: Word) -> usize { return 0; }\n" // Line 2
+                        "fn main() {\n"                                                // Line 3
+                        "    let w: Word = 1;\n"                                       // Line 4
+                        "    let p = Unit { size: use_unit(Unit { size: 1 }, w) };\n"  // Line 5
+                        "}\n");
+    usleep(100000);
+    // Cursor after the first letter of the type, as while typing it.
+    if (completion_kind(1401, path, 0, 21, "u16") != LSP_COMPLETION_KEYWORD ||
+        completion_kind(1402, path, 0, 21, "use_unit") != -1)
+    {
+        fail("The type of a struct field completes with the types");
+    }
+    if (completion_kind(1403, path, 1, 14, "u16") != LSP_COMPLETION_KEYWORD ||
+        completion_kind(1404, path, 1, 14, "use_unit") != -1)
+    {
+        fail("The right side of an alias completes with the types");
+    }
+    if (completion_kind(1405, path, 2, 31, "Word") != LSP_COMPLETION_STRUCT)
+    {
+        fail("The type of a parameter completes with the aliases");
+    }
+    if (completion_kind(1406, path, 2, 40, "usize") != LSP_COMPLETION_KEYWORD ||
+        completion_kind(1407, path, 2, 40, "use_unit") != -1)
+    {
+        fail("The return type completes with the types");
+    }
+    if (completion_kind(1408, path, 4, 12, "Word") != LSP_COMPLETION_STRUCT)
+    {
+        fail("The type of a let completes with the aliases");
+    }
+    if (completion_kind(1409, path, 5, 26, "use_unit") != LSP_COMPLETION_FUNCTION)
+    {
+        fail("The value of a field in a struct literal completes with the functions");
+    }
+    printf("PASS: test_type_position_completion\n");
+}
+
+static void test_literal_field_completion(void)
+{
+    printf("Running test_literal_field_completion...\n");
+    // Where a field's name goes in a struct literal, completion offers the fields the literal does
+    // not give yet. A block after a name that is no struct (`if done {`) completes as before.
+    // The literal is still being written, so the document does not parse.
+    const char *literal = "/tmp/test_literal_field_completion.zc";
+    open_document(literal, "struct Inner { depth: int; width: int; }\n"        // Line 0
+                           "struct Outer { inner: Inner; size: int; }\n"       // Line 1
+                           "fn make() -> Outer {\n"                            // Line 2
+                           "    return Outer { inner: Inner { depth: 1 }, s\n" // Line 3
+                           "}\n");
+    // A document that parses: the parameters of the function are offered from its AST.
+    const char *block = "/tmp/test_literal_field_completion_block.zc";
+    open_document(block, "struct Inner { depth: int; width: int; }\n" // Line 0
+                         "fn check(done: bool) {\n"                   // Line 1
+                         "    if done {\n"                            // Line 2
+                         "        d\n"                                // Line 3
+                         "    }\n"                                    // Line 4
+                         "}\n");
+    usleep(100000);
+    if (completion_kind(1410, literal, 3, 47, "size") != LSP_COMPLETION_FIELD ||
+        completion_kind(1411, literal, 3, 47, "inner") != -1)
+    {
+        fail("A struct literal completes with the fields it does not give yet");
+    }
+    if (completion_kind(1412, block, 3, 9, "done") != LSP_COMPLETION_VARIABLE ||
+        completion_kind(1413, block, 3, 9, "depth") != -1)
+    {
+        fail("A block after a name that is no struct completes as before");
+    }
+    printf("PASS: test_literal_field_completion\n");
+}
+
+// The labels of the completion at (line, character) that `trigger` opened, as an editor asks
+// when that character is typed, joined by spaces; NULL `trigger` asks for it as Ctrl+Space does.
+static void completion_labels(int id, const char *path, int line, int character,
+                              const char *trigger, char *out, size_t out_size)
+{
+    char context[128] = "";
+    if (trigger)
+    {
+        snprintf(context, sizeof(context),
+                 ", \"context\": {\"triggerKind\": 2, \"triggerCharacter\": \"%s\"}", trigger);
+    }
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/completion\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"file://%s\"}, \"position\": {\"line\": "
+             "%d, \"character\": %d}%s}}",
+             id, path, line, character, context);
+    send_request(json);
+    char *response = wait_for_response(id);
+    cJSON *parsed = response ? cJSON_Parse(response) : NULL;
+    free(response);
+    if (!parsed)
+    {
+        fail("No response for a completion request");
+    }
+    cJSON *items = cJSON_GetObjectItem(parsed, "result");
+    out[0] = '\0';
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *label = cJSON_GetObjectItem(cJSON_GetArrayItem(items, i), "label");
+        if (cJSON_IsString(label) && strlen(out) + strlen(label->valuestring) + 2 < out_size)
+        {
+            strcat(out, label->valuestring);
+            strcat(out, " ");
+        }
+    }
+    cJSON_Delete(parsed);
+}
+
+static void test_scope_completion_trigger(void)
+{
+    printf("Running test_scope_completion_trigger...\n");
+    // Typing the second `:` of `Color::` opens the variants; a single `:` (a `let`'s type, a
+    // field of a struct literal, the first of `::`) opens nothing, though asking for the
+    // completion there still offers what fits.
+    const char *path = "/tmp/test_scope_completion_trigger.zc";
+    open_document(path, "enum Color { Red, Green }\n" // Line 0
+                        "struct Point { x: int; }\n"  // Line 1
+                        "fn main() {\n"               // Line 2
+                        "    let c = Color::\n"       // Line 3
+                        "    let p = Point { x:\n"    // Line 4
+                        "    let w:\n"                // Line 5
+                        "}\n");
+    usleep(100000);
+    char labels[4096];
+    completion_labels(1701, path, 3, 19, ":", labels, sizeof(labels));
+    if (!strstr(labels, "Red ") || !strstr(labels, "Green "))
+    {
+        printf("Completion after `Color::`: %s\n", labels);
+        fail("The second `:` of `Color::` opens the variants of the enum");
+    }
+    completion_labels(1702, path, 3, 18, ":", labels, sizeof(labels));
+    if (labels[0])
+    {
+        printf("Completion after `Color:`: %s\n", labels);
+        fail("The first `:` of `::` opens nothing");
+    }
+    completion_labels(1703, path, 4, 22, ":", labels, sizeof(labels));
+    if (labels[0])
+    {
+        printf("Completion after `Point { x:`: %s\n", labels);
+        fail("The `:` of a field in a struct literal opens nothing");
+    }
+    completion_labels(1704, path, 5, 10, ":", labels, sizeof(labels));
+    if (labels[0])
+    {
+        printf("Completion after `let w:`: %s\n", labels);
+        fail("The `:` of a let's type opens nothing");
+    }
+    completion_labels(1705, path, 5, 10, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "int "))
+    {
+        printf("Completion asked for after `let w:`: %s\n", labels);
+        fail("Asking for the completion after a `:` still offers what fits");
+    }
+    printf("PASS: test_scope_completion_trigger\n");
+}
+
+static void test_module_alias_completion(void)
+{
+    printf("Running test_module_alias_completion...\n");
+    // After the alias of an imported module, what the module declares; after `alias::Type::`, the
+    // variants and functions of that module's type, not those of a type of the same name in
+    // another module.
+    mkdir(C_TEST_DIR, 0755);
+    const char *math = C_TEST_DIR "/alias_math.zc";
+    const char *math_text = "enum Axis { Horizontal, Vertical }\n"
+                            "struct Vector { x: int; }\n"
+                            "impl Vector {\n"
+                            "    fn new(x: int) -> Vector { return Vector { x: x }; }\n"
+                            "}\n"
+                            "fn add(a: int, b: int) -> int { return a + b; }\n"
+                            "fn absolute(a: int) -> int { return a; }\n";
+    const char *physics = C_TEST_DIR "/alias_physics.zc";
+    const char *physics_text = "struct Vector { x: f64; }\n"
+                               "impl Vector {\n"
+                               "    fn create(x: f64) -> Vector { return Vector { x: x }; }\n"
+                               "}\n";
+    write_file(math, math_text);
+    write_file(physics, physics_text);
+    open_document(math, math_text);
+    open_document(physics, physics_text);
+    const char *path = C_TEST_DIR "/alias_use.zc";
+    open_document(path, "import \"alias_math.zc\" as math\n"   // Line 0
+                        "import \"alias_physics.zc\" as phy\n" // Line 1
+                        "fn main() {\n"                        // Line 2
+                        "    let a = math::\n"                 // Line 3
+                        "    let b = math::ab\n"               // Line 4
+                        "    let c = math::Vector::\n"         // Line 5
+                        "    let d = phy::Vector::\n"          // Line 6
+                        "    let e = math::Axis::\n"           // Line 7
+                        "}\n");
+    usleep(100000);
+    char labels[4096];
+    completion_labels(1711, path, 3, 18, ":", labels, sizeof(labels));
+    if (!strstr(labels, "Axis ") || !strstr(labels, "Vector ") || !strstr(labels, "add ") ||
+        !strstr(labels, "absolute "))
+    {
+        printf("Completion after `math::`: %s\n", labels);
+        fail("After the alias of a module, what the module declares");
+    }
+    completion_labels(1712, path, 4, 20, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "absolute "))
+    {
+        printf("Completion after `math::ab`: %s\n", labels);
+        fail("A name being typed after the alias of a module");
+    }
+    completion_labels(1713, path, 5, 26, ":", labels, sizeof(labels));
+    if (!strstr(labels, "new ") || strstr(labels, "create "))
+    {
+        printf("Completion after `math::Vector::`: %s\n", labels);
+        fail("After `alias::Type::`, the functions of that module's type only");
+    }
+    completion_labels(1714, path, 6, 25, ":", labels, sizeof(labels));
+    if (!strstr(labels, "create ") || strstr(labels, "new "))
+    {
+        printf("Completion after `phy::Vector::`: %s\n", labels);
+        fail("After `alias::Type::`, the functions of the other module's type only");
+    }
+    completion_labels(1715, path, 7, 24, ":", labels, sizeof(labels));
+    if (!strstr(labels, "Horizontal ") || !strstr(labels, "Vertical "))
+    {
+        printf("Completion after `math::Axis::`: %s\n", labels);
+        fail("After `alias::Enum::`, the variants of the module's enum");
+    }
+    printf("PASS: test_module_alias_completion\n");
+}
+
+static void test_trait_value_completion(void)
+{
+    printf("Running test_trait_value_completion...\n");
+    // A value of a trait offers the trait's methods after `.`, with `self` and without it. Its
+    // type is a struct named like the trait, which is no struct of a C header.
+    const char *path = "/tmp/test_trait_value_completion.zc";
+    open_document(path, "trait Shape {\n"                            // Line 0
+                        "    fn area(self) -> int;\n"                // Line 1
+                        "    fn sides() -> int;\n"                   // Line 2
+                        "}\n"                                        // Line 3
+                        "fn measure(shape: Shape) -> int {\n"        // Line 4
+                        "    return shape.area() + shape.sides();\n" // Line 5
+                        "}\n");
+    usleep(100000);
+    // Right after the `.` of `shape.area()` and of `shape.sides()`.
+    if (completion_kind(1414, path, 5, 17, "area") != LSP_COMPLETION_METHOD ||
+        completion_kind(1415, path, 5, 32, "sides") != LSP_COMPLETION_METHOD)
+    {
+        fail("A value of a trait completes with the trait's methods");
+    }
+    printf("PASS: test_trait_value_completion\n");
+}
+
+// The text that the completion item `label` at (line, character) inserts, in `out`; empty when
+// it is not offered.
+static void completion_insert_text(int id, const char *path, int line, int character,
+                                   const char *label, char *out, size_t size)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    out[0] = 0;
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *item = cJSON_GetArrayItem(items, i);
+        cJSON *item_label = cJSON_GetObjectItem(item, "label");
+        cJSON *insert = cJSON_GetObjectItem(item, "insertText");
+        if (cJSON_IsString(item_label) && strcmp(item_label->valuestring, label) == 0 &&
+            cJSON_IsString(insert))
+        {
+            snprintf(out, size, "%s", insert->valuestring);
+        }
+    }
+    cJSON_Delete(response);
+}
+
+static void test_trait_impl_completion(void)
+{
+    printf("Running test_trait_impl_completion...\n");
+    // Where a method of an impl of a trait goes, completion offers the trait's methods that the
+    // impl does not define yet, with the signature written in the trait and an empty body.
+    const char *path = "/tmp/test_trait_impl_completion.zc";
+    const char *head = "trait Shape {\n"                                   // Line 0
+                       "    fn area(self) -> int;\n"                       // Line 1
+                       "    fn sides() -> int;\n"                          // Line 2
+                       "}\n"                                               // Line 3
+                       "struct Square { side: int; }\n"                    // Line 4
+                       "impl Shape for Square {\n"                         // Line 5
+                       "    fn area(self) -> int { return self.side; }\n"; // Line 6
+    char text[1024];
+    snprintf(text, sizeof(text),
+             "%s"
+             "    \n"                                               // Line 7
+             "}\n"                                                  // Line 8
+             "impl Square {\n"                                      // Line 9
+             "    fn half(self) -> int { return self.side / 2; }\n" // Line 10
+             "    \n"                                               // Line 11
+             "}\n",
+             head);
+    open_document(path, text);
+    usleep(100000);
+    char insert[256];
+    completion_insert_text(1416, path, 7, 4, "sides", insert, sizeof(insert));
+    if (strcmp(insert, "fn sides() -> int {\n    $0\n}") != 0)
+    {
+        printf("Inserted: '%s'\n", insert);
+        fail("An impl of a trait completes with the trait's methods it lacks");
+    }
+    // `area` is defined already; an impl of the type alone implements no trait.
+    expect_no_completion(1417, path, 7, 4, "area");
+    expect_no_completion(1418, path, 7, 4, "if");
+    expect_no_completion(1419, path, 11, 4, "sides");
+
+    // After the `fn` of a method being written, which leaves the file without parsing, the
+    // signature goes without its `fn`.
+    snprintf(text, sizeof(text), "%s    fn si\n}\n", head);
+    open_document(path, text);
+    usleep(100000);
+    completion_insert_text(1420, path, 7, 9, "sides", insert, sizeof(insert));
+    if (strcmp(insert, "sides() -> int {\n    $0\n}") != 0)
+    {
+        printf("Inserted: '%s'\n", insert);
+        fail("After `fn`, a method of the trait completes without `fn`");
+    }
+    printf("PASS: test_trait_impl_completion\n");
+}
+
+static void test_type_from_imported_file(void)
+{
+    printf("Running test_type_from_imported_file...\n");
+    // The server parses the whole workspace with one context, so two files that declare a type of
+    // the same name (a struct and a trait) are both registered: a file that names it goes to the
+    // one it imports, in go to definition and in the members after `.`.
+    mkdir(C_TEST_DIR, 0755);
+    open_document(C_TEST_DIR "/visible_record.zc", "struct Header { key: int; value: int; }\n");
+    open_document(C_TEST_DIR "/visible_trait.zc", "trait Header { fn size(self) -> int; }\n");
+    const char *uses_trait = C_TEST_DIR "/visible_uses_trait.zc";
+    open_document(uses_trait, "import \"./visible_trait.zc\";\n" // Line 0
+                              "fn measure(h: Header) -> int {\n" // Line 1
+                              "    return h.size();\n"           // Line 2
+                              "}\n");
+    const char *uses_record = C_TEST_DIR "/visible_uses_record.zc";
+    open_document(uses_record, "import \"./visible_record.zc\";\n" // Line 0
+                               "fn read(h: Header) -> int {\n"     // Line 1
+                               "    return h.key;\n"               // Line 2
+                               "}\n");
+    usleep(100000);
+    expect_definition(1501, "Header of the imported trait", uses_trait, 1, 14, "/visible_trait.zc",
+                      0);
+    expect_definition(1502, "Header of the imported struct", uses_record, 1, 11,
+                      "/visible_record.zc", 0);
+    // Right after the `.` of `h.size()` and of `h.key`.
+    if (completion_kind(1503, uses_trait, 2, 13, "key") != -1 ||
+        completion_kind(1504, uses_record, 2, 13, "key") != LSP_COMPLETION_FIELD)
+    {
+        fail("The members after `.` are those of the type the file imports");
+    }
+    printf("PASS: test_type_from_imported_file\n");
+}
+
+static void test_importers_follow_an_edit(void)
+{
+    printf("Running test_importers_follow_an_edit...\n");
+    // An open document resolves what it uses with the files it imports, directly or through
+    // another import, as they are now: an edit to one of them, or closing it without saving,
+    // changes what the document finds, though the document itself is not edited.
+    mkdir(C_TEST_DIR, 0755);
+    const char *declares = C_TEST_DIR "/stale_console.zc";
+    const char *on_disk = "struct Console { n: int; }\n"
+                          "impl Console {\n"
+                          "    fn create() -> Console { return Console { n: 0 }; }\n"
+                          "}\n";
+    open_document(declares, on_disk);
+    const char *imports = C_TEST_DIR "/stale_run.zc";
+    open_document(imports, "import \"./stale_console.zc\";\n"    // Line 0
+                           "fn stale_run(c: Console*) -> bool {\n" // Line 1
+                           "    return c.finished();\n"           // Line 2
+                           "}\n");
+    const char *imports_through = C_TEST_DIR "/stale_main.zc";
+    open_document(imports_through, "import \"./stale_run.zc\";\n"          // Line 0
+                                   "fn stale_speed(c: Console*) -> int {\n" // Line 1
+                                   "    return c.speed;\n"                 // Line 2
+                                   "}\n");
+    usleep(100000);
+    expect_definition(1601, "finished before it is declared", imports, 2, 14, NULL, 0);
+    expect_definition(1602, "speed before it is declared", imports_through, 2, 14, NULL, 0);
+
+    change_document(declares, 2,
+                    "struct Console { n: int; speed: int; }\n"                // Line 0
+                    "impl Console {\n"                                        // Line 1
+                    "    fn finished(self) -> bool { return false; }\n"       // Line 2
+                    "    fn create() -> Console { return Console { n: 0, speed: 0 }; }\n"
+                    "}\n");
+    usleep(100000);
+    expect_definition(1603, "finished once declared", imports, 2, 14, "/stale_console.zc", 2);
+    expect_definition(1604, "speed once declared", imports_through, 2, 14, "/stale_console.zc",
+                      0);
+
+    // Closed without saving: the file on disk has no field `speed`.
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didClose\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file://" C_TEST_DIR "/stale_console.zc\"}}}");
+    usleep(100000);
+    expect_definition(1605, "speed after closing unsaved", imports_through, 2, 14, NULL, 0);
+    printf("PASS: test_importers_follow_an_edit\n");
+}
+
+// The first edit of the first code action at (line, character), as "line:col-line:col newText";
+// empty when there is no action.
+static void code_action_edit(int id, const char *path, int line, int character, char *out,
+                             size_t size)
+{
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/codeAction\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"file://%s\"}, \"range\": {\"start\": "
+             "{\"line\": %d, \"character\": %d}, \"end\": {\"line\": %d, \"character\": %d}}, "
+             "\"context\": {\"diagnostics\": []}}}",
+             id, path, line, character, line, character);
+    send_request(json);
+    char *response = wait_for_response(id);
+    cJSON *parsed = response ? cJSON_Parse(response) : NULL;
+    free(response);
+    if (!parsed)
+    {
+        fail("No response for a code action request");
+    }
+    out[0] = 0;
+    cJSON *action = cJSON_GetArrayItem(cJSON_GetObjectItem(parsed, "result"), 0);
+    cJSON *changes = cJSON_GetObjectItem(cJSON_GetObjectItem(action, "edit"), "changes");
+    cJSON *edit = changes && changes->child ? cJSON_GetArrayItem(changes->child, 0) : NULL;
+    if (edit)
+    {
+        cJSON *range = cJSON_GetObjectItem(edit, "range");
+        cJSON *start = cJSON_GetObjectItem(range, "start");
+        cJSON *end = cJSON_GetObjectItem(range, "end");
+        snprintf(out, size, "%d:%d-%d:%d %s", cJSON_GetObjectItem(start, "line")->valueint,
+                 cJSON_GetObjectItem(start, "character")->valueint,
+                 cJSON_GetObjectItem(end, "line")->valueint,
+                 cJSON_GetObjectItem(end, "character")->valueint,
+                 cJSON_GetObjectItem(edit, "newText")->valuestring);
+    }
+    cJSON_Delete(parsed);
+}
+
+static void expect_code_action_edit(int id, const char *path, int line, int character,
+                                    const char *expected)
+{
+    char edit[1024];
+    code_action_edit(id, path, line, character, edit, sizeof(edit));
+    if (strcmp(edit, expected) != 0)
+    {
+        printf("Code action at %d:%d: '%s', expected '%s'\n", line, character, edit, expected);
+        fail("Wrong code action");
+    }
+}
+
+static void test_implement_trait_action(void)
+{
+    printf("Running test_implement_trait_action...\n");
+    // In the header or the body of an impl of a trait, a code action writes the trait's methods
+    // that the impl lacks, after its last member and one level deeper than the impl.
+    const char *path = "/tmp/test_implement_trait_action.zc";
+    open_document(path, "trait Shape {\n"                                  // Line 0
+                        "    fn area(self) -> int;\n"                      // Line 1
+                        "    fn sides() -> int;\n"                         // Line 2
+                        "}\n"                                              // Line 3
+                        "trait Named { fn name(self) -> string; }\n"       // Line 4
+                        "struct Square { side: int; }\n"                   // Line 5
+                        "impl Shape for Square {\n"                        // Line 6
+                        "    fn area(self) -> int { return self.side; }\n" // Line 7
+                        "}\n"                                              // Line 8
+                        "impl Named for Square {}\n"                       // Line 9
+                        "impl Square {}\n");                               // Line 10
+    usleep(100000);
+    // On the trait's name in the header; between `{}`.
+    expect_code_action_edit(1421, path, 6, 8, "7:46-8:0 \n\n    fn sides() -> int {\n    }\n");
+    expect_code_action_edit(1422, path, 9, 23,
+                            "9:23-9:23 \n    fn name(self) -> string {\n    }\n");
+    // An impl of the type alone, and a struct.
+    expect_code_action_edit(1423, path, 10, 13, "");
+    expect_code_action_edit(1424, path, 5, 3, "");
+    printf("PASS: test_implement_trait_action\n");
+}
+
+// The code actions at (line, character), each as "title|newText" and separated by ";".
+static void code_action_imports(int id, const char *path, int line, int character, char *out,
+                                size_t size)
+{
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/codeAction\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"file://%s\"}, \"range\": {\"start\": "
+             "{\"line\": %d, \"character\": %d}, \"end\": {\"line\": %d, \"character\": %d}}, "
+             "\"context\": {\"diagnostics\": []}}}",
+             id, path, line, character, line, character);
+    send_request(json);
+    char *response = wait_for_response(id);
+    cJSON *parsed = response ? cJSON_Parse(response) : NULL;
+    free(response);
+    if (!parsed)
+    {
+        fail("No response for a code action request");
+    }
+    size_t used = 0;
+    out[0] = 0;
+    cJSON *action = NULL;
+    cJSON_ArrayForEach(action, cJSON_GetObjectItem(parsed, "result"))
+    {
+        cJSON *changes = cJSON_GetObjectItem(cJSON_GetObjectItem(action, "edit"), "changes");
+        cJSON *edit = changes && changes->child ? cJSON_GetArrayItem(changes->child, 0) : NULL;
+        int written = snprintf(out + used, size - used, "%s%s|%s", used ? ";" : "",
+                               cJSON_GetObjectItem(action, "title")->valuestring,
+                               edit ? cJSON_GetObjectItem(edit, "newText")->valuestring : "");
+        used += written > 0 && (size_t)written < size - used ? (size_t)written : 0;
+    }
+    cJSON_Delete(parsed);
+}
+
+static void expect_import_actions(int id, const char *path, int line, int character,
+                                  const char *expected)
+{
+    char actions[2048];
+    code_action_imports(id, path, line, character, actions, sizeof(actions));
+    if (strcmp(actions, expected) != 0)
+    {
+        printf("Code actions at %d:%d: '%s', expected '%s'\n", line, character, actions, expected);
+        fail("Wrong import actions");
+    }
+}
+
+// The next diagnostics the server publishes for a document whose path ends in `name`; the caller
+// frees them.
+static char *next_diagnostics(const char *name)
+{
+    for (int i = 0; i < 50; i++)
+    {
+        char *message = read_message();
+        if (!message)
+        {
+            break;
+        }
+        if (strstr(message, "publishDiagnostics") && strstr(message, name))
+        {
+            return message;
+        }
+        free(message);
+    }
+    printf("No diagnostics for %s\n", name);
+    fail("Missing diagnostics");
+}
+
+// The completion items `label` at (line, character), each as "description|import it adds" and
+// separated by ";"; an item without an import is "|".
+static void completion_imports(int id, const char *path, int line, int character, const char *label,
+                               char *out, size_t size)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    size_t used = 0;
+    out[0] = 0;
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, cJSON_GetObjectItem(response, "result"))
+    {
+        const char *item_label = cJSON_GetStringValue(cJSON_GetObjectItem(item, "label"));
+        if (!item_label || strcmp(item_label, label) != 0)
+        {
+            continue;
+        }
+        const char *description = cJSON_GetStringValue(
+            cJSON_GetObjectItem(cJSON_GetObjectItem(item, "labelDetails"), "description"));
+        cJSON *edit = cJSON_GetArrayItem(cJSON_GetObjectItem(item, "additionalTextEdits"), 0);
+        const char *text = edit ? cJSON_GetStringValue(cJSON_GetObjectItem(edit, "newText")) : NULL;
+        int written = snprintf(out + used, size - used, "%s%s|%s", used ? ";" : "",
+                               description ? description : "", text ? text : "");
+        used += written > 0 && (size_t)written < size - used ? (size_t)written : 0;
+    }
+    cJSON_Delete(response);
+}
+
+static void test_import_type_action(void)
+{
+    printf("Running test_import_type_action...\n");
+    // On a type that the file does not see, a code action imports each file that declares it: the
+    // nearest first, written as the parser resolves an import, after the file's last import.
+    mkdir("/tmp/zc_import_type", 0755);
+    mkdir("/tmp/zc_import_type/a", 0755);
+    mkdir("/tmp/zc_import_type/b", 0755);
+    open_document("/tmp/zc_import_type/a/shapes.zc", "struct Polygon { sides: int; }\n");
+    open_document("/tmp/zc_import_type/b/shapes.zc", "struct Polygon { name: int; }\n");
+    open_document("/tmp/zc_import_type/a/util.zc", "fn twice(x: int) -> int { return x * 2; }\n");
+    const char *main_path = "/tmp/zc_import_type/main.zc";
+    open_document(main_path, "import \"a/util.zc\";\n"    // Line 0
+                             "fn area(s: Polygon) {}\n"); // Line 1
+    const char *nested_path = "/tmp/zc_import_type/a/nested.zc";
+    open_document(nested_path, "fn sides(s: Polygon) {}\n");
+    const char *seen_path = "/tmp/zc_import_type/seen.zc";
+    open_document(seen_path, "import \"a/shapes.zc\"\n"
+                             "fn seen(s: Polygon) {}\n");
+    usleep(200000);
+    // After the last import, with its `;`; from a folder, the one beside it first, then `../`.
+    expect_import_actions(1425, main_path, 1, 12,
+                          "Import Polygon from \"a/shapes.zc\"|\nimport \"a/shapes.zc\";;"
+                          "Import Polygon from \"b/shapes.zc\"|\nimport \"b/shapes.zc\";");
+    expect_import_actions(1426, nested_path, 0, 13,
+                          "Import Polygon from \"shapes.zc\"|import \"shapes.zc\"\n\n;"
+                          "Import Polygon from \"../b/shapes.zc\"|import \"../b/shapes.zc\"\n\n");
+    // A type the file sees, and a name that is no type.
+    expect_import_actions(1427, seen_path, 1, 12, "");
+    expect_import_actions(1428, main_path, 1, 4, "");
+
+    // Completion offers the type once for each file that declares it, with its import.
+    char items[1024];
+    const char *typing_path = "/tmp/zc_import_type/typing.zc";
+    open_document(typing_path, "import \"a/util.zc\"\n" // Line 0
+                               "fn c(p: Pol) {}\n");    // Line 1
+    usleep(100000);
+    completion_imports(1429, typing_path, 1, 11, "Polygon", items, sizeof(items));
+    if (strcmp(items,
+               "a/shapes.zc|\nimport \"a/shapes.zc\";b/shapes.zc|\nimport \"b/shapes.zc\"") != 0)
+    {
+        printf("Completion of Polygon: '%s'\n", items);
+        fail("A type the file does not see completes with the import of each file");
+    }
+    // Where the file sees it, it comes without one.
+    completion_imports(1430, seen_path, 1, 12, "Polygon", items, sizeof(items));
+    if (strcmp(items, "|") != 0)
+    {
+        printf("Completion of Polygon: '%s'\n", items);
+        fail("A type the file sees completes without an import");
+    }
+
+    // The type is warned about with the file to import, since `zc build` does not know it there;
+    // not where it is imported, nor where a generic parameter has its name.
+    open_document("/tmp/zc_import_type/warned.zc", "fn w(p: Polygon, q: Undeclared) {}\n");
+    char *diagnostics = next_diagnostics("warned.zc");
+    if (!strstr(diagnostics, "Type 'Polygon' is declared in \\\"a/shapes.zc\\\" and 1 other file, "
+                             "which this file does not import") ||
+        !strstr(diagnostics, "Unknown type 'Undeclared'"))
+    {
+        printf("Diagnostics: %s\n", diagnostics);
+        fail("A type that only files not imported declare is warned about with the file");
+    }
+    free(diagnostics);
+    const char *quiet[][2] = {
+        {"/tmp/zc_import_type/quiet.zc", "import \"a/shapes.zc\"\nfn q(p: Polygon) {}\n"},
+        {"/tmp/zc_import_type/generic.zc", "fn same<Polygon>(x: Polygon) -> Polygon {\n"
+                                           "    return x;\n"
+                                           "}\n"},
+    };
+    for (size_t i = 0; i < sizeof(quiet) / sizeof(quiet[0]); i++)
+    {
+        open_document(quiet[i][0], quiet[i][1]);
+        diagnostics = next_diagnostics(strrchr(quiet[i][0], '/') + 1);
+        if (strstr(diagnostics, "Polygon'"))
+        {
+            printf("Diagnostics: %s\n", diagnostics);
+            fail("A type the file imports, or a generic parameter, is not warned about");
+        }
+        free(diagnostics);
+    }
+    printf("PASS: test_import_type_action\n");
+}
+
+static void test_imported_trait_after_read_request(void)
+{
+    printf("Running test_imported_trait_after_read_request...\n");
+    // A read-only request (hover) rewinds the arena and forgot every trait registered until then.
+    // A file that imports a trait does not parse it again on the next edit (it was imported
+    // before), so `k: Kept` was warned about as an unknown type.
+    mkdir(C_TEST_DIR, 0755);
+    open_document(C_TEST_DIR "/kept_trait.zc", "trait Kept { fn size(self) -> int; }\n");
+    const char *path = C_TEST_DIR "/kept_trait_user.zc";
+    const char *text = "import \"./kept_trait.zc\";\n"           // Line 0
+                       "fn measure(k: Kept) -> int { return 0; }\n"; // Line 1
+    open_document(path, text);
+    free(wait_for_diagnostics("/kept_trait_user.zc"));
+    // On the `import`: a read-only request (a hover on some names is not).
+    cJSON_Delete(position_request(1601, "textDocument/hover", path, 0, 0));
+    change_document(path, 2, text);
+    char *diagnostics = wait_for_diagnostics("/kept_trait_user.zc");
+    if (!diagnostics || strstr(diagnostics, "Unknown type 'Kept'"))
+    {
+        printf("Diagnostics after the edit: %s\n", diagnostics ? diagnostics : "(none)");
+        fail("A trait imported before stays known after a read-only request");
+    }
+    free(diagnostics);
+    printf("PASS: test_imported_trait_after_read_request\n");
+}
+
+static void test_member_hover(void)
+{
+    printf("Running test_member_hover...\n");
+    // A field and a method reached through `.`: hover and go to definition lead to their
+    // declarations, through `self` and through a pointer.
+    // Line 0: struct Log { count: int; }
+    // Line 1: impl Log {
+    // Line 2:     fn is_full(self) -> bool { return self.count > 9; }
+    // Line 3:     fn add(self) { if self.is_full() { return; } self.count = self.count + 1; }
+    // Line 4: }
+    // Line 5: fn use_log(l: Log*) -> int { l.add(); return l.count; }
+    const char *uri = "file:///tmp/test_member_hover.zc";
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+        "{\"textDocument\": {\"uri\": \"file:///tmp/test_member_hover.zc\", "
+        "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"struct Log { count: int; "
+        "}\\nimpl Log {\\n    fn is_full(self) -> bool { return self.count > 9; }\\n    fn "
+        "add(self) { if self.is_full() { return; } self.count = self.count + 1; }\\n}\\nfn "
+        "use_log(l: Log*) -> int { l.add(); return l.count; }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 946, 0, 14, "field count: i32");
+    expect_hover_in(uri, 947, 2, 45, "field count: i32");
+    expect_hover_in(uri, 948, 3, 28, "fn is_full(self) -> bool");
+    expect_hover_in(uri, 949, 5, 32, "fn add(self)");
+    expect_hover_in(uri, 950, 5, 49, "field count: i32");
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 951, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_member_hover.zc\"}, "
+                 "\"position\": {\"line\": 3, \"character\": 28}}}");
+    char *resp = wait_for_response(951);
+    if (!resp || !strstr(resp, "\"start\":{\"line\":2,\"character\":7}"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition on `self.is_full()` leads to the method");
+    }
+    free(resp);
+    printf("PASS: test_member_hover\n");
+}
+
+static void test_loop_variable_hover(void)
+{
+    printf("Running test_loop_variable_hover...\n");
+    // The variable of a `for`: declared where it is written, with the type of an element of what
+    // it walks, and the counter of a range.
+    // Line 0: import "std/vec.zc"
+    // Line 1: struct Entry { day: u16; }
+    // Line 2: fn walk(v: Vec<Entry>) -> int {
+    // Line 3:     let total = 0;
+    // Line 4:     for entry in v { total = total + entry.day; }
+    // Line 5:     for i in 0..3 { total = total + i; }
+    // Line 6:     return total;
+    // Line 7: }
+    const char *uri = "file:///tmp/test_loop_variable.zc";
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+        "{\"textDocument\": {\"uri\": \"file:///tmp/test_loop_variable.zc\", "
+        "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"import \\\"std/vec.zc\\\"\\n"
+        "struct Entry { day: u16; }\\nfn walk(v: Vec<Entry>) -> int {\\n    let total = "
+        "0;\\n    for entry in v { total = total + entry.day; }\\n    for i in 0..3 { total = "
+        "total + i; }\\n    return total;\\n}\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 952, 4, 9, "let entry: Entry");
+    expect_hover_in(uri, 953, 4, 38, "let entry: Entry");
+    expect_hover_in(uri, 954, 5, 8, "let i: i32");
+    expect_hover_in(uri, 955, 5, 36, "let i: i32");
+    printf("PASS: test_loop_variable_hover\n");
+}
+
+static void test_variant_hover(void)
+{
+    printf("Running test_variant_hover...\n");
+    // A variant, where it is declared, built (with and without a payload) and matched, with and
+    // without its enum's name.
+    // Line 0: enum Value { Hour(int), Nothing }
+    // Line 1: fn make() -> Value { return Value::Hour(3); }
+    // Line 2: fn none() -> Value { return Value::Nothing; }
+    // Line 3: fn kind(v: Value) -> int {
+    // Line 4:     match v { Value::Hour(h) => { return h; }, Nothing => { return 0; } }
+    // Line 5: }
+    const char *uri = "file:///tmp/test_variant_hover.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_variant_hover.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"enum Value { Hour(int), "
+                 "Nothing }\\nfn make() -> Value { return Value::Hour(3); }\\nfn none() -> Value { "
+                 "return Value::Nothing; }\\nfn kind(v: Value) -> int {\\n    match v { "
+                 "Value::Hour(h) => { return h; }, Nothing => { return 0; } }\\n}\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 956, 0, 14, "Value::Hour(i32)");
+    expect_hover_in(uri, 957, 1, 37, "Value::Hour(i32)");
+    expect_hover_in(uri, 958, 2, 37, "Value::Nothing");
+    expect_hover_in(uri, 959, 4, 22, "Value::Hour(i32)");
+    expect_hover_in(uri, 960, 4, 15, "enum Value");
+    expect_hover_in(uri, 961, 4, 47, "Value::Nothing");
+    printf("PASS: test_variant_hover\n");
+}
+
+static void test_generic_function_hover(void)
+{
+    printf("Running test_generic_function_hover...\n");
+    // A generic function is a template, not a node of the file's AST: its name, its parameters,
+    // what its body declares and its calls have hover all the same.
+    // Line 0: fn pop_count<T>(n: T) -> int {
+    // Line 1:     let count = 0;
+    // Line 2:     return count + n;
+    // Line 3: }
+    // Line 4: fn use_it() -> int { return pop_count<int>(5); }
+    const char *uri = "file:///tmp/test_generic_function_hover.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_generic_function_hover.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"fn pop_count<T>(n: T) -> "
+                 "int {\\n    let count = 0;\\n    return count + n;\\n}\\nfn use_it() -> int { "
+                 "return pop_count<int>(5); }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 962, 0, 4, "fn pop_count<T>(n: T) -> int");
+    expect_hover_in(uri, 963, 0, 16, "n: T");
+    expect_hover_in(uri, 964, 2, 12, "let count: i32");
+    expect_hover_in(uri, 965, 2, 20, "n: T");
+    expect_hover_in(uri, 966, 4, 29, "fn pop_count<T>(n: T) -> int");
+    printf("PASS: test_generic_function_hover\n");
+}
+
+static void test_literal_field_hover(void)
+{
+    printf("Running test_literal_field_hover...\n");
+    // The name of a field in a struct literal is that field, not the value it takes.
+    // Line 0: struct Retraction { told: int; day: u16; }
+    // Line 1: fn make(told: int) -> Retraction { return Retraction { told: told, day: 1 }; }
+    const char *uri = "file:///tmp/test_literal_field_hover.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_literal_field_hover.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"struct Retraction { told: "
+                 "int; day: u16; }\\nfn make(told: int) -> Retraction { return Retraction { told: "
+                 "told, day: 1 }; }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 967, 1, 56, "field told: i32");
+    expect_hover_in(uri, 968, 1, 62, "```zc\\ntold: i32");
+    expect_hover_in(uri, 969, 1, 68, "field day: u16");
+    printf("PASS: test_literal_field_hover\n");
+}
+
+static void test_generic_parameter_hover(void)
+{
+    printf("Running test_generic_parameter_hover...\n");
+    // A generic parameter is declared by its struct, impl or function: each `T` is the one in
+    // scope where it is written.
+    // Line 0: struct Box<T> { val: T; }
+    // Line 1: impl<T> Box<T> { fn get(self) -> T { return self.val; } }
+    // Line 2: fn first<U>(a: U, b: U) -> U { return a; }
+    const char *path = "/tmp/test_generic_parameter_hover.zc";
+    const char *uri = "file:///tmp/test_generic_parameter_hover.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_generic_parameter_hover.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"struct Box<T> { val: T; "
+                 "}\\nimpl<T> Box<T> { fn get(self) -> T { return self.val; } }\\nfn first<U>(a: "
+                 "U, b: U) -> U { return a; }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 970, 0, 11, "type parameter T");
+    expect_hover_in(uri, 971, 0, 21, "type parameter T");
+    expect_hover_in(uri, 972, 1, 12, "type parameter T");
+    expect_hover_in(uri, 973, 1, 33, "type parameter T");
+    expect_hover_in(uri, 974, 2, 27, "type parameter U");
+    expect_definition(975, "T of the impl", path, 1, 33, "test_generic_parameter_hover.zc", 1);
+    expect_definition(976, "T of the struct", path, 0, 21, "test_generic_parameter_hover.zc", 0);
+    expect_definition(977, "U", path, 2, 15, "test_generic_parameter_hover.zc", 2);
+    printf("PASS: test_generic_parameter_hover\n");
+}
+
+static void test_primitive_hover(void)
+{
+    printf("Running test_primitive_hover...\n");
+    // Every name of a primitive, its aliases too, describes its type and gives its C spelling.
+    // Line 0: let a: int = 1;
+    // Line 1: let b: int32 = 2;
+    // Line 2: let c: c_long = 3;
+    const char *uri = "file:///tmp/test_primitive_hover.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_primitive_hover.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"let a: int = 1;\\nlet b: "
+                 "int32 = 2;\\nlet c: c_long = 3;\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 943, 0, 8, "**int**: 32-bit signed integer. `int32_t` in C.");
+    expect_hover_in(uri, 944, 1, 8, "**int32**: 32-bit signed integer. `int32_t` in C.");
+    expect_hover_in(uri, 945, 2, 8, "`long` in C.");
+    printf("PASS: test_primitive_hover\n");
+}
+
+static void test_uri_with_spaces(void)
+{
+    printf("Running test_uri_with_spaces...\n");
+    // A file whose path has spaces: its URI is percent-encoded, both in what the client sends and
+    // in what the server answers. On disk it declares `on_disk`; the editor has `in_editor`.
+    mkdir("/tmp/zc lsp space", 0755);
+    write_file("/tmp/zc lsp space/a b.zc", "fn on_disk() -> int { return 1; }\n");
+    const char *uri = "file:///tmp/zc%20lsp%20space/a%20b.zc";
+    // Line 0: fn in_editor() -> int { return 2; }
+    // Line 1: fn use_it() -> int { return in_editor(); }
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/zc%20lsp%20space/a%20b.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"fn in_editor() -> int { "
+                 "return 2; }\\nfn use_it() -> int { return in_editor(); }\\n\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 940, 0, 4, "fn in_editor() -> int");
+
+    // The definition is given with the URI encoded, as the client sent it.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 941, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/zc%20lsp%20space/a%20b.zc\"}, "
+                 "\"position\": {\"line\": 1, \"character\": 30}}}");
+    char *resp = wait_for_response(941);
+    if (!resp || !strstr(resp, "\"uri\":\"file:///tmp/zc%20lsp%20space/a%20b.zc\""))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("A URI with spaces is answered percent-encoded");
+    }
+    free(resp);
+
+    // Closed, the file is the one on disk again.
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didClose\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/zc%20lsp%20space/a%20b.zc\"}}}");
+    usleep(100000);
+    expect_hover_in(uri, 942, 0, 4, "fn on_disk() -> int");
+    printf("PASS: test_uri_with_spaces\n");
+}
+
+static void test_deleted_declarations(void)
+{
+    printf("Running test_deleted_declarations...\n");
+    // What a file no longer declares is no longer offered: completion and signature help read
+    // the declarations of each file's last parse, not what the parser registered before.
+    // Line 0: struct Kept { v: int; }
+    // Line 1: impl Kept { fn vanish(self) -> int { return 1; } }
+    // Line 2: fn helper_gone(a: int, b: int) -> int { return a + b; }
+    // Line 3: fn main() {
+    // Line 4:     let k = Kept { v: 1 };
+    // Line 5:     k.
+    // Line 6:     helper_gone(1,
+    // Line 7: }
+    const char *path = C_TEST_DIR "/deleted.zc";
+    open_document(path,
+                  "struct Kept { v: int; }\nimpl Kept { fn vanish(self) -> int { return 1; } }\n"
+                  "fn helper_gone(a: int, b: int) -> int { return a + b; }\nfn main() {\n    "
+                  "let k = Kept { v: 1 };\n    k.\n    helper_gone(1, \n}\n");
+    if (completion_kind(880, path, 6, 4, "helper_gone") < 0 ||
+        completion_kind(881, path, 5, 6, "vanish") < 0)
+    {
+        fail("Completion offers what the file declares");
+    }
+
+    // Lines 1 and 2 are gone: line 3 is `    k.` and line 4 `    helper_gone(1,`.
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didChange\", \"params\": "
+        "{\"textDocument\": {\"uri\": \"file://" C_TEST_DIR "/deleted.zc\", \"version\": 2}, "
+        "\"contentChanges\": [{\"text\": \"struct Kept { v: int; }\\nfn main() {\\n    let k "
+        "= Kept { v: 1 };\\n    k.\\n    helper_gone(1, \\n}\\n\"}]}}");
+    usleep(100000);
+    if (completion_kind(882, path, 4, 4, "helper_gone") >= 0 ||
+        completion_kind(883, path, 3, 6, "vanish") >= 0 ||
+        completion_kind(884, path, 3, 6, "v") < 0)
+    {
+        fail("Completion does not offer what the file no longer declares");
+    }
+    cJSON *help = position_request(885, "textDocument/signatureHelp", path, 4, 19);
+    if (!cJSON_IsNull(cJSON_GetObjectItem(help, "result")))
+    {
+        fail("Signature help does not answer for a function the file no longer declares");
+    }
+    cJSON_Delete(help);
+    printf("PASS: test_deleted_declarations\n");
+}
+
+static void test_keyword_completion(void)
+{
+    printf("Running test_keyword_completion...\n");
+    const char *path = C_TEST_DIR "/keywords.zc";
+    // Line 0: (top level)
+    // Line 2:     (in the body of main)
+    open_document(path, "\nfn main() {\n    \n}\n");
+    // Kinds: 3 function, 14 keyword; -1 not offered.
+    const struct
+    {
+        int line;
+        const char *label;
+        int kind;
+    } cases[] = {{2, "match", 14},  {2, "malloc", 3}, {2, "module", -1}, {2, "import", -1},
+                 {0, "import", 14}, {0, "if", -1},    {0, "malloc", -1}, {2, "repeat", -1},
+                 {2, "unless", -1}, {0, "async", -1}};
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++)
+    {
+        int kind = completion_kind(870 + (int)c, path, cases[c].line, cases[c].line ? 4 : 0,
+                                   cases[c].label);
+        if (kind != cases[c].kind)
+        {
+            printf("Completion of %s on line %d: kind %d, expected %d\n", cases[c].label,
+                   cases[c].line, kind, cases[c].kind);
+            fail("Completion offers the language's keywords where they start a construct");
+        }
+    }
+    printf("PASS: test_keyword_completion\n");
+}
+
+static void test_local_completion(void)
+{
+    printf("Running test_local_completion...\n");
+    const char *path = C_TEST_DIR "/locals.zc";
+    // A `let` in the body of a `for ... in` or of a `match` arm is offered there.
+    open_document(path, "fn walk(n: int) {\n"
+                        "    for i in 0..2 {\n"
+                        "        let step = i;\n"
+                        "        st\n"
+                        "    }\n"
+                        "    match n {\n"
+                        "        1 => { let chosen = n; ch }\n"
+                        "        _ => {}\n"
+                        "    }\n"
+                        "}\n");
+    const struct
+    {
+        int line;
+        int character;
+        const char *label;
+    } cases[] = {{3, 10, "step"}, {6, 33, "chosen"}};
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++)
+    {
+        cJSON *response = position_request(860 + (int)c, "textDocument/completion", path,
+                                           cases[c].line, cases[c].character);
+        cJSON *items = cJSON_GetObjectItem(response, "result");
+        int found = 0;
+        for (int i = 0; i < cJSON_GetArraySize(items); i++)
+        {
+            cJSON *label = cJSON_GetObjectItem(cJSON_GetArrayItem(items, i), "label");
+            found |= cJSON_IsString(label) && strcmp(label->valuestring, cases[c].label) == 0;
+        }
+        if (!found)
+        {
+            printf("Completion at %d:%d without the local %s\n", cases[c].line, cases[c].character,
+                   cases[c].label);
+            fail("Completion offers the locals of every kind of body");
+        }
+        cJSON_Delete(response);
+    }
+    printf("PASS: test_local_completion\n");
 }
 
 static void test_member_completion(void)
@@ -1322,6 +3265,13 @@ static void test_member_completion(void)
                         "    Point::\n"
                         "    h.\n"
                         "    Po\n"
+                        "    my__h\n"
+                        "}\n"
+                        "fn my__helper() -> int { return 1; }\n"
+                        "enum Mode { On, Off }\n"
+                        "fn modes() {\n"
+                        "    let m: Mode = Mode::On;\n"
+                        "    m.\n"
                         "}\n");
     // Fields and methods after `value.`, also with part of the name typed.
     expect_completion(840, path, 12, 6, "x", 5);
@@ -1335,6 +3285,11 @@ static void test_member_completion(void)
     expect_completion(846, path, 15, 6, "get", 2);
     // Not the C name of a method.
     expect_no_completion(847, path, 16, 6, "Point__len2");
+    // A struct and a function by the names they are declared with, `__` included.
+    expect_completion(848, path, 16, 6, "Point", 22);
+    expect_completion(849, path, 17, 9, "my__helper", 3);
+    // The variants of an enum after `value.` are enum members (20), as after `Enum::`.
+    expect_completion(850, path, 23, 6, "On", 20);
     printf("PASS: test_member_completion\n");
 }
 
@@ -1819,6 +3774,124 @@ static int has_token_at(cJSON *data, int line, int col, int type)
     return 0;
 }
 
+static void test_semantic_tokens_whole_file(void)
+{
+    printf("Running test_semantic_tokens_whole_file...\n");
+    // Every declaration of the file, every method of an impl, and what is inside the bodies of
+    // `if`, `while` and `for`.
+    // Line 0: struct Pair { a: int; b: int; }
+    // Line 1: impl Pair { fn left() -> int { return 1; } fn right() -> int { return 2; } }
+    // Line 2: fn first() -> int { return 1; }
+    // Line 3: fn second(m: int) -> int {
+    // Line 4:     let total = 0;
+    // Line 5:     if total == 0 { let inside = 2; }
+    // Line 6:     while total < 3 { total = total + 1; }
+    // Line 7:     for i in 0..2 { let looped = i; }
+    // Line 8:     return total;
+    // Line 9: }
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+        "{\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_whole.zc\", "
+        "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+        "\"struct Pair { a: int; b: int; }\\nimpl Pair { fn left() -> int { return 1; } fn "
+        "right() -> int { return 2; } }\\nfn first() -> int { return 1; }\\n"
+        "fn second(m: int) -> int {\\n"
+        "    let total = 0;\\n    if total == 0 { let inside = 2; }\\n"
+        "    while total < 3 { total = total + 1; }\\n"
+        "    for i in 0..2 { let looped = i; }\\n    return total;\\n}\\n\"}}}");
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 53, \"method\": \"textDocument/semanticTokens/full\", "
+        "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_whole.zc\"}}}");
+    char *resp = wait_for_response(53);
+    cJSON *json = resp ? cJSON_Parse(resp) : NULL;
+    cJSON *data = cJSON_GetObjectItem(cJSON_GetObjectItem(json, "result"), "data");
+    // Types: 0 variable, 1 function, 5 number.
+    const int expected[][3] = {{1, 15, 1}, {1, 46, 1}, {2, 3, 1},  {3, 3, 1},
+                               {5, 24, 0}, {5, 16, 5}, {6, 10, 0}, {7, 24, 0}};
+    for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++)
+    {
+        if (!has_token_at(data, expected[i][0], expected[i][1], expected[i][2]))
+        {
+            printf("No token of type %d at %d:%d: %s\n", expected[i][2], expected[i][0],
+                   expected[i][1], resp ? resp : "(no response)");
+            fail("Semantic tokens cover the whole file");
+        }
+    }
+    cJSON_Delete(json);
+    free(resp);
+    printf("PASS: test_semantic_tokens_whole_file\n");
+}
+
+static void test_semantic_keywords(void)
+{
+    printf("Running test_semantic_keywords...\n");
+    // The keywords are the language's: `for` is one, `println` is a function of std/io.
+    // Line 0: fn main() {
+    // Line 1:     for i in 0..2 { println("x"); }
+    // Line 2: }
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_keywords.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"fn main() {\\n    for i in 0..2 { println(\\\"x\\\"); }\\n}\\n\"}}}");
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 54, \"method\": \"textDocument/semanticTokens/full\", "
+        "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_keywords.zc\"}}}");
+    char *resp = wait_for_response(54);
+    cJSON *json = resp ? cJSON_Parse(resp) : NULL;
+    cJSON *data = cJSON_GetObjectItem(cJSON_GetObjectItem(json, "result"), "data");
+    // Type 3 is keyword.
+    if (!has_token_at(data, 1, 4, 3) || !has_token_at(data, 1, 10, 3) ||
+        has_token_at(data, 1, 20, 3))
+    {
+        printf("Semantic tokens: %s\n", resp ? resp : "(no response)");
+        fail("`for` and `in` are keywords and `println` is not");
+    }
+    cJSON_Delete(json);
+    free(resp);
+    printf("PASS: test_semantic_keywords\n");
+}
+
+static void test_semantic_token_modifiers(void)
+{
+    printf("Running test_semantic_token_modifiers...\n");
+    // Line 0: def LIMIT = 3;
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_modifiers.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"def LIMIT = 3;\\n\"}}}");
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 52, \"method\": \"textDocument/semanticTokens/full\", "
+        "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_semantic_modifiers.zc\"}}}");
+    char *resp = wait_for_response(52);
+    cJSON *json = resp ? cJSON_Parse(resp) : NULL;
+    cJSON *data = cJSON_GetObjectItem(cJSON_GetObjectItem(json, "result"), "data");
+    // Five numbers per token: line and column (relative to the previous token), length, type and
+    // modifiers. A `def` is readonly: index 2 of tokenModifiers, bit 4.
+    int def_modifiers = -1;
+    int line = 0;
+    int col = 0;
+    for (int i = 0; i + 4 < cJSON_GetArraySize(data); i += 5)
+    {
+        int delta_line = cJSON_GetArrayItem(data, i)->valueint;
+        int delta_col = cJSON_GetArrayItem(data, i + 1)->valueint;
+        col = delta_line ? delta_col : col + delta_col;
+        line += delta_line;
+        int modifiers = cJSON_GetArrayItem(data, i + 4)->valueint;
+        if (line == 0 && col == 4)
+        {
+            def_modifiers = modifiers;
+        }
+    }
+    if (def_modifiers != 4)
+    {
+        printf("Modifiers of the def: %d: %s\n", def_modifiers, resp ? resp : "(no response)");
+        fail("A def is readonly");
+    }
+    cJSON_Delete(json);
+    free(resp);
+    printf("PASS: test_semantic_token_modifiers\n");
+}
+
 static void test_semantic_tokens_skip_text(void)
 {
     printf("Running test_semantic_tokens_skip_text...\n");
@@ -2265,6 +4338,21 @@ static void test_std_import_in_other_project(void)
     }
     free(diagnostics);
 
+    // The std is not in this workspace: its definitions are reached all the same (#103).
+    // Line 1: fn main() { let v = Vec<int>::new(); }
+    expect_hover_in("file:///tmp/zc_lsp_std/main.zc", 1303, 1, 20, "struct Vec");
+    expect_hover_in("file:///tmp/zc_lsp_std/main.zc", 1304, 1, 30, "fn new()");
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 1305, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/zc_lsp_std/main.zc\"}, "
+                 "\"position\": {\"line\": 1, \"character\": 20}}}");
+    char *definition = wait_for_response(1305);
+    if (!definition || !strstr(definition, "std/vec.zc"))
+    {
+        printf("Definition response: %s\n", definition ? definition : "(no response)");
+        fail("Go to definition must reach std/vec.zc from a workspace without it");
+    }
+    free(definition);
+
     send_request(
         "{\"jsonrpc\": \"2.0\", \"id\": 1302, \"method\": \"shutdown\", \"params\": null}");
     free(wait_for_response(1302));
@@ -2285,14 +4373,34 @@ int main()
 
     start_lsp_server();
     test_initialize();
+    // Early: once the arena outgrows the project, an edit rebuilds it and registers every trait
+    // again, which would hide the trait the read-only request forgot.
+    test_imported_trait_after_read_request();
     test_hover();
     test_hover_signature();
+    test_unclosed_include_keeps_server_alive();
+    test_fstring_interpolation_lookup();
+    test_hover_parameters();
+    test_occurrences_by_scope();
+    test_enum_rename();
+    test_field_occurrences();
+    test_hover_beside_generated_code();
+    test_hover_type_names();
+    test_hover_module_type_names();
+    test_type_path_lookup();
+    test_definition_in_other_file();
+    test_type_name_lookup();
+    test_impl_header_lookup();
+    test_generic_impls_keep_server_alive();
     test_completion();
     test_struct_completion();
     test_diagnostics();
     test_diagnostic_hints();
     test_semantic_tokens();
     test_semantic_tokens_skip_text();
+    test_semantic_token_modifiers();
+    test_semantic_keywords();
+    test_semantic_tokens_whole_file();
     test_definition();
     test_declaration();
     test_references();
@@ -2303,10 +4411,10 @@ int main()
     test_definition_partial_code();
     test_references_partial_code();
     test_request_unopened_file();
+    test_every_request_answered();
     test_empty_source();
     test_did_change();
     test_type_errors_keep_recursion_depth();
-    test_code_action();
     test_completion_prefix();
     test_unknown_method();
     test_string_id();
@@ -2314,10 +4422,34 @@ int main()
     test_variant_constructor_from_other_file();
     test_did_close();
     test_c_header_symbols();
+    test_unknown_type_warning();
     test_c_header_reexports();
     test_c_header_completion();
     test_signature_as_written();
+    test_signature_of_the_called_function();
     test_member_completion();
+    test_local_completion();
+    test_keyword_completion();
+    test_deleted_declarations();
+    test_uri_with_spaces();
+    test_primitive_hover();
+    test_literal_field_hover();
+    test_generic_parameter_hover();
+    test_generic_function_hover();
+    test_variant_hover();
+    test_loop_variable_hover();
+    test_member_hover();
+    test_qualified_member_completion();
+    test_type_position_completion();
+    test_literal_field_completion();
+    test_scope_completion_trigger();
+    test_module_alias_completion();
+    test_trait_value_completion();
+    test_trait_impl_completion();
+    test_implement_trait_action();
+    test_import_type_action();
+    test_type_from_imported_file();
+    test_importers_follow_an_edit();
     test_c_struct_field_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
