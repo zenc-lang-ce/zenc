@@ -63,9 +63,9 @@ char *c_type_spelling(ParserContext *ctx, Type *t)
     return type_to_c_string_with(t, ctx->config->misra_mode, link_name_of, ctx);
 }
 
-char *declared_c_type(ParserContext *ctx, ASTNode *decl)
+char *node_c_type(ParserContext *ctx, ASTNode *node)
 {
-    Type *t = decl->type_info;
+    Type *t = node ? node->type_info : NULL;
     return (t && t->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, t) : NULL;
 }
 
@@ -229,7 +229,7 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
     char *inferred = NULL;
     if (init_expr)
     {
-        inferred = infer_type(ctx, init_expr);
+        inferred = node_c_type(ctx, init_expr);
     }
 
     if (inferred && strcmp(inferred, "__auto_type") != 0 && strcmp(inferred, "unknown") != 0)
@@ -256,7 +256,7 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
 // is itself a declarator (a function pointer or an array).
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr)
 {
-    char *type = infer_type(ctx, expr);
+    char *type = node_c_type(ctx, expr);
     if (!type || strcmp(type, "__auto_type") == 0 || strcmp(type, "unknown") == 0)
     {
         return NULL;

@@ -148,7 +148,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             if (node->for_stmt.init->kind == NODE_VAR_DECL)
             {
                 ASTNode *v = node->for_stmt.init;
-                char *declared = declared_c_type(ctx, v);
+                char *declared = node_c_type(ctx, v);
                 if (declared)
                 {
                     EMIT(ctx, "%s %s = (%s)(", declared, c_name(ctx, v->var_decl.name), declared);

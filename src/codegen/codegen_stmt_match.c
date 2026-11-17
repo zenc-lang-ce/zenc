@@ -107,7 +107,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     int is_self = (node->match_stmt.expr->kind == NODE_EXPR_VAR &&
                    strcmp(node->match_stmt.expr->var_ref.name, "self") == 0);
 
-    char *ret_type = infer_type(ctx, node);
+    char *ret_type = node_c_type(ctx, node);
     int is_expr = (use_result && ret_type && strcmp(ret_type, "void") != 0);
 
     if (is_expr)

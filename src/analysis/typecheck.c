@@ -215,13 +215,14 @@ static Type *try_value_type(ParserContext *ctx, Type *t)
     {
         return NULL;
     }
-    if (t->kind == TYPE_STRUCT)
+    // An enum by its declaration: the kind of a Type does not tell one from a struct (a value of a
+    // user's enum may have TYPE_STRUCT).
+    ASTNode *def = named_type_def(ctx, t);
+    if (!def || def->kind != NODE_ENUM)
     {
-        return struct_field_type(ctx, t, "val");
+        return t->kind == TYPE_STRUCT ? struct_field_type(ctx, t, "val") : NULL;
     }
-    ASTNode *def = t->kind == TYPE_ENUM ? named_type_def(ctx, t) : NULL;
-    for (ASTNode *variant = (def && def->kind == NODE_ENUM) ? def->enm.variants : NULL; variant;
-         variant = variant->next)
+    for (ASTNode *variant = def->enm.variants; variant; variant = variant->next)
     {
         if (variant->variant.name && (strcmp(variant->variant.name, "Ok") == 0 ||
                                       strcmp(variant->variant.name, "Some") == 0))

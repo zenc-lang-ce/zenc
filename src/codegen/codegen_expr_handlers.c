@@ -323,7 +323,7 @@ static void emit_coalesce(ParserContext *ctx, ASTNode *node)
 // `==` and `!=`: a struct compares through its `eq` (or `neq`), anything else as in C.
 static void emit_equality(ParserContext *ctx, ASTNode *node)
 {
-    char *t1 = infer_type(ctx, node->binary.left);
+    char *t1 = node_c_type(ctx, node->binary.left);
     int is_ptr = 0;
     char *fully_resolved = t1;
     char *mangle_base = t1;
@@ -457,7 +457,7 @@ static void emit_equality(ParserContext *ctx, ASTNode *node)
     }
     else if (t1 && (strcmp(t1, "string") == 0))
     {
-        char *t2 = infer_type(ctx, node->binary.right);
+        char *t2 = node_c_type(ctx, node->binary.right);
         if (t2 && (strcmp(t2, "string") == 0))
         {
             EMIT(ctx, "(strcmp(");

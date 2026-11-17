@@ -54,7 +54,7 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             {
                 EMIT(ctx, "__attribute__((unused)) const ");
             }
-            char *declared = declared_c_type(ctx, node);
+            char *declared = node_c_type(ctx, node);
             if (declared)
             {
                 emit_var_decl_type(ctx, declared, node->var_decl.name);
@@ -64,7 +64,7 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
                 char *inferred = NULL;
                 if (node->var_decl.init_expr)
                 {
-                    inferred = infer_type(ctx, node->var_decl.init_expr);
+                    inferred = node_c_type(ctx, node->var_decl.init_expr);
                 }
 
                 if (inferred && strcmp(inferred, "__auto_type") != 0)
@@ -84,10 +84,10 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             if (node->var_decl.init_expr)
             {
                 EMIT(ctx, " = ");
-                char *tname =
-                    declared ? declared
-                             : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                         : NULL);
+                char *tname = declared ? declared
+                                       : (node->var_decl.init_expr
+                                              ? node_c_type(ctx, node->var_decl.init_expr)
+                                              : NULL);
                 if (ctx->config->use_cpp && tname &&
                     (strchr(tname, '*') || is_enum_type_name(ctx, tname)))
                 {
