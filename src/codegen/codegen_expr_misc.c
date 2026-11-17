@@ -19,8 +19,12 @@
 static void emit_array_as_slice(ParserContext *ctx, ASTNode *node)
 {
     ASTNode *array = node->cast.expr;
+    Type *elem = slice_element(node->type_info);
     char *slice_name = c_type_spelling(ctx, node->type_info);
-    char *elem_name = c_type_spelling(ctx, slice_element(node->type_info));
+    // The elements' array and a pointer to the first, declared or as a cast, as C writes them
+    // for any element type (`int32_t __tmp[]`, `int32_t (*__tmp[])(int32_t)`).
+    char *tmp_array = c_declaration(ctx, elem, "__tmp[]");
+    char *elem_pointer = c_declaration(ctx, type_new_ptr(elem), "");
     int len = array->kind == NODE_EXPR_ARRAY_LITERAL ? array->array_literal.count
                                                      : array->type_info->array_size;
 #if FF_COMPATIBILITY_0_5
@@ -32,12 +36,13 @@ static void emit_array_as_slice(ParserContext *ctx, ASTNode *node)
     snprintf(cap_positional, sizeof(cap_positional), ", %d", len);
     if (array->kind == NODE_EXPR_ARRAY_LITERAL && array->array_literal.returned_as_slice)
     {
-        EMIT(ctx, "({ %s __tmp[] = ", elem_name);
+        char *heap = c_declaration(ctx, type_new_ptr(elem), "__heap");
+        EMIT(ctx, "({ %s = ", tmp_array);
         codegen_expression(ctx, array);
         EMIT(ctx,
-             "; %s *__heap = (%s *)malloc(sizeof(__tmp)); memcpy(__heap, __tmp, sizeof(__tmp)); "
+             "; %s = (%s)malloc(sizeof(__tmp)); memcpy(__heap, __tmp, sizeof(__tmp)); "
              "(%s){__heap, %d, %d}; })",
-             elem_name, elem_name, slice_name, len, len);
+             heap, elem_pointer, slice_name, len, len);
         return;
     }
 #else
@@ -52,14 +57,20 @@ static void emit_array_as_slice(ParserContext *ctx, ASTNode *node)
     }
     else if (ctx->config->use_cpp && ctx->cg.current_func_ret_type_info)
     {
-        // C++ has no array compound literals: the elements go in a static array.
-        EMIT(ctx, "({ static const %s __tmp[] = ", elem_name);
+        // C++ has no array compound literals: the elements go in a static array, of const
+        // elements.
+        Type *const_elem = type_clone(elem);
+        const_elem->is_const = 1;
+        char *static_array = c_declaration(ctx, const_elem, "__tmp[]");
+        EMIT(ctx, "({ static %s = ", static_array);
+        zfree(static_array);
         codegen_expression(ctx, array);
-        EMIT(ctx, "; (%s){(%s *)__tmp, %d%s}; })", slice_name, elem_name, len, cap_positional);
+        EMIT(ctx, "; (%s){(%s)__tmp, %d%s}; })", slice_name, elem_pointer, len, cap_positional);
     }
     else
     {
-        EMIT(ctx, "(%s){.data = (%s[])", slice_name, elem_name);
+        char *literal = c_declaration(ctx, elem, "[]");
+        EMIT(ctx, "(%s){.data = (%s)", slice_name, literal);
         codegen_expression(ctx, array);
         EMIT(ctx, ", .len = %d%s}", len, cap);
     }

@@ -104,15 +104,13 @@ void emit_function_exit_begin(ParserContext *ctx, ASTNode *value)
         emitter_indent(&ctx->cg.emitter);
         if (ret && ret->kind != TYPE_VOID)
         {
-            char *tstr = c_type_spelling(ctx, ret);
-            EMIT(ctx, "%s", tstr);
-            zfree(tstr);
+            emit_c_decl(ctx, ret, "_z_ret");
         }
         else
         {
-            emit_auto_type(ctx, value, value->token);
+            emit_auto_declaration(ctx, value, "_z_ret");
         }
-        EMIT(ctx, " _z_ret = ");
+        EMIT(ctx, " = ");
     }
     else if (!ctx->config->misra_mode)
     {
@@ -212,15 +210,17 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 char *declared = node_c_type(ctx, v);
                 if (declared)
                 {
-                    EMIT(ctx, "%s %s = (%s)(", declared,
-                         local_decl_c_name(ctx, v->token, v->var_decl.name), declared);
+                    emit_c_decl(ctx, v->type_info,
+                                local_decl_c_name(ctx, v->token, v->var_decl.name));
+                    EMIT(ctx, " = (%s)(", declared);
                     codegen_expression(ctx, v->var_decl.init_expr);
                     EMIT(ctx, ")");
                 }
                 else
                 {
-                    emit_auto_type(ctx, v->var_decl.init_expr, v->token);
-                    EMIT(ctx, " %s = ", local_decl_c_name(ctx, v->token, v->var_decl.name));
+                    emit_auto_declaration(ctx, v->var_decl.init_expr,
+                                          local_decl_c_name(ctx, v->token, v->var_decl.name));
+                    EMIT(ctx, " = ");
                     codegen_expression(ctx, v->var_decl.init_expr);
                 }
             }
@@ -622,8 +622,8 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     case NODE_REPL_PRINT:
     {
         EMIT(ctx, "{ ");
-        emit_auto_type(ctx, node->repl_print.expr, node->token);
-        EMIT(ctx, " _zval = (");
+        emit_auto_declaration(ctx, node->repl_print.expr, "_zval");
+        EMIT(ctx, " = (");
         codegen_expression(ctx, node->repl_print.expr);
         EMIT(ctx,
              "); fprintf(stdout, _z_str(_zval), _z_arg(_zval)); fprintf(stdout, \"\\n\"); }\n");

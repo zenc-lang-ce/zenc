@@ -43,11 +43,11 @@ void handle_if_expr(ParserContext *ctx, ASTNode *node)
         then_result = node->if_stmt.then_body;
     }
 
-    // By name when it is known: __typeof__ of a string literal is an array, not assignable
-    char *type = then_result ? c_type_name_or_null(ctx, then_result) : NULL;
-    if (type)
+    // By its type when it is known: __typeof__ of a string literal is an array, not assignable
+    if (then_result && has_c_spelling(then_result->type_info))
     {
-        EMIT(ctx, "%s _ifval; ", type);
+        emit_c_decl(ctx, then_result->type_info, "_ifval");
+        EMIT(ctx, "; ");
     }
     else if (then_result)
     {
@@ -178,8 +178,8 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
         type_is_instance_of(expr_type && expr_type->name ? expr_type : ret_type, "Option");
 
     EMIT(ctx, "({ ");
-    emit_auto_type(ctx, node->try_stmt.expr, node->token);
-    EMIT(ctx, " _try = ");
+    emit_auto_declaration(ctx, node->try_stmt.expr, "_try");
+    EMIT(ctx, " = ");
     codegen_expression(ctx, node->try_stmt.expr);
 
     const char *failure;
