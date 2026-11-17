@@ -767,7 +767,7 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
         if (callee && callee->kind == NODE_EXPR_VAR)
         {
             FuncSig *sig = find_func(ctx, callee->var_ref.name);
-            if (sig && sig->required)
+            if (sig && sig->decl && sig->decl->func.required)
             {
                 zwarn_at(tk, "Ignoring return value of function marked @required");
                 fprintf(stderr, COLOR_CYAN "   = note: " COLOR_RESET

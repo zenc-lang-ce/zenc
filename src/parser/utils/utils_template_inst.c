@@ -334,12 +334,12 @@ static void register_enum_constructor(ParserContext *ctx, const char *m, const c
     {
         Type **at = xmalloc(sizeof(Type *));
         at[0] = payload;
-        register_func(ctx, ctx->global_scope, mangled_var, 1, NULL, at, ret_t, 0, 0, NULL,
+        register_func(ctx, ctx->global_scope, mangled_var, 1, NULL, at, ret_t, 0, NULL,
                       xstrdup(var_name), token, is_export);
     }
     else
     {
-        register_func(ctx, ctx->global_scope, mangled_var, 0, NULL, NULL, ret_t, 0, 0, NULL,
+        register_func(ctx, ctx->global_scope, mangled_var, 0, NULL, NULL, ret_t, 0, NULL,
                       xstrdup(var_name), token, is_export);
     }
     zfree(mangled_var);

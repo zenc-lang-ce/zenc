@@ -98,8 +98,7 @@ void init_builtins(void)
 
 FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
                        ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
-                       int is_pure, const char *link_name, const char *own_name, Token decl_token,
-                       int is_export)
+                       const char *link_name, const char *own_name, Token decl_token, int is_export)
 {
     FuncSig *f = NULL;
     if (ctx->config->mode_lsp || ctx->config->misra_mode)
@@ -128,8 +127,6 @@ FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int c
     f->arg_types = arg_types;
     f->ret_type = ret_type;
     f->is_varargs = is_varargs;
-    f->is_pure = is_pure;
-    f->required = 0;
     f->own_name = own_name;
 
     Scope *target_scope = scope ? scope : ctx->current_scope;
@@ -171,7 +168,7 @@ FuncSig *register_function(ParserContext *ctx, Scope *scope, ASTNode *fn, const 
 {
     FuncSig *sig =
         register_func(ctx, scope, name, fn->func.count, fn->func.default_values, fn->func.arg_types,
-                      fn->func.ret_type_info, fn->func.is_varargs, fn->func.pure, fn->link_name,
+                      fn->func.ret_type_info, fn->func.is_varargs, fn->link_name,
                       fn->func.is_method ? fn->func.name : NULL, fn->token, is_export);
     sig->decl = fn;
     return sig;
