@@ -14,17 +14,22 @@ void add_symbol(ParserContext *ctx, const char *n, Type *type_info, int is_expor
     add_symbol_with_token(ctx, n, type_info, TOKEN_UNKNOWN, is_export);
 }
 
+void ensure_global_scope(ParserContext *ctx)
+{
+    if (!ctx->global_scope)
+    {
+        ctx->global_scope = symbol_scope_create(NULL, "Global");
+    }
+    if (!ctx->current_scope)
+    {
+        ctx->current_scope = ctx->global_scope;
+    }
+}
+
 void add_symbol_with_token(ParserContext *ctx, const char *n, Type *type_info, Token tok,
                            int is_export)
 {
-    if (!ctx->current_scope)
-    {
-        if (!ctx->global_scope)
-        {
-            ctx->global_scope = symbol_scope_create(NULL, "Global");
-        }
-        ctx->current_scope = ctx->global_scope;
-    }
+    ensure_global_scope(ctx);
 
     if (strcmp(n, "it") != 0 && strcmp(n, "self") != 0)
     {

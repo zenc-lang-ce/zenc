@@ -1338,6 +1338,15 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 }
                 // No need for resolution
             }
+            else if (!variant.member && !owner && (is_token(t, "true") || is_token(t, "false")) &&
+                     strlen(acc) == t.len)
+            {
+                node = ast_create(NODE_EXPR_LITERAL);
+                node->token = t;
+                node->literal.kind = LITERAL_BOOL;
+                node->literal.int_val = is_token(t, "true") ? 1ULL : 0ULL;
+                node->type_info = type_new(TYPE_BOOL);
+            }
             else
             {
                 node = ast_create(NODE_EXPR_VAR);

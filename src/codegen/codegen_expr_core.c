@@ -78,6 +78,10 @@ static void codegen_literal_expr(ParserContext *ctx, ASTNode *node)
         }
         EMIT(ctx, "%s", buf);
     }
+    else if (node->literal.kind == LITERAL_BOOL)
+    {
+        EMIT(ctx, "%s", node->literal.int_val ? "true" : "false");
+    }
     else // LITERAL_INT
     {
         if (node->literal.int_val > 9223372036854775807ULL)

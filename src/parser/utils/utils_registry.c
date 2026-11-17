@@ -272,6 +272,7 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
         }
     }
 
+    ensure_global_scope(ctx);
     ZenSymbol *sym_existing = symbol_lookup_local(ctx->global_scope, name);
     ZenSymbol *sym = NULL;
     if (!sym_existing)
