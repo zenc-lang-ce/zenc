@@ -75,12 +75,20 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result);
 int emit_legacy_variant_name(ParserContext *ctx, const char *name);
 #endif
 
-void emit_var_decl_type(ParserContext *ctx, const char *type_str, const char *var_name);
 /**
- * @brief Writes `type name` as a C declaration: the name goes inside a function pointer's
- * `(*)` and before an array's brackets (`int32_t name[3]`), not after the whole type.
+ * @brief emit_c_decl for a variable, by its C name.
  */
-void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name);
+void emit_var_decl_type(ParserContext *ctx, Type *t, const char *var_name);
+/**
+ * @brief Writes the C declaration of `name` with type `t` (c_declaration).
+ */
+void emit_c_decl(ParserContext *ctx, Type *t, const char *name);
+/**
+ * @brief The C declaration of `declarator` with type `t`, every struct or enum by its C name: the
+ *        declarator goes where C puts it, `int32_t name[3]`, `int32_t (*fs[2])(int32_t)`,
+ *        `int32_t (*(*p)[2])(int32_t)`. "" gives the type alone, as c_type_spelling.
+ */
+char *c_declaration(ParserContext *ctx, Type *t, const char *declarator);
 /**
  * @brief The type of a struct field spelled in C: from its Type (a @link_name struct by its C
  *        name), or from its text when the compiler made the field without one.
@@ -128,17 +136,27 @@ int is_fixed_size_array(Type *t);
  */
 const char *zero_initializer(ParserContext *ctx, Type *t);
 /**
- * @brief The type of capture `index` of a lambda spelled in C; `int` when the parser found no
- *        type for it.
- */
-char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index);
-/**
  * @brief Whether the value of capture `index` of a lambda needs dropping with the lambda's
  *        context, if it is captured by value: a struct or enum with Drop, or an owning closure.
  */
 int capture_needs_drop(ParserContext *ctx, ASTNode *lambda, int index);
-void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t);
-char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr);
+/**
+ * @brief Writes the declaration of `declarator` with the type of `expr`: as C spells it when it
+ *        is known, else with ZC_AUTO (`__typeof__` under tcc).
+ */
+void emit_auto_declaration(ParserContext *ctx, ASTNode *expr, const char *declarator);
+/**
+ * @brief Writes the parameters of the constructor of a variant whose payload is `tuple`, one per
+ *        value: `int32_t _0, int32_t (*_1)(int32_t)`.
+ */
+void emit_variant_constructor_params(ParserContext *ctx, Type *tuple);
+/**
+ * @brief Writes the start of the declaration of a function, `declarator` (its name, or `(*name)`
+ *        for a function pointer), returning `ret`, up to the `(` of its parameters. Returns what
+ *        the return type writes after their `)`: "" but for one that returns a function pointer,
+ *        `int32_t (*f(int32_t x))(int32_t)`.
+ */
+char *emit_function_head(ParserContext *ctx, Type *ret, const char *declarator);
 void emit_rvalue_address(ParserContext *ctx, ASTNode *expr);
 void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_override);
 /**

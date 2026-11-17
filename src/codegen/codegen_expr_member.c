@@ -46,8 +46,8 @@ void handle_expr_member(ParserContext *ctx, ASTNode *node)
     if (node->member.is_pointer_access == 2)
     {
         EMIT(ctx, "({ ");
-        emit_auto_type(ctx, node->member.target, node->token);
-        EMIT(ctx, " _t = (");
+        emit_auto_declaration(ctx, node->member.target, "_t");
+        EMIT(ctx, " = (");
         codegen_expression(ctx, node->member.target);
         char *field = node->member.field;
         if (field && field[0] >= '0' && field[0] <= '9')
@@ -143,14 +143,14 @@ void handle_expr_slice(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, "({ ");
     if (is_slice_struct)
     {
-        emit_auto_type(ctx, node->slice.array, node->token);
-        EMIT(ctx, " _arr = ");
+        emit_auto_declaration(ctx, node->slice.array, "_arr");
+        EMIT(ctx, " = ");
     }
     else
     {
-        char *elem = c_type_spelling(ctx, slice_element(node->type_info));
-        EMIT(ctx, "%s *_arr = ", elem);
-        zfree(elem);
+        char *arr = c_declaration(ctx, type_new_ptr(slice_element(node->type_info)), "_arr");
+        EMIT(ctx, "%s = ", arr);
+        zfree(arr);
     }
     codegen_expression(ctx, node->slice.array);
     EMIT(ctx, "; size_t _start = ");
