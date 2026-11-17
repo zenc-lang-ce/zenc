@@ -22,55 +22,20 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
         struct_name = ctx->cg.current_impl_type;
     }
 
-    // The name written in the C: the struct's @link_name if it has one.
-    const char *struct_c_name = struct_name;
-    int is_zen_struct = 0;
-    int is_union = 0;
-    StructRef *sr = ctx->parsed_structs_list;
-    int is_vector = 0;
-    while (sr)
+    // The struct the literal builds, from its type: the name written in the C is its @link_name
+    // if it has one.
+    ASTNode *def = named_type_def(ctx, node->type_info);
+    if (def && def->kind != NODE_STRUCT)
     {
-        if (sr->node && sr->node->kind == NODE_STRUCT &&
-            strcmp(sr->node->strct.name, struct_name) == 0)
-        {
-            is_zen_struct = 1;
-            if (sr->node->link_name)
-            {
-                struct_c_name = sr->node->link_name;
-            }
-            if (sr->node->strct.is_union)
-            {
-                is_union = 1;
-            }
-            if (sr->node->type_info && sr->node->type_info->kind == TYPE_VECTOR)
-            {
-                is_vector = 1;
-            }
-            break;
-        }
-        sr = sr->next;
+        def = NULL;
     }
+    const char *struct_c_name = def && def->link_name ? def->link_name : struct_name;
+    int is_zen_struct = def != NULL;
+    int is_union = def && def->strct.is_union;
+    int is_vector = def && def->type_info && def->type_info->kind == TYPE_VECTOR;
+    int vec_size = is_vector ? def->type_info->array_size : 0;
 
     int in_func = (ctx->cg.current_func_ret_type_info != NULL || ctx->cg.current_lambda != NULL);
-
-    int vec_size = 0;
-    if (is_vector)
-    {
-        StructRef *v_chk = ctx->parsed_structs_list;
-        while (v_chk)
-        {
-            if (v_chk->node && v_chk->node->kind == NODE_STRUCT &&
-                strcmp(v_chk->node->strct.name, struct_name) == 0)
-            {
-                if (v_chk->node->type_info)
-                {
-                    vec_size = v_chk->node->type_info->array_size;
-                }
-                break;
-            }
-            v_chk = v_chk->next;
-        }
-    }
 
     if (ctx->config->use_cpp)
     {
