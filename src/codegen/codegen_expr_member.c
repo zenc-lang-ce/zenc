@@ -34,16 +34,12 @@ void handle_expr_member(ParserContext *ctx, ASTNode *node)
 
     if (strcmp(node->member.field, "tag") == 0)
     {
-        char *tname = infer_type(ctx, node->member.target);
-        if (tname)
+        // The tag of an enum without payloads is the value itself.
+        const char *tname = type_def_name(node->member.target->type_info);
+        if (tname && is_simple_enum(ctx, tname))
         {
-            if (is_simple_enum(ctx, tname))
-            {
-                codegen_expression(ctx, node->member.target);
-                zfree(tname);
-                return;
-            }
-            zfree(tname);
+            codegen_expression(ctx, node->member.target);
+            return;
         }
     }
 
@@ -67,16 +63,8 @@ void handle_expr_member(ParserContext *ctx, ASTNode *node)
     {
         // `Color.Red` never gets here: the parser reads it as `Color::Red` (next_is_dot_variant).
         codegen_expression(ctx, node->member.target);
-        char *lt = infer_type(ctx, node->member.target);
-        int actually_ptr = 0;
-        if (lt && (lt[strlen(lt) - 1] == '*' || strstr(lt, "*")))
-        {
-            actually_ptr = 1;
-        }
-        if (lt)
-        {
-            zfree(lt);
-        }
+        Type *target_type = node->member.target->type_info;
+        int actually_ptr = target_type && get_inner_type(target_type)->kind == TYPE_POINTER;
 
         char *field = node->member.field;
         if (field && field[0] >= '0' && field[0] <= '9')

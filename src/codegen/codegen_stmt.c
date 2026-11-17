@@ -692,18 +692,14 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     case NODE_EXPR_MEMBER:
     {
         codegen_expression(ctx, node->member.target);
-        char *lt = infer_type(ctx, node->member.target);
-        if (lt && (lt[strlen(lt) - 1] == '*' || strstr(lt, "*")))
+        Type *target_type = node->member.target->type_info;
+        if (target_type && get_inner_type(target_type)->kind == TYPE_POINTER)
         {
             EMIT(ctx, "->%s", c_name(ctx, node->member.field));
         }
         else
         {
             EMIT(ctx, ".%s", c_name(ctx, node->member.field));
-        }
-        if (lt)
-        {
-            zfree(lt);
         }
         break;
     }
