@@ -2,7 +2,8 @@
 # Metric for stage 2 of the architecture plan (an analysis that does not destroy what it
 # reads): for every test, does checking the program twice (`--check-twice`) give the same
 # tree and the same C as checking it once? A difference means the typechecker rewrote the
-# tree in a way it cannot read again, or kept state between the two runs.
+# tree in a way it cannot read again, or kept state between the two runs. It is 0, and the CI
+# keeps it there (make test-check-twice): it exits 1 when a test differs.
 #
 # Usage (from the repository root): scripts/check_twice.sh [-v] [ZC] [test.zc...]
 #   ZC defaults to ./zc. Without test files it uses tests/scripts/list_tests.sh.
@@ -74,3 +75,4 @@ if [ $VERBOSE -eq 1 ] && [ -f "$WORK/differ.txt" ]; then
     echo "Tests:"
     sort -k2 "$WORK/differ.txt" | sed 's/^/  /'
 fi
+[ "$differ" -eq 0 ]
