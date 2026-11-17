@@ -1100,7 +1100,6 @@ int expr_is_rvalue(ParserContext *ctx, ASTNode *e);
 TypeAlias *find_type_alias_node(ParserContext *ctx, const char *name);
 char *extract_module_name(const char *path);
 char *module_prefix_for(ParserContext *ctx, const char *path);
-ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait, ASTNode *expr);
 int check_impl(ParserContext *ctx, const char *trait_name, const char *type_name);
 Instantiation *find_instantiation(ParserContext *ctx, const char *name);
 int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b);

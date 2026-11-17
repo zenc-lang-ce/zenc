@@ -224,54 +224,6 @@ ASTNode *find_function_definition(ParserContext *ctx, const char *name)
     return NULL;
 }
 
-void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
-                     char **out_var_ref_name)
-{
-    if (node->kind == NODE_EXPR_UNARY && node->unary.op == OP_ADDRESS &&
-        node->unary.operand->kind == NODE_EXPR_VAR)
-    {
-        *out_var_ref_name = node->unary.operand->var_ref.name;
-        ASTNode *operand = node->unary.operand;
-        Type *t =
-            operand->type_info ? operand->type_info : find_symbol_type_info(ctx, *out_var_ref_name);
-        *out_struct_name = t ? type_mangle_spelling(t) : NULL;
-    }
-    else if (node->kind == NODE_EXPR_VAR)
-    {
-        Type *rhs_t =
-            node->type_info ? node->type_info : find_symbol_type_info(ctx, node->var_ref.name);
-        if (rhs_t && rhs_t->kind == TYPE_POINTER && rhs_t->inner &&
-            rhs_t->inner->kind == TYPE_STRUCT)
-        {
-            *out_struct_name = type_def_name(rhs_t->inner);
-            *out_var_ref_name = node->var_ref.name;
-        }
-        else
-        {
-            char *rhs_type_str = rhs_t ? type_mangle_spelling(rhs_t) : NULL;
-            if (rhs_type_str)
-            {
-                char *clean_rhs = rhs_type_str;
-                if (strncmp(clean_rhs, "const ", 6) == 0)
-                {
-                    clean_rhs += 6;
-                }
-                size_t len = strlen(clean_rhs);
-                if (len > 0 && clean_rhs[len - 1] == '*')
-                {
-                    size_t struct_type_len = len - 1;
-                    char *st = xmalloc(struct_type_len + 1);
-                    strncpy(st, clean_rhs, (size_t)(struct_type_len));
-                    st[struct_type_len] = '\0';
-                    *out_struct_name = st;
-                    *out_var_ref_name = node->var_ref.name;
-                    // Note: 'st' might leak if not handled, but we follow the existing pattern
-                }
-            }
-        }
-    }
-}
-
 // Kinds the type check of `let` lets through whatever the other side is.
 static int skips_value_check(Type *t)
 {
@@ -408,18 +360,9 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
                 }
             }
 
-            // Implicit trait cast logic
-            if (sig && sig->arg_types && res.count < sig->total_args && arg)
+            if (sig && sig->arg_types && res.count < sig->total_args && arg && !res.has_named)
             {
-                Type *expected = sig->arg_types[res.count];
-                if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
-                {
-                    arg = transform_to_trait_object(ctx, type_def_name(expected), arg);
-                }
-                else if (!res.has_named)
-                {
-                    check_argument_type(ctx, expected, arg);
-                }
+                check_argument_type(ctx, sig->arg_types[res.count], arg);
             }
 
             if (!res.head)
@@ -449,106 +392,6 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
     }
 
     return res;
-}
-
-ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait,
-                                   ASTNode *source_expr)
-{
-    if (!target_trait || !source_expr)
-    {
-        return source_expr;
-    }
-
-    char *clean_trait = xstrdup(target_trait);
-    char *p = (char *)strchr(clean_trait, '*');
-    if (p)
-    {
-        *p = '\0';
-    }
-
-    if (!is_trait(ctx, clean_trait))
-    {
-        zfree(clean_trait);
-        return source_expr;
-    }
-
-    char *struct_type = NULL;
-    char *var_ref_name = NULL;
-
-    get_struct_name(ctx, source_expr, &struct_type, &var_ref_name);
-
-    if (struct_type && var_ref_name)
-    {
-        char *clean_struct_type = struct_type;
-        if (strncmp(clean_struct_type, "const ", 6) == 0)
-        {
-            clean_struct_type += 6;
-        }
-
-        // Check if the struct actually implements the trait
-        if (check_impl(ctx, clean_trait, clean_struct_type))
-        {
-            char *code = xmalloc(512);
-            char *v_mangled = mangle_vtable_symbol(clean_struct_type, clean_trait);
-
-            if (source_expr->kind == NODE_EXPR_UNARY && source_expr->unary.op == OP_ADDRESS)
-            {
-                snprintf(code, 512, "(%s){.self=(void*)&%s, .vtable=&%s}", clean_trait,
-                         var_ref_name, v_mangled);
-            }
-            else
-            {
-                snprintf(code, 512, "(%s){.self=(void*)%s, .vtable=&%s}", clean_trait, var_ref_name,
-                         v_mangled);
-            }
-
-            ASTNode *wrapper = ast_create(NODE_RAW_STMT);
-            wrapper->token = source_expr->token;
-            wrapper->raw_stmt.content = code;
-
-            // Set Type Info so subsequent method calls work
-            Type *trait_type = type_new(TYPE_STRUCT);
-            trait_type->name = xstrdup(clean_trait);
-            wrapper->type_info = trait_type;
-
-            zfree(clean_trait);
-            // If target_trait had a *, we might need to wrap in &addr?
-            if (strchr(target_trait, '*'))
-            {
-                if (ctx->config->use_cpp)
-                {
-                    // C++ does not allow taking the address of a compound literal.
-                    // Use a statement expression with a local variable instead.
-                    char *ptr_code = xmalloc(1024);
-                    snprintf(ptr_code, 1024, "({ static %s _ztrait = %s; &_ztrait; })",
-                             wrapper->type_info->name, code);
-                    ASTNode *raw_ptr = ast_create(NODE_RAW_STMT);
-                    raw_ptr->token = source_expr->token;
-                    raw_ptr->raw_stmt.content = ptr_code;
-
-                    Type *ptr_type = type_new(TYPE_POINTER);
-                    ptr_type->inner = trait_type;
-                    raw_ptr->type_info = ptr_type;
-                    return raw_ptr;
-                }
-
-                ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                addr->unary.op = OP_ADDRESS;
-                addr->unary.operand = wrapper;
-                addr->token = source_expr->token;
-
-                Type *ptr_type = type_new(TYPE_POINTER);
-                ptr_type->inner = trait_type;
-                addr->type_info = ptr_type;
-                return addr;
-            }
-
-            return wrapper;
-        }
-    }
-
-    zfree(clean_trait);
-    return source_expr;
 }
 
 void validate_named_arguments(Token call_token, const char *func_name, char **arg_names,

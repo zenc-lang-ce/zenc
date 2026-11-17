@@ -1284,6 +1284,27 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         return 1;
     }
 
+    // A pointer to a struct that implements the trait, where a trait object (or a pointer to one)
+    // is expected: the object is an implicit conversion of the pointer, whose vtable codegen
+    // writes.
+    Type *trait = resolved_target->kind == TYPE_POINTER && resolved_target->inner
+                      ? get_inner_type(resolved_target->inner)
+                      : resolved_target;
+    if (trait->name && is_trait(tc->pctx, type_def_name(trait)) &&
+        resolved_value->kind == TYPE_POINTER && resolved_value->inner)
+    {
+        Type *pointee = get_inner_type(resolved_value->inner);
+        if (pointee->kind == TYPE_STRUCT && pointee->name &&
+            check_impl(tc->pctx, type_def_name(trait), type_def_name(pointee)))
+        {
+            if (value_node)
+            {
+                wrap_in_conversion(value_node, target);
+            }
+            return 1;
+        }
+    }
+
     // Trait object compatibility: Struct -> Trait
     if (resolved_target->name && is_trait(tc->pctx, type_def_name(resolved_target)) &&
         resolved_value->kind == TYPE_STRUCT && resolved_value->name)

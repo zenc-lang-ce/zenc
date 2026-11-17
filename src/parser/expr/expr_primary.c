@@ -793,11 +793,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
                         lexer_next(l); // Eat }
 
-                        if (is_trait(ctx, acc))
-                        {
-                            return transform_to_trait_object(ctx, acc, node);
-                        }
-
                         ASTNode *cast = ast_create(NODE_EXPR_CAST);
                         cast->token = t;
                         cast->cast.expr = node;
@@ -1138,12 +1133,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 if (sig->default_values && sig->default_values[i])
                 {
                     ASTNode *def = copy_default_value(ctx, sig, i, t);
-                    Type *expected = sig->arg_types[i];
-                    // A trait parameter takes a trait object, built as for a written argument.
-                    if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
-                    {
-                        def = transform_to_trait_object(ctx, type_def_name(expected), def);
-                    }
 
                     if (!head)
                     {
@@ -1551,12 +1540,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
                     }
                     ASTNode *target = parse_expr_prec(ctx, l, PREC_UNARY);
-
-                    char *cast_type = type_mangle_spelling(cast_type_obj);
-                    if (is_trait(ctx, cast_type))
-                    {
-                        return transform_to_trait_object(ctx, cast_type, target);
-                    }
 
                     node = ast_create(NODE_EXPR_CAST);
                     node->token = next;

@@ -15,9 +15,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
 // Method calls parse their arguments inline instead of through parse_call_args,
 // so they need the same signature-driven fix-ups free-function calls get: the
-// check of argument types, default values for the trailing parameters
-// that were not given, and the implicit cast of `&value` to a trait object
-// where the parameter is a trait.
+// check of argument types and default values for the trailing parameters
+// that were not given. (A pointer passed where a trait is expected becomes a
+// trait object in the typechecker.)
 // `head` already includes the receiver when the method takes `self`, so it is
 // aligned with `sig->arg_types`.
 static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode *head, int *count,
@@ -55,40 +55,6 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
         }
     }
 
-    if (sig->arg_types)
-    {
-        ASTNode *prev = NULL;
-        ASTNode *arg = head;
-        int index = 0;
-        while (arg)
-        {
-            ASTNode *next = arg->next;
-            if (index < sig->total_args)
-            {
-                Type *expected = sig->arg_types[index];
-                if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
-                {
-                    ASTNode *cast = transform_to_trait_object(ctx, type_def_name(expected), arg);
-                    if (cast != arg)
-                    {
-                        cast->next = next;
-                        if (prev)
-                        {
-                            prev->next = cast;
-                        }
-                        else
-                        {
-                            head = cast;
-                        }
-                        arg = cast;
-                    }
-                }
-            }
-            prev = arg;
-            arg = next;
-            index++;
-        }
-    }
     return head;
 }
 
@@ -1484,39 +1450,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 if (s)
                 {
                     s->is_moved = 0;
-                }
-            }
-
-            // 4. Trait Object Wrapping for Assignment
-            char *raw_lhs_type = NULL;
-            int allocated_lhs = 0;
-            Type *lhs_t = lhs->type_info;
-            if (!lhs_t && lhs->kind == NODE_EXPR_VAR)
-            {
-                lhs_t = find_symbol_type_info(ctx, lhs->var_ref.name);
-            }
-            if (lhs_t)
-            {
-                raw_lhs_type = type_mangle_spelling(lhs_t);
-                allocated_lhs = 1;
-            }
-
-            if (raw_lhs_type)
-            {
-                char *clean_lhs_type = raw_lhs_type;
-                if (strncmp(clean_lhs_type, "const ", 6) == 0)
-                {
-                    clean_lhs_type += 6;
-                }
-
-                if (is_trait(ctx, clean_lhs_type) && rhs)
-                {
-                    rhs = transform_to_trait_object(ctx, clean_lhs_type, rhs);
-                    bin->binary.right = rhs;
-                }
-                if (allocated_lhs)
-                {
-                    zfree(raw_lhs_type);
                 }
             }
         }
