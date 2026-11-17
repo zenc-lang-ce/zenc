@@ -758,64 +758,6 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             }
         }
 
-        if (target->kind == NODE_EXPR_VAR)
-        {
-            char type_name[MAX_TYPE_NAME_LEN];
-            strncpy(type_name, target->var_ref.name, sizeof(type_name));
-            type_name[sizeof(type_name) - 1] = 0;
-
-            char *mangled_type = type_name;
-
-            ASTNode *def = find_struct_def(ctx, mangled_type);
-            if (def && def->kind == NODE_ENUM)
-            {
-                char *mangled = mangle_method_symbol(mangled_type, NULL, method);
-                FuncSig *sig = find_func(ctx, mangled);
-                if (sig)
-                {
-                    const char *emit_name = (sig->link_name) ? sig->link_name : mangled;
-                    EMIT(ctx, "%s(", emit_name);
-                    ASTNode *arg = node->call.args;
-                    int arg_idx = 0;
-                    while (arg)
-                    {
-                        if (arg_idx > 0)
-                        {
-                            EMIT(ctx, ", ");
-                        }
-
-                        Type *param_t =
-                            (arg_idx < sig->total_args) ? sig->arg_types[arg_idx] : NULL;
-
-                        if (param_t && param_t->kind == TYPE_TUPLE && sig->total_args == 1 &&
-                            node->call.count > 1)
-                        {
-                            EMIT(ctx, "(%s){", c_type_spelling(ctx, param_t));
-                            int first = 1;
-                            while (arg)
-                            {
-                                if (!first)
-                                {
-                                    EMIT(ctx, ", ");
-                                }
-                                first = 0;
-                                codegen_expression(ctx, arg);
-                                arg = arg->next;
-                            }
-                            EMIT(ctx, "}");
-                            break;
-                        }
-
-                        codegen_expression(ctx, arg);
-                        arg = arg->next;
-                        arg_idx++;
-                    }
-                    EMIT(ctx, ")");
-                    return;
-                }
-            }
-        }
-
         // The method's owner is the target's type, or the type it points to.
         Type *target_type = target->type_info;
         if (target_type && target_type->kind != TYPE_UNKNOWN)
