@@ -4,6 +4,7 @@ src/parser/parser_core.c
 src/parser/core/core_attributes.c
 src/parser/core/core_program.c
 src/parser/core/core_derive.c
+src/parser/core/core_collect.c
 src/parser/parser_expr.c
 src/parser/parser_stmt.c
 src/parser/parser_type.c

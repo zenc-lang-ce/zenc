@@ -55,15 +55,7 @@ void add_to_struct_list(ParserContext *ctx, ASTNode *node)
     r->node = node;
     r->next = ctx->parsed_structs_list;
     ctx->parsed_structs_list = r;
-    // The parser adds a struct before it has a name; it registers the name once it has one.
-    if (node->kind == NODE_STRUCT && declared_type_c_name(node))
-    {
-        register_named_type(ctx, declared_type_c_name(node), node);
-    }
-    else if (node->kind == NODE_ENUM && declared_type_c_name(node))
-    {
-        register_named_type(ctx, declared_type_c_name(node), node);
-    }
+    register_named_type(ctx, declared_type_c_name(node), node);
 }
 
 void register_type_alias(ParserContext *ctx, const char *alias, Type *type_info, int is_opaque,

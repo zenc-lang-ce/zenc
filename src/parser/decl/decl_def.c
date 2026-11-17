@@ -116,7 +116,7 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
 
     if (!ctx->current_scope || !ctx->current_scope->parent)
     {
-        add_to_global_list(ctx, o);
+        collect_declaration(ctx, o);
     }
 
     return o;
@@ -154,9 +154,9 @@ ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_ex
     node->type_alias.is_opaque = is_opaque;
     node->type_alias.defined_in_file =
         ctx->current_filename ? xstrdup(ctx->current_filename) : NULL;
+    node->type_alias.is_export = is_export;
 
-    register_type_alias(ctx, node->type_alias.alias, t, is_opaque, node->type_alias.defined_in_file,
-                        n, is_export);
+    collect_declaration(ctx, node);
 
     return node;
 }

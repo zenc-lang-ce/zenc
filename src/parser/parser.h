@@ -1400,6 +1400,11 @@ void register_in_all_symbols(ParserContext *ctx, ZenSymbol *s);
 // Rejects a name `@derive` does not know, listing the ones it does.
 void check_derivable_trait(Token t, const char *name);
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count);
+/**
+ * @brief Registers the declaration `node` where later code looks it up: a struct, an enum, a
+ *        function outside an impl, a type alias, a trait, or a global constant or variable.
+ */
+void collect_declaration(ParserContext *ctx, ASTNode *node);
 
 // decl/ declarations
 void replace_it_with_var(ASTNode *node, char *var_name);

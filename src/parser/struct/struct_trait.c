@@ -172,6 +172,6 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
 
     ctx->known_generics_count = generics_before;
 
-    add_to_global_list(ctx, n_node); // Track for codegen (VTable emission) and is_trait
+    collect_declaration(ctx, n_node);
     return n_node;
 }
