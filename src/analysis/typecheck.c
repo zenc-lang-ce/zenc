@@ -1475,6 +1475,21 @@ static void check_instantiations(TypeChecker *tc)
 
 // ** Entry Point **
 
+int analyze_program(ParserContext *ctx, ASTNode *root)
+{
+    propagate_drop_traits(ctx);
+    if (!validate_types(ctx) || !validate_function_definitions(ctx, root))
+    {
+        return -1;
+    }
+    int result = check_program(ctx, root);
+    if (result == 0 && ctx->config->check_twice)
+    {
+        result = check_program(ctx, root);
+    }
+    return result;
+}
+
 int check_program(ParserContext *ctx, ASTNode *root)
 {
     TypeChecker tc = {0};
