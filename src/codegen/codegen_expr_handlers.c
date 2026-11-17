@@ -382,9 +382,7 @@ static void emit_equality(ParserContext *ctx, ASTNode *node)
 
         EMIT(ctx, "%s(", (sig && sig->link_name) ? sig->link_name : call_name);
 
-        if (node->binary.left->kind == NODE_EXPR_VAR ||
-            node->binary.left->kind == NODE_EXPR_INDEX ||
-            node->binary.left->kind == NODE_EXPR_MEMBER)
+        if (expr_has_address(ctx, node->binary.left))
         {
             EMIT(ctx, "&");
             codegen_expression(ctx, node->binary.left);
@@ -402,9 +400,7 @@ static void emit_equality(ParserContext *ctx, ASTNode *node)
             needs_ptr = (sig->total_args > 1 && sig->arg_types[1]->kind == TYPE_POINTER);
         }
 
-        if (needs_ptr && (node->binary.right->kind == NODE_EXPR_VAR ||
-                          node->binary.right->kind == NODE_EXPR_INDEX ||
-                          node->binary.right->kind == NODE_EXPR_MEMBER))
+        if (needs_ptr && expr_has_address(ctx, node->binary.right))
         {
             EMIT(ctx, "&");
             codegen_expression(ctx, node->binary.right);
