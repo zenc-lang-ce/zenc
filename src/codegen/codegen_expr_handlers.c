@@ -495,12 +495,11 @@ static void emit_plain_binary(ParserContext *ctx, ASTNode *node)
 
             if (should_cast)
             {
-                char *c_type = NULL;
-                if (node->binary.left->type_info)
-                {
-                    c_type = c_type_spelling(ctx, node->binary.left->type_info);
-                }
-                if (c_type && strcmp(c_type, "unknown") != 0 && strcmp(c_type, "void") != 0)
+                Type *left = node->binary.left->type_info;
+                char *c_type = has_c_spelling(left) && left->kind != TYPE_VOID
+                                   ? c_type_spelling(ctx, left)
+                                   : NULL;
+                if (c_type)
                 {
                     EMIT(ctx, "(%s)(", c_type);
                     codegen_expression_with_move(ctx, node->binary.right);
@@ -756,27 +755,19 @@ skip_method_mangling:
         EMIT(ctx, "; ");
 
         Type *ft = callee_ti;
-        char *ret = c_type_spelling(ctx, ft->inner);
+        // A parameter or result whose type is not known is passed as a `void*`.
+        char *ret = has_c_spelling(ft->inner) ? c_type_spelling(ctx, ft->inner) : xstrdup("void*");
         if (strcmp(ret, "string") == 0)
         {
             zfree(ret);
             ret = xstrdup("char*");
         }
-        if (strcmp(ret, "unknown") == 0)
-        {
-            zfree(ret);
-            ret = xstrdup("void*");
-        }
 
         EMIT(ctx, "((%s (*)(void*", ret);
         for (int i = 0; i < ft->count; i++)
         {
-            char *as = c_type_spelling(ctx, ft->args[i]);
-            if (strcmp(as, "unknown") == 0)
-            {
-                zfree(as);
-                as = xstrdup("void*");
-            }
+            char *as =
+                has_c_spelling(ft->args[i]) ? c_type_spelling(ctx, ft->args[i]) : xstrdup("void*");
             EMIT(ctx, ", %s", as);
             zfree(as);
         }

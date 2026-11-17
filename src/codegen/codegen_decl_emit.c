@@ -67,7 +67,7 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
                     inferred = node_c_type(ctx, node->var_decl.init_expr);
                 }
 
-                if (inferred && strcmp(inferred, "__auto_type") != 0)
+                if (inferred)
                 {
                     emit_var_decl_type(ctx, inferred, node->var_decl.name);
                 }

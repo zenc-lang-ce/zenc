@@ -134,11 +134,9 @@ void handle_expr_slice(ParserContext *ctx, ASTNode *node)
     int known_size = array_type && array_type->kind == TYPE_ARRAY ? array_type->array_size : -1;
     int is_slice_struct = slice_element(array_type) != NULL;
 
-    char *tname = "unknown";
-    if (slice_element(node->type_info))
-    {
-        tname = c_type_spelling(ctx, node->type_info);
-    }
+    // The slice's type, as C spells it ("unknown" while its type is not known).
+    char *tname =
+        slice_element(node->type_info) ? c_type_spelling(ctx, node->type_info) : xstrdup("unknown");
 
     // A slice is copied (it is a view); an array or a pointer is held as a pointer to its
     // first element, so the new slice points into it.
@@ -199,8 +197,5 @@ void handle_expr_slice(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, ", .cap = _len");
 #endif
     EMIT(ctx, " }; })");
-    if (tname && strcmp(tname, "unknown") != 0)
-    {
-        zfree(tname);
-    }
+    zfree(tname);
 }

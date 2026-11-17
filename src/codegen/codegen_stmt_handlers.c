@@ -610,7 +610,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
     {
         char *tname = node_c_type(ctx, node);
 
-        if (tname && strcmp(tname, "void*") != 0 && strcmp(tname, "unknown") != 0)
+        if (tname && strcmp(tname, "void*") != 0)
         {
             char *clean_type = tname;
             if (strncmp(clean_type, "struct ", 7) == 0)
@@ -687,7 +687,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 inferred = node_c_type(ctx, node->var_decl.init_expr);
             }
 
-            if (inferred && strcmp(inferred, "__auto_type") != 0)
+            if (inferred)
             {
                 char *clean_type = inferred;
                 if (strncmp(clean_type, "struct ", 7) == 0)

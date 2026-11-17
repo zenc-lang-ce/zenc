@@ -79,10 +79,15 @@ char *c_type_spelling(ParserContext *ctx, Type *t)
     return type_to_c_string_with(t, ctx->config->misra_mode, link_name_of, ctx);
 }
 
+int has_c_spelling(Type *t)
+{
+    return t && (t->c_typedef_name || (t->kind != TYPE_UNKNOWN && t->kind != TYPE_U0));
+}
+
 char *node_c_type(ParserContext *ctx, ASTNode *node)
 {
     Type *t = node ? node->type_info : NULL;
-    return (t && t->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, t) : NULL;
+    return has_c_spelling(t) ? c_type_spelling(ctx, t) : NULL;
 }
 
 int is_fixed_size_array(Type *t)
@@ -197,7 +202,7 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
         inferred = node_c_type(ctx, init_expr);
     }
 
-    if (inferred && strcmp(inferred, "__auto_type") != 0 && strcmp(inferred, "unknown") != 0)
+    if (inferred)
     {
         EMIT(ctx, "%s", inferred);
     }
@@ -222,7 +227,7 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr)
 {
     char *type = node_c_type(ctx, expr);
-    if (!type || strcmp(type, "__auto_type") == 0 || strcmp(type, "unknown") == 0)
+    if (!type)
     {
         return NULL;
     }
