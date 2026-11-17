@@ -133,7 +133,7 @@ fi
 
 out=$(run_session ':type 1 + 1
 quit')
-if echo "$out" | grep -qiE "Type:.*int"; then
+if echo "$out" | grep -qiE "Type:.*(int|i32)"; then
     check ":type reports expression type" 1
 else
     check ":type reports expression type" 0
