@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -3480,6 +3481,75 @@ static void test_index_gitignore(void)
     printf("PASS: test_index_gitignore\n");
 }
 
+static void test_workspace_module_alias(void)
+{
+    printf("Running test_workspace_module_alias...\n");
+    // A module of the workspace is parsed on its own when the workspace is indexed; a file that
+    // imports it with an alias names its function through the alias, called or as a value, and
+    // gets hover and go to definition for it. The workspace by its real path (on macOS /tmp is a
+    // link to /private/tmp): the import finds the module the index parsed, as in a project.
+    mkdir("/tmp/zc_lsp_alias_ws", 0755);
+    char root[PATH_MAX];
+    if (!realpath("/tmp/zc_lsp_alias_ws", root))
+    {
+        fail("realpath of the workspace failed");
+    }
+    char geo[PATH_MAX + 16], use[PATH_MAX + 16], uri[PATH_MAX + 32], req[2 * PATH_MAX];
+    snprintf(geo, sizeof(geo), "%s/geo.zc", root);
+    snprintf(use, sizeof(use), "%s/use.zc", root);
+    snprintf(uri, sizeof(uri), "file://%s", use);
+    write_index_fixture(geo, "fn helper(x: int) -> int { return x + 1; }\n");
+    const char *use_text = "import \"geo.zc\" as geo\n"    // Line 0
+                           "fn main() {\n"                 // Line 1
+                           "    let h = geo::helper;\n"    // Line 2
+                           "    let n = geo::helper(1);\n" // Line 3
+                           "}\n";
+    write_index_fixture(use, use_text);
+
+    // Started in the workspace, as an editor starts it.
+    global_len = 0;
+    global_buf[0] = 0;
+    lsp_cwd = root;
+    start_lsp_server();
+    lsp_cwd = NULL;
+    snprintf(req, sizeof(req),
+             "{\"jsonrpc\": \"2.0\", \"id\": 1200, \"method\": \"initialize\", \"params\": "
+             "{\"rootUri\": \"file://%s\"}}",
+             root);
+    send_request(req);
+    free(wait_for_response(1200));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"initialized\", \"params\": {}}");
+    // The workspace indexed first, the module on its own too, as an editor finds it when it opens
+    // a file. Asking for a file's symbols before would analyze it ahead of the index.
+    usleep(2000000);
+
+    // Opening it analyzes it again, with the module parsed already: the import is not its first.
+    open_document(use, use_text);
+    usleep(1500000);
+    expect_hover_in(uri, 1202, 2, 18, "fn helper(x: int) -> int");
+    expect_hover_in(uri, 1203, 3, 18, "fn helper(x: int) -> int");
+    snprintf(req, sizeof(req),
+             "{\"jsonrpc\": \"2.0\", \"id\": 1204, \"method\": \"textDocument/definition\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"%s\"}, "
+             "\"position\": {\"line\": 2, \"character\": 18}}}",
+             uri);
+    send_request(req);
+    char *resp = wait_for_response(1204);
+    if (!resp || !strstr(resp, "zc_lsp_alias_ws/geo.zc"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition must lead from geo::helper to the module's function");
+    }
+    free(resp);
+
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 1205, \"method\": \"shutdown\", \"params\": null}");
+    free(wait_for_response(1205));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
+    waitpid(child_pid, NULL, 0);
+    printf("PASS: test_workspace_module_alias\n");
+}
+
 static void on_missing_progress(int signal_number)
 {
     (void)signal_number;
@@ -4547,6 +4617,7 @@ int main()
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
     waitpid(child_pid, NULL, 0);
     test_index_gitignore();
+    test_workspace_module_alias();
     test_index_progress();
     test_project_config();
     test_index_exclude();

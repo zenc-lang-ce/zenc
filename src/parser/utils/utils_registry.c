@@ -472,19 +472,22 @@ static char *file_key(const char *file, const char *name)
 
 Module *imported_module(ParserContext *ctx, const char *scope)
 {
-#if FF_COMPATIBILITY_0_5
-    Module **found = zmap_get(&ctx->imports.modules, scope);
-    return found ? *found : NULL;
-#else
-    if (!ctx->current_filename)
+    // The module this file imports by that alias.
+    Module **found = NULL;
+    if (ctx->current_filename)
     {
-        return NULL;
+        char *key = file_key(ctx->current_filename, scope);
+        found = zmap_get(&ctx->imports.file_modules, key);
+        zfree(key);
     }
-    char *key = file_key(ctx->current_filename, scope);
-    Module **found = zmap_get(&ctx->imports.file_modules, key);
-    zfree(key);
-    return found ? *found : NULL;
+#if FF_COMPATIBILITY_0_5
+    // In 0.5 an alias imported by any file is seen by every file.
+    if (!found)
+    {
+        found = zmap_get(&ctx->imports.modules, scope);
+    }
 #endif
+    return found ? *found : NULL;
 }
 
 // The C name of the top-level declaration `decl`: its name, which carries the module prefix.
