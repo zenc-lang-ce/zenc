@@ -425,6 +425,10 @@ impl Counter { fn get(self) -> int { return 1; } }
 impl Counter { fn get(self) -> int { return 2; } }
 fn main() { let c = Counter { value: 0 }; println(f"{c.get()}"); }' "Redefinition of method 'Counter::get'"
 
+diag_check "a struct named like an enum is a Zen C error" 'enum Shape { Dot, Line }
+struct Shape { sides: int; }
+fn main() {}' "Redefinition of struct 'Shape'"
+
 # --- Imported files: diagnostics and #line name the imported file -----------
 
 mkdir -p "$workdir/imported"

@@ -312,6 +312,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             tpl = tpl->next;
         }
         ASTNode *concrete = gp_count > 0 ? find_concrete_struct_def(ctx, name) : NULL;
+        concrete = concrete && concrete->kind == NODE_STRUCT ? concrete : NULL;
         if ((gp_count == 0 && tpl) || concrete)
         {
             ASTNode *other = tpl ? tpl->struct_node : concrete;

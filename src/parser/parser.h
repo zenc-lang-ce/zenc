@@ -1201,6 +1201,10 @@ void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base,
                                 const char *module_path);
 void re_export_propagated(ParserContext *ctx, const char *alias, const char *parent_prefix,
                           const char *base_name);
+/**
+ * @brief The struct or enum declared by `name` (find_struct_def), unless it is a generic
+ * template; NULL when none.
+ */
 ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name);
 Type *find_type_alias(ParserContext *ctx, const char *alias);
 Type *parse_type_base(ParserContext *ctx, Lexer *l);

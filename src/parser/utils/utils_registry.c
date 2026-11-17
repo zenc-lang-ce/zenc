@@ -470,51 +470,13 @@ int is_trait(ParserContext *ctx, const char *name)
 
 ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name)
 {
-    Instantiation *i = ctx->instantiations;
-    while (i)
+    ASTNode *def = find_struct_def(ctx, name);
+    if (!def || (def->kind == NODE_STRUCT && def->strct.is_template) ||
+        (def->kind == NODE_ENUM && def->enm.is_template))
     {
-        if (i->name[0] == name[0] && strcmp(i->name, name) == 0 && i->struct_node &&
-            i->struct_node->kind == NODE_STRUCT && !i->struct_node->strct.is_template)
-        {
-            return i->struct_node;
-        }
-        i = i->next;
+        return NULL;
     }
-
-    ASTNode *s = ctx->instantiated_structs;
-    while (s)
-    {
-        if (s->kind == NODE_STRUCT && !s->strct.is_template && s->strct.name[0] == name[0] &&
-            strcmp(s->strct.name, name) == 0)
-        {
-            return s;
-        }
-        s = s->next;
-    }
-
-    StructRef *r = ctx->parsed_structs_list;
-    while (r)
-    {
-        if (r->node->kind == NODE_STRUCT && !r->node->strct.is_template &&
-            r->node->strct.name[0] == name[0] && strcmp(r->node->strct.name, name) == 0)
-        {
-            return r->node;
-        }
-        r = r->next;
-    }
-
-    StructDef *d = ctx->struct_defs;
-    while (d)
-    {
-        if (d->node && d->node->kind == NODE_STRUCT && !d->node->strct.is_template &&
-            d->name[0] == name[0] && strcmp(d->name, name) == 0)
-        {
-            return d->node;
-        }
-        d = d->next;
-    }
-
-    return NULL;
+    return def;
 }
 
 // The key of `name` in `file`'s part of a registry: the two, joined by the unit separator, which
