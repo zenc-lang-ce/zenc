@@ -816,16 +816,21 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 char *struct_name =
                     resolve_struct_name_from_type(tc->pctx, target_type, &is_ptr, &alloc_name);
 
-                if (struct_name)
+                // The method, by the rule codegen calls it by (find_method_call_target): its
+                // own, one of a trait the type implements, or one of a struct it mixes in.
+                const char *owner = NULL;
+                char *method = NULL;
+                if (struct_name && find_method_call_target(tc->pctx, struct_name,
+                                                           node->member.field, &owner, &method))
                 {
-                    char *mangled = mangle_method_symbol(struct_name, NULL, node->member.field);
-
+                    char *mangled = mangle_method_symbol(owner, NULL, method);
                     FuncSig *sig = find_func(tc->pctx, mangled);
                     if (sig)
                     {
                         node->type_info = sig->ret_type;
                     }
                     zfree(mangled);
+                    zfree(method);
                 }
                 if (alloc_name)
                 {

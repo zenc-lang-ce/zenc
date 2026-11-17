@@ -1,0 +1,26 @@
+// ARGS: check
+// A method a struct gets from a struct it mixes in with `use` has the type its function
+// returns: the typechecker finds it by the rule codegen calls it by (find_method_call_target),
+// so a value of the wrong type is reported.
+
+struct Counter {
+    count: int;
+}
+
+impl Counter {
+    fn value(self) -> int {
+        return self.count;
+    }
+}
+
+struct Timer {
+    use Counter;
+    label: string;
+}
+
+fn show(_text: string) {}
+
+fn main() {
+    let t = Timer { count: 3, label: "t" };
+    show(t.value());
+}
