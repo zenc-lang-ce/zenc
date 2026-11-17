@@ -49,6 +49,7 @@ typedef struct CompilerConfig
     int mode_debug;
     int debug_info; // Pass -g to the C compiler (`zc -g`, `zc debug`)
     int mode_check;
+    int check_twice; ///< --check-twice (tests): run the typechecker a second time on the same tree.
     int mode_transpile;
     int emit_c;
     int verbose;

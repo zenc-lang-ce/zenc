@@ -295,6 +295,10 @@ static int compile_program(ZenCompiler *compiler)
             fflush(stdout);
         }
         tc_result = check_program(&ctx, root);
+        if (tc_result == 0 && compiler->config.check_twice)
+        {
+            tc_result = check_program(&ctx, root);
+        }
         if (tc_result != 0 && !compiler->config.mode_check)
         {
             return 1;
