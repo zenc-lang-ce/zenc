@@ -106,7 +106,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     int id = ctx->cg.tmp_counter++;
 
     char *ret_type = node_c_type(ctx, node);
-    int is_expr = (use_result && ret_type && strcmp(ret_type, "void") != 0);
+    int is_expr = use_result && ret_type && node->type_info->kind != TYPE_VOID;
 
     if (is_expr)
     {

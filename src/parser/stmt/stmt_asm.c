@@ -238,7 +238,7 @@ ASTNode *parse_asm(ParserContext *ctx, Lexer *l)
     }
 
     zvec_Text outputs = {0};
-    zvec_Text output_modes = {0};
+    zvec_Int output_is_inout = {0};
 
     if (lexer_peek(l).kind == TOK_COLON)
     {
@@ -264,7 +264,7 @@ ASTNode *parse_asm(ParserContext *ctx, Lexer *l)
 
             if (inner_t.kind == TOK_IDENT)
             {
-                char *mode = token_strdup(inner_t);
+                int is_inout = is_token(inner_t, "inout");
                 lexer_next(l);
 
                 if (lexer_peek(l).kind != TOK_LPAREN)
@@ -289,7 +289,7 @@ ASTNode *parse_asm(ParserContext *ctx, Lexer *l)
                 lexer_next(l);
 
                 zvec_push_Text(&outputs, token_strdup(var));
-                zvec_push_Text(&output_modes, mode);
+                zvec_push_Int(&output_is_inout, is_inout);
             }
             else
             {
@@ -424,7 +424,7 @@ ASTNode *parse_asm(ParserContext *ctx, Lexer *l)
     n->asm_stmt.code = code;
     n->asm_stmt.is_volatile = is_volatile;
     n->asm_stmt.outputs = outputs.data;
-    n->asm_stmt.output_modes = output_modes.data;
+    n->asm_stmt.output_is_inout = output_is_inout.data;
     n->asm_stmt.inputs = inputs.data;
     n->asm_stmt.clobbers = clobbers.data;
     n->asm_stmt.output_count = (int)outputs.length;

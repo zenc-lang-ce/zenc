@@ -53,6 +53,21 @@ fn add_five_64_bit(x: i64) -> i64 {
     return result;
 }
 
+// `inout(v)` is read and written by the instruction (`+r`), not only written (`=r`).
+fn increment_in_place(x: i64) -> i64 {
+    let v = x;
+    asm volatile {
+        "add {v}, {v}, #1"
+        : inout(v)
+    }
+    return v;
+}
+
+test "test_asm_inout_arm64" {
+    let val = increment_in_place(41);
+    assert(val == 42, f"Failed: expected 42, got {val}");
+}
+
 test "test_asm_params_arm64" {
     println("Testing assembly parameters...");
     let val = add_five_32_bit(10);

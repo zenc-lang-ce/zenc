@@ -724,7 +724,7 @@ struct ASTNode
             int is_volatile;
             int register_size; // The register size to use of 32/64/128 bits
             char **outputs;
-            char **output_modes;
+            int *output_is_inout; // `inout(x)`: read and written (`+r`); `out(x)`: written (`=r`).
             char **inputs;
             char **clobbers;
             int output_count;

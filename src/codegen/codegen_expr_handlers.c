@@ -756,12 +756,10 @@ skip_method_mangling:
 
         Type *ft = callee_ti;
         // A parameter or result whose type is not known is passed as a `void*`.
-        char *ret = has_c_spelling(ft->inner) ? c_type_spelling(ctx, ft->inner) : xstrdup("void*");
-        if (strcmp(ret, "string") == 0)
-        {
-            zfree(ret);
-            ret = xstrdup("char*");
-        }
+        char *ret = !has_c_spelling(ft->inner) ? xstrdup("void*")
+                    : ft->inner->kind == TYPE_STRING && !ft->inner->is_const
+                        ? xstrdup("char*")
+                        : c_type_spelling(ctx, ft->inner);
 
         EMIT(ctx, "((%s (*)(void*", ret);
         for (int i = 0; i < ft->count; i++)
