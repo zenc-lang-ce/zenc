@@ -249,15 +249,6 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     Type *prev_ret_info = ctx->cg.current_func_ret_type_info;
     ctx->cg.current_func_ret_type_info = node->func.ret_type_info;
 
-    // Set self_is_pointer flag for codegen of the body
-    int prev_self_is_ptr = ctx->self_is_pointer;
-    ctx->self_is_pointer = 0;
-    if (node->func.count > 0 && node->func.param_names && node->func.param_names[0] &&
-        strcmp(node->func.param_names[0], "self") == 0)
-    {
-        ctx->self_is_pointer = 1;
-    }
-
     // Initialize drop flags for arguments that implement Drop
     for (int i = 0; i < node->func.count; i++)
     {
@@ -354,7 +345,6 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     codegen_walker(ctx, node->func.body);
     emit_defers_down_to(ctx, 0);
     ctx->cg.current_func_ret_type_info = prev_ret_info;
-    ctx->self_is_pointer = prev_self_is_ptr;
 
     if (ctx->config->misra_mode)
     {

@@ -1,0 +1,28 @@
+// ARGS: check
+// `self` is already a pointer to the receiver: `return &self;` returns `self`, with a warning
+// (an error from 0.6), with a defer pending or not.
+import "std/io.zc"
+
+let hits = 0;
+
+struct Counter {
+    n: int;
+}
+
+impl Counter {
+    fn get(self) -> Counter* {
+        return &self;
+    }
+
+    fn get_with_defer(self) -> Counter* {
+        defer hits = hits + 1;
+        return &self;
+    }
+}
+
+fn main() {
+    let c = Counter { n: 1 };
+    let p = c.get();
+    let q = c.get_with_defer();
+    println(f"{p == &c} {q == &c} {hits}");
+}

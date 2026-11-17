@@ -519,24 +519,13 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, "ZC_AUTO");
             }
             EMIT(ctx, " _z_ret_mv = ");
-            if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-            {
-                EMIT(ctx, "*");
-            }
             codegen_expression(ctx, node->ret.value);
             // A `const` variable is still owned: it is cleared through a mutable pointer.
             Type *ret_type = node->ret.value->type_info;
             EMIT(ctx, "; memset(%s&", (ret_type && ret_type->is_const) ? "(void *)" : "");
-            if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-            {
-                EMIT(ctx, "*");
-            }
             codegen_expression(ctx, node->ret.value);
             EMIT(ctx, ", 0, sizeof(_z_ret_mv)); ");
-            if (strcmp(node->ret.value->var_ref.name, "self") != 0)
-            {
-                EMIT(ctx, "__z_drop_flag_%s = 0; ", var_ref_flag_name(node->ret.value));
-            }
+            EMIT(ctx, "__z_drop_flag_%s = 0; ", var_ref_flag_name(node->ret.value));
             emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
             EMIT(ctx, "_z_ret_mv; });\n");
 
@@ -565,11 +554,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                     emit_auto_type(ctx, node->ret.value, node->token);
                 }
                 EMIT(ctx, " _z_ret = ");
-                if (node->ret.value->kind == NODE_EXPR_VAR && ctx->self_is_pointer &&
-                    strcmp(node->ret.value->var_ref.name, "self") == 0)
-                {
-                    EMIT(ctx, "*");
-                }
                 codegen_expression(ctx, node->ret.value);
                 EMIT(ctx, "; ");
                 emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
@@ -614,26 +598,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                     EMIT(ctx, "return ");
                 }
 
-                if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR &&
-                    ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-                {
-                    // return self; -> return *self; (if returns by value)
-                    EMIT(ctx, "*");
-                }
-                else if (node->ret.value && node->ret.value->kind == NODE_EXPR_UNARY &&
-                         node->ret.value->unary.op == OP_ADDRESS &&
-                         node->ret.value->unary.operand->kind == NODE_EXPR_VAR &&
-                         strcmp(node->ret.value->unary.operand->var_ref.name, "self") == 0)
-                {
-                    // return &self; -> return self; (since self is already a pointer in C)
-                    codegen_expression(ctx, node->ret.value->unary.operand);
-                    EMIT(ctx, ";\n");
-                    if (ctx->config->misra_mode)
-                    {
-                        EMIT(ctx, "goto _misra_end_of_func;\n");
-                    }
-                    break;
-                }
                 if (node->ret.value)
                 {
                     codegen_expression(ctx, node->ret.value);

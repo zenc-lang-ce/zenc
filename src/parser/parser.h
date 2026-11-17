@@ -444,7 +444,6 @@ struct ParserContext
                                    ///< `impl Vec<T>`), or NULL outside an impl.
     ASTNode *current_impl_methods; ///< Head of method list for current impl block.
     int in_method_with_self;       ///< 1 if parsing body of method with self parameter.
-    int self_is_pointer;           ///< 1 if self is a pointer receiver (self*).
     int in_constant_expression;    ///< 1 while parse_constant_expression reads an expression.
 
     // Deferred function bodies

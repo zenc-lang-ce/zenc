@@ -70,6 +70,13 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
                              ASTNode *value_node, int is_call_arg);
 void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_ptr,
                                                Type *expected_type);
+/**
+ * @brief Settles what a returned `self` (a pointer to the receiver) means, as codegen used to:
+ *        in a function that returns a value, `return self;` returns the receiver's value, also
+ *        when its type is not Copy (`*self` in the tree); where a pointer is expected,
+ *        `return &self;` returns `self`, with a warning (an error from 0.6).
+ */
+void settle_returned_self(TypeChecker *tc, ASTNode **value, Type *expected_type);
 
 // Call checker (defined in typecheck_call.c)
 void check_expr_call(TypeChecker *tc, ASTNode *node, int depth);
