@@ -105,8 +105,8 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
 {
     int id = ctx->cg.tmp_counter++;
 
-    char *ret_type = node_c_type(ctx, node);
-    int is_expr = use_result && ret_type && node->type_info->kind != TYPE_VOID;
+    int is_expr =
+        use_result && has_c_spelling(node->type_info) && node->type_info->kind != TYPE_VOID;
 
     if (is_expr)
     {
@@ -164,8 +164,10 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     else if (has_ref_binding && !subject_is_ptr)
     {
         // Non-lvalue with ref binding: create temporary
-        emit_auto_type(ctx, node->match_stmt.expr, node->token);
-        EMIT(ctx, " _temp_%d = ", id);
+        char temp[32];
+        snprintf(temp, sizeof(temp), "_temp_%d", id);
+        emit_auto_declaration(ctx, node->match_stmt.expr, temp);
+        EMIT(ctx, " = ");
         codegen_expression(ctx, node->match_stmt.expr);
         EMIT(ctx, "; ");
 
@@ -174,15 +176,20 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     else
     {
         // No ref bindings, or a pointer subject: store the value as it is
-        emit_auto_type(ctx, node->match_stmt.expr, node->token);
-        EMIT(ctx, " _m_%d = ", id);
+        char m[32];
+        snprintf(m, sizeof(m), "_m_%d", id);
+        emit_auto_declaration(ctx, node->match_stmt.expr, m);
+        EMIT(ctx, " = ");
         codegen_expression(ctx, node->match_stmt.expr);
         EMIT(ctx, "; ");
     }
 
     if (is_expr)
     {
-        EMIT(ctx, "%s _r_%d; ", ret_type, id);
+        char result[32];
+        snprintf(result, sizeof(result), "_r_%d", id);
+        emit_c_decl(ctx, node->type_info, result);
+        EMIT(ctx, "; ");
     }
 
     // `has_wildcard` also decides the MISRA warnings further down.

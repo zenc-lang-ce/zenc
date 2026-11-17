@@ -284,9 +284,8 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
             {
                 if (v->variant.payload)
                 {
-                    char *tstr = c_type_spelling(ctx, v->variant.payload);
-                    EMIT(ctx, "%s %s; ", tstr, v->variant.name);
-                    zfree(tstr);
+                    emit_c_decl(ctx, v->variant.payload, v->variant.name);
+                    EMIT(ctx, "; ");
                 }
                 v = v->next;
             }
@@ -299,17 +298,12 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 if (v->variant.payload)
                 {
                     Type *pt = v->variant.payload;
-                    char *tstr = c_type_spelling(ctx, pt);
                     if (pt->kind == TYPE_TUPLE)
                     {
                         EMIT(ctx, "%s %s(", final_name, vsym);
-                        int i = pt->count;
-                        for (int j = 0; j < i; j++)
-                        {
-                            EMIT(ctx, "%s _%d%s", c_type_spelling(ctx, pt->args[j]), j,
-                                 j < i - 1 ? ", " : "");
-                        }
+                        emit_variant_constructor_params(ctx, pt);
                         EMIT(ctx, ") {\n");
+                        int i = pt->count;
                         emitter_indent(&ctx->cg.emitter);
                         if (ctx->config->use_cpp)
                         {
@@ -335,20 +329,21 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                     }
                     else
                     {
+                        EMIT(ctx, "%s %s(", final_name, vsym);
+                        emit_c_decl(ctx, pt, "v");
                         if (ctx->config->use_cpp)
                         {
                             EMIT(ctx,
-                                 "%s %s(%s v) { %s _res = {}; _res.tag=%s_Tag; "
+                                 ") { %s _res = {}; _res.tag=%s_Tag; "
                                  "_res.data.%s=v; return _res; }\n",
-                                 final_name, vsym, tstr, final_name, vsym, v->variant.name);
+                                 final_name, vsym, v->variant.name);
                         }
                         else
                         {
-                            EMIT(ctx, "%s %s(%s v) { return (%s){.tag=%s_Tag, .data.%s=v}; }\n",
-                                 final_name, vsym, tstr, final_name, vsym, v->variant.name);
+                            EMIT(ctx, ") { return (%s){.tag=%s_Tag, .data.%s=v}; }\n", final_name,
+                                 vsym, v->variant.name);
                         }
                     }
-                    zfree(tstr);
                 }
                 else
                 {
@@ -388,16 +383,16 @@ void emit_struct_defs(ParserContext *ctx, ASTNode *node, VisitedModules **visite
     }
 }
 
-// A type of a trait method spelled in C, with `Self` (also written `self`) standing for `self`:
-// `void*` in the vtable, the trait itself in its wrappers.
-static char *trait_c_type(ParserContext *ctx, Type *t, Type *self)
+// A type of a trait method, with `Self` (also written `self`) standing for `self`: `void*` in the
+// vtable, the trait itself in its wrappers.
+static Type *trait_method_type(ParserContext *ctx, Type *t, Type *self)
 {
     Type **args = xmalloc(sizeof(Type *) * 2);
     args[0] = self;
     args[1] = self;
     static char *self_names[] = {"Self", "self"};
     Bindings b = bindings_new(self_names, 2, args, 2);
-    return c_type_spelling(ctx, replace_type_formal(ctx, t, &b, NULL, NULL));
+    return replace_type_formal(ctx, t, &b, NULL, NULL);
 }
 
 // Whether a trait method returns `Self` (also written `self`).
@@ -425,14 +420,16 @@ static char *trait_method_params(ParserContext *ctx, ASTNode *m, Type *self)
         {
             continue;
         }
-        char *c_type = (m->func.arg_types && m->func.arg_types[i])
-                           ? trait_c_type(ctx, m->func.arg_types[i], self)
-                           : xstrdup("void*");
         const char *name =
             (m->func.param_names && m->func.param_names[i]) ? m->func.param_names[i] : "";
-        size_t size = strlen(out) + strlen(c_type) + strlen(name) + 4;
+        Type *t = (m->func.arg_types && m->func.arg_types[i])
+                      ? trait_method_type(ctx, m->func.arg_types[i], self)
+                      : type_new_ptr(type_new(TYPE_VOID));
+        char *param = c_declaration(ctx, t, name);
+        size_t size = strlen(out) + strlen(param) + 3;
         char *next = xmalloc(size);
-        snprintf(next, size, "%s%s%s %s", out, out[0] ? ", " : "", c_type, name);
+        snprintf(next, size, "%s%s%s", out, out[0] ? ", " : "", param);
+        zfree(param);
         out = next;
     }
     return out;
@@ -493,9 +490,12 @@ static void emit_trait_defs_internal(ParserContext *ctx, ASTNode *node, VisitedM
             ASTNode *m = node->trait.methods;
             while (m)
             {
-                char *ret_safe = trait_c_type(ctx, m->func.ret_type_info, erased_self);
-                EMIT(ctx, "%s (*%s)(", ret_safe, m->func.name);
-                zfree(ret_safe);
+                size_t field_size = strlen(m->func.name) + 4;
+                char *field = xmalloc(field_size);
+                snprintf(field, field_size, "(*%s)", m->func.name);
+                char *after = emit_function_head(
+                    ctx, trait_method_type(ctx, m->func.ret_type_info, erased_self), field);
+                zfree(field);
 
                 // The receiver is always `void* self` (const for a const self), whether or not
                 // the method takes one.
@@ -508,7 +508,8 @@ static void emit_trait_defs_internal(ParserContext *ctx, ASTNode *node, VisitedM
                 char *params = trait_method_params(ctx, m, erased_self);
                 EMIT(ctx, "%svoid* self%s%s", is_const_self ? "const " : "", params[0] ? ", " : "",
                      params);
-                EMIT(ctx, ");\n");
+                EMIT(ctx, ")%s;\n", after);
+                zfree(after);
                 m = m->next;
             }
             emitter_dedent(&ctx->cg.emitter);
@@ -576,20 +577,21 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
             ASTNode *m = node->trait.methods;
             while (m)
             {
-                char *ret_sub = trait_c_type(ctx, m->func.ret_type_info, trait_type);
                 const char *orig = m->func.is_method ? m->func.name : NULL;
                 int is_const_self = (m->func.count > 0 && m->func.arg_types &&
                                      m->func.arg_types[0] && m->func.arg_types[0]->is_const);
-                EMIT(ctx, "%s %s(%s%s* self", ret_sub,
-                     mangle_method_symbol(node->trait.name, NULL, orig),
-                     is_const_self ? "const " : "", node->trait.name);
+                char *after = emit_function_head(
+                    ctx, trait_method_type(ctx, m->func.ret_type_info, trait_type),
+                    mangle_method_symbol(node->trait.name, NULL, orig));
+                EMIT(ctx, "%s%s* self", is_const_self ? "const " : "", node->trait.name);
 
                 char *params = trait_method_params(ctx, m, trait_type);
                 if (params[0])
                 {
                     EMIT(ctx, ", %s", params);
                 }
-                EMIT(ctx, ") {\n");
+                EMIT(ctx, ")%s {\n", after);
+                zfree(after);
                 emitter_indent(&ctx->cg.emitter);
 
                 int ret_is_self = returns_self(m);
@@ -616,7 +618,6 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                 }
                 emitter_dedent(&ctx->cg.emitter);
                 EMIT(ctx, "}\n\n");
-                zfree(ret_sub);
                 m = m->next;
             }
             if (node->cfg_condition)

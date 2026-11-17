@@ -1471,14 +1471,59 @@ static char *type_spelling_impl(Type *t, TypeSpelling spelling, WrittenNameLooku
     }
 }
 
-// C-compatible type stringifier.
-// Strictly uses 'struct T' for explicit structs to support external types.
-// Does NOT mangle pointers to 'Ptr'.
-static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, void *context);
+// C writes a type around what it declares: `int32_t x`, `int32_t* p`, `int32_t a[3]`,
+// `int32_t (*f)(int32_t)`. type_to_c_declaration_with builds that text from the Type, from the
+// outside in: a pointer puts `*` before the declarator (in parentheses when it points to an
+// array), an array puts `[N]` after it, a function pointer wraps it in `(*...)(parameters)`, and
+// what is left is the type's name before it. Any nesting comes out right (a pointer to an array of
+// function pointers, a function pointer that returns one), and the type alone is the same with an
+// empty declarator, for casts and `sizeof`.
+static char *c_declaration(Type *t, const char *declarator, int misra_mode, CNameLookup lookup,
+                           void *context);
 
 char *type_to_c_string(Type *t, int misra_mode)
 {
     return type_to_c_string_with(t, misra_mode, NULL, NULL);
+}
+
+char *type_to_c_string_with(Type *t, int misra_mode, CNameLookup lookup, void *context)
+{
+    return type_to_c_declaration_with(t, "", misra_mode, lookup, context);
+}
+
+// Whether `t` is a function pointer, through the aliases that name one.
+static int is_function_pointer(Type *t)
+{
+    while (t && !t->c_typedef_name && t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)
+    {
+        t = t->inner;
+    }
+    return t && !t->c_typedef_name && t->kind == TYPE_FUNCTION && t->is_raw;
+}
+
+char *type_to_c_declaration_with(Type *t, const char *declarator, int misra_mode,
+                                 CNameLookup lookup, void *context)
+{
+    if (t && t->is_const && is_function_pointer(t))
+    {
+        // A function cannot be const: a const function pointer is the pointer,
+        // `int32_t (*const f)(int32_t)`.
+        size_t size = strlen(declarator) + 8;
+        char *const_declarator = xmalloc(size);
+        snprintf(const_declarator, size, "const%s%s", declarator[0] ? " " : "", declarator);
+        char *res = c_declaration(t, const_declarator, misra_mode, lookup, context);
+        zfree(const_declarator);
+        return res;
+    }
+    char *res = c_declaration(t, declarator, misra_mode, lookup, context);
+    if (t && t->is_const)
+    {
+        char *final = xmalloc(strlen(res) + 7);
+        sprintf(final, "const %s", res); /* safe */
+        zfree(res);
+        return final;
+    }
+    return res;
 }
 
 // The C name a struct or enum declares for itself with @link_name, or NULL.
@@ -1495,34 +1540,63 @@ static const char *c_name_of(Type *t, CNameLookup lookup, void *context)
     return link_name ? link_name : type_def_name(t);
 }
 
-char *type_to_c_string_with(Type *t, int misra_mode, CNameLookup lookup, void *context)
+// `name` declaring `declarator`. A pointer's stars stay with the name (`int32_t* p`, `int32_t*`),
+// anything else is written after a space (`int32_t x`, `int32_t (*f)(int32_t)`), and brackets
+// follow the type alone directly (`int32_t[3]`).
+static char *join_declaration(const char *name, const char *declarator)
 {
-    if (!t)
-    {
-        return xstrdup("void");
-    }
-    char *res = type_to_c_string_impl(t, misra_mode, lookup, context);
-    if (t->is_const)
-    {
-        char *final = xmalloc(strlen(res) + 7);
-        sprintf(final, "const %s", res); /* safe */
-        zfree(res);
-        return final;
-    }
+    size_t stars = strspn(declarator, "*");
+    const char *rest = declarator + stars;
+    int space = rest[0] && rest[0] != '[' && rest[0] != ' ';
+    size_t size = strlen(name) + strlen(declarator) + 2;
+    char *res = xmalloc(size);
+    snprintf(res, size, "%s%.*s%s%s", name, (int)stars, declarator, space ? " " : "", rest);
     return res;
 }
 
-static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, void *context)
+// Whether the C declarator of `t` follows it (`[N]`): a pointer to it needs parentheses,
+// `int32_t (*p)[3]`, since `int32_t *p[3]` is an array of pointers.
+static int declarator_follows(Type *t)
 {
-    if (!t)
+    while (t && !t->c_typedef_name && t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)
     {
-        return xstrdup("void");
+        t = t->inner;
     }
-    if (t->c_typedef_name)
-    {
-        return xstrdup(t->c_typedef_name);
-    }
+    return t && !t->c_typedef_name && t->kind == TYPE_ARRAY;
+}
 
+// The parameters of a function pointer type: `(int32_t, char*)`, `(void)`-less `()` when it has
+// none.
+static char *c_parameters(Type *t, int misra_mode, CNameLookup lookup, void *context)
+{
+    size_t size = 3;
+    char **args = xmalloc(sizeof(char *) * (size_t)(t->count + 1));
+    for (int i = 0; i < t->count; i++)
+    {
+        args[i] = type_to_c_string_with(t->args[i], misra_mode, lookup, context);
+        size += strlen(args[i]) + 2;
+    }
+    size += 5; // ", ..."
+    char *res = xmalloc(size);
+    char *p = res;
+    *p++ = '(';
+    for (int i = 0; i < t->count; i++)
+    {
+        p += sprintf(p, "%s%s", i > 0 ? ", " : "", args[i]); /* safe */
+        zfree(args[i]);
+    }
+    if (t->is_varargs)
+    {
+        p += sprintf(p, "%s...", t->count > 0 ? ", " : ""); /* safe */
+    }
+    strcpy(p, ")");
+    zfree(args);
+    return res;
+}
+
+// The name C knows a type by, for a type that does not wrap a declarator.
+static char *c_type_name(Type *t, int misra_mode, CNameLookup lookup, void *context)
+{
     // A primitive, by the one table of C names.
     const char *primitive = primitive_c_name(t->kind, misra_mode);
     if (primitive)
@@ -1575,158 +1649,16 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         return res;
     }
 
-    case TYPE_POINTER:
-    {
-        char *inner = type_to_c_string_with(t->inner, misra_mode, lookup, context);
-        char *ptr_token = (char *)strstr(inner, "(*");
-        if (ptr_token)
-        {
-            ptrdiff_t prefix_len = ptr_token - inner + 2; // "void (*"
-            char *res = xmalloc(strlen(inner) + 2);
-            strncpy(res, inner, (size_t)(prefix_len));
-            res[prefix_len] = 0;
-            strcat(res, "*");
-            strcat(res, ptr_token + 2);
-            zfree(inner);
-            return res;
-        }
-
-        if (t->is_restrict)
-        {
-            char *res = xmalloc(strlen(inner) + 16);
-            sprintf(res, "%s* __restrict", inner); /* safe */
-            return res;
-        }
-        else
-        {
-            char *res = xmalloc(strlen(inner) + 2);
-            sprintf(res, "%s*", inner); /* safe */
-            return res;
-        }
-    }
-
-    case TYPE_ARRAY:
-    {
-        Type *base = t;
-        int *dims = NULL;
-        int dims_cap = 0;
-        int dims_count = 0;
-
-        while (base->kind == TYPE_ARRAY)
-        {
-            if (dims_count == dims_cap)
-            {
-                dims_cap = dims_cap == 0 ? 4 : dims_cap * 2;
-                dims = xrealloc(dims, sizeof(int) * (size_t)(dims_cap));
-            }
-            dims[dims_count++] = base->array_size;
-            base = base->inner;
-        }
-
-        char *inner = type_to_c_string_with(base, misra_mode, lookup, context);
-        size_t total_len = strlen(inner) + 1;
-        for (int i = 0; i < dims_count; i++)
-        {
-            total_len += 20;
-        }
-
-        // An element spelled as a declarator, a function pointer (`int32_t (*)(int32_t)`),
-        // takes the dimensions inside its parentheses, after the stars, where its name would
-        // go: `int32_t (*[2])(int32_t)`, as TYPE_POINTER puts its star there. Anything else
-        // takes them at the end: `int32_t[2]`.
-        char *ptr_token = strstr(inner, "(*");
-        char *after_stars = ptr_token ? ptr_token + 1 : inner + strlen(inner);
-        while (ptr_token && *after_stars == '*')
-        {
-            after_stars++;
-        }
-
-        char *res = xmalloc((size_t)(total_len));
-        size_t head_len = (size_t)(after_stars - inner);
-        memcpy(res, inner, head_len);
-        char *p = res + head_len;
-        for (int i = 0; i < dims_count; i++)
-        {
-            snprintf(p, 20, "[%d]", dims[i]);
-            p += strlen(p);
-        }
-        strcpy(p, after_stars);
-        zfree(inner);
-
-        if (dims)
-        {
-            zfree(dims);
-        }
-        return res;
-    }
-
-    case TYPE_FUNCTION:
-        if (t->is_raw)
-        {
-            char *ret = type_to_c_string_with(t->inner, misra_mode, lookup, context);
-            char *res = xmalloc(strlen(ret) + 64); // heuristic start buffer
-            snprintf(res, strlen(ret) + 64, "%s (*)(", ret);
-
-            for (int i = 0; i < t->count; i++)
-            {
-                if (i > 0)
-                {
-                    char *tmp = xmalloc(strlen(res) + 3);
-                    snprintf(tmp, strlen(res) + 3, "%s, ", res);
-                    zfree(res);
-                    res = tmp;
-                }
-                char *arg = type_to_c_string_with(t->args[i], misra_mode, lookup, context);
-                char *tmp = xmalloc(strlen(res) + strlen(arg) + 1);
-                sprintf(tmp, "%s%s", res, arg); /* safe */
-                zfree(res);
-                res = tmp;
-                zfree(arg);
-            }
-            if (t->is_varargs)
-            {
-                if (t->count > 0)
-                {
-                    char *tmp = xmalloc(strlen(res) + 6);
-                    sprintf(tmp, "%s, ...", res); /* safe */
-                    zfree(res);
-                    res = tmp;
-                }
-                else
-                {
-                    char *tmp = xmalloc(strlen(res) + 4);
-                    sprintf(tmp, "%s...", res); /* safe */
-                    zfree(res);
-                    res = tmp;
-                }
-            }
-            char *tmp = xmalloc(strlen(res) + 2);
-            sprintf(tmp, "%s)", res); /* safe */
-            zfree(res);
-            res = tmp;
-            zfree(ret);
-            return res;
-        }
-        if (t->inner)
-        {
-            zfree(type_to_c_string_with(t->inner, misra_mode, lookup, context));
-        }
+    case TYPE_FUNCTION: // A closure: a function pointer wraps a declarator (c_declaration).
         return xstrdup("z_closure_T");
 
     case TYPE_GENERIC:
         // Use type_to_string to get the mangled name (e.g. Option_int) instead of raw C string
         // composition This ensures consistency with struct definitions.
-        {
-            char *s = type_to_string(t);
-            return s;
-        }
+        return type_to_string(t);
 
-    case TYPE_ALIAS:
-        if (t->alias.is_opaque_alias)
-        {
-            return xstrdup(t->name);
-        }
-        return type_to_c_string_with(t->inner, misra_mode, lookup, context);
+    case TYPE_ALIAS: // An opaque one: a plain alias is the type it names (c_declaration).
+        return xstrdup(t->name);
 
     case TYPE_ENUM:
         return xstrdup(c_name_of(t, lookup, context));
@@ -1736,6 +1668,77 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
     default:
         return xstrdup("unknown");
     }
+}
+
+static char *c_declaration(Type *t, const char *declarator, int misra_mode, CNameLookup lookup,
+                           void *context)
+{
+    if (!t)
+    {
+        return join_declaration("void", declarator);
+    }
+    char *outer = NULL; // The declarator this type wraps around `declarator`.
+    Type *inner = NULL;
+    if (!t->c_typedef_name)
+    {
+        switch (t->kind)
+        {
+        case TYPE_POINTER:
+        {
+            size_t size = strlen(declarator) + 16;
+            outer = xmalloc(size);
+            if (t->is_restrict)
+            {
+                snprintf(outer, size, "* __restrict%s%s", declarator[0] ? " " : "", declarator);
+            }
+            else
+            {
+                snprintf(outer, size, declarator_follows(t->inner) ? "(*%s)" : "*%s", declarator);
+            }
+            inner = t->inner;
+            break;
+        }
+        case TYPE_ARRAY:
+        {
+            size_t size = strlen(declarator) + 24;
+            outer = xmalloc(size);
+            snprintf(outer, size, "%s[%d]", declarator, t->array_size);
+            inner = t->inner;
+            break;
+        }
+        case TYPE_FUNCTION:
+            if (t->is_raw)
+            {
+                char *params = c_parameters(t, misra_mode, lookup, context);
+                size_t size = strlen(declarator) + strlen(params) + 4;
+                outer = xmalloc(size);
+                snprintf(outer, size, "(*%s)%s", declarator, params);
+                zfree(params);
+                inner = t->inner;
+            }
+            break;
+        case TYPE_ALIAS:
+            if (!t->alias.is_opaque_alias)
+            {
+                return type_to_c_declaration_with(t->inner, declarator, misra_mode, lookup,
+                                                  context);
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    if (outer)
+    {
+        char *res = type_to_c_declaration_with(inner, outer, misra_mode, lookup, context);
+        zfree(outer);
+        return res;
+    }
+    char *name = t->c_typedef_name ? xstrdup(t->c_typedef_name)
+                                   : c_type_name(t, misra_mode, lookup, context);
+    char *res = join_declaration(name, declarator);
+    zfree(name);
+    return res;
 }
 
 char *function_c_name(ASTNode *fn)

@@ -1,0 +1,150 @@
+// language/functions: C declarators built from the type. A function pointer that returns a
+// function pointer, a pointer to an array of function pointers and a pointer to an array, in
+// every place the generated C declares a value: a local, a field, a parameter, a result, a
+// capture, an `if` and a `match` value, an enum payload, a trait method, a destructuring, a
+// `return` with a `defer`, and a slice.
+import "std/io.zc"
+
+alias IntFn = fn*(int) -> int;
+alias Maker = fn*(int) -> IntFn;
+
+fn one(x: int) -> int {
+    return x + 1;
+}
+
+fn two(x: int) -> int {
+    return x + 2;
+}
+
+fn pick(k: int) -> IntFn {
+    if k == 0 {
+        return one;
+    }
+    return two;
+}
+
+fn maker() -> Maker {
+    return pick;
+}
+
+fn call(m: Maker, k: int) -> int {
+    return m(k)(10);
+}
+
+struct Holder {
+    m: Maker;
+    ms: Maker[2];
+}
+
+test "a function pointer that returns a function pointer" {
+    let m: Maker = pick;
+    expect_eq(m(0)(1), 2, "a local Maker calls pick, then one");
+    expect_eq(call(m, 1), 12, "a Maker parameter");
+    expect_eq(maker()(1)(1), 3, "a Maker result");
+    expect_eq((int)(sizeof(Maker) == sizeof(IntFn)), 1, "sizeof of a Maker");
+
+    let h = Holder { m: pick };
+    h.ms[0] = pick;
+    h.ms[1] = maker();
+    expect_eq(h.m(1)(1), 3, "a Maker field");
+    expect_eq(h.ms[1](0)(5), 6, "an array of Makers as a field");
+}
+
+test "a function pointer that returns one, captured and returned by a lambda" {
+    let m: Maker = pick;
+    let by_value = fn() -> int { return m(1)(1); };
+    let by_reference = fn[&]() -> int { return m(0)(1); };
+    let returns_one = fn(k: int) -> IntFn { return pick(k); };
+    let takes_one = fn(mm: Maker) -> int { return mm(1)(2); };
+    expect_eq(by_value(), 3, "captured by value");
+    expect_eq(by_reference(), 2, "captured by reference");
+    expect_eq(returns_one(1)(1), 3, "a lambda that returns a function pointer");
+    expect_eq(takes_one(pick), 4, "a lambda that takes a Maker");
+}
+
+test "a function pointer as the value of an if and a match" {
+    let c = true;
+    let chosen = if c { pick(0) } else { pick(1) };
+    let n = 1;
+    let matched = match n { 0 => pick(0), _ => pick(1) };
+    expect_eq(chosen(1), 2, "an if value");
+    expect_eq(matched(1), 3, "a match value");
+}
+
+enum Slot {
+    Empty,
+    Single(Maker),
+    Pair(Maker, int)
+}
+
+fn slot_value(s: Slot) -> int {
+    match s {
+        Slot::Single(m) => { return m(0)(0); },
+        Slot::Pair(pm, pk) => { return pm(1)(pk); },
+        _ => { return -1; },
+    }
+}
+
+test "a function pointer that returns one as an enum payload" {
+    expect_eq(slot_value(Slot::Single(pick)), 1, "a payload of one value");
+    expect_eq(slot_value(Slot::Pair(pick, 7)), 9, "a payload of two values");
+    expect_eq(slot_value(Slot::Empty), -1, "a variant without a payload");
+}
+
+trait Source {
+    fn maker(self) -> Maker;
+    fn apply(self, m: Maker) -> int;
+}
+
+struct Picker {
+    k: int;
+}
+
+impl Source for Picker {
+    fn maker(self) -> Maker {
+        return pick;
+    }
+
+    fn apply(self, m: Maker) -> int {
+        return m(self.k)(100);
+    }
+}
+
+fn use_source(s: Source) -> int {
+    return s.maker()(1)(1) + s.apply(pick);
+}
+
+test "a trait method that returns and takes a function pointer that returns one" {
+    let p = Picker { k: 1 };
+    expect_eq(use_source(&p), 105, "through the vtable");
+}
+
+fn deferred() -> Maker {
+    defer println("deferred");
+    return pick;
+}
+
+test "a destructuring and a return with a defer" {
+    let (m: Maker, k: int) = (pick, 5);
+    expect_eq(m(0)(k), 6, "a destructured Maker");
+    expect_eq(deferred()(1)(1), 3, "a Maker returned with a defer pending");
+}
+
+test "a pointer to an array" {
+    let fs: IntFn[2] = [one, two];
+    let p = &fs;
+    expect_eq((*p)[1](1), 3, "a pointer to an array of function pointers");
+    let grid: int[2][3];
+    grid[1][2] = 7;
+    let q = &grid;
+    expect_eq((*q)[1][2], 7, "a pointer to a two-dimensional array");
+}
+
+test "a slice of function pointers" {
+    let fs: IntFn[2] = [one, two];
+    let part: [IntFn] = fs[0..2];
+    let literal: [IntFn] = [two, one];
+    expect_eq(part[1](3), 5, "a slice of an array");
+    expect_eq(literal[0](1), 3, "an array literal as a slice");
+    expect_eq((int)part.len, 2, "the slice's length");
+}

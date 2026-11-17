@@ -103,7 +103,7 @@ void emit_includes_and_aliases(ParserContext *ctx, ASTNode *node, VisitedModules
 static void emit_alias_typedef(ParserContext *ctx, Type *type, const char *alias)
 {
     EMIT(ctx, "typedef ");
-    emit_c_decl(ctx, c_type_spelling(ctx, type), alias);
+    emit_c_decl(ctx, type, alias);
     EMIT(ctx, ";\n");
 }
 
@@ -205,19 +205,15 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
                         {
                             EMIT(ctx, "%s %s(", final_name,
                                  mangle_variant_symbol(final_name, v->variant.name));
-                            for (int i = 0; i < pt->count; i++)
-                            {
-                                EMIT(ctx, "%s _%d%s", c_type_spelling(ctx, pt->args[i]), i,
-                                     i < pt->count - 1 ? ", " : "");
-                            }
+                            emit_variant_constructor_params(ctx, pt);
                             EMIT(ctx, ");\n");
                         }
                         else
                         {
-                            char *tstr = c_type_spelling(ctx, v->variant.payload);
-                            EMIT(ctx, "%s %s(%s v);\n", final_name,
-                                 mangle_variant_symbol(final_name, v->variant.name), tstr);
-                            zfree(tstr);
+                            EMIT(ctx, "%s %s(", final_name,
+                                 mangle_variant_symbol(final_name, v->variant.name));
+                            emit_c_decl(ctx, v->variant.payload, "v");
+                            EMIT(ctx, ");\n");
                         }
                     }
                     else
@@ -239,36 +235,17 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
 
 // Emit lambda definitions.
 // Collect the set of C type strings produced by `return <expr>;` in a lambda body.
-// Emits one field of a closure context struct. A function pointer type needs the
-// field name inside its declarator (`int32_t (*f)(int32_t)`), which
-// emit_var_decl_type does.
-static void emit_lambda_ctx_field(ParserContext *ctx, const char *tstr, const char *name,
-                                  Type *type, int by_ref)
+// Emits one field of a closure context struct: the captured value, or a pointer to it when it is
+// captured by reference (`int32_t* x`, `int32_t (*a)[3]`, `int32_t (**f)(int32_t)`).
+static void emit_lambda_ctx_field(ParserContext *ctx, Type *type, const char *name, int by_ref)
 {
-    // Function pointers and arrays put the name inside the type: `int (*name)(int)`,
-    // `int name[3]`, `int (*name[2])(int)`. By reference, an array becomes a pointer to it,
-    // `int (*name)[3]`, `int (*(*name)[2])(int)` (`int *name[3]` would be an array of
-    // pointers), and a function pointer gets one more `*`.
-    int is_array = is_fixed_size_array(type);
-    int is_fn_ptr = !is_array && strstr(tstr, "(*") != NULL;
-    if (is_fn_ptr || is_array)
+    if (!type)
     {
-        size_t decl_sz = strlen(name) + 4;
-        char *decl_name = xmalloc(decl_sz);
-        if (!by_ref)
-        {
-            snprintf(decl_name, decl_sz, "%s", name);
-        }
-        else
-        {
-            snprintf(decl_name, decl_sz, is_fn_ptr ? "*%s" : "(*%s)", name);
-        }
-        emit_var_decl_type(ctx, tstr, decl_name);
-        EMIT(ctx, ";\n");
-        zfree(decl_name);
+        EMIT(ctx, by_ref ? "int* %s;\n" : "int %s;\n", name);
         return;
     }
-    EMIT(ctx, by_ref ? "%s* %s;\n" : "%s %s;\n", tstr, name);
+    emit_c_decl(ctx, by_ref ? type_new_ptr(type) : type, name);
+    EMIT(ctx, ";\n");
 }
 
 void emit_lambda_defs(ParserContext *ctx)
@@ -287,9 +264,8 @@ void emit_lambda_defs(ParserContext *ctx)
             for (int i = 0; i < node->lambda.capture_count; i++)
             {
                 int by_ref = node->lambda.capture_modes && node->lambda.capture_modes[i] == 1;
-                emit_lambda_ctx_field(ctx, capture_c_type(ctx, node, i),
-                                      c_name(ctx, node->lambda.captured_vars[i]),
-                                      node->lambda.captured_types_info[i], by_ref);
+                emit_lambda_ctx_field(ctx, node->lambda.captured_types_info[i],
+                                      c_name(ctx, node->lambda.captured_vars[i]), by_ref);
                 if (!by_ref && capture_needs_drop(ctx, node, i))
                 {
                     EMIT(ctx, "int __z_drop_flag_%s;\n", node->lambda.captured_vars[i]);
@@ -332,11 +308,13 @@ void emit_lambda_defs(ParserContext *ctx)
             EMIT(ctx, "}\n\n");
         }
 
-        // A return type nothing told is `void*`.
+        // A return type or a parameter type nothing told is `void*`.
+        Type *void_pointer = type_new_ptr(type_new(TYPE_VOID));
         Type *ret = node->type_info->inner;
-        const char *ret_c_type =
-            (ret && ret->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, ret) : "void*";
-        EMIT(ctx, "%s _lambda_%d(", ret_c_type, node->lambda.lambda_id);
+        char lambda_name[32];
+        snprintf(lambda_name, sizeof(lambda_name), "_lambda_%d", node->lambda.lambda_id);
+        char *after = emit_function_head(
+            ctx, (ret && ret->kind != TYPE_UNKNOWN) ? ret : void_pointer, lambda_name);
 
         if (!node->lambda.is_bare)
         {
@@ -350,13 +328,12 @@ void emit_lambda_defs(ParserContext *ctx)
                 EMIT(ctx, ", ");
             }
 
-            // A parameter whose type nothing told is passed as `void*`.
             Type *param = node->type_info->args[i];
-            const char *param_c_type =
-                (param && param->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, param) : "void*";
-            EMIT(ctx, "%s %s", param_c_type, c_name(ctx, node->lambda.param_names[i]));
+            emit_c_decl(ctx, (param && param->kind != TYPE_UNKNOWN) ? param : void_pointer,
+                        c_name(ctx, node->lambda.param_names[i]));
         }
-        EMIT(ctx, ") {\n");
+        EMIT(ctx, ")%s {\n", after);
+        zfree(after);
         emitter_indent(&ctx->cg.emitter);
 
         if (node->lambda.capture_count > 0)

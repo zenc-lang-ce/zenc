@@ -79,6 +79,15 @@ char *c_type_spelling(ParserContext *ctx, Type *t)
     return type_to_c_string_with(t, ctx->config->misra_mode, link_name_of, ctx);
 }
 
+// Where a function's declarator goes in the declaration its return type makes
+// (emit_func_signature).
+#define FUNCTION_DECLARATOR_MARK "\x01"
+
+char *c_declaration(ParserContext *ctx, Type *t, const char *declarator)
+{
+    return type_to_c_declaration_with(t, declarator, ctx->config->misra_mode, link_name_of, ctx);
+}
+
 int has_c_spelling(Type *t)
 {
     return t && (t->c_typedef_name || (t->kind != TYPE_UNKNOWN && t->kind != TYPE_U0));
@@ -126,12 +135,6 @@ const char *zero_initializer(ParserContext *ctx, Type *t)
     return NULL;
 }
 
-char *capture_c_type(ParserContext *ctx, ASTNode *lambda, int index)
-{
-    Type *t = lambda->lambda.captured_types_info[index];
-    return t ? c_type_spelling(ctx, t) : xstrdup("int");
-}
-
 int capture_needs_drop(ParserContext *ctx, ASTNode *lambda, int index)
 {
     Type *t = lambda->lambda.captured_types_info[index];
@@ -150,89 +153,61 @@ const char *field_c_type(ParserContext *ctx, ASTNode *field)
     return c_type_spelling(ctx, field->type_info);
 }
 
-// Helper to emit C declaration (handle arrays, function pointers correctly)
-void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name)
+void emit_c_decl(ParserContext *ctx, Type *t, const char *name)
 {
-    // The type is C already: a Zen C generic is spelled by its mangled name. A `<` comes only
-    // from a C++ template a parameter's `@ctype` names (`std::map<int, std::vector<int>>&`),
-    // which is written as it is; brackets inside its arguments are not an array's.
-    const char *close = strrchr(type_str, '>');
-    char *bracket = (char *)strchr(close ? close : type_str, '[');
-    char *fn_ptr = (char *)strstr(type_str, "(*");
+    char *decl = c_declaration(ctx, t, name);
+    EMIT(ctx, "%s", decl);
+    zfree(decl);
+}
 
-    if (fn_ptr)
+void emit_var_decl_type(ParserContext *ctx, Type *t, const char *var_name)
+{
+    emit_c_decl(ctx, t, c_name(ctx, var_name));
+}
+
+void emit_variant_constructor_params(ParserContext *ctx, Type *tuple)
+{
+    for (int i = 0; i < tuple->count; i++)
     {
-        // A declarator (a function pointer, an array or a pointer of them): the name goes after
-        // its stars, `int32_t (*f)(int32_t)`, `int32_t (*fs[2])(int32_t)`, `int32_t (**pf)(...)`.
-        const char *after_stars = fn_ptr + 1;
-        while (*after_stars == '*')
-        {
-            after_stars++;
-        }
-        ptrdiff_t prefix_len = after_stars - type_str;
-        EMIT(ctx, "%.*s%s%s", (int)prefix_len, type_str, name, after_stars);
+        char name[16];
+        snprintf(name, sizeof(name), "_%d", i);
+        emit_c_decl(ctx, tuple->args[i], name);
+        EMIT(ctx, "%s", i < tuple->count - 1 ? ", " : "");
     }
-    else if (bracket)
+}
+
+void emit_auto_declaration(ParserContext *ctx, ASTNode *expr, const char *declarator)
+{
+    Type *t = expr ? expr->type_info : NULL;
+    if (has_c_spelling(t))
     {
-        ptrdiff_t base_len = bracket - type_str;
-        EMIT(ctx, "%.*s %s%s", (int)base_len, type_str, name, bracket);
+        emit_c_decl(ctx, t, declarator);
+    }
+    else if (z_path_match_compiler(ctx->config->cc, "tcc") && expr)
+    {
+        EMIT(ctx, "__typeof__((");
+        codegen_expression(ctx, expr);
+        EMIT(ctx, ")) %s", declarator);
     }
     else
     {
-        EMIT(ctx, "%s %s", type_str, name);
+        EMIT(ctx, "ZC_AUTO %s", declarator);
     }
 }
 
-// Helper to emit variable declarations with array types.
-void emit_var_decl_type(ParserContext *ctx, const char *type_str, const char *var_name)
+char *emit_function_head(ParserContext *ctx, Type *ret, const char *declarator)
 {
-    emit_c_decl(ctx, type_str, c_name(ctx, var_name));
-}
-
-// Get field type from struct.
-void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
-{
-    (void)t;
-    char *inferred = NULL;
-    if (init_expr)
-    {
-        inferred = node_c_type(ctx, init_expr);
-    }
-
-    if (inferred)
-    {
-        EMIT(ctx, "%s", inferred);
-    }
-    else
-    {
-        if (z_path_match_compiler(ctx->config->cc, "tcc") && init_expr)
-        {
-            EMIT(ctx, "__typeof__((");
-            codegen_expression(ctx, init_expr);
-            EMIT(ctx, "))");
-        }
-        else
-        {
-            EMIT(ctx, "ZC_AUTO");
-        }
-    }
-}
-
-// The C name of the type of expr when it can be written as a whole before a declarator
-// (`T[]` in a compound literal, `T name` in a declaration), or NULL when it is unknown or
-// is itself a declarator (a function pointer or an array).
-char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr)
-{
-    char *type = node_c_type(ctx, expr);
-    if (!type)
-    {
-        return NULL;
-    }
-    if (strpbrk(type, "(["))
-    {
-        return NULL;
-    }
-    return type;
+    size_t size = strlen(declarator) + 2;
+    char *with_mark = xmalloc(size);
+    snprintf(with_mark, size, "%s%s", declarator, FUNCTION_DECLARATOR_MARK);
+    char *decl = c_declaration(ctx, ret, with_mark);
+    char *mark = strstr(decl, FUNCTION_DECLARATOR_MARK);
+    *mark = 0;
+    EMIT(ctx, "%s(", decl);
+    char *after = xstrdup(mark + 1);
+    zfree(decl);
+    zfree(with_mark);
+    return after;
 }
 
 // Emits a pointer to a copy of expr, for a value that has no address of its own (a call
@@ -249,21 +224,18 @@ void emit_rvalue_address(ParserContext *ctx, ASTNode *expr)
         return;
     }
 
-    char *type = c_type_name_or_null(ctx, expr);
     EMIT(ctx, "(");
-
-    if (type)
+    if (has_c_spelling(expr->type_info))
     {
-        EMIT(ctx, "%s", type);
+        emit_c_decl(ctx, expr->type_info, "[]");
     }
     else
     {
         EMIT(ctx, "__typeof__((");
         codegen_expression(ctx, expr);
-        EMIT(ctx, "))");
+        EMIT(ctx, "))[]");
     }
-
-    EMIT(ctx, "[]){");
+    EMIT(ctx, "){");
     codegen_expression(ctx, expr);
     EMIT(ctx, "}");
 }
@@ -388,29 +360,7 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
     }
 
     // Return type
-    char *ret_str;
-    if (func->func.ret_type_info)
-    {
-        ret_str = c_type_spelling(ctx, func->func.ret_type_info);
-    }
-    else
-    {
-        ret_str = xstrdup("void");
-    }
-
-    char *fn_ptr = (char *)strstr(ret_str, "(*)");
-
-    if (fn_ptr)
-    {
-        ptrdiff_t prefix_len = fn_ptr - ret_str + 2; // Include "(*"
-        EMIT(ctx, "%.*s%s(", (int)prefix_len, ret_str, final_name);
-        ret_suffix = xstrdup(fn_ptr + 2);
-    }
-    else
-    {
-        EMIT(ctx, "%s %s(", ret_str, final_name);
-    }
-    zfree(ret_str);
+    ret_suffix = emit_function_head(ctx, func->func.ret_type_info, final_name);
 
     // Args
     if (func->func.count == 0 && !func->func.is_varargs)
@@ -426,31 +376,25 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
                 EMIT(ctx, ", ");
             }
 
-            char *type_str = NULL;
-            // Check for @ctype override first
-            if (func->func.c_type_overrides && func->func.c_type_overrides[i])
-            {
-                type_str = xstrdup(func->func.c_type_overrides[i]);
-            }
-            else if (func->func.arg_types && func->func.arg_types[i])
-            {
-                type_str = c_type_spelling(ctx, func->func.arg_types[i]);
-            }
-            else
-            {
-                type_str = xstrdup("void*"); // Fallback
-            }
-
             const char *name = "";
-
             if (func->func.param_names && func->func.param_names[i])
             {
                 name = c_name(ctx, func->func.param_names[i]);
             }
 
-            // check if array type
-            emit_c_decl(ctx, type_str, name);
-            zfree(type_str);
+            if (func->func.c_type_overrides && func->func.c_type_overrides[i])
+            {
+                // An @ctype is C the program writes: the name follows it.
+                EMIT(ctx, "%s %s", func->func.c_type_overrides[i], name);
+            }
+            else if (func->func.arg_types && func->func.arg_types[i])
+            {
+                emit_c_decl(ctx, func->func.arg_types[i], name);
+            }
+            else
+            {
+                EMIT(ctx, "void* %s", name);
+            }
         }
         if (func->func.is_varargs)
         {
