@@ -2382,6 +2382,12 @@ static char *unescape_c_string(const char *s)
     return out;
 }
 
+int is_string_literal(ASTNode *node)
+{
+    return node && node->kind == NODE_EXPR_LITERAL &&
+           (node->literal.kind == LITERAL_STRING || node->literal.kind == LITERAL_RAW_STRING);
+}
+
 char *string_literal_text(ASTNode *literal)
 {
     const char *text = literal->literal.string_val ? literal->literal.string_val : "";

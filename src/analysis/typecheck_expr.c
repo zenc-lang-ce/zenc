@@ -87,12 +87,6 @@ static Type *decayed_pointer(Type *t)
     return NULL;
 }
 
-static int is_string_literal(ASTNode *node)
-{
-    return node->kind == NODE_EXPR_LITERAL &&
-           (node->literal.kind == LITERAL_STRING || node->literal.kind == LITERAL_RAW_STRING);
-}
-
 // An array of bytes C lets a string literal initialize: of char, signed or unsigned.
 static int is_byte_array(Type *t)
 {

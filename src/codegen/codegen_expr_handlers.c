@@ -261,10 +261,12 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
 }
 
 // `left = right` with fixed-size arrays. C cannot assign an array, so `right` is copied into a
-// temporary and the temporary's bytes into `left`; an array literal initializes the temporary,
-// since it is not an expression in C. An array of values that need dropping is moved, in the
-// order an assignment of a struct with Drop follows: the source is marked as moved out, and a
-// variable's old value is dropped before it takes the new one (so `a = a` keeps its value).
+// temporary and the temporary's bytes into `left`; an array literal or a string literal
+// initializes the temporary, since C copies only what the literal has and fills the rest with
+// zeros (a `memcpy` of the array's size would read past the end of a shorter string). An array of
+// values that need dropping is moved, in the order an assignment of a struct with Drop follows: the
+// source is marked as moved out, and a variable's old value is dropped before it takes the new one
+// (so `a = a` keeps its value).
 static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *right)
 {
     Type *t = left->type_info;
@@ -273,7 +275,7 @@ static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *ri
 
     EMIT(ctx, "({ ");
     emit_var_decl_type(ctx, c_type, "_z_src");
-    if (right->kind == NODE_EXPR_ARRAY_LITERAL)
+    if (right->kind == NODE_EXPR_ARRAY_LITERAL || is_string_literal(right))
     {
         EMIT(ctx, " = ");
         codegen_expression(ctx, right);

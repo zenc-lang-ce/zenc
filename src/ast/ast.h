@@ -934,6 +934,11 @@ int float_significand_bits(Type *t);
 char *string_literal_text(ASTNode *literal);
 
 /**
+ * @brief Whether `node` is a string literal, plain or raw.
+ */
+int is_string_literal(ASTNode *node);
+
+/**
  * @brief Whether `t` is a pointer: a `T*`, or a `string`, which is a `char*`.
  */
 int is_pointer_type(Type *t);
