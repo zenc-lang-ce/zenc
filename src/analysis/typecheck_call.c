@@ -490,7 +490,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                 char msg[MAX_SHORT_MSG_LEN];
                 snprintf(msg, sizeof(msg),
                          "Pure function '%s' cannot call non-pure or dynamic function '%s'",
-                         function_c_name(tc->current_func), func_name ? func_name : "unknown");
+                         tc->current_func->func.name, func_name ? func_name : "unknown");
                 const char *hints[] = {
                     "Mark the called function as @pure, or remove @pure from the caller", NULL};
                 tc_error_with_hints(tc, node->call.callee->token, msg, hints);

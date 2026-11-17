@@ -2304,12 +2304,12 @@ static const char *declaration_name(ASTNode *node, LspSymbolKind *kind)
     if (node->kind == NODE_FUNCTION)
     {
         *kind = LSP_SYMBOL_FUNCTION;
-        return function_c_name(node);
+        return node->func.name;
     }
     if (node->kind == NODE_STRUCT)
     {
         *kind = LSP_SYMBOL_STRUCT;
-        return declared_type_c_name(node);
+        return node->kind == NODE_STRUCT ? node->strct.name : node->enm.name;
     }
     if (node->kind == NODE_VAR_DECL)
     {
@@ -2324,7 +2324,7 @@ static const char *declaration_name(ASTNode *node, LspSymbolKind *kind)
     if (node->kind == NODE_ENUM)
     {
         *kind = LSP_SYMBOL_ENUM;
-        return declared_type_c_name(node);
+        return node->kind == NODE_STRUCT ? node->strct.name : node->enm.name;
     }
     if (node->kind == NODE_FIELD)
     {

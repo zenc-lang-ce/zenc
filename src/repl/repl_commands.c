@@ -207,9 +207,9 @@ static int cmd_show(ReplState *state, const char *args)
 
     for (ASTNode *n = search; n; n = n->next)
     {
-        if (n->kind == NODE_FUNCTION && 0 == strcmp(function_c_name(n), name))
+        if (n->kind == NODE_FUNCTION && 0 == strcmp(n->func.name, name))
         {
-            printf("  fn %s(", function_c_name(n));
+            printf("  fn %s(", n->func.name);
             for (int i = 0; i < n->func.count; i++)
             {
                 char *t =
@@ -224,9 +224,9 @@ static int cmd_show(ReplState *state, const char *args)
             found = 1;
             break;
         }
-        else if (n->kind == NODE_STRUCT && 0 == strcmp(declared_type_c_name(n), name))
+        else if (n->kind == NODE_STRUCT && 0 == strcmp(n->strct.name, name))
         {
-            printf("  struct %s {\n", declared_type_c_name(n));
+            printf("  struct %s {\n", n->strct.name);
             for (ASTNode *field = n->strct.fields; field; field = field->next)
             {
                 if (field->kind == NODE_FIELD)
@@ -621,7 +621,7 @@ static int cmd_vars_funcs_structs(ReplState *state, const char *args)
         ASTNode *main_func = NULL;
         for (ASTNode *n = search; n; n = n->next)
         {
-            if (n->kind == NODE_FUNCTION && 0 == strcmp(function_c_name(n), "main"))
+            if (n->kind == NODE_FUNCTION && 0 == strcmp(n->func.name, "main"))
             {
                 main_func = n;
                 break;
@@ -773,9 +773,9 @@ static int cmd_vars_funcs_structs(ReplState *state, const char *args)
         int found = 0;
         for (ASTNode *n = search; n; n = n->next)
         {
-            if (n->kind == NODE_FUNCTION && 0 != strcmp(function_c_name(n), "main"))
+            if (n->kind == NODE_FUNCTION && 0 != strcmp(n->func.name, "main"))
             {
-                printf("  fn %s()\n", function_c_name(n));
+                printf("  fn %s()\n", n->func.name);
                 found = 1;
             }
         }
@@ -792,7 +792,7 @@ static int cmd_vars_funcs_structs(ReplState *state, const char *args)
         {
             if (n->kind == NODE_STRUCT)
             {
-                printf("  struct %s\n", declared_type_c_name(n));
+                printf("  struct %s\n", n->strct.name);
                 found = 1;
             }
         }

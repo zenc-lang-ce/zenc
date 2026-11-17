@@ -260,7 +260,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
         {
             char msg[MAX_SHORT_MSG_LEN];
             snprintf(msg, sizeof(msg), "Function '%s' may not return a value on all code paths",
-                     function_c_name(node));
+                     node->func.name);
 
             const char *hints[] = {"Ensure all execution paths return a value",
                                    "Consider adding a default return at the end of the function",
@@ -307,9 +307,9 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     if (tc->pctx->config->misra_mode && tc->func_return_count > 1)
     {
         char msg[MAX_ERROR_MSG_LEN];
-        snprintf(
-            msg, sizeof(msg), "MISRA Rule 15.5: function '%s' has %d return points (must have 1)",
-            function_c_name(node) ? function_c_name(node) : "anonymous", tc->func_return_count);
+        snprintf(msg, sizeof(msg),
+                 "MISRA Rule 15.5: function '%s' has %d return points (must have 1)",
+                 node->func.name ? node->func.name : "anonymous", tc->func_return_count);
         tc_error(tc, node->token, msg);
     }
 

@@ -221,7 +221,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         }
 
         pending = xcalloc(1, sizeof(PendingBody));
-        pending->name = c_name;
+        pending->name = name;
         pending->body_start = *l;
         pending->scope = ctx->current_scope;
         pending->in_method_with_self = ctx->in_method_with_self;

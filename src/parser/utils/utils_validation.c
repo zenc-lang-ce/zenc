@@ -345,7 +345,7 @@ static void check_function_definition(ASTNode *f, const char *owner, DefinedFunc
     }
     else
     {
-        zerror_at(f->token, "Redefinition of function '%s'", function_c_name(f));
+        zerror_at(f->token, "Redefinition of function '%s'", f->func.name);
     }
     (*errors)++;
 }

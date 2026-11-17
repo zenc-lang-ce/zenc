@@ -304,7 +304,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             if (existing)
             {
                 zerror_at(name_token, "Redefinition of %s '%s'", is_union ? "union" : "struct",
-                          name);
+                          own_name);
             }
         }
         GenericTemplate *tpl = ctx->templates;
@@ -320,8 +320,8 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             const char *where =
                 (other && other->strct.defined_in_file) ? other->strct.defined_in_file : "?";
             char msg[MAX_SHORT_MSG_LEN];
-            snprintf(msg, sizeof(msg), "Struct '%s' clashes with the %s struct '%s' from %s", name,
-                     gp_count == 0 ? "generic" : "concrete", name, where);
+            snprintf(msg, sizeof(msg), "Struct '%s' clashes with the %s struct '%s' from %s",
+                     own_name, gp_count == 0 ? "generic" : "concrete", own_name, where);
             const char *hints[] = {"A generic and a concrete struct cannot share a name",
                                    "Rename one of them (std types such as Box, Vec, Option, "
                                    "Map or String keep their names)",
