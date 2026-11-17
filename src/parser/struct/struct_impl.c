@@ -227,27 +227,11 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 
         register_impl(ctx, name1, name2);
 
-        // RAII: Check for "Drop" trait implementation
-        if (strcmp(name1, "Drop") == 0)
-        {
-            ZenSymbol *s = find_symbol_entry(ctx, name2);
-            if (s && s->type_info)
-            {
-                s->type_info->traits.has_drop = 1;
-            }
-            else
-            {
-                // Try finding struct definition
-                ASTNode *def = find_struct_def(ctx, name2);
-                if (def && def->type_info)
-                {
-                    def->type_info->traits.has_drop = 1;
-                }
-            }
-        }
+        // An `impl Drop` is a fact of the type's declaration, which propagate_drop_traits marks
+        // (seed_drop_from_impl), for a type declared before the impl or after it alike.
 
         // Iterator: Check for "Iterable" trait implementation
-        else if (strcmp(name1, "Iterable") == 0)
+        if (strcmp(name1, "Iterable") == 0)
         {
             ZenSymbol *s = find_symbol_entry(ctx, name2);
             if (s && s->type_info)

@@ -1133,6 +1133,8 @@ void lsp_project_check_file(const char *uri)
     Scope *saved_scope = ctx->current_scope;
     const char *saved_filename = ctx->current_filename;
     ctx->current_filename = pf->path;
+    // Which types have Drop is derived from their declarations and impls, as a build does first.
+    propagate_drop_traits(ctx);
     check_program(ctx, pf->ast);
     ctx->current_filename = saved_filename;
     ctx->current_scope = saved_scope;

@@ -218,12 +218,10 @@ int is_type_copy(ParserContext *ctx, Type *t)
     }
     RECURSION_GUARD_TOKEN(ctx, TOKEN_UNKNOWN, 1);
 
+    // Whether a type has Drop is its declaration's (propagate_drop_traits marks it from its
+    // `impl Drop` and its fields), read through type_has_drop.
     int result = 1;
     if (type_has_drop(ctx, t))
-    {
-        result = 0;
-    }
-    else if (t->name && check_impl(ctx, "Drop", type_def_name(t)))
     {
         result = 0;
     }
@@ -260,10 +258,6 @@ int is_type_copy(ParserContext *ctx, Type *t)
             if (check_impl(ctx, "Copy", type_def_name(t)))
             {
                 result = 1;
-            }
-            else if (check_impl(ctx, "Drop", type_def_name(t)))
-            {
-                result = 0;
             }
             else if (t->name)
             {
