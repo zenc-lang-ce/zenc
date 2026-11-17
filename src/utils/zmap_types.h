@@ -45,6 +45,18 @@ struct ImportedPlugin;
 struct ZenSymbol;
 struct FuncSig;
 struct ASTNode;
+struct SymbolUse;
+
+// A symbol by its identity, not its content: two declarations of one name are two keys.
+static inline uint32_t zmap_hash_symbol(const struct ZenSymbol *k, uint32_t seed)
+{
+    uintptr_t v = (uintptr_t)k;
+    return (uint32_t)(v ^ (v >> 32)) * 2654435761u ^ seed;
+}
+static inline int zmap_cmp_symbol(const struct ZenSymbol *a, const struct ZenSymbol *b)
+{
+    return a != b;
+}
 
 #define REGISTER_ZMAP_TYPES(X)                                                                     \
     X(const char *, struct Module *, ModMap)                                                       \
@@ -55,7 +67,8 @@ struct ASTNode;
     X(const char *, struct ZenSymbol *, SymbolByName)                                              \
     X(const char *, struct FuncSig *, FuncByName)                                                  \
     X(const char *, struct ASTNode *, DeclByName)                                                  \
-    X(const char *, const char *, CNameByDecl)
+    X(const char *, const char *, CNameByDecl)                                                     \
+    X(const struct ZenSymbol *, struct SymbolUse *, UseBySymbol)
 
 #include "zmap.h"
 

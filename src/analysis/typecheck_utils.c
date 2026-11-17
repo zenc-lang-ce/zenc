@@ -868,3 +868,29 @@ int get_asm_register_size(Type *t)
 }
 
 // EXPRESSION CHECKERS
+
+SymbolUse *tc_symbol_use(TypeChecker *tc, const ZenSymbol *sym)
+{
+    if (!tc->symbol_uses.hash_func)
+    {
+        tc->symbol_uses = zmap_init(UseBySymbol, zmap_hash_symbol, zmap_cmp_symbol);
+    }
+    SymbolUse **found = zmap_get(&tc->symbol_uses, sym);
+    if (found)
+    {
+        return *found;
+    }
+    SymbolUse *use = xcalloc(1, sizeof(SymbolUse));
+    zmap_put(&tc->symbol_uses, sym, use);
+    return use;
+}
+
+const SymbolUse *tc_symbol_use_found(const TypeChecker *tc, const ZenSymbol *sym)
+{
+    if (!tc || !tc->symbol_uses.hash_func)
+    {
+        return NULL;
+    }
+    SymbolUse **found = zmap_get((zmap_UseBySymbol *)&tc->symbol_uses, sym);
+    return found ? *found : NULL;
+}
