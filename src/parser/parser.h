@@ -197,16 +197,6 @@ typedef struct StructRef
 } StructRef;
 
 /**
- * @brief Definition of a struct (lookup cache).
- */
-typedef struct StructDef
-{
-    char *name;
-    ASTNode *node;
-    struct StructDef *next;
-} StructDef;
-
-/**
  * @brief The tuples the program uses, each once, for the C structs codegen emits.
  */
 typedef struct TupleType
@@ -430,7 +420,6 @@ struct ParserContext
     StructRef *parsed_funcs_list;   ///< List of all parsed function nodes.
     StructRef *parsed_impls_list;   ///< List of all parsed impl blocks.
     StructRef *parsed_globals_list; ///< List of all parsed global variables.
-    StructDef *struct_defs;         ///< Registry of struct definitions (map name -> node).
     EnumVariantReg *enum_variants;  ///< Registry of enum variants for global lookup.
     ImplReg *registered_impls;      ///< Cache of type/trait implementations.
 

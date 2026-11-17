@@ -17,6 +17,7 @@ This new release brings breaking changes to the language:
 - A lambda parameter without a type where nothing at the lambda gives it one (`let add = (x, y) => x + y;`) is a warning, "an error from 0.6". A parameter whose type 0.5 guesses from the body (`x => x * 2`) is not reported yet, and is an error in 0.6 too.
 - `zc build` and `zc run` run the same typechecker as `zc check`. The errors `zc check` reports that a build did not (a type mismatch, an undefined variable, a pointer that escapes its scope, a `match` that is not exhaustive...) are warnings in a build, marked "an error from 0.6": from 0.6 they stop the build. With `--misra` they are errors, as they already were.
 - The backend no longer repeats what the typechecker reports: the warnings "Non-exhaustive match", "Undefined variable" and, with `-Wpedantic`, "Undefined function" are gone from a build, which now gets them from the typechecker. An undefined function gets the closest declared name as a hint ("Did you mean 'compute'?"), as an undefined variable did.
+- The hint for an unknown type ("Did you mean 'Vec'?") also proposes a generic type, and among names as close as each other it gives the first by name, not the one declared last.
 - Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name: the special message "is a function of std/io.zc, which is not imported" is gone.
 
 ### Fixes
