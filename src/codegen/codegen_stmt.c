@@ -83,6 +83,75 @@ void emit_defers_down_to(ParserContext *ctx, int boundary)
     }
 }
 
+// Leaves the current function, by `return` or by `?`: runs the pending defers and, under MISRA,
+// goes through the single exit. The caller emits the returned value between the two calls and
+// passes both the same `value`, NULL for a `return;`.
+void emit_function_exit_begin(ParserContext *ctx, ASTNode *value)
+{
+    int has_defers = ctx->cg.defer_count > ctx->cg.func_defer_boundary;
+    Type *ret = ctx->cg.current_func_ret_type_info;
+    if (!value)
+    {
+        if (!has_defers && !ctx->config->misra_mode)
+        {
+            EMIT(ctx, "return ");
+        }
+        return;
+    }
+    if (has_defers)
+    {
+        EMIT(ctx, "{ ");
+        emitter_indent(&ctx->cg.emitter);
+        if (ret && ret->kind != TYPE_VOID)
+        {
+            char *tstr = c_type_spelling(ctx, ret);
+            EMIT(ctx, "%s", tstr);
+            zfree(tstr);
+        }
+        else
+        {
+            emit_auto_type(ctx, value, value->token);
+        }
+        EMIT(ctx, " _z_ret = ");
+    }
+    else if (!ctx->config->misra_mode)
+    {
+        EMIT(ctx, "return ");
+    }
+    else if (ret && ret->kind != TYPE_VOID)
+    {
+        EMIT(ctx, "_misra_ret = ");
+    }
+}
+
+void emit_function_exit_end(ParserContext *ctx, ASTNode *value)
+{
+    if (ctx->cg.defer_count <= ctx->cg.func_defer_boundary)
+    {
+        EMIT(ctx, ";\n");
+        if (ctx->config->misra_mode)
+        {
+            EMIT(ctx, "goto _misra_end_of_func;\n");
+        }
+        return;
+    }
+    if (value)
+    {
+        EMIT(ctx, "; ");
+    }
+    emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
+    if (value)
+    {
+        emitter_dedent(&ctx->cg.emitter);
+        EMIT(ctx, ctx->config->misra_mode ? "_misra_ret = _z_ret; goto _misra_end_of_func; }\n"
+                                          : "return _z_ret; }\n");
+    }
+    else
+    {
+        EMIT(ctx, ctx->config->misra_mode ? "goto _misra_end_of_func;\n" : "return;\n");
+    }
+}
+
 // Name of the struct with Drop that a call statement produces and discards, or NULL.
 static char *discarded_drop_type(ParserContext *ctx, ASTNode *node)
 {
@@ -130,18 +199,10 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     {
     case NODE_FOR:
     {
-        // The initializer is declared in the `for` header, not by handle_node_var_decl. One that
-        // names the variable it declares (`for (let i = i; ...)`) is evaluated into a temporary
-        // first, in a block around the loop, as the bounds of a range are.
-        ASTNode *init = node->for_stmt.init;
-        char *init_temp = NULL;
+        // The initializer is declared in the `for` header, not by handle_node_var_decl. A loop
+        // variable that hides a name its initializer reads (`for (let i = i; ...)`) has a C name
+        // of its own (tc_declare_local), so the initializer reads the hidden one.
         codegen_loop_enter(ctx, node->for_stmt.loop_label);
-        if (init && init->kind == NODE_VAR_DECL &&
-            expr_names_var(init->var_decl.init_expr, init->var_decl.name))
-        {
-            EMIT(ctx, "{ ");
-            init_temp = emit_init_temp(ctx, init->var_decl.init_expr);
-        }
         EMIT(ctx, "for (");
         if (node->for_stmt.init)
         {
@@ -151,15 +212,16 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 char *declared = node_c_type(ctx, v);
                 if (declared)
                 {
-                    EMIT(ctx, "%s %s = (%s)(", declared, c_name(ctx, v->var_decl.name), declared);
-                    emit_expr_or_temp(ctx, v->var_decl.init_expr, init_temp);
+                    EMIT(ctx, "%s %s = (%s)(", declared,
+                         local_decl_c_name(ctx, v->token, v->var_decl.name), declared);
+                    codegen_expression(ctx, v->var_decl.init_expr);
                     EMIT(ctx, ")");
                 }
                 else
                 {
                     emit_auto_type(ctx, v->var_decl.init_expr, v->token);
-                    EMIT(ctx, " %s = ", c_name(ctx, v->var_decl.name));
-                    emit_expr_or_temp(ctx, v->var_decl.init_expr, init_temp);
+                    EMIT(ctx, " %s = ", local_decl_c_name(ctx, v->token, v->var_decl.name));
+                    codegen_expression(ctx, v->var_decl.init_expr);
                 }
             }
             else
@@ -180,10 +242,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, ") ");
         codegen_loop_body(ctx, node->for_stmt.body, node->for_stmt.loop_label, 1);
         codegen_loop_exit(ctx, node->for_stmt.loop_label);
-        if (init_temp)
-        {
-            EMIT(ctx, "}\n");
-        }
         break;
     }
     case NODE_BREAK:
@@ -246,82 +304,55 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     }
     case NODE_FOR_RANGE:
     {
-        // C puts the loop variable in scope at the end of its declarator, so a name `i` in the
-        // header of `for (T i = <start>; i < <end>; i += <step>)` is the loop variable, not the
-        // one it shadows (`for i in 0..i`). A bound or a step that names it is evaluated into a
-        // temporary first, in a block around the loop, while `i` still names the shadowed one.
-        // The start is evaluated before the end, as in the loop; an end that names the loop
-        // variable is then evaluated once, not before each check. A negated step (`step -1`)
-        // counts down.
-        const char *var = node->for_range.var_name;
+        // A loop variable that hides a name its bounds or step read (`for i in 0..i`) has a C
+        // name of its own (tc_declare_local), so the header reads the hidden one. A negated step
+        // (`step -1`) counts down.
+        const char *var =
+            local_decl_c_name(ctx, node->for_range.var_token, node->for_range.var_name);
         ASTNode *step = node->for_range.step;
         int counts_down = step && step->kind == NODE_EXPR_UNARY && step->unary.op == OP_NEG;
-        int end_names_var = expr_names_var(node->for_range.end, var);
-        int start_names_var = end_names_var || expr_names_var(node->for_range.start, var);
-        int step_names_var = expr_names_var(step, var);
-        int hoist = start_names_var || end_names_var || step_names_var;
-        char *start_temp = NULL;
-        char *end_temp = NULL;
-        char *step_temp = NULL;
 
         codegen_loop_enter(ctx, node->for_range.loop_label);
-        if (hoist)
-        {
-            EMIT(ctx, "{ ");
-            if (start_names_var)
-            {
-                start_temp = emit_init_temp(ctx, node->for_range.start);
-            }
-            if (end_names_var)
-            {
-                end_temp = emit_init_temp(ctx, node->for_range.end);
-            }
-            if (step_names_var)
-            {
-                step_temp = emit_init_temp(ctx, step);
-            }
-        }
-
         EMIT(ctx, "for (");
         if (z_path_match_compiler(ctx->config->cc, "tcc"))
         {
             EMIT(ctx, "__typeof__((");
-            emit_expr_or_temp(ctx, node->for_range.start, start_temp);
-            EMIT(ctx, ")) %s = ", c_name(ctx, node->for_range.var_name));
+            codegen_expression(ctx, node->for_range.start);
+            EMIT(ctx, ")) %s = ", var);
         }
         else
         {
-            EMIT(ctx, "ZC_AUTO %s = ", c_name(ctx, node->for_range.var_name));
+            EMIT(ctx, "ZC_AUTO %s = ", var);
         }
-        emit_expr_or_temp(ctx, node->for_range.start, start_temp);
+        codegen_expression(ctx, node->for_range.start);
         if (counts_down)
         {
             if (node->for_range.is_inclusive)
             {
-                EMIT(ctx, "; %s >= ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s >= ", var);
             }
             else
             {
-                EMIT(ctx, "; %s > ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s > ", var);
             }
         }
         else
         {
             if (node->for_range.is_inclusive)
             {
-                EMIT(ctx, "; %s <= ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s <= ", var);
             }
             else
             {
-                EMIT(ctx, "; %s < ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s < ", var);
             }
         }
-        emit_expr_or_temp(ctx, node->for_range.end, end_temp);
-        EMIT(ctx, "; %s", c_name(ctx, node->for_range.var_name));
+        codegen_expression(ctx, node->for_range.end);
+        EMIT(ctx, "; %s", var);
         if (step)
         {
             EMIT(ctx, " += ");
-            emit_expr_or_temp(ctx, step, step_temp);
+            codegen_expression(ctx, step);
             EMIT(ctx, ") ");
         }
         else
@@ -330,10 +361,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         }
         codegen_loop_body(ctx, node->for_range.body, node->for_range.loop_label, 0);
         codegen_loop_exit(ctx, node->for_range.loop_label);
-        if (hoist)
-        {
-            EMIT(ctx, "}\n");
-        }
         break;
     }
 
@@ -535,7 +562,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     }
     case NODE_RETURN:
     {
-        int has_defers = (ctx->cg.defer_count > ctx->cg.func_defer_boundary);
         int handled = 0;
 
         if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR &&
@@ -561,24 +587,13 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, "ZC_AUTO");
             }
             EMIT(ctx, " _z_ret_mv = ");
-            if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-            {
-                EMIT(ctx, "*");
-            }
             codegen_expression(ctx, node->ret.value);
             // A `const` variable is still owned: it is cleared through a mutable pointer.
             Type *ret_type = node->ret.value->type_info;
             EMIT(ctx, "; memset(%s&", (ret_type && ret_type->is_const) ? "(void *)" : "");
-            if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-            {
-                EMIT(ctx, "*");
-            }
             codegen_expression(ctx, node->ret.value);
             EMIT(ctx, ", 0, sizeof(_z_ret_mv)); ");
-            if (strcmp(node->ret.value->var_ref.name, "self") != 0)
-            {
-                EMIT(ctx, "__z_drop_flag_%s = 0; ", node->ret.value->var_ref.name);
-            }
+            EMIT(ctx, "__z_drop_flag_%s = 0; ", var_ref_flag_name(node->ret.value));
             emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
             EMIT(ctx, "_z_ret_mv; });\n");
 
@@ -591,101 +606,13 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
 
         if (!handled)
         {
-            if (has_defers && node->ret.value)
+            ASTNode *value = node->ret.value;
+            emit_function_exit_begin(ctx, value);
+            if (value)
             {
-                EMIT(ctx, "{ ");
-                emitter_indent(&ctx->cg.emitter);
-                Type *ret = ctx->cg.current_func_ret_type_info;
-                if (ret && ret->kind != TYPE_VOID)
-                {
-                    char *tstr = c_type_spelling(ctx, ret);
-                    EMIT(ctx, "%s", tstr);
-                    zfree(tstr);
-                }
-                else
-                {
-                    emit_auto_type(ctx, node->ret.value, node->token);
-                }
-                EMIT(ctx, " _z_ret = ");
-                if (node->ret.value->kind == NODE_EXPR_VAR && ctx->self_is_pointer &&
-                    strcmp(node->ret.value->var_ref.name, "self") == 0)
-                {
-                    EMIT(ctx, "*");
-                }
-                codegen_expression(ctx, node->ret.value);
-                EMIT(ctx, "; ");
-                emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
-                if (ctx->config->misra_mode)
-                {
-                    emitter_dedent(&ctx->cg.emitter);
-                    EMIT(ctx, "_misra_ret = _z_ret; goto _misra_end_of_func; }\n");
-                }
-                else
-                {
-                    emitter_dedent(&ctx->cg.emitter);
-                    EMIT(ctx, "return _z_ret; }\n");
-                }
+                codegen_expression(ctx, value);
             }
-            else if (has_defers)
-            {
-                emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
-                if (ctx->config->misra_mode)
-                {
-                    EMIT(ctx, "goto _misra_end_of_func;\n");
-                }
-                else
-                {
-                    EMIT(ctx, "return;\n");
-                }
-            }
-            else
-            {
-                if (ctx->config->misra_mode)
-                {
-                    Type *ret = ctx->cg.current_func_ret_type_info;
-                    if (ret && ret->kind != TYPE_VOID)
-                    {
-                        EMIT(ctx, "_misra_ret = ");
-                    }
-                    else
-                    {
-                    }
-                }
-                else
-                {
-                    EMIT(ctx, "return ");
-                }
-
-                if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR &&
-                    ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-                {
-                    // return self; -> return *self; (if returns by value)
-                    EMIT(ctx, "*");
-                }
-                else if (node->ret.value && node->ret.value->kind == NODE_EXPR_UNARY &&
-                         node->ret.value->unary.op == OP_ADDRESS &&
-                         node->ret.value->unary.operand->kind == NODE_EXPR_VAR &&
-                         strcmp(node->ret.value->unary.operand->var_ref.name, "self") == 0)
-                {
-                    // return &self; -> return self; (since self is already a pointer in C)
-                    codegen_expression(ctx, node->ret.value->unary.operand);
-                    EMIT(ctx, ";\n");
-                    if (ctx->config->misra_mode)
-                    {
-                        EMIT(ctx, "goto _misra_end_of_func;\n");
-                    }
-                    break;
-                }
-                if (node->ret.value)
-                {
-                    codegen_expression(ctx, node->ret.value);
-                }
-                EMIT(ctx, ";\n");
-                if (ctx->config->misra_mode)
-                {
-                    EMIT(ctx, "goto _misra_end_of_func;\n");
-                }
-            }
+            emit_function_exit_end(ctx, value);
         }
         break;
     }

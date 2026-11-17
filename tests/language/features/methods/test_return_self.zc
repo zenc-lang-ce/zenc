@@ -1,0 +1,53 @@
+// language/features/methods: `self` is a pointer to the receiver. `return self;` returns that
+// pointer where the method returns one, and the receiver's value where it returns the type,
+// whether a defer is pending or not.
+
+let hits = 0;
+
+struct Counter {
+    n: int;
+}
+
+impl Counter {
+    fn bump(self) -> Counter* {
+        self.n = self.n + 1;
+        return self;
+    }
+
+    fn bump_with_defer(self) -> Counter* {
+        defer hits = hits + 1;
+        self.n = self.n + 1;
+        return self;
+    }
+
+    fn copy(self) -> Counter {
+        return self;
+    }
+
+    fn copy_with_defer(self) -> Counter {
+        defer hits = hits + 1;
+        return self;
+    }
+}
+
+test "return_self_where_a_pointer_is_returned" {
+    hits = 0;
+    let c = Counter { n: 1 };
+    let p = c.bump();
+    assert(p == &c, "bump should return the receiver");
+    let q = c.bump_with_defer();
+    assert(q == &c, "bump_with_defer should return the receiver");
+    assert(c.n == 3, "both should change the receiver");
+    assert(hits == 1, "the defer should run once");
+}
+
+test "return_self_where_the_value_is_returned" {
+    hits = 0;
+    let c = Counter { n: 4 };
+    let a = c.copy();
+    let b = c.copy_with_defer();
+    a.n = 0;
+    b.n = 0;
+    assert(c.n == 4, "copy and copy_with_defer should return copies");
+    assert(hits == 1, "the defer should run once");
+}

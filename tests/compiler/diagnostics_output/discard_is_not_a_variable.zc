@@ -1,0 +1,8 @@
+// ARGS: run -q
+// `let _` discards its value: `_` names nothing afterwards, and reading it stops the build.
+import "std/io.zc"
+fn main() {
+    let _ = 5;
+    let y = _;
+    println(f"{y}");
+}

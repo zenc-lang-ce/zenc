@@ -283,7 +283,8 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                 {
                     continue;
                 }
-                const char *bname = c_name(ctx, c->match_case.binding_names[i]);
+                const char *bname =
+                    local_decl_c_name(ctx, c->token, c->match_case.binding_names[i]);
                 int is_r = c->match_case.binding_refs ? c->match_case.binding_refs[i] : 0;
 
                 if (is_option)
@@ -362,10 +363,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
             }
         }
 
-        // Check if body is a string literal (should auto-print).
         ASTNode *body = c->match_case.body;
-        int is_string_literal =
-            (body->kind == NODE_EXPR_LITERAL && body->literal.kind == LITERAL_STRING);
 
         int gives_no_value =
             (body->kind == NODE_RETURN || body->kind == NODE_ASSERT || body->kind == NODE_EXPECT);
@@ -402,19 +400,9 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
         }
         else
         {
-            if (is_string_literal)
-            {
-                // RFC 0001: a string as the arm of a match statement no longer prints. For one
-                // release it is an error that tells how to print it; afterwards it is an unused
-                // expression, which would compile and print nothing. Only codegen knows whether
-                // the match is a statement: in a match expression the string is its value.
-                const char *hints[] = {"print it with println(\"...\"), from std/io.zc", NULL};
-                zerror_with_hints(body->token, "a string on its own no longer prints", hints);
-            }
-            else
-            {
-                codegen_node_single(ctx, body);
-            }
+            // A string literal here (RFC 0001) is an error of the typechecker
+            // (report_printing_match_arms), which stops the build before codegen.
+            codegen_node_single(ctx, body);
         }
 
         EMIT(ctx, " }");

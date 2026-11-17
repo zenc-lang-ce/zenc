@@ -9,6 +9,36 @@
 #include <ctype.h>
 #include "analysis/const_fold.h"
 
+static char *local_key(const char *site, const char *name)
+{
+    size_t size = strlen(name) + 32;
+    char *key = xmalloc(size);
+    snprintf(key, size, "%p\x1f%s", (const void *)site, name);
+    return key;
+}
+
+void record_local_c_name(ParserContext *ctx, const char *site, const char *name, const char *c_name)
+{
+    // Every ParserContext starts zeroed, wherever it is created: the map starts here.
+    if (!ctx->local_c_names.hash_func)
+    {
+        ctx->local_c_names = zmap_init(CNameByDecl, zmap_hash_cstr, zmap_cmp_cstr);
+    }
+    zmap_put(&ctx->local_c_names, local_key(site, name), c_name);
+}
+
+const char *local_c_name_at(ParserContext *ctx, const char *site, const char *name)
+{
+    if (!ctx->local_c_names.hash_func || !site || !name)
+    {
+        return NULL;
+    }
+    char *key = local_key(site, name);
+    const char **found = zmap_get(&ctx->local_c_names, key);
+    zfree(key);
+    return found ? *found : NULL;
+}
+
 void register_named_type(ParserContext *ctx, const char *name, ASTNode *node)
 {
     // Every ParserContext starts zeroed, wherever it is created: the map starts here.

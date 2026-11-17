@@ -6,6 +6,7 @@
  */
 
 #include "repl_state.h"
+#include "analysis/typecheck.h"
 #include "codegen/codegen.h"
 
 /* Common setup for every ParserContext the REPL creates.
@@ -34,6 +35,12 @@ static void repl_counting_consumer(void *data, const ZenDiagnostic *d)
     }
 }
 
+static void repl_discarding_consumer(void *data, const ZenDiagnostic *d)
+{
+    (void)data;
+    (void)d;
+}
+
 char *repl_transpile(ZenCompiler *compiler, const char *zen_c_code)
 {
     ParserContext ctx;
@@ -59,6 +66,19 @@ char *repl_transpile(ZenCompiler *compiler, const char *zen_c_code)
     {
         return NULL;
     }
+
+    // Codegen relies on what the analysis settles (the typechecker's conversions and decisions),
+    // so it runs as in a build. Its diagnostics are not shown yet: the REPL keeps reporting what
+    // the C compiler rejects, as it did, and every line typed so far is checked again each time.
+    compiler->diag_consumer = repl_discarding_consumer;
+    compiler->diag_consumer_data = NULL;
+    int error_count = compiler->error_count;
+    int warning_count = compiler->warning_count;
+    analyze_program(&ctx, root);
+    compiler->error_count = error_count;
+    compiler->warning_count = warning_count;
+    compiler->diag_consumer = old_consumer;
+    compiler->diag_consumer_data = old_consumer_data;
 
     emitter_init_buffer(&ctx.cg.emitter);
     codegen_node(&ctx, root);

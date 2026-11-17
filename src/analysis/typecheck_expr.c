@@ -868,6 +868,20 @@ static int is_struct_base_match(Type *base, Type *instantiated)
            strcmp(base->name, instantiated->name) == 0;
 }
 
+// Makes `*expr_ptr` the dereference of what it was, a value of `pointee`.
+static void wrap_in_dereference(ASTNode **expr_ptr, Type *pointee)
+{
+    ASTNode *expr = *expr_ptr;
+    ASTNode *deref = ast_create(NODE_EXPR_UNARY);
+    deref->unary.op = OP_DEREF;
+    deref->unary.operand = expr;
+    deref->type_info = pointee;
+    deref->token = expr->token;
+    deref->next = expr->next;
+    expr->next = NULL;
+    *expr_ptr = deref;
+}
+
 void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_ptr,
                                                Type *expected_type)
 {
@@ -895,14 +909,7 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
         is_type_copy(tc->pctx, a_res->inner))
 
     {
-        ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-        deref->unary.op = OP_DEREF;
-        deref->unary.operand = expr;
-        deref->type_info = a_res->inner;
-        deref->token = expr->token;
-        deref->next = expr->next;
-        expr->next = NULL;
-        *expr_ptr = deref;
+        wrap_in_dereference(expr_ptr, a_res->inner);
     }
     // T (actual) -> T* (expected) => Implicit Address-Of &
     else if (e_res->kind == TYPE_POINTER && e_res->inner &&
@@ -918,6 +925,36 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
         addr->next = expr->next;
         expr->next = NULL;
         *expr_ptr = addr;
+    }
+}
+
+static int is_self(ASTNode *node)
+{
+    return node && node->kind == NODE_EXPR_VAR && strcmp(node->var_ref.name, "self") == 0 &&
+           node->type_info && node->type_info->kind == TYPE_POINTER;
+}
+
+void settle_returned_self(TypeChecker *tc, ASTNode **value, Type *expected_type)
+{
+    ASTNode *v = *value;
+    Type *expected = get_inner_type(expected_type);
+    if (!v || !expected)
+    {
+        return;
+    }
+    if (is_self(v) && expected->kind != TYPE_POINTER)
+    {
+        // The receiver's value, also when its type is not Copy.
+        wrap_in_dereference(value, v->type_info->inner);
+    }
+    else if (v->kind == NODE_EXPR_UNARY && v->unary.op == OP_ADDRESS && is_self(v->unary.operand) &&
+             expected->kind == TYPE_POINTER)
+    {
+        const char *hints[] = {"`self` is already a pointer to the receiver: return `self`", NULL};
+        tc_error_from_0_6(tc, v->token, "`&self` is the address of the pointer `self`", hints);
+        ASTNode *self = v->unary.operand;
+        self->next = v->next;
+        *value = self;
     }
 }
 
@@ -1428,6 +1465,13 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
             }
             node->type_info = fn_type;
         }
+        else if (!sym && !tc->is_callee && strcmp(node->var_ref.name, "_") == 0)
+        {
+            // `let _ = <value>` declares nothing. Called, `_` may be a macro of C (gettext's).
+            const char *hints[] = {"Give the value a name to read it later", NULL};
+            tc_error_stopping_build(tc, node->token,
+                                    "'_' is not a variable: `let _` discards a value", hints, NULL);
+        }
         else
         {
             // A name of C the program uses undeclared (`stdin`, or a function declared by an
@@ -1746,7 +1790,17 @@ static void check_lambda_body(TypeChecker *tc, ASTNode *node, int depth)
     tc->current_loop = prev_loop;
 }
 
+static void check_expr_lambda_in_its_function(TypeChecker *tc, ASTNode *node, int depth);
+
+// A lambda is a C function of its own: its parameters and locals get C names in it.
 void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
+{
+    CFunctionLocals *prev_c_function = tc_enter_c_function(tc, node);
+    check_expr_lambda_in_its_function(tc, node, depth);
+    tc_leave_c_function(tc, prev_c_function);
+}
+
+static void check_expr_lambda_in_its_function(TypeChecker *tc, ASTNode *node, int depth)
 {
     Type *expected = get_inner_type(node->type_info);
     if (expected && expected->kind == TYPE_FUNCTION && expected->is_raw)
@@ -1805,7 +1859,7 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
                 ptype = node_ti->args[i];
             }
         }
-        tc_add_symbol(tc, pname, ptype, node->token, 0);
+        tc_declare_local(tc, pname, ptype, node->token, 0, NULL, 0);
     }
 
     // Add captured variables to the scope of the lambda. One captured by value is the closure's own
@@ -1821,6 +1875,11 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
 
             // Lookup original symbol to get its type
             ZenSymbol *orig_sym = tc_lookup(tc, var_name);
+            if (orig_sym && orig_sym->link_name)
+            {
+                // The closure copies the variable by its C name, where the lambda is written.
+                record_local_c_name(tc->pctx, node->token.start, var_name, orig_sym->link_name);
+            }
             if (orig_sym)
             {
                 // Shadow the original variable in the lambda scope.
@@ -1881,7 +1940,9 @@ static void check_waiting_lambda(TypeChecker *tc, WaitingLambda w)
     tc->is_forget_receiver = 0;
     tc->is_callee = 0;
 
+    CFunctionLocals *prev_c_function = tc_enter_c_function(tc, w.lambda);
     check_lambda_body(tc, w.lambda, w.node_depth);
+    tc_leave_c_function(tc, prev_c_function);
 
     tc->pctx->current_scope = prev_scope;
     tc->current_depth = prev_depth;

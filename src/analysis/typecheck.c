@@ -374,18 +374,9 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             else if (node->ret.value && ret_type_info)
             {
                 apply_implicit_struct_pointer_conversions(tc, &node->ret.value, ret_type_info);
-                Type *returned = node->ret.value->type_info;
-                Type *expected = get_inner_type(ret_type_info);
-                // In a method whose `self` is a pointer, `return self;` returns the
-                // value: codegen emits `return *self;` (see codegen_stmt.c).
-                if (returned && expected && returned->kind == TYPE_POINTER &&
-                    expected->kind != TYPE_POINTER && node->ret.value->kind == NODE_EXPR_VAR &&
-                    strcmp(node->ret.value->var_ref.name, "self") == 0)
-                {
-                    returned = returned->inner;
-                }
-                check_type_compatibility(tc, ret_type_info, returned, node->token, node->ret.value,
-                                         0);
+                settle_returned_self(tc, &node->ret.value, ret_type_info);
+                check_type_compatibility(tc, ret_type_info, node->ret.value->type_info, node->token,
+                                         node->ret.value, 0);
             }
         }
         tc->is_unreachable = 1;
@@ -538,7 +529,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                                 {
                                     bt = type_new_ptr(bt);
                                 }
-                                ZenSymbol *sym = tc_add_symbol(tc, bname, bt, mcase->token, 0);
+                                ZenSymbol *sym =
+                                    tc_declare_local(tc, bname, bt, mcase->token, 0, NULL, 0);
                                 if (sym && !is_ref)
                                 {
                                     // Bound by value, the binding is a copy of the payload: the
@@ -910,7 +902,10 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         MoveState *prev_move_state = tc->pctx->move_state;
         tc->pctx->move_state = move_state_create(NULL);
 
+        // A test is a C function of its own: its locals get C names in it.
+        CFunctionLocals *prev_c_function = tc_enter_c_function(tc, node);
         check_node(tc, node->test_stmt.body, depth + 1);
+        tc_leave_c_function(tc, prev_c_function);
 
         move_state_free(tc->pctx->move_state);
         tc->pctx->move_state = prev_move_state;
@@ -1164,8 +1159,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         }
         for (int i = 0; i < node->destruct.count; i++)
         {
-            tc_add_symbol(tc, node->destruct.names[i], destructured_type(tc->pctx, node, i),
-                          node->token, 0);
+            tc_declare_local(tc, node->destruct.names[i], destructured_type(tc->pctx, node, i),
+                             node->token, 0, &node->destruct.init_expr, 1);
         }
         break;
     case NODE_BREAK:
@@ -1470,6 +1465,21 @@ static void check_instantiations(TypeChecker *tc)
 }
 
 // ** Entry Point **
+
+int analyze_program(ParserContext *ctx, ASTNode *root)
+{
+    propagate_drop_traits(ctx);
+    if (!validate_types(ctx) || !validate_function_definitions(ctx, root))
+    {
+        return -1;
+    }
+    int result = check_program(ctx, root);
+    if (result == 0 && ctx->config->check_twice)
+    {
+        result = check_program(ctx, root);
+    }
+    return result;
+}
 
 int check_program(ParserContext *ctx, ASTNode *root)
 {

@@ -1,0 +1,33 @@
+// language/control-flow: `?` on an enum named Option, with a `None` variant, runs the function's
+// defers when it returns early, as on the standard Option.
+
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+let trail = 0;
+
+fn get(ok: bool) -> Option<int> {
+    if ok {
+        return Option<int>::Some(3);
+    }
+    return Option<int>::None();
+}
+
+fn plus_one(ok: bool) -> Option<int> {
+    defer trail = trail + 1;
+    let v = get(ok)?;
+    return Option<int>::Some(v + 1);
+}
+
+test "? on an enum Option runs the defer when it returns early" {
+    // The tags follow the order of the variants: Some is 0, None is 1.
+    trail = 0;
+    assert(plus_one(false).tag == 1, "? should return None when it fails");
+    assert(trail == 1, "the defer should run once when ? returns early");
+    trail = 0;
+    let r = plus_one(true);
+    assert(r.tag == 0 && r.data.Some == 4, "? should give the value when it succeeds");
+    assert(trail == 1, "the defer should run once when ? succeeds");
+}
