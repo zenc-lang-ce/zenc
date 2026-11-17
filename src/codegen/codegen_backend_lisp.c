@@ -825,7 +825,8 @@ static void lemit_stmt(ParserContext *ctx, ASTNode *node, int depth, int *first)
         }
         if (node->for_range.step)
         {
-            emitter_printf(&ctx->cg.emitter, " by %s", node->for_range.step);
+            emitter_printf(&ctx->cg.emitter, " by ");
+            lemit_expr(ctx, node->for_range.step, depth);
         }
         emitter_printf(&ctx->cg.emitter, " do\n");
         lemit_i(ctx, depth + 1);

@@ -416,7 +416,7 @@ struct ASTNode
             Token var_token; ///< Where the loop variable is written: its declaration.
             ASTNode *start;
             ASTNode *end;
-            char *step;
+            ASTNode *step; ///< `2` or `-1` of `step 2`; NULL without `step` (one at a time).
             int is_inclusive;
             ASTNode *body;
             char *loop_label;

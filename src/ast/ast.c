@@ -114,6 +114,7 @@ ASTChildren ast_children(ASTNode *node)
     case NODE_FOR_RANGE:
         add_child(&c, &node->for_range.start);
         add_child(&c, &node->for_range.end);
+        add_child(&c, &node->for_range.step);
         add_child(&c, &node->for_range.body);
         break;
     case NODE_LOOP:

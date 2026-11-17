@@ -1,0 +1,11 @@
+   Compiling tests/compiler/diagnostics_output/err_range_step_undefined.zc...
+error: Undefined variable 'stride'
+  --> tests/compiler/diagnostics_output/err_range_step_undefined.zc:6:25
+   |
+6  |     for i in 0..10 step stride {
+   |                         ^ here
+   |
+   = help: Did you mean 'true'?
+     error: semantic analysis found 1 error
+       Check failed with 1 errors
+[exit 1]

@@ -540,6 +540,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
     case NODE_FOR_RANGE:
         new_node->for_range.start = copy_ast_replacing(ctx, n->for_range.start, b, os, ns);
         new_node->for_range.end = copy_ast_replacing(ctx, n->for_range.end, b, os, ns);
+        new_node->for_range.step = copy_ast_replacing(ctx, n->for_range.step, b, os, ns);
         new_node->for_range.body = copy_ast_replacing(ctx, n->for_range.body, b, os, ns);
         break;
 

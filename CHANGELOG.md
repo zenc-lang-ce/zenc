@@ -20,6 +20,7 @@ This new release brings breaking changes to the language:
 - Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name: the special message "is a function of std/io.zc, which is not imported" is gone.
 
 ### Fixes
+- The step of a range loop (`for i in 0..n step k`) is checked as an expression: `zc check` reports a name it does not know, which only the C compiler did.
 - A returned lambda takes the function's return type (`fn adder(n: int) -> fn(int) -> int { return x => x + n; }`), as one in a `let` with a type or passed as an argument does.
 - A lambda whose parameters have no type (`let add = (x, y) => x + y;`) gets them from its first call, and `zc check` checks its body then, with those types: before, it checked the body with the types unknown, and an error in it (passing `x` where a `string` is expected, when the call gives an `int`) went unreported.
 - An index on a struct with `get`/`set` (the operator overload) is decided in one place, the typechecker, with the rule the parser, the typechecker and the backend each had their own copy of: `v[i, j] = x` passes every index to `set`, a pointer is still indexed directly, and the result of `get` is a temporary a method can be called on (`m[k].unwrap()`).

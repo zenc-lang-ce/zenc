@@ -251,14 +251,14 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         // one it shadows (`for i in 0..i`). A bound or a step that names it is evaluated into a
         // temporary first, in a block around the loop, while `i` still names the shadowed one.
         // The start is evaluated before the end, as in the loop; an end that names the loop
-        // variable is then evaluated once, not before each check. The step is the text of one
-        // token, or of `-` and one token.
+        // variable is then evaluated once, not before each check. A negated step (`step -1`)
+        // counts down.
         const char *var = node->for_range.var_name;
-        const char *step = node->for_range.step;
-        const char *step_name = (step && step[0] == '-') ? step + 1 : step;
+        ASTNode *step = node->for_range.step;
+        int counts_down = step && step->kind == NODE_EXPR_UNARY && step->unary.op == OP_NEG;
         int end_names_var = expr_names_var(node->for_range.end, var);
         int start_names_var = end_names_var || expr_names_var(node->for_range.start, var);
-        int step_names_var = step_name && strcmp(step_name, var) == 0;
+        int step_names_var = expr_names_var(step, var);
         int hoist = start_names_var || end_names_var || step_names_var;
         char *start_temp = NULL;
         char *end_temp = NULL;
@@ -278,16 +278,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             }
             if (step_names_var)
             {
-                step_temp = xmalloc(32);
-                snprintf(step_temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
-                if (z_path_match_compiler(ctx->config->cc, "tcc"))
-                {
-                    EMIT(ctx, "__typeof__((%s)) %s = %s; ", step, step_temp, step);
-                }
-                else
-                {
-                    EMIT(ctx, "ZC_AUTO %s = %s; ", step_temp, step);
-                }
+                step_temp = emit_init_temp(ctx, step);
             }
         }
 
@@ -303,7 +294,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             EMIT(ctx, "ZC_AUTO %s = ", c_name(ctx, node->for_range.var_name));
         }
         emit_expr_or_temp(ctx, node->for_range.start, start_temp);
-        if (node->for_range.step && node->for_range.step[0] == '-')
+        if (counts_down)
         {
             if (node->for_range.is_inclusive)
             {
@@ -327,9 +318,11 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         }
         emit_expr_or_temp(ctx, node->for_range.end, end_temp);
         EMIT(ctx, "; %s", c_name(ctx, node->for_range.var_name));
-        if (node->for_range.step)
+        if (step)
         {
-            EMIT(ctx, " += %s) ", step_temp ? step_temp : node->for_range.step);
+            EMIT(ctx, " += ");
+            emit_expr_or_temp(ctx, step, step_temp);
+            EMIT(ctx, ") ");
         }
         else
         {

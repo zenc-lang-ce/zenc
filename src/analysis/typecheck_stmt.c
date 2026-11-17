@@ -503,6 +503,7 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
     case NODE_FOR_RANGE:
         check_node(tc, node->for_range.start, depth + 1);
         check_node(tc, node->for_range.end, depth + 1);
+        check_node(tc, node->for_range.step, depth + 1);
 
         // Loop start conceptually here
         if (loop_start)
