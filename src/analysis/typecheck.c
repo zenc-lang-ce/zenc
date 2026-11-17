@@ -10,6 +10,8 @@
 #include "platform/misra.h"
 #include <ctype.h>
 #include <string.h>
+#include "analysis/drop_traits.h"
+#include "analysis/declaration_checks.h"
 
 // External helpers from parser
 
@@ -798,7 +800,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                         symbol_lookup_kind(tc->pctx->global_scope, target_type->name, SYM_STRUCT);
                     if (struct_sym)
                     {
-                        struct_sym->is_dereferenced = 1;
+                        tc_symbol_use(tc, struct_sym)->is_dereferenced = 1;
                     }
                 }
                 ASTNode *struct_def = named_type_def(tc->pctx, target_type);
@@ -863,9 +865,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         }
         break;
     case NODE_DEFER:
-        // Check the deferred statement
+    {
+        // The deferred statement runs when the scope ends, not here: a `panic` in it does not
+        // make the code after the `defer` unreachable.
+        int prev_unreachable = tc->is_unreachable;
         check_node(tc, node->defer_stmt.stmt, depth + 1);
+        tc->is_unreachable = prev_unreachable;
         break;
+    }
     case NODE_EXPECT:
     case NODE_ASSERT:
         misra_check_assertion(tc->pctx, node->token);
@@ -1505,8 +1512,8 @@ int check_program(ParserContext *ctx, ASTNode *root)
     // them.
     if (tc.pctx->config->misra_mode && !tc.type_errors_as_warnings)
     {
-        misra_audit_unused_symbols(tc.pctx);
-        misra_audit_block_scope(tc.pctx);
+        misra_audit_unused_symbols(tc.pctx, &tc);
+        misra_audit_block_scope(tc.pctx, &tc);
         misra_audit_identifier_uniqueness(tc.pctx);
     }
 

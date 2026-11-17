@@ -633,6 +633,7 @@ struct ASTNode
             Type *target;       // the type the methods belong to; type_impl_name gives their prefix
             Token target_token; // Where the target's name is written (`Point` of `impl Point`).
             ASTNode *methods;
+            char *generic_param; // `T` of `impl Box<T>`: the impl is a template; NULL if none.
         } impl;
 
         struct
@@ -642,6 +643,7 @@ struct ASTNode
             Token trait_token;  // Where the trait's name is written (`Show` of `impl Show for`).
             Token target_token; // Where the target's name is written.
             ASTNode *methods;
+            char *generic_param; // `T` of `for Box<T>`; NULL if the target is written without it.
             // The trait's declaration, as the typechecker resolves it; NULL for one the program
             // does not declare.
             ASTNode *trait;
@@ -1055,6 +1057,12 @@ typedef const char *(*CNameLookup)(void *context, const char *name);
  * @brief type_to_c_string, asking `lookup` for the C name of each struct and enum.
  */
 char *type_to_c_string_with(Type *t, int misra_mode, CNameLookup lookup, void *context);
+/**
+ * @brief The C declaration of `declarator` (a name, a declarator such as `buf[]`, or "" for the
+ *        type alone) with type `t`: `int32_t x`, `int32_t (*fs[2])(int32_t)`, `int32_t (*)[3]`.
+ */
+char *type_to_c_declaration_with(Type *t, const char *declarator, int misra_mode,
+                                 CNameLookup lookup, void *context);
 Type *get_inner_type(Type *t);
 /**
  * @brief The C name of the function `fn`, from its written name (`name`): a method's

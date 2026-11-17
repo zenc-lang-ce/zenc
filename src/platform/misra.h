@@ -78,12 +78,14 @@ void misra_check_iteration_termination(ParserContext *ctx, Token token);
 void misra_check_stdarg(ParserContext *ctx, Token token);
 void misra_check_identifier_collision(Token tok, const char *name1, const char *name2, int limit);
 
-// Section 2: Unused Code
-void misra_audit_unused_symbols(ParserContext *ctx);
+struct TypeChecker;
+
+// Section 2: Unused Code. `tc` is the analysis that found how the program uses each symbol.
+void misra_audit_unused_symbols(ParserContext *ctx, const struct TypeChecker *tc);
 
 // Section 5: Identifiers
 void misra_audit_identifier_uniqueness(ParserContext *ctx);
-void misra_audit_block_scope(ParserContext *ctx);
+void misra_audit_block_scope(ParserContext *ctx, const struct TypeChecker *tc);
 void misra_check_standard_macro_name(Token tok, const char *name);
 
 // Section 19: Overlapping Storage

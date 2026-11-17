@@ -44,8 +44,6 @@ typedef struct ZenSymbol
 
     // --- MISRA tracking ---
     struct ZenSymbol *original; ///< Pointer to the original symbol (for clones).
-    ASTNode *first_using_func;  ///< First function that referenced this global.
-    int multi_func_use;         ///< Flag set if referenced by multiple functions.
 
     SymbolKind kind;         ///< Kind of symbol.
     Type *type_info;         ///< Formal type definition.
@@ -60,8 +58,6 @@ typedef struct ZenSymbol
     long long const_int_val; ///< Integer value if constant.
     int is_borrowed;         ///< 1 if it views a value another symbol owns (a match binding).
     int is_local;            ///< 1 if this is a local variable/symbol.
-    int is_written_to;       ///< 1 if the value (or dereferenced memory) was modified.
-    int is_dereferenced;     ///< 1 if struct fields were explicitly accessed.
     char *cfg_condition;     ///< Optional @cfg condition.
     int scope_depth; ///< Nesting level where the symbol was defined (0 = global, 1+ = local).
     char *link_name; ///< Overriding C identifier.

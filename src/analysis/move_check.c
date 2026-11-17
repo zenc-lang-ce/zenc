@@ -9,6 +9,7 @@
 #include <stdlib.h>
 
 #include "zprep.h"
+#include "analysis/drop_traits.h"
 
 MoveState *move_state_create(MoveState *parent)
 {

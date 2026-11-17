@@ -3,13 +3,13 @@
 #include "constants.h"
 #include "platform/misra.h"
 #include "parser/parser.h"
+#include "analysis/typecheck.h"
 #include "zprep.h"
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
 
-// Forward declarations from analysis headers (standalone functions only, no TypeChecker dependency)
-int tc_expr_has_side_effects(ASTNode *node);
+// Forward declaration from the constant folder.
 int eval_const_int_expr(struct ASTNode *node, struct ParserContext *ctx, long long *out);
 
 // Standard C macro/type names from headers used in the MISRA preamble
@@ -875,7 +875,7 @@ void misra_check_stdarg(ParserContext *ctx, Token token)
     zerror_at(token, "MISRA Rule 17.1");
 }
 
-void misra_audit_unused_symbols(ParserContext *ctx)
+void misra_audit_unused_symbols(ParserContext *ctx, const struct TypeChecker *tc)
 {
     if (!ctx->config->misra_mode || !ctx->global_scope)
     {
@@ -906,7 +906,8 @@ void misra_audit_unused_symbols(ParserContext *ctx)
                 break;
             }
         }
-        else if (sym->is_used && sym->kind == SYM_STRUCT && !sym->is_dereferenced &&
+        else if (sym->is_used && sym->kind == SYM_STRUCT &&
+                 !(tc_symbol_use_found(tc, sym) && tc_symbol_use_found(tc, sym)->is_dereferenced) &&
                  sym->decl_token.line != 0)
         {
             if (sym->data.node && sym->data.node->kind == NODE_STRUCT &&
@@ -1329,7 +1330,7 @@ void misra_check_unsigned_wrap(struct ParserContext *ctx, OperatorKind op, long 
     }
 }
 
-void misra_audit_block_scope(struct ParserContext *ctx)
+void misra_audit_block_scope(struct ParserContext *ctx, const struct TypeChecker *tc)
 {
     if (!ctx->config->misra_mode || !ctx->global_scope)
     {
@@ -1344,7 +1345,9 @@ void misra_audit_block_scope(struct ParserContext *ctx)
         // Heuristic: Global variables (not exported, not static) used in exactly one function.
         // We also skip built-ins (line 0).
         if (sym->kind == SYM_VARIABLE && !sym->is_export && !sym->is_static &&
-            sym->decl_token.line != 0 && sym->first_using_func != NULL && !sym->multi_func_use)
+            sym->decl_token.line != 0 && tc_symbol_use_found(tc, sym) &&
+            tc_symbol_use_found(tc, sym)->first_using_func != NULL &&
+            !tc_symbol_use_found(tc, sym)->multi_func_use)
         {
             zerror_at(sym->decl_token, "MISRA Rule 8.9");
         }

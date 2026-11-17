@@ -376,6 +376,7 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         dummy->block.statements = NULL;
         return dummy;
     }
+    record_file_dependency(ctx, ctx->current_filename, fn);
 
     if (is_file_imported(ctx, fn))
     {

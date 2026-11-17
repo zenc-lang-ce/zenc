@@ -217,9 +217,11 @@ void emit_preamble(ParserContext *ctx)
         }
         EMIT(ctx, "%s", "#define z_free free\n#define z_print printf\n");
         // panic() becomes a call to __zenc_panic at the call site, so __FILE__ and
-        // __LINE__ (from the #line directives) name the Zen C line of the panic.
+        // __LINE__ (from the #line directives) name the Zen C line of the panic. It does not
+        // return, as the typechecker assumes: a function with a value may end in it.
         EMIT(ctx, "%s",
-             "static __attribute__((unused)) void __zenc_panic_at(const char *file, int line, "
+             "static __attribute__((unused, noreturn)) void __zenc_panic_at(const char *file, "
+             "int line, "
              "const char *msg) { fprintf(stderr, \"%s:%d: Panic: %s\\n\", file, line, msg); "
              "exit(1); }\n"
              "#define __zenc_panic(msg) __zenc_panic_at(__FILE__, __LINE__, (msg))\n");

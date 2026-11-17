@@ -1,0 +1,33 @@
+// language/aliases: test_alias_declared_later
+// An alias named before it is declared, also when it names another alias declared later, and in
+// a tuple that is the same as another one once the alias is known.
+
+struct Reading {
+    value: Celsius;
+}
+
+fn hotter(r: Reading, by: Degrees) -> Celsius {
+    return r.value + by;
+}
+
+fn reading_pair() -> (Celsius, int) {
+    return (1, 2);
+}
+
+fn int_pair() -> (int, int) {
+    return (3, 4);
+}
+
+alias Celsius = Degrees;
+alias Degrees = int;
+
+test "an alias of an alias, both declared further down" {
+    let r = Reading { value: 20 };
+    expect_eq(hotter(r, 5), 25, "Celsius and Degrees are int");
+}
+
+test "a tuple of an alias declared further down" {
+    let (a, b) = reading_pair();
+    let (c, d) = int_pair();
+    expect_eq(a + b + c + d, 10, "(Celsius, int) and (int, int) are one tuple");
+}

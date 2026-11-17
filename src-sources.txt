@@ -4,6 +4,7 @@ src/parser/parser_core.c
 src/parser/core/core_attributes.c
 src/parser/core/core_program.c
 src/parser/core/core_derive.c
+src/parser/core/core_collect.c
 src/parser/parser_expr.c
 src/parser/parser_stmt.c
 src/parser/parser_type.c
@@ -96,6 +97,8 @@ src/analysis/typecheck_call.c
 src/analysis/typecheck_stmt.c
 src/analysis/comptime_interpreter.c
 src/analysis/move_check.c
+src/analysis/declaration_checks.c
+src/analysis/drop_traits.c
 src/analysis/const_fold.c
 src/lsp/json_rpc.c
 src/lsp/lsp_main.c

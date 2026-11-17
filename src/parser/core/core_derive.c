@@ -1,40 +1,45 @@
 // SPDX-License-Identifier: MIT
-#include "parser.h"
-#include "constants.h"
-#include "ast/ast.h"
-#include "analysis/move_check.h"
-#include "plugins/plugin_manager.h"
 #include <ctype.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "analysis/const_fold.h"
-#include "utils/utils.h"
-#include "ast/primitives.h"
 
-// 1 if `type_name` has a `clone` method: a concrete one (`String__clone`) or one
-// from a generic impl whose instance this is (`Vec__int32_t` from `impl Vec<T>`).
-static int type_has_clone_method(ParserContext *ctx, const char *type_name)
+#include "analysis/const_fold.h"
+#include "analysis/move_check.h"
+#include "ast/ast.h"
+#include "ast/primitives.h"
+#include "constants.h"
+#include "parser.h"
+#include "plugins/plugin_manager.h"
+#include "utils/emitter.h"
+#include "utils/utils.h"
+
+// 1 if `type` has a `clone` method: a concrete one (`String__clone`, `Point__Clone__clone`), one
+// from a generic impl of its template (`Vec<int>` from `impl Vec<T>`), or one it derives further
+// down.
+static int type_has_clone_method(ParserContext *ctx, Type *type)
 {
-    char *mangled = mangle_method_symbol(type_name, NULL, "clone");
-    if (find_func(ctx, mangled))
+    char *type_name = type_def_name(type);
+    // From `impl X` or from `impl Clone for X`.
+    if (find_func(ctx, mangle_method_symbol(type_name, NULL, "clone")) ||
+        find_func(ctx, mangle_method_symbol(type_name, "Clone", "clone")) ||
+        derives_pending(ctx, type_name, "Clone"))
     {
         return 1;
     }
-    Instantiation *inst = find_instantiation(ctx, type_name);
-    const char *template_name = inst ? inst->template_name : type_name;
+    // An instance's template is in its type (`Vec` of `Vec<int>`), made or not yet.
+    const char *template_name = type->count > 0 ? type->name : type_name;
     for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
     {
         if (strcmp(it->struct_name, template_name) != 0)
         {
             continue;
         }
-        char *template_method = mangle_method_symbol(it->struct_name, NULL, "clone");
-        for (ASTNode *m = it->impl_node->impl.methods; m; m = m->next)
+        ASTNode *impl = it->impl_node;
+        ASTNode *methods = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
+        for (ASTNode *m = methods; m; m = m->next)
         {
-            if (m->kind == NODE_FUNCTION && m->func.name &&
-                strcmp(function_c_name(m), template_method) == 0)
+            if (m->kind == NODE_FUNCTION && m->func.name && strcmp(m->func.name, "clone") == 0)
             {
                 return 1;
             }
@@ -76,55 +81,35 @@ void check_derivable_trait(Token t, const char *name)
     zpanic_with_hints(t, msg, hints);
 }
 
-// The type the derived impls are written for: `Name`, or `Name<K, V>` for a
-// generic struct or enum, so that they are generic impls whose methods every
-// instance gets (`impl Name { ... }` on a generic left them undefined).
-static char *derive_self_type(ASTNode *strct)
+// Derived methods on generic types need a generic impl receiver.
+static char *derive_self_type(ASTNode *decl, char *name)
 {
-    const char *name =
-        strct->kind == NODE_ENUM ? declared_type_c_name(strct) : declared_type_c_name(strct);
-    char params[MAX_SHORT_MSG_LEN] = "";
-    if (strct->kind == NODE_STRUCT && strct->strct.is_template)
+    char **params = NULL;
+    int count = 0;
+    if (decl->kind == NODE_STRUCT && decl->strct.is_template)
     {
-        char **param = strct->strct.generic_params;
-        for (int i = 0; i < strct->strct.generic_param_count; i++, param++)
-        {
-            size_t used = strlen(params);
-            snprintf(params + used, sizeof(params) - used, "%s%s", i ? ", " : "", *param);
-        }
+        params = decl->strct.generic_params;
+        count = decl->strct.generic_param_count;
     }
-    else if (strct->kind == NODE_ENUM && strct->enm.is_template)
+    else if (decl->kind == NODE_ENUM && decl->enm.is_template)
     {
-        char **param = strct->enm.generic_params;
-        for (int i = 0; i < strct->enm.generic_param_count; i++, param++)
-        {
-            size_t used = strlen(params);
-            snprintf(params + used, sizeof(params) - used, "%s%s", i ? ", " : "", *param);
-        }
+        params = decl->enm.generic_params;
+        count = decl->enm.generic_param_count;
     }
-    if (!params[0])
+    if (count == 0)
     {
-        return xstrdup(name);
+        return name;
     }
-    size_t size = strlen(name) + strlen(params) + 3;
-    char *self_type = xmalloc(size);
-    snprintf(self_type, size, "%s<%s>", name, params);
-    return self_type;
-}
 
-// Appends to `out` (of `size` bytes, `*used` of them taken); 0 if it does not fit.
-static int append_text(char *out, size_t size, size_t *used, const char *fmt, ...)
-{
-    va_list args;
-    va_start(args, fmt);
-    int written = vsnprintf(out + *used, size - *used, fmt, args);
-    va_end(args);
-    if (written < 0 || (size_t)written >= size - *used)
+    Emitter text;
+    emitter_init_buffer(&text);
+    emitter_printf(&text, "%s<%s", name, params[0]);
+    for (int i = 1; i < count; i++)
     {
-        return 0;
+        emitter_printf(&text, ", %s", params[i]);
     }
-    *used += (size_t)written;
-    return 1;
+    emitter_printf(&text, ">");
+    return emitter_take_string(&text);
 }
 
 // Type of the `index`-th value a variant carries: its payload, or a field of the
@@ -145,22 +130,21 @@ static char *variant_value_type(ParserContext *ctx, ASTNode *variant, int index)
     return field ? type_mangle_spelling(field->type_info) : NULL;
 }
 
-// Body of the derived `eq` of an enum with payloads: the same variant and, for a
-// variant that carries values, the same values, compared with `==` (so with
-// their own `eq` when they have one). The bindings are `ref`: no value is moved
-// out of either operand. In a generic enum they are typed through locals
-// (`let x0: T* = a0;`): a binding of type `T` stays untyped in the instances,
-// and `==` would not find the `eq` of a struct `T`. 0 if the body does not fit.
-static int enum_eq_body(ParserContext *ctx, ASTNode *enm, char *body, size_t size)
+static void emit_variant_bindings(Emitter *code, int count, char prefix)
+{
+    for (int i = 0; i < count; i++)
+    {
+        emitter_printf(code, "%sref %c%d", i ? ", " : "", prefix, i);
+    }
+}
+
+// Use ref bindings so neither operand is moved. Generic payloads need typed
+// locals so a concrete payload type's own eq is found in the instantiated impl.
+static void emit_enum_eq_body(Emitter *code, ParserContext *ctx, ASTNode *enm)
 {
     const char *name = declared_type_c_name(enm);
     int is_generic = enm->enm.is_template && enm->enm.generic_param_count > 0;
-    size_t used = 0;
-    if (!append_text(body, size, &used,
-                     "if self.tag != other.tag { return false; } match *self { "))
-    {
-        return 0;
-    }
+    emitter_printf(code, "if self.tag != other.tag { return false; } match *self { ");
     for (ASTNode *v = enm->enm.variants; v; v = v->next)
     {
         int values = v->variant.payload_count;
@@ -168,506 +152,346 @@ static int enum_eq_body(ParserContext *ctx, ASTNode *enm, char *body, size_t siz
         {
             continue;
         }
-        char mine[MAX_SHORT_MSG_LEN] = "";
-        char theirs[MAX_SHORT_MSG_LEN] = "";
-        char typed[MAX_SHORT_MSG_LEN] = "";
-        char same[MAX_SHORT_MSG_LEN] = "";
-        size_t mine_used = 0, theirs_used = 0, typed_used = 0, same_used = 0;
+
+        emitter_printf(code, "%s::%s(", name, v->variant.name);
+        emit_variant_bindings(code, values, 'a');
+        emitter_printf(code, ") => { match *other { %s::%s(", name, v->variant.name);
+        emit_variant_bindings(code, values, 'b');
+        emitter_printf(code, ") => { ");
+
+        Emitter comparison;
+        emitter_init_buffer(&comparison);
         for (int i = 0; i < values; i++)
         {
-            const char *sep = i ? ", " : "";
             const char *joiner = i ? " && " : "";
-            if (!append_text(mine, sizeof(mine), &mine_used, "%sref a%d", sep, i) ||
-                !append_text(theirs, sizeof(theirs), &theirs_used, "%sref b%d", sep, i))
-            {
-                return 0;
-            }
-            char *type = is_generic ? variant_value_type(ctx, v, i) : NULL;
-            int ok;
+            const char *type = is_generic ? variant_value_type(ctx, v, i) : NULL;
             if (type)
             {
-                ok = append_text(typed, sizeof(typed), &typed_used,
-                                 "let x%d: %s* = a%d; let y%d: %s* = b%d; ", i, type, i, i, type,
-                                 i) &&
-                     append_text(same, sizeof(same), &same_used, "%s*x%d == *y%d", joiner, i, i);
+                emitter_printf(code, "let x%d: %s* = a%d; let y%d: %s* = b%d; ", i, type, i, i,
+                               type, i);
+                emitter_printf(&comparison, "%s*x%d == *y%d", joiner, i, i);
             }
             else
             {
-                ok = append_text(same, sizeof(same), &same_used, "%s*a%d == *b%d", joiner, i, i);
-            }
-            if (!ok)
-            {
-                return 0;
+                emitter_printf(&comparison, "%s*a%d == *b%d", joiner, i, i);
             }
         }
-        if (!append_text(body, size, &used,
-                         "%s::%s(%s) => { match *other { %s::%s(%s) => { %sreturn %s; }, _ => {} } "
-                         "}, ",
-                         name, v->variant.name, mine, name, v->variant.name, theirs, typed, same))
+        emitter_printf(code, "return %s; }, _ => {} } }, ", emitter_take_string(&comparison));
+    }
+    emitter_printf(code, "_ => {} } return true;");
+}
+
+static void emit_clone(Emitter *code, ParserContext *ctx, ASTNode *decl, const char *self_type)
+{
+    emitter_printf(code, "impl %s { fn clone(self) -> %s { ", self_type, self_type);
+    if (decl->kind == NODE_STRUCT)
+    {
+        emitter_printf(code, "return %s { ", self_type);
+        for (ASTNode *field = decl->strct.fields; field; field = field->next)
         {
-            return 0;
+            if (field->kind != NODE_FIELD || !field->field.name)
+            {
+                continue;
+            }
+
+            Type *type = field->type_info;
+            int cloned =
+                type && type->kind == TYPE_STRUCT && type->name && type_has_clone_method(ctx, type);
+            emitter_printf(code, "%s: self.%s%s, ", field->field.name, field->field.name,
+                           cloned ? ".clone()" : "");
+        }
+        emitter_printf(code, "};");
+    }
+    else
+    {
+        emitter_printf(code, "return self;");
+    }
+    emitter_printf(code, " } }");
+}
+
+static void emit_struct_eq_body(Emitter *code, ParserContext *ctx, ASTNode *strct)
+{
+    int first = 1;
+    emitter_printf(code, "return ");
+    for (ASTNode *field = strct->strct.fields; field; field = field->next)
+    {
+        if (field->kind != NODE_FIELD)
+        {
+            continue;
+        }
+        const char *name = field->field.name;
+        const char *type = type_mangle_spelling(field->type_info);
+        if (!first)
+        {
+            emitter_printf(code, " && ");
+        }
+
+        int is_ptr = (field->type_info && field->type_info->kind == TYPE_POINTER) ||
+                     (type && strchr(type, '*'));
+        ASTNode *definition = is_ptr ? NULL : find_struct_def(ctx, type);
+        if (definition && definition->kind == NODE_STRUCT)
+        {
+            emitter_printf(code, "%s(&self.%s, &other.%s)", mangle_method_symbol(type, NULL, "eq"),
+                           name, name);
+        }
+        else
+        {
+            emitter_printf(code, "self.%s == other.%s", name, name);
+        }
+        first = 0;
+    }
+    if (first)
+    {
+        emitter_printf(code, "true");
+    }
+    emitter_printf(code, ";");
+}
+
+static void emit_eq(Emitter *code, ParserContext *ctx, ASTNode *decl, const char *self_type)
+{
+    emitter_printf(code, "impl %s { fn eq(self, other: %s*) -> bool { ", self_type, self_type);
+    if (decl->kind == NODE_ENUM)
+    {
+        ASTNode *variant = decl->enm.variants;
+        while (variant && !variant->variant.payload)
+        {
+            variant = variant->next;
+        }
+
+        if (variant)
+        {
+            emit_enum_eq_body(code, ctx, decl);
+        }
+        else
+        {
+            // Comparing plain enum values with == would call this eq again.
+            emitter_printf(code, "return (int)*self == (int)*other;");
         }
     }
-    return append_text(body, size, &used, "_ => {} } return true;");
+    else
+    {
+        emit_struct_eq_body(code, ctx, decl);
+    }
+    emitter_printf(code, " } }");
+}
+
+static void emit_from_json_field(Emitter *code, ASTNode *f)
+{
+    const char *fn = f->field.name;
+    const char *ft = type_mangle_spelling(f->type_info);
+    if (!fn || !ft)
+    {
+        return;
+    }
+    // Map types to appropriate get_* calls
+    // A number: an integer with a sign (bool and char have their own branch).
+    int is_int_type = is_signed_type(f->type_info) || is_unsigned_type(f->type_info);
+    if (is_int_type)
+    {
+        // get_int gives an `int`: converted to the field's own width.
+        emitter_printf(code, "let _f_%s = (%s)(*j).get_int(\"%s\").unwrap_or(0);\n", fn,
+                       type_to_string(f->type_info), fn);
+    }
+    else if (strcmp(ft, "double") == 0)
+    {
+        emitter_printf(code, "let _f_%s = (*j).get_float(\"%s\").unwrap_or(0.0);\n", fn, fn);
+    }
+    else if (strcmp(ft, "bool") == 0)
+    {
+        emitter_printf(code, "let _f_%s = (*j).get_bool(\"%s\").unwrap_or(false);\n", fn, fn);
+    }
+    else if (strcmp(ft, "char*") == 0)
+    {
+        emitter_printf(code, "let _f_%s = (*j).get_string(\"%s\").unwrap_or(\"\");\n", fn, fn);
+    }
+    else if (strcmp(ft, "String") == 0)
+    {
+        emitter_printf(code,
+                       "let _f_%s = "
+                       "String::new((*j).get_string(\"%s\").unwrap_or(\"\"));\n",
+                       fn, fn);
+    }
+    else if (is_vec_of_string(f->type_info))
+    {
+        emitter_printf(code,
+                       "let _f_%s = Vec<String>::new();\n"
+                       "let _arr_%s = (*j).get_array(\"%s\");\n"
+                       "if _arr_%s.is_some() {\n"
+                       "  let _a_%s = _arr_%s.unwrap();\n"
+                       "  for let _i_%s: usize = 0; _i_%s < _a_%s.len(); _i_%s = _i_%s + "
+                       "1 {\n"
+                       "    let _item_%s = _a_%s.at(_i_%s);\n"
+                       "    if _item_%s.is_some() {\n"
+                       "      let _str_%s = (*_item_%s.unwrap()).as_string();\n"
+                       "      if _str_%s.is_some() {\n"
+                       "        let _s_%s = String::new(_str_%s.unwrap());\n"
+                       "        _f_%s.push(_s_%s); _s_%s.forget();\n"
+                       "      }\n"
+                       "    }\n"
+                       "  }\n"
+                       "}\n",
+                       fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn,
+                       fn, fn, fn, fn);
+    }
+    else
+    {
+        // Nested struct: call NestedType::from_json recursively
+        emitter_printf(code,
+                       "let _opt_%s = (*j).get(\"%s\");\n"
+                       "let _f_%s: %s;\n"
+                       "if _opt_%s.is_some() { _f_%s = "
+                       "%s::from_json(_opt_%s.unwrap()).unwrap(); }\n",
+                       fn, fn, fn, ft, fn, fn, ft, fn);
+    }
+}
+
+static void emit_from_json(Emitter *code, ASTNode *strct, const char *self_type)
+{
+    emitter_printf(code, "impl %s { fn from_json(j: JsonValue*) -> Result<%s> { ", self_type,
+                   self_type);
+    for (ASTNode *field = strct->strct.fields; field; field = field->next)
+    {
+        if (field->kind == NODE_FIELD)
+        {
+            emit_from_json_field(code, field);
+        }
+    }
+
+    emitter_printf(code, "return Result<%s>::Ok(%s { ", self_type, self_type);
+    const char *separator = "";
+    for (ASTNode *field = strct->strct.fields; field; field = field->next)
+    {
+        if (field->kind != NODE_FIELD)
+        {
+            continue;
+        }
+
+        // The local vector and the returned field need independent ownership.
+        const char *clone = is_vec_of_string(field->type_info) ? ".clone()" : "";
+        emitter_printf(code, "%s%s: _f_%s%s", separator, field->field.name, field->field.name,
+                       clone);
+        separator = ", ";
+    }
+    emitter_printf(code, " });  } }");
+}
+
+static void emit_to_json_field(Emitter *code, ASTNode *f)
+{
+    const char *fn = f->field.name;
+    const char *ft = type_mangle_spelling(f->type_info);
+    if (!fn || !ft)
+    {
+        return;
+    }
+    // A number: an integer with a sign (bool and char have their own branch).
+    int is_int_type = is_signed_type(f->type_info) || is_unsigned_type(f->type_info);
+    if (is_int_type)
+    {
+        emitter_printf(code, "_obj.set(\"%s\", JsonValue::number((double)self.%s));\n", fn, fn);
+    }
+    else if (strcmp(ft, "double") == 0)
+    {
+        emitter_printf(code, "_obj.set(\"%s\", JsonValue::number(self.%s));\n", fn, fn);
+    }
+    else if (strcmp(ft, "bool") == 0)
+    {
+        emitter_printf(code, "_obj.set(\"%s\", JsonValue::bool(self.%s));\n", fn, fn);
+    }
+    else if (strcmp(ft, "char*") == 0)
+    {
+        emitter_printf(code, "_obj.set(\"%s\", JsonValue::string(self.%s));\n", fn, fn);
+    }
+    else if (strcmp(ft, "String") == 0)
+    {
+        emitter_printf(code, "_obj.set(\"%s\", JsonValue::string(self.%s.c_str()));\n", fn, fn);
+    }
+    else if (is_vec_of_string(f->type_info))
+    {
+        emitter_printf(code,
+                       "let _arr_%s = JsonValue::array();\n"
+                       "for let _i_%s: usize = 0; _i_%s < self.%s.length(); _i_%s = _i_%s "
+                       "+ 1 {\n"
+                       "  _arr_%s.push(JsonValue::string(self.%s.get(_i_%s).c_str()));\n"
+                       "}\n"
+                       "_obj.set(\"%s\", _arr_%s);\n",
+                       fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn);
+    }
+    else
+    {
+        // Nested struct: call to_json recursively
+        emitter_printf(code, "_obj.set(\"%s\", self.%s.to_json());\n", fn, fn);
+    }
+}
+
+static void emit_to_json(Emitter *code, ASTNode *strct, const char *self_type)
+{
+    emitter_printf(code,
+                   "impl %s { fn to_json(self) -> JsonValue { let _obj = JsonValue::object();\n",
+                   self_type);
+    for (ASTNode *field = strct->strct.fields; field; field = field->next)
+    {
+        if (field->kind == NODE_FIELD)
+        {
+            emit_to_json_field(code, field);
+        }
+    }
+    emitter_printf(code, "return _obj; } }");
 }
 
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count)
 {
     ASTNode *head = NULL, *tail = NULL;
     char *name = declared_type_c_name(strct);
-    char *self_type = derive_self_type(strct);
+    const char *self_type = derive_self_type(strct, name);
 
     for (int i = 0; i < count; i++)
     {
-        char *trait = traits[i];
-        char *code = NULL;
+        const char *trait = traits[i];
+        Emitter code;
+        emitter_init_buffer(&code);
 
-        if (0 == strcmp(trait, "Clone"))
+        if (strcmp(trait, "Clone") == 0)
         {
-            size_t code_size = 1024;
-            if (strct->kind != NODE_STRUCT)
-            {
-                code = xmalloc(code_size);
-                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { return self; } }",
-                         self_type, self_type);
-            }
-            else
-            {
-                // Field by field: a field whose type has `clone` (String, Vec, a
-                // struct that derives or implements it) is cloned, so the copy owns
-                // its own resources; anything else is copied.
-                char body[4096];
-                int written = snprintf(body, sizeof(body), "return %s { ", self_type);
-                size_t used = written > 0 ? (size_t)written : 0;
-                for (ASTNode *f = strct->strct.fields; f; f = f->next)
-                {
-                    if (f->kind != NODE_FIELD || !f->field.name)
-                    {
-                        continue;
-                    }
-                    Type *ft = f->type_info;
-                    int cloned = ft && ft->kind == TYPE_STRUCT && ft->name &&
-                                 type_has_clone_method(ctx, type_def_name(ft));
-                    written = snprintf(body + used, sizeof(body) - used, "%s: self.%s%s, ",
-                                       f->field.name, f->field.name, cloned ? ".clone()" : "");
-                    if (written < 0 || (size_t)written >= sizeof(body) - used - 2)
-                    {
-                        zpanic_at(strct->token, "Too many fields for @derive(Clone)");
-                        return NULL;
-                    }
-                    used += (size_t)written;
-                }
-                snprintf(body + used, sizeof(body) - used, "};");
-                code_size = strlen(body) + strlen(self_type) * 2 + 64;
-                code = xmalloc(code_size);
-                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { %s } }", self_type,
-                         self_type, body);
-            }
+            emit_clone(&code, ctx, strct, self_type);
         }
-        else if (0 == strcmp(trait, "Eq"))
+        else if (strcmp(trait, "Eq") == 0)
         {
-            char body[4096];
-            body[0] = 0;
-
-            if (strct->kind == NODE_ENUM)
-            {
-                // Check if enum has payloads
-                int has_payload = 0;
-                ASTNode *ev = strct->enm.variants;
-                while (ev)
-                {
-                    if (ev->variant.payload)
-                    {
-                        has_payload = 1;
-                        break;
-                    }
-                    ev = ev->next;
-                }
-
-                if (has_payload)
-                {
-                    if (!enum_eq_body(ctx, strct, body, sizeof(body)))
-                    {
-                        zpanic_at(strct->token, "Too many variants for @derive(Eq)");
-                        return NULL;
-                    }
-                }
-                else
-                {
-                    // Simple enum: compare the values as integers. A plain `==` would
-                    // call this very `eq`, and a `raw` block hides the `return` from
-                    // the return-path check.
-                    snprintf(body, sizeof(body),
-                             "return (int)*self == (int)*other;"); /* TODO: check buffer size */
-                }
-            }
-            else
-            {
-                ASTNode *f = strct->strct.fields;
-                int first = 1;
-                strncat(body, "return ", sizeof(body) - strlen(body) - 1);
-                while (f)
-                {
-                    if (f->kind == NODE_FIELD)
-                    {
-                        char *fn = f->field.name;
-                        char *ft = type_mangle_spelling(f->type_info);
-                        if (!first)
-                        {
-                            strncat(body, " && ", sizeof(body) - strlen(body) - 1);
-                        }
-                        char cmp[MAX_VAR_NAME_LEN];
-
-                        // Detect pointer using type_info OR string check (fallback)
-                        int is_ptr = 0;
-                        if (f->type_info && f->type_info->kind == TYPE_POINTER)
-                        {
-                            is_ptr = 1;
-                        }
-                        // Fallback: check if type string ends with '*'
-                        if (!is_ptr && ft && strchr(ft, '*'))
-                        {
-                            is_ptr = 1;
-                        }
-
-                        // Only look up struct def for non-pointer types
-                        ASTNode *fdef = is_ptr ? NULL : find_struct_def(ctx, ft);
-
-                        if (!is_ptr && fdef && fdef->kind == NODE_ENUM)
-                        {
-                            // Check if enum is simple (no payloads)
-                            int ep = 0;
-                            ASTNode *ev2 = fdef->enm.variants;
-                            while (ev2)
-                            {
-                                if (ev2->variant.payload)
-                                {
-                                    ep = 1;
-                                    break;
-                                }
-                                ev2 = ev2->next;
-                            }
-                            if (ep)
-                            {
-                                // An enum with payloads compares with its own `eq` (the
-                                // variant and the values), not just the variant.
-                                snprintf(cmp, sizeof(cmp), "self.%s == other.%s", fn,
-                                         fn); /* TODO: check buffer size */
-                            }
-                            else
-                            {
-                                // Simple enum: direct comparison
-                                snprintf(cmp, sizeof(cmp), "self.%s == other.%s", fn,
-                                         fn); /* TODO: check buffer size */
-                            }
-                        }
-                        else if (!is_ptr && fdef && fdef->kind == NODE_STRUCT)
-                        {
-                            // Struct field: use __eq function
-                            snprintf(cmp, sizeof(cmp), "%s(&self.%s, &other.%s)",
-                                     mangle_method_symbol(ft, NULL, "eq"), fn,
-                                     fn); /* TODO: check buffer size */
-                        }
-                        else
-                        {
-                            // Primitive, POINTER, or unknown: use ==
-                            snprintf(cmp, sizeof(cmp), "self.%s == other.%s", fn,
-                                     fn); /* TODO: check buffer size */
-                        }
-                        strncat(body, cmp, sizeof(body) - strlen(body) - 1);
-                        first = 0;
-                    }
-                    f = f->next;
-                }
-                if (first)
-                {
-                    strncat(body, "true", sizeof(body) - strlen(body) - 1);
-                }
-                strncat(body, ";", sizeof(body) - strlen(body) - 1);
-            }
-            code = xmalloc(4096 + 1024);
-            // Updated signature: other is a pointer T*
-            sprintf(code, "impl %s { fn eq(self, other: %s*) -> bool { %s } }", self_type,
-                    self_type, body); /* safe */
+            emit_eq(&code, ctx, strct, self_type);
         }
-        else if (0 == strcmp(trait, "Debug"))
+        else if (strcmp(trait, "Debug") == 0)
         {
-            // Simplistic Debug for now, I know.
-            code = xmalloc(1024);
-            sprintf(
-                code,
-                "impl %s { fn to_string(self) -> char* { return f\"%s {{ ... }}\"; } }", /* safe */
-                self_type, name);
+            emitter_printf(&code,
+                           "impl %s { fn to_string(self) -> char* { return f\"%s {{ ... }}\"; } }",
+                           self_type, name);
         }
-        else if (0 == strcmp(trait, "Copy"))
+        else if (strcmp(trait, "Copy") == 0)
         {
-            // Marker trait for Copy/Move semantics
-            code = xmalloc(1024);
-            sprintf(code, "impl Copy for %s {}", name); /* safe */
+            emitter_printf(&code, "impl Copy for %s {}", name);
         }
-        else if (0 == strcmp(trait, "FromJson"))
+        else if (strcmp(trait, "FromJson") == 0)
         {
-            // Generate from_json(j: JsonValue*) -> Result<StructName>
-            // Only works for structs (not enums)
             if (strct->kind != NODE_STRUCT)
             {
                 zwarn_at(strct->token, "@derive(FromJson) only works on structs");
                 continue;
             }
-
-            char body[8192];
-            body[0] = 0;
-
-            // Track Vec<String> fields for forget calls
-            zvec_Text vec_fields = {0};
-
-            // Build field assignments
-            ASTNode *f = strct->strct.fields;
-            while (f)
-            {
-                if (f->kind == NODE_FIELD)
-                {
-                    char *fn = f->field.name;
-                    char *ft = type_mangle_spelling(f->type_info);
-                    char assign[2048];
-
-                    if (!fn || !ft)
-                    {
-                        f = f->next;
-                        continue;
-                    }
-
-                    // Map types to appropriate get_* calls
-                    // A number: an integer with a sign (bool and char have their own branch).
-                    int is_int_type =
-                        is_signed_type(f->type_info) || is_unsigned_type(f->type_info);
-                    if (is_int_type)
-                    {
-                        // get_int gives an `int`: converted to the field's own width.
-                        snprintf(assign, 2048,
-                                 "let _f_%s = (%s)(*j).get_int(\"%s\").unwrap_or(0);\n", fn,
-                                 type_to_string(f->type_info), fn);
-                    }
-                    else if (strcmp(ft, "double") == 0)
-                    {
-                        snprintf(assign, sizeof(assign),
-                                 "let _f_%s = (*j).get_float(\"%s\").unwrap_or(0.0);\n",
-                                 fn, /* TODO: check buffer size */
-                                 fn);
-                    }
-                    else if (strcmp(ft, "bool") == 0)
-                    {
-                        snprintf(assign, sizeof(assign),
-                                 "let _f_%s = (*j).get_bool(\"%s\").unwrap_or(false);\n",
-                                 fn, /* TODO: check buffer size */
-                                 fn);
-                    }
-                    else if (strcmp(ft, "char*") == 0)
-                    {
-                        snprintf(
-                            assign, sizeof(assign),
-                            "let _f_%s = (*j).get_string(\"%s\").unwrap_or(\"\");\n", /* TODO: check
-                                                                                         buffer size
-                                                                                       */
-                            fn, fn);
-                    }
-                    else if (strcmp(ft, "String") == 0)
-                    {
-                        sprintf(/* TODO: check buffer size */
-                                assign,
-                                "let _f_%s = "
-                                "String::new((*j).get_string(\"%s\").unwrap_or(\"\"));\n",
-                                fn, fn);
-                    }
-                    else if (is_vec_of_string(f->type_info))
-                    {
-                        // Track this field for forget() call later
-                        zvec_push_Text(&vec_fields, fn);
-                        sprintf(/* TODO: check buffer size */
-                                assign,
-                                "let _f_%s = Vec<String>::new();\n"
-                                "let _arr_%s = (*j).get_array(\"%s\");\n"
-                                "if _arr_%s.is_some() {\n"
-                                "  let _a_%s = _arr_%s.unwrap();\n"
-                                "  for let _i_%s: usize = 0; _i_%s < _a_%s.len(); _i_%s = _i_%s + "
-                                "1 {\n"
-                                "    let _item_%s = _a_%s.at(_i_%s);\n"
-                                "    if _item_%s.is_some() {\n"
-                                "      let _str_%s = (*_item_%s.unwrap()).as_string();\n"
-                                "      if _str_%s.is_some() {\n"
-                                "        let _s_%s = String::new(_str_%s.unwrap());\n"
-                                "        _f_%s.push(_s_%s); _s_%s.forget();\n"
-                                "      }\n"
-                                "    }\n"
-                                "  }\n"
-                                "}\n",
-                                fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn,
-                                fn, fn, fn, fn, fn, fn);
-                    }
-                    else
-                    {
-                        // Nested struct: call NestedType::from_json recursively
-                        snprintf(assign, sizeof(assign), /* TODO: check buffer size */
-                                 "let _opt_%s = (*j).get(\"%s\");\n"
-                                 "let _f_%s: %s;\n"
-                                 "if _opt_%s.is_some() { _f_%s = "
-                                 "%s::from_json(_opt_%s.unwrap()).unwrap(); }\n",
-                                 fn, fn, fn, ft, fn, fn, ft, fn);
-                    }
-                    strncat(body, assign, sizeof(body) - strlen(body) - 1);
-                }
-                f = f->next;
-            }
-
-            // Build struct initialization
-            strncat(body, "return Result<", sizeof(body) - strlen(body) - 1);
-            strncat(body, self_type, sizeof(body) - strlen(body) - 1);
-            strncat(body, ">::Ok(", sizeof(body) - strlen(body) - 1);
-            strncat(body, self_type, sizeof(body) - strlen(body) - 1);
-            strncat(body, " { ", sizeof(body) - strlen(body) - 1);
-
-            f = strct->strct.fields;
-            int first = 1;
-            while (f)
-            {
-                if (f->kind == NODE_FIELD)
-                {
-                    if (!first)
-                    {
-                        strncat(body, ", ", sizeof(body) - strlen(body) - 1);
-                    }
-                    char init[128];
-                    // Check if this is a Vec<String> field - clone it to avoid double-free
-                    int is_vec_field = 0;
-                    for (size_t vi = 0; vi < vec_fields.length; vi++)
-                    {
-                        if (strcmp(vec_fields.data[vi], f->field.name) == 0)
-                        {
-                            is_vec_field = 1;
-                            break;
-                        }
-                    }
-                    if (is_vec_field)
-                    {
-                        snprintf(init, 128, "%s: _f_%s.clone()", f->field.name, f->field.name);
-                    }
-                    else
-                    {
-                        snprintf(init, 128, "%s: _f_%s", f->field.name, f->field.name);
-                    }
-                    strncat(body, init, sizeof(body) - strlen(body) - 1);
-                    first = 0;
-                }
-                f = f->next;
-            }
-            strncat(body, " }); ", sizeof(body) - strlen(body) - 1);
-
-            code = xmalloc(8192 + 1024);
-            sprintf(code, "impl %s { fn from_json(j: JsonValue*) -> Result<%s> { %s } }",
-                    self_type, /* safe */
-                    self_type, body);
+            emit_from_json(&code, strct, self_type);
         }
-        else if (0 == strcmp(trait, "ToJson"))
+        else if (strcmp(trait, "ToJson") == 0)
         {
-            // Generate to_json(self) -> JsonValue
-            // Only works for structs (not enums)
             if (strct->kind != NODE_STRUCT)
             {
                 zwarn_at(strct->token, "@derive(ToJson) only works on structs");
                 continue;
             }
-
-            char body[8192];
-            strcpy(body, "let _obj = JsonValue::object();\n");
-
-            ASTNode *f = strct->strct.fields;
-            while (f)
-            {
-                if (f->kind == NODE_FIELD)
-                {
-                    char *fn = f->field.name;
-                    char *ft = type_mangle_spelling(f->type_info);
-                    char set_call[2048];
-
-                    if (!fn || !ft)
-                    {
-                        f = f->next;
-                        continue;
-                    }
-
-                    // A number: an integer with a sign (bool and char have their own branch).
-                    int is_int_type =
-                        is_signed_type(f->type_info) || is_unsigned_type(f->type_info);
-                    if (is_int_type)
-                    {
-                        snprintf(set_call, 2048,
-                                 "_obj.set(\"%s\", JsonValue::number((double)self.%s));\n", fn, fn);
-                    }
-                    else if (strcmp(ft, "double") == 0)
-                    {
-                        snprintf(set_call, sizeof(set_call),
-                                 "_obj.set(\"%s\", JsonValue::number(self.%s));\n",
-                                 fn, /* TODO: check buffer size */
-                                 fn);
-                    }
-                    else if (strcmp(ft, "bool") == 0)
-                    {
-                        snprintf(set_call, sizeof(set_call),
-                                 "_obj.set(\"%s\", JsonValue::bool(self.%s));\n", fn,
-                                 fn); /* TODO: check buffer size */
-                    }
-                    else if (strcmp(ft, "char*") == 0)
-                    {
-                        snprintf(set_call, sizeof(set_call),
-                                 "_obj.set(\"%s\", JsonValue::string(self.%s));\n",
-                                 fn, /* TODO: check buffer size */
-                                 fn);
-                    }
-                    else if (strcmp(ft, "String") == 0)
-                    {
-                        snprintf(
-                            set_call, sizeof(set_call),
-                            "_obj.set(\"%s\", JsonValue::string(self.%s.c_str()));\n", /* TODO:
-                                                                                          check
-                                                                                          buffer
-                                                                                          size */
-                            fn, fn);
-                    }
-                    else if (is_vec_of_string(f->type_info))
-                    {
-                        snprintf(
-                            set_call, sizeof(set_call), /* TODO: check buffer size */
-                            "let _arr_%s = JsonValue::array();\n"
-                            "for let _i_%s: usize = 0; _i_%s < self.%s.length(); _i_%s = _i_%s "
-                            "+ 1 {\n"
-                            "  _arr_%s.push(JsonValue::string(self.%s.get(_i_%s).c_str()));\n"
-                            "}\n"
-                            "_obj.set(\"%s\", _arr_%s);\n",
-                            fn, fn, fn, fn, fn, fn, fn, fn, fn, fn, fn);
-                    }
-                    else
-                    {
-                        // Nested struct: call to_json recursively
-                        snprintf(set_call, sizeof(set_call),
-                                 "_obj.set(\"%s\", self.%s.to_json());\n", fn,
-                                 fn); /* TODO: check buffer size */
-                    }
-                    strncat(body, set_call, sizeof(body) - strlen(body) - 1);
-                }
-                f = f->next;
-            }
-
-            strncat(body, "return _obj;", sizeof(body) - strlen(body) - 1);
-
-            code = xmalloc(8192 + 1024);
-            sprintf(code, "impl %s { fn to_json(self) -> JsonValue { %s } }", self_type,
-                    body); /* safe */
+            emit_to_json(&code, strct, self_type);
         }
 
-        if (code)
+        char *source = emitter_take_string(&code);
+        if (source)
         {
             Lexer tmp;
-            lexer_init(&tmp, code, ctx->config, ctx->current_filename);
+            lexer_init(&tmp, source, ctx->config, ctx->current_filename);
             ASTNode *impl = parse_impl(ctx, &tmp);
             if (impl)
             {

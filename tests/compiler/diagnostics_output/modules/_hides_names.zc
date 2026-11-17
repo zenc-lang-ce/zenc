@@ -1,0 +1,6 @@
+// Helper for shadowing_other_file.zc: a module with a local and a parameter named like
+// functions of the program that imports it, which it does not see.
+fn helper(count: int) -> int {
+    let total = count + 1;
+    return total;
+}

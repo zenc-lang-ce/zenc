@@ -1,0 +1,109 @@
+// structs: test_use_before_declaration
+// `use` takes the fields of a struct declared further down, whatever the order of the
+// declarations: in a chain, among the struct's own fields, through a generic instance, in a
+// generic struct named before it is read, and with `@derive`, which reads the fields.
+
+struct Outer {
+    use Inner;
+    z: int;
+}
+
+struct Inner {
+    a: int;
+}
+
+test "use of a struct declared later" {
+    let o = Outer { a: 1, z: 2 };
+    expect_eq(o.a + o.z, 3, "Outer should have Inner's field a");
+}
+
+struct Third {
+    c: int;
+    use Second;
+}
+
+struct Second {
+    b: int;
+    use First;
+}
+
+struct First {
+    a: int;
+}
+
+test "a chain of uses declared in reverse" {
+    let t = Third { c: 1, b: 2, a: 3 };
+    expect_eq(t.c * 100 + t.b * 10 + t.a, 123, "Third should have the fields of Second and First");
+}
+
+struct Mixed {
+    x: int;
+    use PartP;
+    y: int;
+    use PartQ;
+}
+
+struct PartP {
+    p: int;
+}
+
+struct PartQ {
+    q: int;
+}
+
+test "used fields keep the place of their use" {
+    let m = Mixed { x: 1, p: 2, y: 3, q: 4 };
+    let s = (int*)&m;
+    expect_eq(s[0] * 1000 + s[1] * 100 + s[2] * 10 + s[3], 1234,
+              "the fields should be x, p, y, q in memory");
+}
+
+struct HoldsInstance {
+    use Slot<int>;
+    v: int;
+}
+
+struct Slot<T> {
+    item: T;
+}
+
+test "use of a generic instance declared later" {
+    let h = HoldsInstance { item: 1, v: 2 };
+    expect_eq(h.item + h.v, 3, "HoldsInstance should have Slot<int>'s field item");
+}
+
+fn total(w: Wrapper<int>) -> int {
+    return w.a + w.v;
+}
+
+struct Wrapper<T> {
+    use Base;
+    v: T;
+}
+
+struct Base {
+    a: int;
+}
+
+test "an instance named before its generic struct and the struct it uses" {
+    let w = Wrapper<int> { a: 1, v: 2 };
+    expect_eq(total(w), 3, "Wrapper<int> should have Base's field a");
+}
+
+@derive(Eq)
+struct Compared {
+    use Key;
+    z: int;
+}
+
+struct Key {
+    k: int;
+}
+
+test "derive reads the used fields" {
+    let x = Compared { k: 1, z: 2 };
+    let y = Compared { k: 5, z: 2 };
+    let w = Compared { k: 1, z: 2 };
+    assert(!(x == y), "Compared values that differ in k should not be equal");
+    assert(x == w, "Compared values with the same fields should be equal");
+}

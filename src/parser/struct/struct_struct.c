@@ -12,6 +12,163 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
+// The struct a `use` names, if it is declared. A generic instance is made when it is read.
+static ASTNode *used_struct_def(ParserContext *ctx, Type *use_type)
+{
+    char *use_name = type_mangle_spelling(use_type);
+    ASTNode *def = find_struct_def(ctx, use_name);
+    zfree(use_name);
+    return def && def->kind == NODE_STRUCT ? def : NULL;
+}
+
+static void append_field(ASTNode **head, ASTNode **tail, ASTNode *field)
+{
+    field->next = NULL;
+    if (*tail)
+    {
+        (*tail)->next = field;
+    }
+    else
+    {
+        *head = field;
+    }
+    *tail = field;
+}
+
+// Gives `node` the fields of the structs it uses, each where its `use` is written among the
+// struct's own fields. A `use` of a struct that is not declared copies nothing.
+static void copy_used_fields(ParserContext *ctx, ASTNode *node, StructUse *uses)
+{
+    zvec_Text used_names = {0};
+    ASTNode *head = NULL, *tail = NULL;
+    ASTNode *own = node->strct.fields;
+    ASTNode *last_own = NULL;
+    StructUse *use = uses;
+    while (own || use)
+    {
+        if (use && (use->after == last_own || !own))
+        {
+            ASTNode *def = used_struct_def(ctx, use->type);
+            if (def)
+            {
+                zvec_push_Text(&used_names, type_mangle_spelling(use->type));
+                for (ASTNode *f = def->strct.fields; f; f = f->next)
+                {
+                    ASTNode *nf = ast_create(NODE_FIELD);
+                    nf->token = f->token; // Declared in the struct it comes from.
+                    nf->field.name = xstrdup(f->field.name);
+                    nf->field.mixed_in_from = f;
+                    nf->type_info = f->type_info;
+                    append_field(&head, &tail, nf);
+                }
+            }
+            use = use->next;
+            continue;
+        }
+        ASTNode *next = own->next;
+        append_field(&head, &tail, own);
+        last_own = own;
+        own = next;
+    }
+    node->strct.fields = head;
+    node->strct.used_structs = used_names.data;
+    node->strct.used_struct_count = (int)used_names.length;
+}
+
+WaitingStruct *find_waiting_struct(ParserContext *ctx, ASTNode *strct)
+{
+    for (WaitingStruct *w = ctx->waiting_structs; w; w = w->next)
+    {
+        if (w->strct == strct && !w->done)
+        {
+            return w;
+        }
+    }
+    return NULL;
+}
+
+// Whether every struct `uses` names is declared and has the fields of the structs it uses.
+static int uses_ready(ParserContext *ctx, StructUse *uses)
+{
+    for (StructUse *use = uses; use; use = use->next)
+    {
+        ASTNode *def = used_struct_def(ctx, use->type);
+        if (!def || find_waiting_struct(ctx, def))
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+// While declarations are read, a used struct may be declared further down, or wait itself:
+// `node` waits until every declaration is read (resolve_waiting_structs).
+static void copy_or_wait_for_uses(ParserContext *ctx, ASTNode *node, StructUse *uses)
+{
+    if (ctx->declarations_read || uses_ready(ctx, uses))
+    {
+        copy_used_fields(ctx, node, uses);
+        return;
+    }
+    WaitingStruct *waiting = xcalloc(1, sizeof(WaitingStruct));
+    waiting->strct = node;
+    waiting->uses = uses;
+    WaitingStruct **last = &ctx->waiting_structs;
+    while (*last)
+    {
+        last = &(*last)->next;
+    }
+    *last = waiting;
+}
+
+static void resolve_waiting_struct(ParserContext *ctx, WaitingStruct *waiting)
+{
+    if (waiting->resolving)
+    {
+        zerror_at(waiting->strct->token, "Struct '%s' contains itself through 'use'",
+                  waiting->strct->strct.name);
+        return;
+    }
+    waiting->resolving = 1;
+    for (StructUse *use = waiting->uses; use; use = use->next)
+    {
+        // An instance of a generic struct is made once its template has the fields it uses.
+        GenericTemplate *tpl = use->type->count > 0 && use->type->name
+                                   ? find_generic_template(ctx, use->type->name)
+                                   : NULL;
+        WaitingStruct *used = tpl ? find_waiting_struct(ctx, tpl->struct_node) : NULL;
+        if (used)
+        {
+            resolve_waiting_struct(ctx, used);
+        }
+        if (tpl)
+        {
+            instantiate_type(ctx, use->type, use->token);
+        }
+        ASTNode *def = used_struct_def(ctx, use->type);
+        used = def ? find_waiting_struct(ctx, def) : NULL;
+        if (used)
+        {
+            resolve_waiting_struct(ctx, used);
+        }
+    }
+    copy_used_fields(ctx, waiting->strct, waiting->uses);
+    waiting->resolving = 0;
+    waiting->done = 1;
+}
+
+void resolve_waiting_structs(ParserContext *ctx)
+{
+    for (WaitingStruct *w = ctx->waiting_structs; w; w = w->next)
+    {
+        if (!w->done)
+        {
+            resolve_waiting_struct(ctx, w);
+        }
+    }
+    ctx->waiting_structs = NULL;
+}
+
 ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque, int is_extern,
                       const char *link_name, int is_export)
 {
@@ -91,8 +248,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     lexer_next(l);
     ASTNode *h = 0, *tl = 0;
 
-    // Temp storage for used structs
-    zvec_Text temp_used_structs = {0};
+    StructUse *uses = NULL, *uses_tail = NULL;
 
     while (1)
     {
@@ -175,55 +331,26 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
                 continue;
             }
 
-            // Normal use -> Mixin (Flatten)
-            // Parse the type (e.g. Header<I32>)
-            Type *use_type = parse_type_formal(ctx, l);
-            if (!use_type)
+            // Normal use -> Mixin (Flatten): the used struct's fields are copied once this
+            // struct is read (copy_used_fields), or once every declaration is.
+            StructUse *use = xcalloc(1, sizeof(StructUse));
+            use->token = t;
+            use->type = parse_type_formal(ctx, l); // `Header<I32>` is instantiated here.
+            if (!use->type)
             {
                 return NULL;
             }
-            char *use_name = type_mangle_spelling(use_type);
-
+            use->after = tl;
             z_parse_expect(l, TOK_SEMICOLON, "Expected ; after use");
-
-            // Find the definition and COPY fields
-            ASTNode *def = find_struct_def(ctx, use_name);
-            if (!def && is_known_generic(ctx, use_type->name))
+            if (!uses)
             {
-                // Try to force instantiation if not found?
-                // For now, rely on parse_type having triggered instantiation.
-                char *mangled = type_mangle_spelling(
-                    use_type); // This works if type_to_string returns mangled name
-                def = find_struct_def(ctx, mangled);
-                zfree(mangled);
+                uses = use;
             }
-
-            if (def && def->kind == NODE_STRUCT)
+            else
             {
-                zvec_push_Text(&temp_used_structs, xstrdup(use_name));
-
-                ASTNode *f = def->strct.fields;
-                while (f)
-                {
-                    ASTNode *nf = ast_create(NODE_FIELD);
-                    nf->token = f->token; // Declared in the struct it comes from.
-                    nf->field.name = xstrdup(f->field.name);
-                    nf->field.mixed_in_from = f;
-                    nf->type_info = f->type_info;
-
-                    if (!h)
-                    {
-                        h = nf;
-                    }
-                    else
-                    {
-                        tl->next = nf;
-                    }
-                    tl = nf;
-                    f = f->next;
-                }
+                uses_tail->next = use;
             }
-            zfree(use_name);
+            uses_tail = use;
             continue;
         }
 
@@ -333,7 +460,6 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     ASTNode *node = ast_create(NODE_STRUCT);
     node->token = name_token;
     node->link_name = definition_link_name(ctx, link_name, name);
-    add_to_struct_list(ctx, node);
     node->doc_comment = pending_doc; // struct-level /// doc (captured on entry)
 
     node->strct.name = own_name;
@@ -362,24 +488,20 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     node->strct.is_union = is_union;
     node->strct.is_opaque = is_opaque;
     node->strct.is_export = is_export;
-    node->strct.used_structs = temp_used_structs.data;
-    node->strct.used_struct_count = (int)temp_used_structs.length;
     node->strct.defined_in_file = ctx->current_filename ? xstrdup(ctx->current_filename) : NULL;
 
     if (gp_count > 0)
     {
         node->strct.is_template = 1;
         ctx->known_generics_count = generics_before;
-        register_template(ctx, name, node);
-        register_named_type(ctx, name, node);
     }
 
-    // Register definition for 'use' lookups and LSP
-    if (gp_count == 0)
+    if (uses)
     {
-        register_struct_def(ctx, name, node);
+        copy_or_wait_for_uses(ctx, node, uses);
     }
 
+    collect_declaration(ctx, node);
     return node;
 }
 

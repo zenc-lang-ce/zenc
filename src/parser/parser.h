@@ -410,6 +410,12 @@ struct ParserContext
     struct PendingInstance *pending_instances;      ///< Instances waiting for the declarations.
     struct PendingInstance *pending_instances_tail; ///< Last of `pending_instances`.
     int declarations_read; ///< Set once every declaration is read: instances are made at once.
+    struct WaitingStruct *waiting_structs;      ///< Structs whose `use` waits for the declarations.
+    struct PendingTypeName *pending_type_names; ///< Type names read before their declaration.
+    struct FileDependency *file_dependencies;   ///< Which file imports which (file_sees).
+    struct PendingDeclaration *pending_declarations;      ///< Impls and derives, in the order read.
+    struct PendingDeclaration *pending_declarations_tail; ///< Last of `pending_declarations`.
+    ASTNode *impl_slot; ///< The node an impl read now fills (parse_pending_declarations).
     ASTNode *instantiated_structs; ///< List of AST nodes for instantiated structs.
     ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
 
@@ -611,6 +617,75 @@ typedef struct PendingInstance
     struct PendingInstance *next;
 } PendingInstance;
 
+/** @brief A `use` of a struct (`use Header;`), whose fields are copied into the struct that has it.
+ */
+typedef struct StructUse
+{
+    Type *type;     ///< The struct used (`Header`, `Header<int>`).
+    Token token;    ///< Where it was written.
+    ASTNode *after; ///< The struct's own field it follows; NULL before the first.
+    struct StructUse *next;
+} StructUse;
+
+/** @brief A struct that uses a struct not read yet, or not complete yet: its fields wait until
+ *         every declaration is read.
+ */
+typedef struct WaitingStruct
+{
+    ASTNode *strct;  ///< The struct, with only its own fields so far.
+    StructUse *uses; ///< Its `use`s, in the order written.
+    int resolving;   ///< Its uses are being copied: a struct it uses that uses it is an error.
+    int done;
+    struct WaitingStruct *next;
+} WaitingStruct;
+
+/** @brief A type name read with the declarations before anything declared it: the type keeps
+ *         the name as written until every declaration is read, and is then resolved in place
+ *         (resolve_pending_type_names): an alias, a template, or a type of its module.
+ */
+typedef struct PendingTypeName
+{
+    Type *type;           ///< The type, shared by whatever names it.
+    char *name;           ///< The name as written; the member of `scope` for `scope::name`.
+    char *scope;          ///< `m` of `m::Name`, a module imported further down; else NULL.
+    Token token;          ///< Where it is written.
+    char *module_prefix;  ///< The module it was read in.
+    const char *filename; ///< The file it was read in.
+    enum
+    {
+        PENDING_TYPE_WAITING,
+        PENDING_TYPE_RESOLVING,
+        PENDING_TYPE_DONE
+    } state;
+    struct PendingTypeName *next;
+} PendingTypeName;
+
+/** @brief One import: the file `importer` imports the module `imported` (file_sees). */
+typedef struct FileDependency
+{
+    const char *importer;
+    const char *imported;
+    struct FileDependency *next;
+} FileDependency;
+
+/** @brief An `impl` or a `@derive` read with the declarations, done once every declaration is
+ *         read, in the order written: what an impl means depends on the type it is for, which
+ *         may be declared further down, and a derive reads the impls of the fields' types.
+ */
+typedef struct PendingDeclaration
+{
+    ASTNode *impl;         ///< The impl's node, filled when it is read; NULL for an `impl Box<T>`.
+    int is_impl;           ///< An impl (`start`), else a derive (`derived`).
+    Lexer start;           ///< At the impl's `impl`.
+    ASTNode *derived;      ///< The struct or enum that derives.
+    char **derived_traits; ///< What it derives.
+    int derived_count;
+    char *module_prefix;  ///< The module it was read in.
+    const char *filename; ///< The file it was read in.
+    Scope *scope;         ///< The scope it was read in.
+    struct PendingDeclaration *next;
+} PendingDeclaration;
+
 typedef struct TypeUsage
 {
     char *name;
@@ -636,48 +711,6 @@ int is_known_type_name(ParserContext *ctx, const char *file, const char *name);
  * (FF_COMPATIBILITY_0_5) any file's import counts.
  */
 int imports_name(ParserContext *ctx, const char *file, const char *name);
-
-/**
- * @brief Warns that the type `use` names is unknown, with the closest known name as a hint.
- */
-void warn_unknown_type(ParserContext *ctx, const TypeUsage *use);
-
-/**
- * @brief Warns about every type name the parse read that names no type. Always returns 1:
- * the C compiler decides whether the name is an external C type.
- */
-int validate_types(ParserContext *ctx);
-
-/**
- * @brief Reports functions and methods defined twice under the same C name.
- *
- * Prototypes, externs, generic templates, `@cfg` definitions and definitions
- * inside a preprocessor `#if` block are not counted. Returns 0 on error.
- */
-int validate_function_definitions(ParserContext *ctx, ASTNode *root);
-
-/**
- * @brief Traverses all parsed structs and propagates `has_drop` from fields to their parent
- * structs.
- */
-void propagate_drop_traits(ParserContext *ctx);
-/**
- * @brief Whether a value of type `t` needs dropping: an owning closure, a struct with Drop, or a
- *        tuple or fixed-size array holding a value that needs dropping.
- */
-int type_needs_drop(ParserContext *ctx, Type *t);
-/**
- * @brief Whether a value of type `t` will be dropped, decided from the declarations alone: what
- *        type_needs_drop says once propagate_drop_traits has run, but also before it, while bodies
- *        are parsed (a struct with an `impl Drop` or a field that will be dropped).
- */
-int type_will_drop(ParserContext *ctx, Type *t);
-/**
- * @brief Whether `t` has drop glue: for a struct or enum, what its declaration says (its own
- * `impl Drop`, or a field or payload that needs dropping); for another type, such as an owning
- * closure, its own flag.
- */
-int type_has_drop(ParserContext *ctx, Type *t);
 
 // Token helpers
 
@@ -1238,6 +1271,15 @@ ASTNode *find_trait_def(ParserContext *ctx, const char *name);
 int is_trait(ParserContext *ctx, const char *name);
 int is_extern_symbol(ParserContext *ctx, const char *name);
 int is_file_imported(ParserContext *ctx, const char *path);
+/**
+ * @brief Records that the file `importer` imports the module `imported`.
+ */
+void record_file_dependency(ParserContext *ctx, const char *importer, const char *imported);
+/**
+ * @brief Whether the file `from` sees the declarations of the file `to`: it is that file, or
+ *        imports it, directly or through the modules it imports.
+ */
+int file_sees(ParserContext *ctx, const char *from, const char *to);
 void mark_file_imported(ParserContext *ctx, const char *path);
 /**
  * @brief Whether the headers of the C preamble declare `name` (strstr, fputs, va_end...): it
@@ -1308,15 +1350,50 @@ char *instantiate_function(ParserContext *ctx, FunctionInstance instance);
 GenericTemplate *find_generic_template(ParserContext *ctx, const char *name);
 /**
  * @brief Instantiates the generic a type names (`Vec<int>`), unless its arguments still name a
- * generic parameter.
+ * generic parameter. While declarations are read, it waits for them (resolve_pending_instances).
  */
 void instantiate_type(ParserContext *ctx, Type *instance, Token token);
 /**
- * @brief Instantiates the generic instances that declarations named before their template or an
- *        argument was declared, once every declaration is read; an alias argument is replaced by
- *        the type it names.
+ * @brief Instantiates the generic instances named while declarations were read, once every one
+ *        is.
  */
 void resolve_pending_instances(ParserContext *ctx);
+/**
+ * @brief The struct `strct` while it waits for a struct it uses, or NULL.
+ */
+WaitingStruct *find_waiting_struct(ParserContext *ctx, ASTNode *strct);
+/**
+ * @brief Copies into each waiting struct the fields of the structs it uses, once every
+ *        declaration is read.
+ */
+void resolve_waiting_structs(ParserContext *ctx);
+/**
+ * @brief Whether a type `name` written in the current file names something declared already: a
+ *        struct, an enum, a template, an alias, a trait, an imported or C type.
+ */
+int type_name_declared(ParserContext *ctx, const char *name);
+/**
+ * @brief Resolves, in place, the type names read before their declaration, each in its module,
+ *        once every declaration is read.
+ */
+void resolve_pending_type_names(ParserContext *ctx);
+/**
+ * @brief Whether `t` holds a type name that waits for its declaration.
+ */
+int type_names_pending(ParserContext *ctx, Type *t);
+/**
+ * @brief Appends `pending` to the impls and derives that wait for the declarations.
+ */
+void push_pending_declaration(ParserContext *ctx, PendingDeclaration *pending);
+/**
+ * @brief Reads the impls and makes the derives that waited for the declarations, in the order
+ *        written, each in the module it was read in.
+ */
+void parse_pending_declarations(ParserContext *ctx);
+/**
+ * @brief Whether the struct or enum `type_name` derives `trait` with a derive not made yet.
+ */
+int derives_pending(ParserContext *ctx, const char *type_name, const char *trait);
 /**
  * @brief Gives the instances copied before their template's body was read a copy of that body,
  *        and instantiates the generics the copies name.
@@ -1358,6 +1435,12 @@ void register_in_all_symbols(ParserContext *ctx, ZenSymbol *s);
 // Rejects a name `@derive` does not know, listing the ones it does.
 void check_derivable_trait(Token t, const char *name);
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count);
+/**
+ * @brief Registers the declaration `node` where later code looks it up: a struct, an enum, a
+ *        function outside an impl, an impl and its methods, a type alias, a trait, or a global
+ *        constant or variable.
+ */
+void collect_declaration(ParserContext *ctx, ASTNode *node);
 
 // decl/ declarations
 void replace_it_with_var(ASTNode *node, char *var_name);

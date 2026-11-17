@@ -13,6 +13,7 @@
 #include "ast.h"
 #include "zprep_plugin.h"
 #include "codegen_internal.h"
+#include "analysis/drop_traits.h"
 
 void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
 {
@@ -239,7 +240,7 @@ static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *ri
     int drops = type_needs_drop(ctx, t);
 
     EMIT(ctx, "({ ");
-    emit_var_decl_type(ctx, c_type, "_z_src");
+    emit_var_decl_type(ctx, t, "_z_src");
     if (right->kind == NODE_EXPR_ARRAY_LITERAL || is_string_literal(right))
     {
         EMIT(ctx, " = ");
@@ -277,8 +278,8 @@ static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *ri
 static void emit_coalesce(ParserContext *ctx, ASTNode *node)
 {
     EMIT(ctx, "({ ");
-    emit_auto_type(ctx, node->binary.left, node->token);
-    EMIT(ctx, " _l = (");
+    emit_auto_declaration(ctx, node->binary.left, "_l");
+    EMIT(ctx, " = (");
     codegen_expression(ctx, node->binary.left);
     EMIT(ctx, "); _l ? _l : (");
     codegen_expression(ctx, node->binary.right);
@@ -708,7 +709,9 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                 }
                 else
                 {
-                    EMIT(ctx, "((%s[]){", c_type_spelling(ctx, target_type));
+                    EMIT(ctx, "((");
+                    emit_c_decl(ctx, target_type, "[]");
+                    EMIT(ctx, "){");
                     codegen_expression(ctx, target);
                     EMIT(ctx, "})");
                 }
@@ -755,25 +758,33 @@ skip_method_mangling:
         EMIT(ctx, "; ");
 
         Type *ft = callee_ti;
-        // A parameter or result whose type is not known is passed as a `void*`.
-        char *ret = !has_c_spelling(ft->inner) ? xstrdup("void*")
+        // A parameter or result whose type is not known is passed as a `void*`. The function
+        // takes the context first: `int32_t (*)(void*, int32_t)`.
+        Type *ret = !has_c_spelling(ft->inner) ? type_new_ptr(type_new(TYPE_VOID))
                     : ft->inner->kind == TYPE_STRING && !ft->inner->is_const
-                        ? xstrdup("char*")
-                        : c_type_spelling(ctx, ft->inner);
-
-        EMIT(ctx, "((%s (*)(void*", ret);
+                        ? type_new_ptr(type_new(TYPE_CHAR))
+                        : ft->inner;
+        size_t size = 16;
+        char **args = xmalloc(sizeof(char *) * (size_t)(ft->count + 1));
         for (int i = 0; i < ft->count; i++)
         {
-            char *as =
+            args[i] =
                 has_c_spelling(ft->args[i]) ? c_type_spelling(ctx, ft->args[i]) : xstrdup("void*");
-            EMIT(ctx, ", %s", as);
-            zfree(as);
+            size += strlen(args[i]) + 2;
         }
-        if (ft->is_varargs)
+        char *declarator = xmalloc(size);
+        char *p = declarator + sprintf(declarator, "(*)(void*"); /* safe */
+        for (int i = 0; i < ft->count; i++)
         {
-            EMIT(ctx, ", ...");
+            p += sprintf(p, ", %s", args[i]); /* safe */
+            zfree(args[i]);
         }
-        EMIT(ctx, "))_c.func)(_c.ctx");
+        sprintf(p, "%s)", ft->is_varargs ? ", ..." : ""); /* safe */
+        zfree(args);
+        EMIT(ctx, "((");
+        emit_c_decl(ctx, ret, declarator);
+        EMIT(ctx, ")_c.func)(_c.ctx");
+        zfree(declarator);
 
         ASTNode *arg = node->call.args;
         while (arg)
@@ -783,7 +794,6 @@ skip_method_mangling:
             arg = arg->next;
         }
         EMIT(ctx, "); })");
-        zfree(ret);
         return;
     }
 

@@ -1,0 +1,13 @@
+// language/modules: test_use_before_declaration_import
+// A struct in an imported module that uses a struct declared after it, and derives `Eq`: the
+// derived code waits for the fields and is read in the module, under its names.
+import "./test_modules/_use_later.zc" as shapes;
+
+test "use and derive of a later struct in an imported module" {
+    let s = shapes::Square { len: 4 };
+    let t = shapes::Square { len: 5 };
+    let u = shapes::Square { len: 4 };
+    expect_eq(s.len, 4, "Square should have Side's field len");
+    assert(!(s == t), "Squares with different len should not be equal");
+    assert(s == u, "Squares with the same len should be equal");
+}

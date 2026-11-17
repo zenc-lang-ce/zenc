@@ -12,15 +12,16 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
-// The methods of an impl body, after its `{`, up to and including its `}`. Each method is
-// named Type__method (Type__Trait__method in a trait impl) and is registered: as a template
-// of the impl's generic parameter `template_param`, as a template of its own generic
-// parameters, or as a function.
-static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *type_name,
-                                   const char *trait_name, const char *template_param)
+// The methods of an impl body, after its `{`, up to and including its `}`. Each method belongs
+// to the impl's target (impl_target), and to `trait_name` in a trait impl; the impl registers
+// them (collect_declaration).
+static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *trait_name)
 {
     ASTNode *h = NULL;
     ASTNode *tl = NULL;
+    // While a method is read, the ones before it are its siblings (find_func); after the
+    // impl, none are.
+    ASTNode *saved_impl_methods = ctx->current_impl_methods;
     while (1)
     {
         ctx->current_impl_methods = h;
@@ -62,7 +63,6 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         ATTACH_DOC_COMMENT(ctx, f);
         f->func.is_method = 1;
         f->func.trait_name = trait_name;
-        (void)type_name; // The owner is the impl's target, which the method keeps (impl_target).
 
         if (attrs.cfg_condition)
         {
@@ -71,22 +71,6 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         f->func.pure = attrs.is_pure;
         f->func.unused = attrs.is_unused;
         f->link_name = attrs.link_name;
-
-        if (template_param)
-        {
-            char **params = xmalloc(sizeof(char *));
-            params[0] = xstrdup(template_param);
-            register_func_template(ctx, function_c_name(f), params, 1, f);
-        }
-        else if (f->func.generic_param_count > 0)
-        {
-            register_func_template(ctx, function_c_name(f), f->func.generic_params,
-                                   f->func.generic_param_count, f);
-        }
-        else
-        {
-            register_function(ctx, ctx->current_scope, f, function_c_name(f), 0);
-        }
 
         if (!h)
         {
@@ -98,6 +82,7 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         }
         tl = f;
     }
+    ctx->current_impl_methods = saved_impl_methods;
     return h;
 }
 
@@ -116,8 +101,91 @@ static Type *impl_target(ParserContext *ctx, const char *name)
     return def && def->type_info && !is_template ? def->type_info : type_from_name(ctx, name);
 }
 
+// The node of an impl: the one made when the impl was first read (defer_impl), else a new one.
+static ASTNode *impl_node(ParserContext *ctx, NodeType kind)
+{
+    ASTNode *slot = ctx->impl_slot;
+    ctx->impl_slot = NULL;
+    return slot && slot->kind == kind ? slot : ast_create(kind);
+}
+
+// Whether the token is the identifier `text`.
+static int is_word(Token t, const char *text)
+{
+    return t.kind == TOK_IDENT && (size_t)t.len == strlen(text) &&
+           strncmp(t.start, text, t.len) == 0;
+}
+
+// Reads `<T>` if it comes next: whether it did.
+static int skip_generic_param(Lexer *l)
+{
+    if (lexer_peek(l).kind != TOK_LANGLE)
+    {
+        return 0;
+    }
+    lexer_next(l);
+    return lexer_next(l).kind == TOK_IDENT && lexer_next(l).kind == TOK_RANGLE;
+}
+
+// While declarations are read, an impl waits until every one is: its type may be declared further
+// down (parse_pending_declarations). Its header says what node it makes, which takes its place
+// among the declarations now: none for `impl Box<T>`, which is a template only. Returns 0, reading
+// nothing, for a header that is not one, which is then read at once to report it.
+static int defer_impl(ParserContext *ctx, Lexer *l, ASTNode **node)
+{
+    Lexer scan = *l;
+    lexer_next(&scan); // impl
+    int generic = skip_generic_param(&scan);
+    Token trait = lexer_next(&scan);
+    if (trait.kind != TOK_IDENT)
+    {
+        return 0;
+    }
+    generic = skip_generic_param(&scan) || generic;
+    int for_trait = is_word(lexer_peek(&scan), "for");
+    if (for_trait)
+    {
+        lexer_next(&scan);
+        if (lexer_next(&scan).kind != TOK_IDENT)
+        {
+            return 0;
+        }
+        skip_generic_param(&scan);
+    }
+    if (lexer_peek(&scan).kind != TOK_LBRACE)
+    {
+        return 0;
+    }
+
+    PendingDeclaration *pending = xcalloc(1, sizeof(PendingDeclaration));
+    pending->is_impl = 1;
+    pending->start = *l;
+    pending->module_prefix = ctx->imports.current_module_prefix;
+    pending->filename = ctx->current_filename;
+    pending->scope = ctx->current_scope;
+    pending->impl = for_trait ? ast_create(NODE_IMPL_TRAIT)
+                    : generic ? NULL
+                              : ast_create(NODE_IMPL);
+    push_pending_declaration(ctx, pending);
+
+    // Implementing Drop, Copy or Clone imports std/mem.zc, where it is written.
+    if (for_trait && (is_word(trait, "Drop") || is_word(trait, "Copy") || is_word(trait, "Clone")))
+    {
+        auto_import_std_mem(ctx);
+    }
+    *l = scan;
+    skip_braced_block(l);
+    *node = pending->impl;
+    return 1;
+}
+
 ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 {
+    ASTNode *deferred = NULL;
+    if (!ctx->declarations_read && defer_impl(ctx, l, &deferred))
+    {
+        return deferred;
+    }
 
     lexer_next(l); // eat impl
 
@@ -226,89 +294,19 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             auto_import_std_mem(ctx);
         }
 
-        register_impl(ctx, name1, name2);
-
-        // An `impl Drop` is a fact of the type's declaration, which propagate_drop_traits marks
-        // (seed_drop_from_impl), for a type declared before the impl or after it alike.
-
-        // Iterator: Check for "Iterable" trait implementation
-        if (strcmp(name1, "Iterable") == 0)
-        {
-            ZenSymbol *s = find_symbol_entry(ctx, name2);
-            if (s && s->type_info)
-            {
-                s->type_info->traits.has_iterable = 1;
-            }
-            else
-            {
-                // Try finding struct definition
-                ASTNode *def = find_struct_def(ctx, name2);
-                if (def && def->type_info)
-                {
-                    def->type_info->traits.has_iterable = 1;
-                }
-            }
-        }
-
         ctx->current_impl_target = target;
 
         lexer_next(l);
-
-        char *full_target_name = name2;
-        if (target_gen_param)
-        {
-            full_target_name = xmalloc(strlen(name2) + strlen(target_gen_param) + 3);
-            snprintf(full_target_name, strlen(name2) + strlen(target_gen_param) + 3, "%s<%s>",
-                     name2, target_gen_param);
-        }
-        else
-        {
-            full_target_name = xstrdup(name2);
-        }
-
-        ASTNode *h = parse_impl_methods(ctx, l, name2, name1, NULL);
-
-        if (target_gen_param)
-        {
-            zfree(full_target_name);
-        }
-        else
-        {
-            zfree(full_target_name); // It was strdup/ref. Wait, xstrdup needs free.
-        }
-
+        ASTNode *h = parse_impl_methods(ctx, l, name1);
         ctx->current_impl_target = NULL; // Restore context
-        ASTNode *n = ast_create(NODE_IMPL_TRAIT);
+        ASTNode *n = impl_node(ctx, NODE_IMPL_TRAIT);
         n->impl_trait.trait_name = name1;
         n->impl_trait.target = target;
         n->impl_trait.trait_token = t1;
         n->impl_trait.target_token = t2;
         n->impl_trait.methods = h;
-        add_to_impl_list(ctx, n);
-
-        // If target struct is generic, register this impl as a template
-        ASTNode *def = find_struct_def(ctx, name2);
-        if (target_gen_param || (def && ((def->kind == NODE_STRUCT && def->strct.is_template) ||
-                                         (def->kind == NODE_ENUM && def->enm.is_template))))
-        {
-            // One parameter, as an impl declares: the one written, or the type's first.
-            char *gp = "T";
-            if (target_gen_param)
-            {
-                gp = target_gen_param;
-            }
-            else if (def && def->kind == NODE_STRUCT && def->strct.generic_param_count > 0)
-            {
-                gp = def->strct.generic_params[0];
-            }
-            else if (def && def->kind == NODE_ENUM && def->enm.generic_param_count > 0)
-            {
-                gp = def->enm.generic_params[0];
-            }
-            char **params = xmalloc(sizeof(char *));
-            params[0] = gp;
-            register_impl_template(ctx, name2, params, 1, n);
-        }
+        n->impl_trait.generic_param = target_gen_param;
+        collect_declaration(ctx, n);
 
         ctx->known_generics_count = generics_before;
         return n;
@@ -346,21 +344,14 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
                 zpanic_at(lexer_peek(l), "Expected {");
                 return NULL;
             }
-            char *full_struct_name = xmalloc(strlen(name1) + strlen(gen_param) + 3);
-            snprintf(full_struct_name, strlen(name1) + strlen(gen_param) + 3, "%s<%s>", name1,
-                     gen_param);
-
-            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, gen_param);
-            zfree(full_struct_name);
-            // Register Template
-            ASTNode *n = ast_create(NODE_IMPL);
+            ASTNode *h = parse_impl_methods(ctx, l, NULL);
+            ASTNode *n = impl_node(ctx, NODE_IMPL);
             n->token = t1;
             n->impl.target = target;
             n->impl.target_token = t1;
             n->impl.methods = h;
-            char **params = xmalloc(sizeof(char *));
-            params[0] = gen_param;
-            register_impl_template(ctx, name1, params, 1, n);
+            n->impl.generic_param = gen_param;
+            collect_declaration(ctx, n);
             ctx->current_impl_target = NULL;
             ctx->known_generics_count = generics_before;
             return NULL; // Do not emit generic template
@@ -369,13 +360,13 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         {
             // REGULAR IMPL
             lexer_next(l);
-            ASTNode *h = parse_impl_methods(ctx, l, name1, NULL, NULL);
-            ctx->current_impl_target = NULL;
-            ASTNode *n = ast_create(NODE_IMPL);
+            ASTNode *h = parse_impl_methods(ctx, l, NULL);
+            ASTNode *n = impl_node(ctx, NODE_IMPL);
             n->impl.target = target;
             n->impl.target_token = t1;
             n->impl.methods = h;
-            add_to_impl_list(ctx, n);
+            collect_declaration(ctx, n);
+            ctx->current_impl_target = NULL;
 
             ctx->known_generics_count = generics_before;
             return n;

@@ -55,15 +55,7 @@ void add_to_struct_list(ParserContext *ctx, ASTNode *node)
     r->node = node;
     r->next = ctx->parsed_structs_list;
     ctx->parsed_structs_list = r;
-    // The parser adds a struct before it has a name; it registers the name once it has one.
-    if (node->kind == NODE_STRUCT && declared_type_c_name(node))
-    {
-        register_named_type(ctx, declared_type_c_name(node), node);
-    }
-    else if (node->kind == NODE_ENUM && declared_type_c_name(node))
-    {
-        register_named_type(ctx, declared_type_c_name(node), node);
-    }
+    register_named_type(ctx, declared_type_c_name(node), node);
 }
 
 void register_type_alias(ParserContext *ctx, const char *alias, Type *type_info, int is_opaque,
@@ -659,6 +651,142 @@ char *module_type_name(ParserContext *ctx, const char *name)
     return module_prefixed_name(ctx, ctx->imports.current_module_prefix, name);
 }
 
+int type_name_declared(ParserContext *ctx, const char *name)
+{
+    if (is_known_generic(ctx, name) || is_primitive_type_name(name) ||
+        strcasecmp(name, "Self") == 0 || is_extern_symbol(ctx, name) ||
+        find_struct_def(ctx, name) || find_type_alias_node(ctx, name) ||
+        find_generic_template(ctx, name) || find_trait_def(ctx, name))
+    {
+        return 1;
+    }
+    if (!ctx->imports.current_module_prefix && imported_by_name(ctx, ctx->current_filename, name))
+    {
+        return 1;
+    }
+    if (module_own_name(ctx, name, is_type_declaration))
+    {
+        return 1;
+    }
+    char *prefixed = module_prefixed_name(ctx, ctx->imports.current_module_prefix, name);
+    return prefixed && find_struct_def(ctx, prefixed);
+}
+
+// The pending name whose type is `t`, among `list`, or NULL.
+static PendingTypeName *pending_type_of(PendingTypeName *list, Type *t)
+{
+    for (PendingTypeName *p = list; p; p = p->next)
+    {
+        if (p->type == t)
+        {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+static void resolve_pending_type_name(ParserContext *ctx, PendingTypeName *list,
+                                      PendingTypeName *p);
+
+// Resolves the pending names inside `t` (an alias's type, before it is copied).
+static void resolve_pending_inside(ParserContext *ctx, PendingTypeName *list, Type *t)
+{
+    if (!t)
+    {
+        return;
+    }
+    PendingTypeName *p = pending_type_of(list, t);
+    if (p)
+    {
+        resolve_pending_type_name(ctx, list, p);
+    }
+    resolve_pending_inside(ctx, list, t->inner);
+    for (int i = 0; t->args && i < t->count; i++)
+    {
+        resolve_pending_inside(ctx, list, t->args[i]);
+    }
+}
+
+static void resolve_pending_type_name(ParserContext *ctx, PendingTypeName *list, PendingTypeName *p)
+{
+    if (p->state != PENDING_TYPE_WAITING)
+    {
+        return; // Resolved, or being resolved (an alias that names itself).
+    }
+    p->state = PENDING_TYPE_RESOLVING;
+    char *saved_prefix = ctx->imports.current_module_prefix;
+    const char *saved_filename = ctx->current_filename;
+    ctx->imports.current_module_prefix = p->module_prefix;
+    ctx->current_filename = p->filename;
+    Type *t = p->type;
+    TypeAlias *alias = !p->scope && t->count == 0 ? find_type_alias_node(ctx, p->name) : NULL;
+    if (p->scope)
+    {
+        // `m::Name`, now that `m` is imported.
+        t->name = qualified_type_name(ctx, p->scope, p->name);
+        register_type_usage(ctx, t->name, p->token);
+    }
+    else if (alias)
+    {
+        // The type the alias names, resolved first (it may name another alias declared further
+        // down), in place: what shares the type sees it.
+        resolve_pending_inside(ctx, list, alias->type_info);
+        int is_const = t->is_const;
+        *t = *alias_type(alias);
+        t->is_const = t->is_const || is_const;
+        register_type_usage(ctx, p->name, p->token);
+    }
+    else
+    {
+        char *c_name = type_declaration_name(ctx, p->name);
+        if (c_name)
+        {
+            t->name = c_name;
+        }
+        register_type_usage(ctx, t->name, p->token);
+    }
+    ctx->imports.current_module_prefix = saved_prefix;
+    ctx->current_filename = saved_filename;
+    p->state = PENDING_TYPE_DONE;
+}
+
+int type_names_pending(ParserContext *ctx, Type *t)
+{
+    if (!t)
+    {
+        return 0;
+    }
+    if (pending_type_of(ctx->pending_type_names, t))
+    {
+        return 1;
+    }
+    for (int i = 0; t->args && i < t->count; i++)
+    {
+        if (type_names_pending(ctx, t->args[i]))
+        {
+            return 1;
+        }
+    }
+    return type_names_pending(ctx, t->inner);
+}
+
+void resolve_pending_type_names(ParserContext *ctx)
+{
+    // In the order read, so the names are checked (validate_types) in the order of the source.
+    PendingTypeName *in_order = NULL;
+    while (ctx->pending_type_names)
+    {
+        PendingTypeName *p = ctx->pending_type_names;
+        ctx->pending_type_names = p->next;
+        p->next = in_order;
+        in_order = p;
+    }
+    for (PendingTypeName *p = in_order; p; p = p->next)
+    {
+        resolve_pending_type_name(ctx, in_order, p);
+    }
+}
+
 char *type_declaration_name(ParserContext *ctx, const char *name)
 {
     // Imported one by one, or with `as *`: the module's type, by the name the import gives it.
@@ -914,6 +1042,57 @@ int is_ident_char(char c)
 int is_file_imported(ParserContext *ctx, const char *path)
 {
     return zmap_get(&ctx->imports.imported_files, path) != NULL;
+}
+
+void record_file_dependency(ParserContext *ctx, const char *importer, const char *imported)
+{
+    if (!importer || !imported || strcmp(importer, imported) == 0)
+    {
+        return;
+    }
+    for (FileDependency *d = ctx->file_dependencies; d; d = d->next)
+    {
+        if (strcmp(d->importer, importer) == 0 && strcmp(d->imported, imported) == 0)
+        {
+            return;
+        }
+    }
+    FileDependency *d = xmalloc(sizeof(FileDependency));
+    d->importer = xstrdup(importer);
+    d->imported = xstrdup(imported);
+    d->next = ctx->file_dependencies;
+    ctx->file_dependencies = d;
+}
+
+// Whether `from` reaches `to` through the imports, without going through a file in `seen`.
+static int file_reaches(ParserContext *ctx, const char *from, const char *to, zvec_Text *seen)
+{
+    if (strcmp(from, to) == 0)
+    {
+        return 1;
+    }
+    for (size_t i = 0; i < seen->length; i++)
+    {
+        if (strcmp(seen->data[i], from) == 0)
+        {
+            return 0;
+        }
+    }
+    zvec_push_Text(seen, (char *)from);
+    for (FileDependency *d = ctx->file_dependencies; d; d = d->next)
+    {
+        if (strcmp(d->importer, from) == 0 && file_reaches(ctx, d->imported, to, seen))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int file_sees(ParserContext *ctx, const char *from, const char *to)
+{
+    zvec_Text seen = {0};
+    return file_reaches(ctx, from, to, &seen);
 }
 
 void mark_file_imported(ParserContext *ctx, const char *path)

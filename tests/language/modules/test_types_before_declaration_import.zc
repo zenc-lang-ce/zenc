@@ -1,0 +1,18 @@
+// language/modules: test_types_before_declaration_import
+// In a module imported with an alias, a type named before it is declared is the one declared
+// further down: an alias (also of another alias, opaque, or of a generic instance), and a
+// generic struct, as fields, parameters, results, payloads and function pointers.
+import "./test_modules/_types_declared_later.zc" as later;
+
+test "types declared further down in an imported module" {
+    let h = later::make_holder(3);
+    h.numbers.push(4);
+    expect_eq(h.count, 3, "a field of an alias of an alias");
+    expect_eq(h.cell.v, 6, "a field of an alias of a generic instance");
+    expect_eq(h.numbers.get(0), 4, "a Vec of an alias");
+    expect_eq(h.apply(5), 10, "a function pointer of an alias");
+    let (a, b) = later::pair(7);
+    expect_eq(a + b, 15, "a tuple of an alias");
+    expect_eq(later::unwrap(later::wrap(9)), 9, "an opaque alias");
+    expect_eq(later::side(later::Shape::Square(2)), 2, "an enum payload of an alias");
+}

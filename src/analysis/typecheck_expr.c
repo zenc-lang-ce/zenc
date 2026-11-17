@@ -211,7 +211,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
             ZenSymbol *s = tc_lookup(tc, node->unary.operand->var_ref.name);
             if (s)
             {
-                s->is_written_to = 1;
+                tc_symbol_use(tc, s)->is_written_to = 1;
             }
         }
         else if (node->unary.operand->kind == NODE_EXPR_UNARY &&
@@ -223,7 +223,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
                 ZenSymbol *s = tc_lookup(tc, inner->var_ref.name);
                 if (s)
                 {
-                    s->is_written_to = 1;
+                    tc_symbol_use(tc, s)->is_written_to = 1;
                 }
             }
         }
@@ -519,7 +519,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 ZenSymbol *s = tc_lookup(tc, node->binary.left->var_ref.name);
                 if (s)
                 {
-                    s->is_written_to = 1;
+                    tc_symbol_use(tc, s)->is_written_to = 1;
                 }
             }
             else if (node->binary.left->kind == NODE_EXPR_UNARY &&
@@ -531,7 +531,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                     ZenSymbol *s = tc_lookup(tc, inner->var_ref.name);
                     if (s)
                     {
-                        s->is_written_to = 1;
+                        tc_symbol_use(tc, s)->is_written_to = 1;
                     }
                 }
             }
@@ -544,7 +544,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                     ZenSymbol *s = tc_lookup(tc, arr->var_ref.name);
                     if (s)
                     {
-                        s->is_written_to = 1;
+                        tc_symbol_use(tc, s)->is_written_to = 1;
                     }
                 }
             }
@@ -562,7 +562,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                     ZenSymbol *s = tc_lookup(tc, target->var_ref.name);
                     if (s)
                     {
-                        s->is_written_to = 1;
+                        tc_symbol_use(tc, s)->is_written_to = 1;
                     }
                 }
             }
@@ -1458,14 +1458,14 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
         // Rule 8.9 tracking: Identify globals used in only one function
         if (!sym->is_local && sym->kind == SYM_VARIABLE && tc->current_func)
         {
-            ZenSymbol *orig = sym->original ? sym->original : sym;
-            if (orig->first_using_func == NULL)
+            SymbolUse *use = tc_symbol_use(tc, sym->original ? sym->original : sym);
+            if (use->first_using_func == NULL)
             {
-                orig->first_using_func = tc->current_func;
+                use->first_using_func = tc->current_func;
             }
-            else if (orig->first_using_func != tc->current_func)
+            else if (use->first_using_func != tc->current_func)
             {
-                orig->multi_func_use = 1;
+                use->multi_func_use = 1;
             }
         }
     }
@@ -1579,7 +1579,7 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
             symbol_lookup_kind(tc->pctx->global_scope, node->struct_init.struct_name, SYM_STRUCT);
         if (struct_sym)
         {
-            struct_sym->is_dereferenced = 1;
+            tc_symbol_use(tc, struct_sym)->is_dereferenced = 1;
         }
     }
 

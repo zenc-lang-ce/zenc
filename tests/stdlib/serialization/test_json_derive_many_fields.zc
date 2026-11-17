@@ -1,0 +1,121 @@
+// stdlib/serialization: derives on records with many fields
+import "std/json.zc"
+
+@derive(FromJson, ToJson, Eq, Clone)
+struct SensorReadings {
+    additional_sensor_value_00: int;
+    additional_sensor_value_01: int;
+    additional_sensor_value_02: int;
+    additional_sensor_value_03: int;
+    additional_sensor_value_04: int;
+    additional_sensor_value_05: int;
+    additional_sensor_value_06: int;
+    additional_sensor_value_07: int;
+    additional_sensor_value_08: int;
+    additional_sensor_value_09: int;
+    additional_sensor_value_10: int;
+    additional_sensor_value_11: int;
+    additional_sensor_value_12: int;
+    additional_sensor_value_13: int;
+    additional_sensor_value_14: int;
+    additional_sensor_value_15: int;
+    additional_sensor_value_16: int;
+    additional_sensor_value_17: int;
+    additional_sensor_value_18: int;
+    additional_sensor_value_19: int;
+    additional_sensor_value_20: int;
+    additional_sensor_value_21: int;
+    additional_sensor_value_22: int;
+    additional_sensor_value_23: int;
+    additional_sensor_value_24: int;
+    additional_sensor_value_25: int;
+    additional_sensor_value_26: int;
+    additional_sensor_value_27: int;
+    additional_sensor_value_28: int;
+    additional_sensor_value_29: int;
+    additional_sensor_value_30: int;
+    additional_sensor_value_31: int;
+    additional_sensor_value_32: int;
+    additional_sensor_value_33: int;
+    additional_sensor_value_34: int;
+    additional_sensor_value_35: int;
+    additional_sensor_value_36: int;
+    additional_sensor_value_37: int;
+    additional_sensor_value_38: int;
+    additional_sensor_value_39: int;
+    additional_sensor_value_40: int;
+    additional_sensor_value_41: int;
+    additional_sensor_value_42: int;
+    additional_sensor_value_43: int;
+    additional_sensor_value_44: int;
+    additional_sensor_value_45: int;
+    additional_sensor_value_46: int;
+    additional_sensor_value_47: int;
+    additional_sensor_value_48: int;
+    additional_sensor_value_49: int;
+    additional_sensor_value_50: int;
+    additional_sensor_value_51: int;
+    additional_sensor_value_52: int;
+    additional_sensor_value_53: int;
+    additional_sensor_value_54: int;
+    additional_sensor_value_55: int;
+    additional_sensor_value_56: int;
+    additional_sensor_value_57: int;
+    additional_sensor_value_58: int;
+    additional_sensor_value_59: int;
+    additional_sensor_value_60: int;
+    additional_sensor_value_61: int;
+    additional_sensor_value_62: int;
+    additional_sensor_value_63: int;
+    additional_sensor_value_64: int;
+    additional_sensor_value_65: int;
+    additional_sensor_value_66: int;
+    additional_sensor_value_67: int;
+    additional_sensor_value_68: int;
+    additional_sensor_value_69: int;
+    additional_sensor_value_70: int;
+    additional_sensor_value_71: int;
+    additional_sensor_value_72: int;
+    additional_sensor_value_73: int;
+    additional_sensor_value_74: int;
+    additional_sensor_value_75: int;
+    additional_sensor_value_76: int;
+    additional_sensor_value_77: int;
+    additional_sensor_value_78: int;
+    additional_sensor_value_79: int;
+    additional_sensor_value_80: int;
+    additional_sensor_value_81: int;
+    additional_sensor_value_82: int;
+    additional_sensor_value_83: int;
+    additional_sensor_value_84: int;
+    additional_sensor_value_85: int;
+    additional_sensor_value_86: int;
+    additional_sensor_value_87: int;
+    additional_sensor_value_88: int;
+    additional_sensor_value_89: int;
+}
+
+test "large records keep both ends through JSON and equality" {
+    let input = JsonValue::object();
+    input.set("additional_sensor_value_00", JsonValue::number(3.0));
+    input.set("additional_sensor_value_89", JsonValue::number(71.0));
+
+    let a = SensorReadings::from_json(&input).unwrap();
+    assert(a.additional_sensor_value_00 == 3, "first JSON field should decode to 3");
+    assert(a.additional_sensor_value_89 == 71, "last JSON field should decode to 71");
+
+    let output = a.to_json();
+    assert(output.get_int("additional_sensor_value_00").unwrap() == 3, "first field should serialize to 3");
+    assert(output.get_int("additional_sensor_value_89").unwrap() == 71, "last field should serialize to 71");
+
+    let b = SensorReadings::from_json(&output).unwrap();
+    assert(a == b, "records should compare equal after a JSON round trip");
+    b.additional_sensor_value_89 = 72;
+    assert(a != b, "records should compare unequal when the last field differs");
+}
+
+test "cloning a large record preserves the last field" {
+    let original = SensorReadings { additional_sensor_value_89: 29 };
+    let copy = original.clone();
+    assert(copy.additional_sensor_value_89 == 29, "the clone should keep the last field");
+}

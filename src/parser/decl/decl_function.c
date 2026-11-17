@@ -180,16 +180,15 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
 
     // In a module parsed with a prefix, the function gets it. A generic template and a method keep
     // their names: each instance, and the impl, give theirs.
-    // The node keeps the name the module writes (`name`); registries and C use the C name.
+    // The node keeps the name the module writes (`name`); registries and C use the C name
+    // (function_c_name).
     char *written_name = NULL;
-    char *c_name = name;
     char *prefixed_name = gen_count == 0 && !ctx->current_impl_target && !is_extern
                               ? module_prefixed_name(ctx, ctx->imports.current_module_prefix, name)
                               : NULL;
     if (prefixed_name)
     {
         written_name = module_written_name(ctx, name);
-        c_name = prefixed_name;
     }
 
     // Bodies are parsed once all declarations are known. A generic template's body (which
@@ -267,13 +266,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     node->func.module_prefix = ctx->imports.current_module_prefix;
     node->func.impl_target = ctx->current_impl_target;
     node->func.filename = ctx->current_filename;
-
-    // A concrete function outside an impl is registered under its C name (`required` and
-    // `pure` are set by the caller once it returns).
-    if (gen_count == 0 && !ctx->current_impl_target)
-    {
-        register_function(ctx, ctx->current_scope, node, c_name, is_export);
-    }
+    node->func.is_export = is_export;
 
     if (pending)
     {
@@ -285,16 +278,16 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     {
         node->func.generic_params = gen_params;
         node->func.generic_param_count = gen_count;
-        if (!ctx->current_impl_target)
-        {
-            register_func_template(ctx, name, gen_params, gen_count, node);
-            register_declaration(ctx, node); // A template is not handed to the program.
-            return NULL;
-        }
     }
+    // A method is registered by its impl. A concrete function is registered under its C name
+    // (`required` and `pure` are set by the caller once it returns).
     if (!ctx->current_impl_target)
     {
-        add_to_func_list(ctx, node);
+        collect_declaration(ctx, node);
+        if (gen_count > 0)
+        {
+            return NULL; // A template is not handed to the program.
+        }
     }
     return node;
 }

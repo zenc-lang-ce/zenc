@@ -1,0 +1,51 @@
+// Helper for test_types_before_declaration_import.zc: types used before they are declared, in a
+// module imported with an alias.
+import "std/vec.zc"
+
+struct Holder {
+    count: Count;
+    cell: IntCell;
+    numbers: Vec<Count>;
+    apply: fn*(Count) -> Count;
+}
+
+fn make_holder(n: int) -> Holder {
+    return Holder { count: n, cell: Cell<int> { v: n * 2 }, numbers: Vec<Count>::new(), apply: twice };
+}
+
+fn twice(x: Count) -> Count {
+    return x * 2;
+}
+
+fn pair(n: Count) -> (Count, Count) {
+    return (n, n + 1);
+}
+
+fn wrap(n: int) -> Id {
+    return (Id)n;
+}
+
+fn unwrap(i: Id) -> int {
+    return (int)i;
+}
+
+enum Shape {
+    Square(Side),
+    Empty
+}
+
+fn side(s: Shape) -> int {
+    match s {
+        Shape::Square(x) => { return x; },
+        _ => { return 0; },
+    }
+}
+
+alias Count = Side;
+alias Side = int;
+alias IntCell = Cell<int>;
+opaque alias Id = int;
+
+struct Cell<T> {
+    v: T;
+}

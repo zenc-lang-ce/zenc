@@ -1,0 +1,29 @@
+// structs: test_derive_clone_declaration_order
+// `@derive(Clone)` clones a field whose type has `clone`, whatever the order of the
+// declarations: an impl written further down, or a type that derives Clone further down.
+
+@derive(Clone)
+struct Outer {
+    inner: Middle;
+}
+
+@derive(Clone)
+struct Middle {
+    leaf: Leaf;
+}
+
+struct Leaf {
+    n: int;
+}
+
+impl Leaf {
+    fn clone(self) -> Leaf {
+        return Leaf { n: self.n + 100 };
+    }
+}
+
+test "derive clones fields declared further down" {
+    let o = Outer { inner: Middle { leaf: Leaf { n: 1 } } };
+    let c = o.clone();
+    expect_eq(c.inner.leaf.n, 101, "Leaf's clone is called through Middle's derived clone");
+}
