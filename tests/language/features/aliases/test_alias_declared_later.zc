@@ -1,0 +1,18 @@
+// language/aliases: test_alias_declared_later
+// An alias named before it is declared, also when it names another alias declared later.
+
+struct Reading {
+    value: Celsius;
+}
+
+fn hotter(r: Reading, by: Degrees) -> Celsius {
+    return r.value + by;
+}
+
+alias Celsius = Degrees;
+alias Degrees = int;
+
+test "an alias of an alias, both declared further down" {
+    let r = Reading { value: 20 };
+    expect_eq(hotter(r, 5), 25, "Celsius and Degrees are int");
+}

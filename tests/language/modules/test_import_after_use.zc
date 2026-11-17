@@ -1,0 +1,16 @@
+// language/modules: test_import_after_use
+// A type of a module imported further down in the file, by its own name or through the
+// module's alias, is that module's type.
+
+struct Segment {
+    start: Point;
+    end: geo::Point;
+}
+
+import { Point } from "./test_modules/_imported_later.zc";
+import "./test_modules/_imported_later_geo.zc" as geo;
+
+test "types of modules imported further down" {
+    let s = Segment { start: Point { x: 1 }, end: geo::Point { x: 2 } };
+    expect_eq(s.start.x + s.end.x, 3, "both fields are the module's Point");
+}

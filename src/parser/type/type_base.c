@@ -50,6 +50,27 @@ Type *type_from_name(ParserContext *ctx, const char *name)
     return t;
 }
 
+// Records that the type `ty`, named `name` (of `scope`, for `scope::name`) where `t` is, waits
+// for the declarations.
+static void push_pending_type_name(ParserContext *ctx, Type *ty, char *name, Token t, char *scope)
+{
+    PendingTypeName *p = xcalloc(1, sizeof(PendingTypeName));
+    p->type = ty;
+    p->name = name;
+    p->scope = scope;
+    p->token = t;
+    p->module_prefix = ctx->imports.current_module_prefix;
+    p->filename = ctx->current_filename;
+    p->next = ctx->pending_type_names;
+    ctx->pending_type_names = p;
+}
+
+// Whether `scope` of `scope::Name` is a module this file has imported.
+static int is_qualified_scope_known(ParserContext *ctx, const char *scope)
+{
+    return imported_module(ctx, scope) != NULL;
+}
+
 // The `>` that closes a list of generic arguments. A `>>` (two lists closing together, as in
 // `Vec<Vec<int>>`) is split: its first `>` is consumed and the second is left for the outer
 // list. Returns 0 when neither comes next.
@@ -102,8 +123,14 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         if (alias_node)
         {
             register_type_usage(ctx, name, t);
-            zfree(name);
-            return alias_type(alias_node);
+            Type *aliased = alias_type(alias_node);
+            // A copy of a type that names one declared further down: it is the alias again
+            // once that one is resolved (resolve_pending_type_names).
+            if (!ctx->declarations_read && type_names_pending(ctx, alias_node->type_info))
+            {
+                push_pending_type_name(ctx, aliased, name, t, NULL);
+            }
+            return aliased;
         }
 
 #if FF_COMPATIBILITY_0_5
@@ -120,8 +147,11 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             name = type_impl_name(ctx->current_impl_target);
         }
 
-        // A path: `m::Vector` of a module imported as `m`, `A::B`.
+        // A path: `m::Vector` of a module imported as `m`, `A::B`. While declarations are read,
+        // `m` may be imported further down: the name waits for it (pending_scope).
         int is_qualified = 0;
+        char *pending_scope = NULL;
+        char *pending_member = NULL;
         while (lexer_peek(l).kind == TOK_DCOLON)
         {
             is_qualified = 1;
@@ -137,6 +167,11 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             // Map aliases (I32 -> int32_t, string -> char*) using centralized logic
             const char *resolved_suffix = normalize_type_name(suffix);
 
+            if (!is_qualified_scope_known(ctx, name) && !ctx->declarations_read && !pending_scope)
+            {
+                pending_scope = xstrdup(name);
+                pending_member = xstrdup(resolved_suffix);
+            }
             char *merged = qualified_type_name(ctx, name, resolved_suffix);
             zfree(name);
 
@@ -246,8 +281,14 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             return ty;
         }
 
+        // While declarations are read, a name nothing declared yet may be declared further down:
+        // what it names (an alias, a template, a type of this module) is known once every
+        // declaration is, and the type keeps the name as written until then.
+        int pending = pending_scope ||
+                      (!ctx->declarations_read && !is_qualified && !type_name_declared(ctx, name));
+
         // A bare name: a type imported one by one, or in a module the module's own type.
-        char *type_name = is_qualified ? NULL : type_declaration_name(ctx, name);
+        char *type_name = is_qualified || pending ? NULL : type_declaration_name(ctx, name);
         if (type_name)
         {
             zfree(name);
@@ -258,7 +299,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         {
             record_generic_parameter_use(ctx, t);
         }
-        else if (strcmp(name, "Self") != 0)
+        else if (strcmp(name, "Self") != 0 && !pending)
         {
             register_type_usage(ctx, name, t);
         }
@@ -267,6 +308,11 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         Type *ty = type_new(is_known_generic(ctx, name) ? TYPE_GENERIC : TYPE_STRUCT);
         ty->name = name;
         ty->is_explicit_struct = explicit_struct;
+        if (pending)
+        {
+            push_pending_type_name(ctx, ty, pending_scope ? pending_member : xstrdup(name), t,
+                                   pending_scope);
+        }
 
         // Handle Generics <T> or <K, V>
         if (lexer_peek(l).kind == TOK_LANGLE ||
