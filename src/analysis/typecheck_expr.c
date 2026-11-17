@@ -953,6 +953,14 @@ static int check_array_as_slice(TypeChecker *tc, Type *target, Type *value, Toke
         {
             return 0;
         }
+        // Its elements took the slice's element type: so does the literal, an array of it.
+        if (value_node->array_literal.elements)
+        {
+            Type *array = type_new(TYPE_ARRAY);
+            array->inner = slice_elem;
+            array->array_size = resolve_alias(value)->array_size;
+            value_node->type_info = array;
+        }
     }
     else if (!check_type_compatibility(tc, slice_elem, resolve_alias(value)->inner, t, NULL,
                                        is_call_arg))
