@@ -495,7 +495,6 @@ struct ParserContext
         int is_repl;        ///< 1 if running in REPL mode.
         int in_defer_block; ///< 1 if currently parsing inside a defer block.
 
-        ASTNode *global_user_structs;     ///< List of user defined structs.
         char *current_impl_type;          ///< Type currently being implemented (in impl block).
         int tmp_counter;                  ///< Counter for temporary variables.
         int fstring_counter;              ///< Counter for the buffers of f-string values.
