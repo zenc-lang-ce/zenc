@@ -510,20 +510,9 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                     EMIT(ctx, ", ");
                 }
 
-                // Determine constraint
-                char *mode = node->asm_stmt.output_modes[i];
-                if (strcmp(mode, "out") == 0)
-                {
-                    EMIT(ctx, "\"=r\"(%s)", node->asm_stmt.outputs[i]);
-                }
-                else if (strcmp(mode, "inout") == 0)
-                {
-                    EMIT(ctx, "\"+r\"(%s)", node->asm_stmt.outputs[i]);
-                }
-                else
-                {
-                    EMIT(ctx, "\"=r\"(%s)", node->asm_stmt.outputs[i]);
-                }
+                // `inout(x)` is read and written, `out(x)` only written.
+                EMIT(ctx, "\"%s\"(%s)", node->asm_stmt.output_is_inout[i] ? "+r" : "=r",
+                     node->asm_stmt.outputs[i]);
             }
         }
 

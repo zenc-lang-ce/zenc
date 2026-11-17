@@ -1,0 +1,14 @@
+// ARGS: build
+// Whether two values compare is the typechecker's: a pointer compares with the literal 0 (null),
+// a string does not compare with an integer, also inside an f-string, and that stops the build.
+import "std/io.zc"
+
+fn main() {
+    let x = 1;
+    let p: int* = &x;
+    if p == 0 {
+        println("null");
+    }
+    let s = "a";
+    println(f"{s == 1}");
+}

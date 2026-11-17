@@ -169,6 +169,9 @@ static int dot_emit_node(ParserContext *ctx, ASTNode *node)
                 emitter_printf(&ctx->cg.emitter, "\\\"");
             }
             break;
+        case LITERAL_BOOL:
+            emitter_printf(&ctx->cg.emitter, "%s", node->literal.int_val ? "true" : "false");
+            break;
         case LITERAL_CHAR:
         {
             char ch[2] = {(char)node->literal.int_val, '\0'};

@@ -1,14 +1,38 @@
 // SPDX-License-Identifier: MIT
 #include "c_header_cache.h"
+#include "../diagnostics/diagnostics.h"
 #include "zalloc.h"
 #include "../arena.h"
 #include "../platform/os.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // The first line of a cache file. Change it when what the reader gives changes in a way the
 // key does not show (the key already changes with the zc binary).
 #define CACHE_FORMAT "zc c-header cache 3"
+
+// The cache lives as long as the process, across the arena marks the language server rewinds
+// after each read-only request: what it keeps comes from the libc heap, not from the arena.
+static void *cache_calloc(size_t count, size_t size)
+{
+    void *p = libc_malloc(count * size);
+    if (!p)
+    {
+        zfatal("c_header_cache: out of memory");
+        exit(1); // whitelisted: zfatal returns in the language server, as for xmalloc
+    }
+    memset(p, 0, count * size);
+    return p;
+}
+
+static char *cache_strdup(const char *text)
+{
+    size_t len = strlen(text) + 1;
+    char *copy = cache_calloc(len, 1);
+    memcpy(copy, text, len);
+    return copy;
+}
 
 static CachedHeader *g_headers = NULL;
 static CachedHeader *g_last_header = NULL;
@@ -43,8 +67,8 @@ static CachedHeader *find_header(const char *path)
 
 static CachedHeader *add_header(const char *path)
 {
-    CachedHeader *header = xcalloc(1, sizeof(CachedHeader));
-    header->path = xstrdup(path);
+    CachedHeader *header = cache_calloc(1, sizeof(CachedHeader));
+    header->path = cache_strdup(path);
     if (g_last_header)
     {
         g_last_header->next = header;
@@ -87,8 +111,8 @@ static void add_declaration_line(CachedHeader *header, char *line)
             *space = '\0';
             CachedDeclaration *declaration = &header->declarations[header->declaration_count++];
             declaration->kind = DECLARATION_WORDS[i].kind;
-            declaration->name = xstrdup(name);
-            declaration->c_type = xstrdup(space + 1);
+            declaration->name = cache_strdup(name);
+            declaration->c_type = cache_strdup(space + 1);
         }
         return;
     }
@@ -136,8 +160,9 @@ static void load_cache_file(void)
             current = add_header(line + path_offset);
             current->modified = modified;
             current->size = size;
-            current->declarations = xcalloc((size_t)declarations + 1, sizeof(CachedDeclaration));
-            current->includes = xcalloc((size_t)includes + 1, sizeof(char *));
+            current->declarations =
+                cache_calloc((size_t)declarations + 1, sizeof(CachedDeclaration));
+            current->includes = cache_calloc((size_t)includes + 1, sizeof(char *));
             current->declaration_capacity = declarations;
             current->include_capacity = includes;
         }
@@ -145,7 +170,7 @@ static void load_cache_file(void)
         {
             if (current->include_count < current->include_capacity)
             {
-                current->includes[current->include_count++] = xstrdup(line + 8);
+                current->includes[current->include_count++] = cache_strdup(line + 8);
             }
         }
         else if (current)
@@ -180,8 +205,8 @@ void c_header_cache_open(const char *key, int discard)
     {
         return;
     }
-    g_cache_file = xstrdup(path);
-    g_cache_key = xstrdup(key);
+    g_cache_file = cache_strdup(path);
+    g_cache_key = cache_strdup(key);
     if (discard)
     {
         g_changed = 1;
@@ -229,7 +254,7 @@ static CachedHeader *scan_header(const char *path, const CSearchDirList *dirs)
     }
     header->modified = file->modified;
     header->size = file->size;
-    header->declarations = xcalloc((size_t)file->symbol_count + 1, sizeof(CachedDeclaration));
+    header->declarations = cache_calloc((size_t)file->symbol_count + 1, sizeof(CachedDeclaration));
     header->declaration_count = 0;
     header->declaration_capacity = file->symbol_count;
     for (int i = 0; i < file->symbol_count; i++)
@@ -243,10 +268,10 @@ static CachedHeader *scan_header(const char *path, const CSearchDirList *dirs)
         }
         CachedDeclaration *declaration = &header->declarations[header->declaration_count++];
         declaration->kind = (CSymbolKind)entry->kind;
-        declaration->name = xstrdup(entry->name);
-        declaration->c_type = xstrdup(entry->c_type);
+        declaration->name = cache_strdup(entry->name);
+        declaration->c_type = cache_strdup(entry->c_type);
     }
-    header->includes = xcalloc((size_t)file->include_count + 1, sizeof(char *));
+    header->includes = cache_calloc((size_t)file->include_count + 1, sizeof(char *));
     header->include_count = 0;
     header->include_capacity = file->include_count;
     char header_dir[MAX_PATH_LEN];
@@ -257,7 +282,7 @@ static CachedHeader *scan_header(const char *path, const CSearchDirList *dirs)
             file->includes[i].name, file->includes[i].is_system ? NULL : header_dir, dirs, NULL, 0);
         if (child)
         {
-            header->includes[header->include_count++] = xstrdup(child);
+            header->includes[header->include_count++] = cache_strdup(child);
             libc_free(child);
         }
     }

@@ -129,6 +129,8 @@ typedef struct FuncSig
     const char *own_name;     ///< The name the program writes, when the C name adds to it:
                               ///< `push` of `Vec__int32_t__push`, `Rect` of `Shape__Rect`.
     int elide_from_idx;       ///< Index of parameter for lifetime elision (-1 if none)
+    struct ASTNode *decl;     ///< The function's declaration (register_function); NULL for an
+                              ///< enum variant's constructor, which has none.
 } FuncSig;
 
 /**
@@ -752,6 +754,11 @@ void exit_scope(ParserContext *ctx);
  * @brief Adds a symbol to the current scope.
  */
 void add_symbol(ParserContext *ctx, const char *n, Type *type_info, int is_export);
+/**
+ * @brief Creates the global scope if there is none yet, and makes it the current one when there
+ *        is no current scope: whatever registers a symbol first finds it there.
+ */
+void ensure_global_scope(ParserContext *ctx);
 
 /**
  * @brief Adds a symbol with definition token location.
@@ -810,10 +817,17 @@ const char *normalize_type_name(const char *name);
  * @brief Registers a function. `own_name` is the name the program writes when the C name adds to
  * it (a method's or a variant's); NULL for a free function.
  */
-void register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
-                   ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
-                   int is_pure, const char *link_name, const char *own_name, Token decl_token,
-                   int is_export);
+FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
+                       ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
+                       int is_pure, const char *link_name, const char *own_name, Token decl_token,
+                       int is_export);
+
+/**
+ * @brief Registers the function `fn` declares under the C name `name`, with what it declares
+ *        (parameters, return type, link name...); its signature points at `fn` (FuncSig.decl).
+ */
+FuncSig *register_function(ParserContext *ctx, Scope *scope, ASTNode *fn, const char *name,
+                           int is_export);
 
 /**
  * @brief The name a call's callee was written with: a variant's (`Ok` of `Result__Ok`), a

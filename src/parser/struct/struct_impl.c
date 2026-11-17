@@ -60,8 +60,9 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
             continue;
         }
         ATTACH_DOC_COMMENT(ctx, f);
-        f->func.method_name = f->func.name;
-        f->func.name = mangle_method_symbol(type_name, trait_name, f->func.method_name);
+        f->func.is_method = 1;
+        f->func.trait_name = trait_name;
+        (void)type_name; // The owner is the impl's target, which the method keeps (impl_target).
 
         if (attrs.cfg_condition)
         {
@@ -75,19 +76,16 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         {
             char **params = xmalloc(sizeof(char *));
             params[0] = xstrdup(template_param);
-            register_func_template(ctx, f->func.name, params, 1, f);
+            register_func_template(ctx, function_c_name(f), params, 1, f);
         }
         else if (f->func.generic_param_count > 0)
         {
-            register_func_template(ctx, f->func.name, f->func.generic_params,
+            register_func_template(ctx, function_c_name(f), f->func.generic_params,
                                    f->func.generic_param_count, f);
         }
         else
         {
-            register_func(ctx, ctx->current_scope, f->func.name, f->func.count,
-                          f->func.default_values, f->func.arg_types, f->func.ret_type_info,
-                          f->func.is_varargs, f->func.pure, f->link_name, f->func.method_name,
-                          f->token, 0);
+            register_function(ctx, ctx->current_scope, f, function_c_name(f), 0);
         }
 
         if (!h)
@@ -230,27 +228,11 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 
         register_impl(ctx, name1, name2);
 
-        // RAII: Check for "Drop" trait implementation
-        if (strcmp(name1, "Drop") == 0)
-        {
-            ZenSymbol *s = find_symbol_entry(ctx, name2);
-            if (s && s->type_info)
-            {
-                s->type_info->traits.has_drop = 1;
-            }
-            else
-            {
-                // Try finding struct definition
-                ASTNode *def = find_struct_def(ctx, name2);
-                if (def && def->type_info)
-                {
-                    def->type_info->traits.has_drop = 1;
-                }
-            }
-        }
+        // An `impl Drop` is a fact of the type's declaration, which propagate_drop_traits marks
+        // (seed_drop_from_impl), for a type declared before the impl or after it alike.
 
         // Iterator: Check for "Iterable" trait implementation
-        else if (strcmp(name1, "Iterable") == 0)
+        if (strcmp(name1, "Iterable") == 0)
         {
             ZenSymbol *s = find_symbol_entry(ctx, name2);
             if (s && s->type_info)

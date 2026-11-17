@@ -128,9 +128,9 @@ ASTNode *parse_while(ParserContext *ctx, Lexer *l)
         return ast_create(NODE_BLOCK);
     }
 
-    if ((cond->kind == NODE_EXPR_LITERAL && cond->literal.kind == LITERAL_INT &&
-         cond->literal.int_val == 1) ||
-        (cond->kind == NODE_EXPR_VAR && strcmp(cond->var_ref.name, "true") == 0))
+    if (cond->kind == NODE_EXPR_LITERAL &&
+        (cond->literal.kind == LITERAL_INT || cond->literal.kind == LITERAL_BOOL) &&
+        cond->literal.int_val == 1)
     {
         if (ctx->hook_zen_trigger)
         {
@@ -649,10 +649,12 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
     }
     else
     {
-        ASTNode *true_var = ast_create(NODE_EXPR_VAR);
-        true_var->var_ref.name = xstrdup("true");
-        true_var->token = for_token;
-        cond = true_var;
+        ASTNode *always = ast_create(NODE_EXPR_LITERAL);
+        always->literal.kind = LITERAL_BOOL;
+        always->literal.int_val = 1;
+        always->type_info = type_new(TYPE_BOOL);
+        always->token = for_token;
+        cond = always;
     }
     if (lexer_peek(l).kind == TOK_SEMICOLON)
     {

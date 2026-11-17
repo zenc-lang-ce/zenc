@@ -111,6 +111,10 @@ int lsp_project_import_text(const char *importer, const char *target, char *out,
 // Update a file (re-parse and re-index)
 void lsp_project_update_file(const char *uri, const char *src);
 
+// Runs the typechecker on the document, as `zc build` does after parsing it: what it reports goes
+// to the compiler's diagnostic consumer. Nothing runs when the document did not parse cleanly.
+void lsp_project_check_file(const char *uri);
+
 // Remember the latest text of an open document (outside the arena) so a rebuild can
 // re-apply it.
 void lsp_project_track_document(const char *uri, const char *src);

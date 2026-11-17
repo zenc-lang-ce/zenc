@@ -1222,20 +1222,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
     case NODE_EXPR_FSTRING:
     {
         misra_check_fstring(tc->pctx, node->token);
-        // The `{...}` expressions were parsed and typed when the string was; check them
-        // only for moves (use after move, consumed values).
-        int prev_rechecking = tc->rechecking;
-        tc->rechecking = 1;
-        ASTNode *part = node->fstring.parts;
-        while (part)
+        // The `{...}` expressions are code: they are checked as any other.
+        for (ASTNode *part = node->fstring.parts; part; part = part->next)
         {
             if (part->fstring_part.expr)
             {
                 check_node(tc, part->fstring_part.expr, depth + 1);
             }
-            part = part->next;
         }
-        tc->rechecking = prev_rechecking;
         break;
     }
     case NODE_PREPROC_DIRECTIVE:

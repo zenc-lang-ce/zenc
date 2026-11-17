@@ -1,0 +1,10 @@
+   Compiling tests/compiler/diagnostics_output/err_comparison_types.zc...
+error: Type mismatch in comparison: cannot compare 'string' and 'i32'
+  --> tests/compiler/diagnostics_output/err_comparison_types.zc:13:18
+   |
+13 |     println(f"{s == 1}");
+   |                  ^ here
+   |
+   = help: Both operands must have compatible types for comparison
+     error: semantic analysis found 1 error
+[exit 1]
