@@ -1402,7 +1402,8 @@ void check_derivable_trait(Token t, const char *name);
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count);
 /**
  * @brief Registers the declaration `node` where later code looks it up: a struct, an enum, a
- *        function outside an impl, a type alias, a trait, or a global constant or variable.
+ *        function outside an impl, an impl and its methods, a type alias, a trait, or a global
+ *        constant or variable.
  */
 void collect_declaration(ParserContext *ctx, ASTNode *node);
 
