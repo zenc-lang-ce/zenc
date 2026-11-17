@@ -165,14 +165,15 @@ static int implements_drop(ParserContext *ctx, ASTNode *node)
     return check_impl(ctx, "Drop", name) || (tpl && check_impl(ctx, "Drop", tpl));
 }
 
-// Marks `strct` as Drop if it implements Drop. `impl Drop for X` marks X when it is parsed, which
-// misses a struct declared below the impl, and an instance created before a generic impl.
+// Marks `strct` as Drop, and as declaring it, if it implements Drop. `impl Drop for X` marks X
+// when it is parsed, which misses a struct declared below the impl, and an instance created
+// before a generic impl; and a struct its fields made Drop declares it still.
 static void seed_drop_from_impl(ParserContext *ctx, ASTNode *strct)
 {
-    if (strct && strct->type_info && !strct->type_info->traits.has_drop &&
-        implements_drop(ctx, strct))
+    if (strct && strct->type_info && implements_drop(ctx, strct))
     {
         strct->type_info->traits.has_drop = 1;
+        strct->type_info->traits.declares_drop = 1;
     }
 }
 

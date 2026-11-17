@@ -342,6 +342,7 @@ void tc_check_impl(TypeChecker *tc, ASTNode *node, int depth)
 
 void tc_check_impl_trait(TypeChecker *tc, ASTNode *node, int depth)
 {
+    node->impl_trait.trait = find_trait_def(tc->pctx, node->impl_trait.trait_name);
     ASTNode *method = node->impl_trait.methods;
     while (method)
     {

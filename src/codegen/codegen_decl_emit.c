@@ -367,22 +367,10 @@ void emit_impl_vtables(ParserContext *ctx)
         {
             char *trait = node->impl_trait.trait_name;
 
-            // Filter generic traits (VTables for them are not emitted)
-            int is_generic_trait = 0;
-            StructRef *search = ctx->parsed_globals_list;
-            while (search)
-            {
-                if (search->node && search->node->kind == NODE_TRAIT &&
-                    strcmp(search->node->trait.name, trait) == 0)
-                {
-                    if (search->node->trait.generic_param_count > 0)
-                    {
-                        is_generic_trait = 1;
-                    }
-                    break;
-                }
-                search = search->next;
-            }
+            // Filter generic traits (VTables for them are not emitted): the trait the
+            // typechecker resolved (impl_trait.trait).
+            ASTNode *trait_def = node->impl_trait.trait;
+            int is_generic_trait = trait_def && trait_def->trait.generic_param_count > 0;
             if (is_generic_trait)
             {
                 ref = ref->next;

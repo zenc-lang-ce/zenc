@@ -111,8 +111,10 @@ typedef struct Type
     int array_size;         ///< Size for fixed-size arrays. For TYPE_BITINT, this is the bit width.
     struct
     {
-        int has_drop;     ///< 1 if type implements Drop trait (RAII).
-        int has_iterable; ///< 1 if type implements Iterable trait.
+        int has_drop;      ///< 1 if type implements Drop trait (RAII).
+        int declares_drop; ///< 1 if the type has an `impl Drop` of its own (has_drop is also
+                           ///< set by fields that need dropping): its glue calls its `drop`.
+        int has_iterable;  ///< 1 if type implements Iterable trait.
     } traits;
     union
     {
@@ -627,6 +629,9 @@ struct ASTNode
             Token trait_token;  // Where the trait's name is written (`Show` of `impl Show for`).
             Token target_token; // Where the target's name is written.
             ASTNode *methods;
+            // The trait's declaration, as the typechecker resolves it; NULL for one the program
+            // does not declare.
+            ASTNode *trait;
         } impl_trait;
 
         struct
