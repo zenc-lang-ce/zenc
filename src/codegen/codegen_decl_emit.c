@@ -51,11 +51,18 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             {
                 EMIT(ctx, "_Thread_local ");
             }
+            char *declared = node_c_type(ctx, node);
             if (node->kind == NODE_CONST)
             {
-                EMIT(ctx, "__attribute__((unused)) const ");
+                // A `def` is const. The type it is written with may say so already: a value that
+                // names another `def` (`LATE * 2`) has that `def`'s const type, and C++ rejects
+                // `const const`. A pointer's const is its target's, not the `def`'s.
+                Type *written = declared                   ? node->type_info
+                                : node->var_decl.init_expr ? node->var_decl.init_expr->type_info
+                                                           : NULL;
+                int already_const = written && written->is_const && written->kind != TYPE_POINTER;
+                EMIT(ctx, "__attribute__((unused)) %s", already_const ? "" : "const ");
             }
-            char *declared = node_c_type(ctx, node);
             if (declared)
             {
                 emit_var_decl_type(ctx, node->type_info, node->var_decl.name);
