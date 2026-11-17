@@ -983,11 +983,8 @@ skip_callee_gen:
     }
     else
     {
-        FuncSig *sig = NULL;
-        if (node->call.callee->kind == NODE_EXPR_VAR)
-        {
-            sig = find_func(ctx, node->call.callee->var_ref.name);
-        }
+        // The function the typechecker resolved (call.function), for its parameter types.
+        FuncSig *sig = node->call.function;
 
         ASTNode *arg = node->call.args;
         int arg_idx = 0;

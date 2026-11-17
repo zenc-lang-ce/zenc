@@ -333,6 +333,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         new_node->call.arg_names = n->call.arg_names; // Share pointer (shallow copy)
         new_node->call.count = n->call.count;
         new_node->call.written = NULL; // The instance's own check resolves it again.
+        new_node->call.function = NULL;
         break;
     case NODE_EXPR_VAR:
     {

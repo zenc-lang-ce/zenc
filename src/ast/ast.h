@@ -500,6 +500,8 @@ struct ASTNode
             // For a call the typechecker made from other syntax (`v[i]` with a `get` method), the
             // expression as the program writes it. Not a child: it shares its parts with the call.
             ASTNode *written;
+            // The function a call of a name (`f(x)`) calls, as the typechecker resolved it.
+            struct FuncSig *function;
         } call;
 
         struct

@@ -271,6 +271,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
 
         // Look up function signature
         sig = find_func(tc->pctx, func_name);
+        node->call.function = sig;
 
         if (tc->pctx->config->misra_mode)
         {

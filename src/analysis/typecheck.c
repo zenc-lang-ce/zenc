@@ -901,6 +901,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                                     "Assert/expect condition must be a truthy type", hints);
             }
         }
+        // A message that interpolates is code too: its expressions are checked.
+        check_node(tc, node->assert_stmt.message_fstring, depth + 1);
         break;
     case NODE_TEST:
     {
