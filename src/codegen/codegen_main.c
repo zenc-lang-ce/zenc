@@ -647,7 +647,6 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         ctx->cg.current_func_ret_type_info = NULL;
         ctx->cg.current_lambda = NULL;
         ctx->cg.global_user_structs = kids;
-        struct_registry_changed(ctx);
         VisitedModules *visited = NULL;
 
         if (!ctx->cg.skip_preamble)

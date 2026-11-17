@@ -199,17 +199,6 @@ typedef struct StructDef
     struct StructDef *next;
 } StructDef;
 
-// Hash table entry for fast struct/enum lookup (used by find_struct_def).
-enum
-{
-    STRUCT_HASH_SIZE = 2048
-};
-typedef struct
-{
-    char name[256]; // empty string = empty slot (avoids dangling stack pointer issues with ASAN)
-    ASTNode *node;
-} StructHashEntry;
-
 /**
  * @brief The tuples the program uses, each once, for the C structs codegen emits.
  */
@@ -427,23 +416,21 @@ struct ParserContext
     ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
 
     // Structs/Enums
-    StructRef *parsed_structs_list;                ///< List of all parsed struct nodes.
-    StructHashEntry struct_hash[STRUCT_HASH_SIZE]; ///< Hash table for fast struct/enum lookup.
-    StructRef *parsed_enums_list;                  ///< List of all parsed enum nodes.
-    StructRef *parsed_funcs_list;                  ///< List of all parsed function nodes.
-    StructRef *parsed_impls_list;                  ///< List of all parsed impl blocks.
-    StructRef *parsed_globals_list;                ///< List of all parsed global variables.
-    StructDef *struct_defs;        ///< Registry of struct definitions (map name -> node).
-    EnumVariantReg *enum_variants; ///< Registry of enum variants for global lookup.
-    ImplReg *registered_impls;     ///< Cache of type/trait implementations.
+    StructRef *parsed_structs_list; ///< List of all parsed struct nodes.
+    /// Every struct and enum, templates and instances too, by C name: the one registered last
+    /// (find_struct_def).
+    zmap_DeclByName type_registry;
+    StructRef *parsed_enums_list;   ///< List of all parsed enum nodes.
+    StructRef *parsed_funcs_list;   ///< List of all parsed function nodes.
+    StructRef *parsed_impls_list;   ///< List of all parsed impl blocks.
+    StructRef *parsed_globals_list; ///< List of all parsed global variables.
+    StructDef *struct_defs;         ///< Registry of struct definitions (map name -> node).
+    EnumVariantReg *enum_variants;  ///< Registry of enum variants for global lookup.
+    ImplReg *registered_impls;      ///< Cache of type/trait implementations.
 
     // The std modules the compiler loads on its own (std/mem.zc for Drop…), as NODE_IMPORTs
     // for the typechecker: they are not in the tree.
     ASTNode *implicit_std_imports;
-
-    // Names find_struct_def did not find, cached during codegen (utils_registry.c).
-    struct StructMissCache *struct_misses;
-    unsigned int struct_registry_gen; ///< Bumped whenever a struct or enum is registered.
 
     // Types
     TupleType *used_tuples;  ///< Cache of generated tuple types.
@@ -1329,11 +1316,8 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
 const char *get_closest_type_hint(ParserContext *ctx, const char *name);
 void add_instantiated_func(ParserContext *ctx, ASTNode *fn);
 char *ast_to_string(ASTNode *node);
-void struct_hash_insert(ParserContext *ctx, const char *name, ASTNode *node);
-/** @brief Records that a struct or enum was registered, so cached misses may be stale. */
-void struct_registry_changed(ParserContext *ctx);
-/** @brief Starts caching the names find_struct_def does not find (used by codegen). */
-void struct_miss_cache_enable(ParserContext *ctx);
+/** @brief Registers the struct or enum `node` under its C name `name` (find_struct_def). */
+void register_named_type(ParserContext *ctx, const char *name, ASTNode *node);
 /** @brief Adds a copy of s to ctx->all_symbols, unless its declaration is already there. */
 void register_in_all_symbols(ParserContext *ctx, ZenSymbol *s);
 

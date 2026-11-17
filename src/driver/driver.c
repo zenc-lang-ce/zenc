@@ -388,8 +388,6 @@ static int compile_program(ZenCompiler *compiler)
         return 1;
     }
     emitter_init_file(&ctx.cg.emitter, out_f);
-    // Few structs are registered from here on, so misses are worth caching.
-    struct_miss_cache_enable(&ctx);
     codegen_node(&ctx, root);
     fclose(out_f);
 

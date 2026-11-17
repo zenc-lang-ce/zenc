@@ -9,151 +9,15 @@
 #include <ctype.h>
 #include "analysis/const_fold.h"
 
-static unsigned int struct_name_hash(const char *name)
+void register_named_type(ParserContext *ctx, const char *name, ASTNode *node)
 {
-    unsigned int h = 2166136261u;
-    while (*name)
+    // Every ParserContext starts zeroed, wherever it is created: the map starts here.
+    if (!ctx->type_registry.hash_func)
     {
-        h ^= (unsigned char)*name++;
-        h *= 16777619u;
+        ctx->type_registry = zmap_init(DeclByName, zmap_hash_cstr, zmap_cmp_cstr);
     }
-    return h;
+    zmap_put(&ctx->type_registry, xstrdup(name), node);
 }
-
-void struct_hash_insert(ParserContext *ctx, const char *name, ASTNode *node)
-{
-    unsigned int idx = struct_name_hash(name) & (STRUCT_HASH_SIZE - 1);
-    for (int i = 0; i < STRUCT_HASH_SIZE; i++)
-    {
-        unsigned int slot =
-            ((unsigned)(idx) + (unsigned)(i) + STRUCT_HASH_SIZE) & (STRUCT_HASH_SIZE - 1U);
-        if (!ctx->struct_hash[slot].name[0] || (ctx->struct_hash[slot].name[0] == name[0] &&
-                                                strcmp(ctx->struct_hash[slot].name, name) == 0))
-        {
-            strncpy(ctx->struct_hash[slot].name, name, sizeof(ctx->struct_hash[slot].name) - 1);
-            ctx->struct_hash[slot].name[sizeof(ctx->struct_hash[slot].name) - 1] = '\0';
-            ctx->struct_hash[slot].node = node;
-            return;
-        }
-    }
-}
-
-static ASTNode *struct_hash_lookup(ParserContext *ctx, const char *name)
-{
-    unsigned int idx = struct_name_hash(name) & (STRUCT_HASH_SIZE - 1);
-    for (int i = 0; i < STRUCT_HASH_SIZE; i++)
-    {
-        unsigned int slot =
-            ((unsigned)(idx) + (unsigned)(i) + STRUCT_HASH_SIZE) & (STRUCT_HASH_SIZE - 1U);
-        if (!ctx->struct_hash[slot].name[0])
-        {
-            return NULL;
-        }
-        if (ctx->struct_hash[slot].name[0] == name[0] &&
-            strcmp(ctx->struct_hash[slot].name, name) == 0)
-        {
-            return ctx->struct_hash[slot].node;
-        }
-    }
-    return NULL;
-}
-
-// Names find_struct_def did not find. A miss walks seven lists, and codegen
-// asks again and again for names that are no struct (int32_t, char*...). The
-// table is only valid while no struct or enum is registered:
-// struct_registry_changed bumps ctx->struct_registry_gen, and the table empties
-// itself when it sees a new value. A lookup also depends on strct.is_incomplete,
-// which is only set when a forward declaration is parsed (the full definition is
-// another node); code that changes it later must call struct_registry_changed.
-enum
-{
-    STRUCT_MISS_SIZE = 4096
-};
-struct StructMissCache
-{
-    unsigned int gen;
-    int count;
-    const char *names[STRUCT_MISS_SIZE];
-};
-
-void struct_registry_changed(ParserContext *ctx)
-{
-    ctx->struct_registry_gen++;
-}
-
-void struct_miss_cache_enable(ParserContext *ctx)
-{
-    if (!ctx->struct_misses)
-    {
-        ctx->struct_misses = xcalloc(1, sizeof(struct StructMissCache));
-        ctx->struct_misses->gen = ctx->struct_registry_gen;
-    }
-}
-
-// The miss table, emptied if a struct or enum was registered since it was
-// filled; NULL while the cache is off.
-static struct StructMissCache *struct_miss_table(ParserContext *ctx)
-{
-    struct StructMissCache *t = ctx->struct_misses;
-    if (t && t->gen != ctx->struct_registry_gen)
-    {
-        memset(t->names, 0, sizeof(t->names));
-        t->count = 0;
-        t->gen = ctx->struct_registry_gen;
-    }
-    return t;
-}
-
-static int struct_miss_has(ParserContext *ctx, const char *name)
-{
-    struct StructMissCache *t = struct_miss_table(ctx);
-    if (!t)
-    {
-        return 0;
-    }
-    unsigned int slot = struct_name_hash(name) & (STRUCT_MISS_SIZE - 1);
-    while (t->names[slot])
-    {
-        if (strcmp(t->names[slot], name) == 0)
-        {
-            return 1;
-        }
-        slot = (slot + 1) & (STRUCT_MISS_SIZE - 1);
-    }
-    return 0;
-}
-
-static void struct_miss_add(ParserContext *ctx, const char *name)
-{
-    struct StructMissCache *t = struct_miss_table(ctx);
-    if (!t)
-    {
-        return;
-    }
-    // Keep the table at most half full so probing stays short.
-    if (t->count >= STRUCT_MISS_SIZE / 2)
-    {
-        memset(t->names, 0, sizeof(t->names));
-        t->count = 0;
-    }
-    unsigned int slot = struct_name_hash(name) & (STRUCT_MISS_SIZE - 1);
-    while (t->names[slot])
-    {
-        slot = (slot + 1) & (STRUCT_MISS_SIZE - 1);
-    }
-    t->names[slot] = xstrdup(name);
-    t->count++;
-}
-
-#define CACHE_RESULT(node)                                                                         \
-    do                                                                                             \
-    {                                                                                              \
-        if (node)                                                                                  \
-        {                                                                                          \
-            struct_hash_insert(ctx, name, node);                                                   \
-            return node;                                                                           \
-        }                                                                                          \
-    } while (0)
 
 void add_to_struct_list(ParserContext *ctx, ASTNode *node)
 {
@@ -161,15 +25,14 @@ void add_to_struct_list(ParserContext *ctx, ASTNode *node)
     r->node = node;
     r->next = ctx->parsed_structs_list;
     ctx->parsed_structs_list = r;
-    struct_registry_changed(ctx);
-
+    // The parser adds a struct before it has a name; it registers the name once it has one.
     if (node->kind == NODE_STRUCT && node->strct.name)
     {
-        struct_hash_insert(ctx, node->strct.name, node);
+        register_named_type(ctx, node->strct.name, node);
     }
     else if (node->kind == NODE_ENUM && node->enm.name)
     {
-        struct_hash_insert(ctx, node->enm.name, node);
+        register_named_type(ctx, node->enm.name, node);
     }
 }
 
@@ -253,7 +116,10 @@ void add_to_enum_list(ParserContext *ctx, ASTNode *node)
     r->node = node;
     r->next = ctx->parsed_enums_list;
     ctx->parsed_enums_list = r;
-    struct_registry_changed(ctx);
+    if (node->enm.name)
+    {
+        register_named_type(ctx, node->enm.name, node);
+    }
 }
 
 void add_to_func_list(ParserContext *ctx, ASTNode *node)
@@ -401,8 +267,7 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
     }
 
     d->node = node;
-    struct_registry_changed(ctx);
-    struct_hash_insert(ctx, name, node);
+    register_named_type(ctx, name, node);
 
     if (ctx->config->misra_mode)
     {
@@ -525,125 +390,9 @@ ASTNode *named_type_def(ParserContext *ctx, Type *t)
 
 ASTNode *find_struct_def(ParserContext *ctx, const char *name)
 {
-    if (ctx)
-    {
-        ASTNode *cached = struct_hash_lookup(ctx, name);
-        if (cached)
-        {
-            return cached;
-        }
-    }
-
-    if (!ctx)
-    {
-        return NULL;
-    }
-
-    if (struct_miss_has(ctx, name))
-    {
-        return NULL;
-    }
-
-    ZenSymbol *sym = symbol_lookup_kind(ctx->current_scope, name, SYM_STRUCT);
-    if (!sym)
-    {
-        sym = symbol_lookup_kind(ctx->current_scope, name, SYM_ENUM);
-    }
-    if (sym && sym->data.node)
-    {
-        CACHE_RESULT(sym->data.node);
-    }
-
-    if (ctx->cg.global_user_structs)
-    {
-        ASTNode *s = ctx->cg.global_user_structs;
-        while (s)
-        {
-            if ((s->kind == NODE_STRUCT || s->kind == NODE_ENUM) &&
-                (s->kind == NODE_STRUCT ? s->strct.name : s->enm.name)[0] == name[0] &&
-                strcmp((s->kind == NODE_STRUCT ? s->strct.name : s->enm.name), name) == 0)
-            {
-                if (!(s->kind == NODE_STRUCT && s->strct.is_incomplete))
-                {
-                    CACHE_RESULT(s);
-                }
-            }
-            s = s->next;
-        }
-    }
-
-    Instantiation *i = ctx->instantiations;
-    while (i)
-    {
-        if (i->name[0] == name[0] && strcmp(i->name, name) == 0)
-        {
-            CACHE_RESULT(i->struct_node);
-        }
-        i = i->next;
-    }
-
-    ASTNode *s = ctx->instantiated_structs;
-    while (s)
-    {
-        if ((s->kind == NODE_STRUCT || s->kind == NODE_ENUM) &&
-            (s->kind == NODE_STRUCT ? s->strct.name : s->enm.name)[0] == name[0] &&
-            strcmp((s->kind == NODE_STRUCT ? s->strct.name : s->enm.name), name) == 0)
-        {
-            CACHE_RESULT(s);
-        }
-        s = s->next;
-    }
-
-    StructRef *r = ctx->parsed_structs_list;
-    while (r)
-    {
-        if (r->node->kind == NODE_STRUCT && r->node->strct.name[0] == name[0] &&
-            strcmp(r->node->strct.name, name) == 0)
-        {
-            CACHE_RESULT(r->node);
-        }
-        if (r->node->kind == NODE_ENUM && r->node->enm.name[0] == name[0] &&
-            strcmp(r->node->enm.name, name) == 0)
-        {
-            CACHE_RESULT(r->node);
-        }
-        r = r->next;
-    }
-
-    ZenSymbol *all = ctx->all_symbols;
-    while (all)
-    {
-        if ((all->kind == SYM_STRUCT || all->kind == SYM_ENUM) && all->name[0] == name[0] &&
-            strcmp(all->name, name) == 0 && all->data.node)
-        {
-            CACHE_RESULT(all->data.node);
-        }
-        all = all->next;
-    }
-
-    StructDef *d = ctx->struct_defs;
-    while (d)
-    {
-        if (d->name[0] == name[0] && strcmp(d->name, name) == 0)
-        {
-            CACHE_RESULT(d->node);
-        }
-        d = d->next;
-    }
-
-    StructRef *e = ctx->parsed_enums_list;
-    while (e)
-    {
-        if (e->node->kind == NODE_ENUM && e->node->enm.name[0] == name[0] &&
-            strcmp(e->node->enm.name, name) == 0)
-        {
-            CACHE_RESULT(e->node);
-        }
-        e = e->next;
-    }
-
-    struct_miss_add(ctx, name);
-    return NULL;
+    ASTNode **registered =
+        ctx && ctx->type_registry.hash_func ? zmap_get(&ctx->type_registry, name) : NULL;
+    return registered ? *registered : NULL;
 }
 
 int is_simple_enum(ParserContext *ctx, const char *enum_name)
@@ -673,8 +422,6 @@ int is_simple_enum(ParserContext *ctx, const char *enum_name)
     }
     return 1;
 }
-
-#undef CACHE_RESULT
 
 ASTNode *find_trait_def(ParserContext *ctx, const char *name)
 {

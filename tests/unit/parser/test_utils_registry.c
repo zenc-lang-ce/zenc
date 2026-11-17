@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
-// Unit tests of src/parser/utils/utils_registry.c: the cache of the names that
-// find_struct_def did not find. A cached miss must not hide a struct or enum
-// registered after it. And find_func, which finds a function in the current scopes or else
-// in the registry of every function declared.
+// Unit tests of src/parser/utils/utils_registry.c: find_struct_def, which reads the registry of
+// every struct and enum by name, also for one registered after a lookup missed it. And
+// find_func, which finds a function in the registry of every function declared.
 #include "unit_parse.h"
 #include <stdio.h>
 #include <time.h>
@@ -22,26 +21,24 @@ static ASTNode *new_enum(const char *name)
     return node;
 }
 
-// A parsed program with one struct, and the miss cache turned on as codegen does.
-static ParserContext *context_with_miss_cache(void)
+// A parsed program with one struct.
+static ParserContext *context_with_point(void)
 {
     parse_source("struct Point { x: int; y: int; }\n");
-    ParserContext *ctx = parse_source_context();
-    struct_miss_cache_enable(ctx);
-    return ctx;
+    return parse_source_context();
 }
 
-UTEST(struct_miss_cache, finds_a_parsed_struct)
+UTEST(type_registry, finds_a_parsed_struct)
 {
-    ParserContext *ctx = context_with_miss_cache();
+    ParserContext *ctx = context_with_point();
     ASSERT_TRUE(find_struct_def(ctx, "Point") != NULL);
     ASSERT_TRUE(find_struct_def(ctx, "Missing") == NULL);
     ASSERT_TRUE(find_struct_def(ctx, "Missing") == NULL);
 }
 
-UTEST(struct_miss_cache, sees_a_struct_registered_after_a_miss)
+UTEST(type_registry, finds_a_struct_registered_after_a_miss)
 {
-    ParserContext *ctx = context_with_miss_cache();
+    ParserContext *ctx = context_with_point();
     ASSERT_TRUE(find_struct_def(ctx, "Later") == NULL);
 
     ASTNode *later = new_struct("Later");
@@ -49,9 +46,9 @@ UTEST(struct_miss_cache, sees_a_struct_registered_after_a_miss)
     ASSERT_TRUE(find_struct_def(ctx, "Later") == later);
 }
 
-UTEST(struct_miss_cache, sees_a_struct_added_to_the_list_after_a_miss)
+UTEST(type_registry, finds_a_struct_added_to_the_list_after_a_miss)
 {
-    ParserContext *ctx = context_with_miss_cache();
+    ParserContext *ctx = context_with_point();
     ASSERT_TRUE(find_struct_def(ctx, "Listed") == NULL);
 
     ASTNode *listed = new_struct("Listed");
@@ -59,9 +56,9 @@ UTEST(struct_miss_cache, sees_a_struct_added_to_the_list_after_a_miss)
     ASSERT_TRUE(find_struct_def(ctx, "Listed") == listed);
 }
 
-UTEST(struct_miss_cache, sees_an_enum_added_after_a_miss)
+UTEST(type_registry, finds_an_enum_added_after_a_miss)
 {
-    ParserContext *ctx = context_with_miss_cache();
+    ParserContext *ctx = context_with_point();
     ASSERT_TRUE(find_struct_def(ctx, "Color") == NULL);
 
     ASTNode *color = new_enum("Color");
@@ -69,33 +66,25 @@ UTEST(struct_miss_cache, sees_an_enum_added_after_a_miss)
     ASSERT_TRUE(find_struct_def(ctx, "Color") == color);
 }
 
-// The contract of the cache: a struct added to a list without calling
-// struct_registry_changed stays hidden by a cached miss until someone does.
-UTEST(struct_miss_cache, needs_struct_registry_changed_for_a_direct_change)
+// The one registered last answers: an instance or a redeclaration seen by the language server.
+UTEST(type_registry, keeps_the_one_registered_last)
 {
-    ParserContext *ctx = context_with_miss_cache();
-    ASSERT_TRUE(find_struct_def(ctx, "Direct") == NULL);
-
-    ASTNode *direct = new_struct("Direct");
-    direct->next = ctx->instantiated_structs;
-    ctx->instantiated_structs = direct;
-    ASSERT_TRUE(find_struct_def(ctx, "Direct") == NULL);
-
-    struct_registry_changed(ctx);
-    ASSERT_TRUE(find_struct_def(ctx, "Direct") == direct);
+    ParserContext *ctx = context_with_point();
+    ASTNode *first = new_struct("Twice");
+    ASTNode *second = new_struct("Twice");
+    register_named_type(ctx, "Twice", first);
+    register_named_type(ctx, "Twice", second);
+    ASSERT_TRUE(find_struct_def(ctx, "Twice") == second);
 }
 
-// Without the cache (the parser's own lookups), a struct added directly is found.
-UTEST(struct_miss_cache, is_off_until_enabled)
+// A generic template is found by its name, as the parser registers it.
+UTEST(type_registry, finds_a_generic_template)
 {
-    parse_source("struct Point { x: int; }\n");
+    parse_source("struct Pair<T> { a: T; b: T; }\n");
     ParserContext *ctx = parse_source_context();
-    ASSERT_TRUE(find_struct_def(ctx, "Direct") == NULL);
-
-    ASTNode *direct = new_struct("Direct");
-    direct->next = ctx->instantiated_structs;
-    ctx->instantiated_structs = direct;
-    ASSERT_TRUE(find_struct_def(ctx, "Direct") == direct);
+    ASTNode *pair = find_struct_def(ctx, "Pair");
+    ASSERT_TRUE(pair != NULL);
+    ASSERT_TRUE(pair->strct.is_template);
 }
 
 static void register_function(ParserContext *ctx, Scope *scope, const char *name, int count)

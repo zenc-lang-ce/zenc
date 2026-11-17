@@ -367,6 +367,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
         node->strct.is_template = 1;
         ctx->known_generics_count = generics_before;
         register_template(ctx, name, node);
+        register_named_type(ctx, name, node);
     }
 
     // Register definition for 'use' lookups and LSP
