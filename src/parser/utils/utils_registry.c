@@ -866,6 +866,58 @@ char *type_declaration_name(ParserContext *ctx, const char *name)
     return module_type_name(ctx, name);
 }
 
+// The key of `name` in `file`'s part of a registry: the two, joined by the unit separator, which
+// neither a path nor a name has.
+static char *file_key(const char *file, const char *name)
+{
+    size_t size = strlen(file) + strlen(name) + 2;
+    char *key = xmalloc(size);
+    snprintf(key, size, "%s\x1f%s", file, name);
+    return key;
+}
+
+// The module the alias `scope` names in the file being parsed. In 0.5 (FF_COMPATIBILITY_0_5) the
+// program's table: an alias any file imports, the first import of it. From 0.6 the file's own
+// imports.
+static Module *imported_module(ParserContext *ctx, const char *scope)
+{
+#if FF_COMPATIBILITY_0_5
+    return find_module(ctx, scope);
+#else
+    if (!ctx->current_filename)
+    {
+        return NULL;
+    }
+    char *key = file_key(ctx->current_filename, scope);
+    Module **found = zmap_get(&ctx->imports.file_modules, key);
+    zfree(key);
+    return found ? *found : NULL;
+#endif
+}
+
+// The C name of the top-level declaration `decl`: its name, which carries the module prefix.
+static const char *declaration_c_name(ASTNode *decl)
+{
+    switch (decl->kind)
+    {
+    case NODE_FUNCTION:
+        return decl->func.name;
+    case NODE_STRUCT:
+        return decl->strct.name;
+    case NODE_ENUM:
+        return decl->enm.name;
+    case NODE_TRAIT:
+        return decl->trait.name;
+    case NODE_TYPE_ALIAS:
+        return decl->type_alias.alias;
+    case NODE_CONST:
+    case NODE_VAR_DECL:
+        return decl->var_decl.name;
+    default:
+        return NULL;
+    }
+}
+
 static char *module_member_name(ParserContext *ctx, Module *mod, const char *name)
 {
     // A C header's names are C's own.
@@ -883,8 +935,16 @@ static char *module_member_name(ParserContext *ctx, Module *mod, const char *nam
 
 char *qualified_type_name(ParserContext *ctx, const char *scope, const char *name)
 {
-    Module *mod = find_module(ctx, scope);
-    return mod ? module_member_name(ctx, mod, name) : mangle_module_symbol(scope, name);
+    Module *mod = imported_module(ctx, scope);
+    if (!mod)
+    {
+        return mangle_module_symbol(scope, name);
+    }
+    // The module's own declaration of the name, by the name it writes: its C name. A name it
+    // does not declare (a C header's, one declared further down) keeps today's rule.
+    ASTNode *decl = mod->is_c_header ? NULL : find_file_declaration(ctx, mod->path, name);
+    const char *c_name = decl ? declaration_c_name(decl) : NULL;
+    return c_name ? xstrdup(c_name) : module_member_name(ctx, mod, name);
 }
 
 char *module_function_name(ParserContext *ctx, const char *name)
@@ -1167,16 +1227,6 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
     }
 
     return NULL;
-}
-
-// The key of `name` in `file`'s part of a registry: the two, joined by the unit separator, which
-// neither a path nor a name has.
-static char *file_key(const char *file, const char *name)
-{
-    size_t size = strlen(file) + strlen(name) + 2;
-    char *key = xmalloc(size);
-    snprintf(key, size, "%s\x1f%s", file, name);
-    return key;
 }
 
 // Whether `node` is a named top-level declaration (not an impl, an import or a test).
