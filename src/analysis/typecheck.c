@@ -847,6 +847,10 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         break;
     }
 
+    case NODE_IMPLICIT_CONVERSION:
+        // The conversion keeps the type it was given; its expression is checked again as written.
+        check_node(tc, node->conversion.expr, depth + 1);
+        break;
     case NODE_EXPR_CAST:
         // Check the expression being cast
         check_node(tc, node->cast.expr, depth + 1);

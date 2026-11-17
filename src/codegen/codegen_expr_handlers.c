@@ -81,9 +81,9 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
             while (f)
             {
                 int skip = 0;
-                if (f->var_decl.init_expr && f->var_decl.init_expr->kind == NODE_EXPR_LITERAL &&
-                    f->var_decl.init_expr->literal.kind == LITERAL_INT &&
-                    f->var_decl.init_expr->literal.int_val == 0)
+                ASTNode *written = written_expr(f->var_decl.init_expr);
+                if (written && written->kind == NODE_EXPR_LITERAL &&
+                    written->literal.kind == LITERAL_INT && written->literal.int_val == 0)
                 {
                     skip = 1;
                 }
@@ -230,9 +230,9 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
             while (f)
             {
                 int skip = 0;
-                if (f->var_decl.init_expr && f->var_decl.init_expr->kind == NODE_EXPR_LITERAL &&
-                    f->var_decl.init_expr->literal.kind == LITERAL_INT &&
-                    f->var_decl.init_expr->literal.int_val == 0)
+                ASTNode *written = written_expr(f->var_decl.init_expr);
+                if (written && written->kind == NODE_EXPR_LITERAL &&
+                    written->literal.kind == LITERAL_INT && written->literal.int_val == 0)
                 {
                     skip = 1;
                 }

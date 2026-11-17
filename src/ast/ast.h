@@ -198,7 +198,9 @@ typedef enum
     NODE_AST_COMMENT,        ///< Comment node.
     NODE_EXPR_FSTRING,       ///< Interpolated string f"..." (a list of NODE_FSTRING_PART).
     NODE_FSTRING_PART,       ///< Piece of an f-string: literal text or a `{expr[:fmt]}`.
-    NODE_ERRONEOUS           ///< Error sentinel (safe no-op node).
+    NODE_ERRONEOUS,          ///< Error sentinel (safe no-op node).
+    NODE_IMPLICIT_CONVERSION ///< The typechecker's conversion of `expr` to the node's type_info,
+                             ///< which C makes implicitly: `expr` keeps the type it has.
 } NodeType;
 
 // ** AST Node Structure **
@@ -519,6 +521,11 @@ struct ASTNode
         {
             ASTNode *expr; // The target type is the node's type_info.
         } cast;
+
+        struct
+        {
+            ASTNode *expr; // Converted to the node's type_info; it keeps its own type.
+        } conversion;
 
         struct
         {
@@ -937,6 +944,13 @@ char *string_literal_text(ASTNode *literal);
  * @brief Whether `node` is a string literal, plain or raw.
  */
 int is_string_literal(ASTNode *node);
+
+/**
+ * @brief The expression as the program writes it: `node` without the implicit conversions the
+ *        typechecker wrapped it in (NODE_IMPLICIT_CONVERSION). For questions about its form
+ *        ("is it the literal 0?"); its type is the converted one's.
+ */
+ASTNode *written_expr(ASTNode *node);
 
 /**
  * @brief Whether `t` is a pointer: a `T*`, or a `string`, which is a `char*`.

@@ -875,6 +875,21 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
 
 // Views the array `node` as a slice of type `slice`: the node becomes a cast to the slice, whose
 // operand is the array, so that codegen writes the conversion.
+// Wraps `node` in a conversion to `to`, in place: the node becomes the conversion and what it was
+// moves to its child, so whoever points at it now points at the conversion. The child keeps its
+// type, so checking the tree again gives the same tree.
+static void wrap_in_conversion(ASTNode *node, Type *to)
+{
+    ASTNode *expr = ast_create(node->kind);
+    *expr = *node;
+    expr->next = NULL;
+
+    node->kind = NODE_IMPLICIT_CONVERSION;
+    memset(&node->conversion, 0, sizeof(node->conversion));
+    node->conversion.expr = expr;
+    node->type_info = to;
+}
+
 static void view_array_as_slice(ASTNode *node, Type *slice)
 {
     ASTNode *array = ast_create(NODE_EXPR_ARRAY_LITERAL);
@@ -1066,7 +1081,7 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         {
             misra_check_constant_wrap(tc, value_node, target);
         }
-        value_node->type_info = target;
+        wrap_in_conversion(value_node, target);
         value = target;
         resolved_value = resolved_target;
     }

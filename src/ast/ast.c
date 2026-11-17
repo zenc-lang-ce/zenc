@@ -169,6 +169,9 @@ ASTChildren ast_children(ASTNode *node)
     case NODE_EXPR_CAST:
         add_child(&c, &node->cast.expr);
         break;
+    case NODE_IMPLICIT_CONVERSION:
+        add_child(&c, &node->conversion.expr);
+        break;
     case NODE_EXPR_SIZEOF:
     case NODE_TYPEOF:
         add_child(&c, &node->size_of.expr);
@@ -303,6 +306,8 @@ const char *ast_kind_name(NodeType kind)
         return "INDEX";
     case NODE_EXPR_CAST:
         return "CAST";
+    case NODE_IMPLICIT_CONVERSION:
+        return "CONVERSION";
     case NODE_EXPR_SIZEOF:
         return "SIZEOF";
     case NODE_EXPR_STRUCT_INIT:
@@ -2416,4 +2421,13 @@ Type *pointee_of(Type *t)
         return t->inner;
     }
     return t->kind == TYPE_STRING ? type_new(TYPE_CHAR) : NULL;
+}
+
+ASTNode *written_expr(ASTNode *node)
+{
+    while (node && node->kind == NODE_IMPLICIT_CONVERSION)
+    {
+        node = node->conversion.expr;
+    }
+    return node;
 }

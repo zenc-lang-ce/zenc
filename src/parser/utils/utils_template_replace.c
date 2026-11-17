@@ -517,6 +517,9 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
     case NODE_EXPR_CAST:
         new_node->cast.expr = copy_ast_replacing(ctx, n->cast.expr, b, os, ns);
         break;
+    case NODE_IMPLICIT_CONVERSION:
+        new_node->conversion.expr = copy_ast_replacing(ctx, n->conversion.expr, b, os, ns);
+        break;
     case NODE_EXPR_STRUCT_INIT:
     {
         // The literal's type is substituted above: `T{}` with T a pointer or a primitive is a

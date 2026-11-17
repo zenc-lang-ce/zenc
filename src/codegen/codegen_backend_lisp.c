@@ -490,6 +490,11 @@ static void lemit_expr(ParserContext *ctx, ASTNode *node, int depth)
         emitter_printf(&ctx->cg.emitter, ")");
         break;
 
+    case NODE_IMPLICIT_CONVERSION:
+        // The typechecker's conversion: the expression as written.
+        lemit_expr(ctx, node->conversion.expr, depth);
+        break;
+
     case NODE_EXPR_CAST:
         // Cast — just emit the inner expression without type assertion
         if (node->cast.expr)
@@ -701,6 +706,7 @@ static void lemit_stmt(ParserContext *ctx, ASTNode *node, int depth, int *first)
     case NODE_EXPR_MEMBER:
     case NODE_EXPR_INDEX:
     case NODE_EXPR_CAST:
+    case NODE_IMPLICIT_CONVERSION:
     case NODE_TYPEOF:
     case NODE_EXPR_TUPLE_LITERAL:
     case NODE_EXPR_ARRAY_LITERAL:
