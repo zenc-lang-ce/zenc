@@ -520,14 +520,11 @@ static CValue eval_call(CInterp *ci, ASTNode *node)
         return call_builtin(ci, name, node->call.args);
     }
 
-    // Look for @comptime function
-    for (StructRef *r = ci->pctx->parsed_funcs_list; r; r = r->next)
+    // A @comptime function
+    FuncSig *sig = find_func(ci->pctx, name);
+    if (sig && sig->decl && sig->decl->kind == NODE_FUNCTION && sig->decl->func.is_comptime)
     {
-        if (r->node && r->node->kind == NODE_FUNCTION && r->node->func.is_comptime &&
-            strcmp(function_c_name(r->node), name) == 0)
-        {
-            return call_comptime_fn(ci, r->node, node->call.args);
-        }
+        return call_comptime_fn(ci, sig->decl, node->call.args);
     }
 
     zerror_at(node->token, "comptime: undefined function '%s'", name);

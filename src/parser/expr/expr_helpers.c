@@ -210,21 +210,6 @@ int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b)
 #include "analysis/move_check.h"
 #include "utils/utils.h"
 
-ASTNode *find_function_definition(ParserContext *ctx, const char *name)
-{
-    StructRef *curr = ctx->parsed_funcs_list;
-    while (curr)
-    {
-        if (curr->node && function_c_name(curr->node) &&
-            strcmp(function_c_name(curr->node), name) == 0)
-        {
-            return curr->node;
-        }
-        curr = curr->next;
-    }
-    return NULL;
-}
-
 // Kinds the type check of `let` lets through whatever the other side is.
 static int skips_value_check(Type *t)
 {
