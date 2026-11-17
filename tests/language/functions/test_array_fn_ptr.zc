@@ -1,0 +1,51 @@
+// language/functions: an array of function pointers, as a field, a local, a parameter, in two
+// dimensions, in `sizeof` and captured by a lambda by value and by reference. Its C type puts
+// the dimensions inside the declarator: `int32_t (*fs[2])(int32_t)`.
+
+alias IntFn = fn*(int) -> int;
+
+fn one(x: int) -> int {
+    return x + 1;
+}
+
+fn two(x: int) -> int {
+    return x + 2;
+}
+
+struct Table {
+    fs: IntFn[2];
+}
+
+fn first(fs: IntFn[2]) -> int {
+    return fs[0](10);
+}
+
+test "array_of_function_pointers_as_a_field" {
+    let t = Table {};
+    t.fs[0] = one;
+    t.fs[1] = two;
+    assert(t.fs[0](1) == 2 && t.fs[1](1) == 3, "the field holds both functions");
+    t.fs = [two, one];
+    assert(t.fs[0](1) == 3, "an array literal assigned to the field");
+}
+
+test "array_of_function_pointers_as_a_local_and_a_parameter" {
+    let local: IntFn[2] = [one, two];
+    assert(local[1](1) == 3, "the local holds both functions");
+    assert(first(local) == 11, "the parameter receives the array");
+    assert(sizeof(IntFn[2]) == 2 * sizeof(IntFn), "sizeof of the array type");
+}
+
+test "array_of_function_pointers_in_two_dimensions" {
+    let grid: IntFn[2][2] = [[one, two], [two, one]];
+    assert(grid[1][0](1) == 3 && grid[0][0](1) == 2, "a 2D array of function pointers");
+}
+
+test "array_of_function_pointers_captured_by_a_lambda" {
+    let fs: IntFn[2] = [one, two];
+    let by_value = fn() -> int { return fs[0](5) + fs[1](5); };
+    let by_reference = fn[&]() -> int { return fs[1](5); };
+    fs[1] = one;
+    assert(by_value() == 13, "a capture by value keeps the array as it was");
+    assert(by_reference() == 6, "a capture by reference sees the change");
+}

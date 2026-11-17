@@ -162,18 +162,15 @@ void emit_c_decl(ParserContext *ctx, const char *type_str, const char *name)
 
     if (fn_ptr)
     {
-        char *end_paren = (char *)strchr(fn_ptr, ')');
-        if (end_paren)
+        // A declarator (a function pointer, an array or a pointer of them): the name goes after
+        // its stars, `int32_t (*f)(int32_t)`, `int32_t (*fs[2])(int32_t)`, `int32_t (**pf)(...)`.
+        const char *after_stars = fn_ptr + 1;
+        while (*after_stars == '*')
         {
-            ptrdiff_t prefix_len = end_paren - type_str;
-            EMIT(ctx, "%.*s%s%s", (int)prefix_len, type_str, name, end_paren);
+            after_stars++;
         }
-        else
-        {
-            // Fallback if malformed (shouldn't happen)
-            ptrdiff_t prefix_len = fn_ptr - type_str + 2;
-            EMIT(ctx, "%.*s%s%s", (int)prefix_len, type_str, name, fn_ptr + 2);
-        }
+        ptrdiff_t prefix_len = after_stars - type_str;
+        EMIT(ctx, "%.*s%s%s", (int)prefix_len, type_str, name, after_stars);
     }
     else if (bracket)
     {

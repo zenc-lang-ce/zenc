@@ -1630,16 +1630,28 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
             total_len += 20;
         }
 
-        char *res = xmalloc((size_t)(total_len));
-        strcpy(res, inner);
-        zfree(inner);
+        // An element spelled as a declarator, a function pointer (`int32_t (*)(int32_t)`),
+        // takes the dimensions inside its parentheses, after the stars, where its name would
+        // go: `int32_t (*[2])(int32_t)`, as TYPE_POINTER puts its star there. Anything else
+        // takes them at the end: `int32_t[2]`.
+        char *ptr_token = strstr(inner, "(*");
+        char *after_stars = ptr_token ? ptr_token + 1 : inner + strlen(inner);
+        while (ptr_token && *after_stars == '*')
+        {
+            after_stars++;
+        }
 
-        char *p = res + strlen(res);
+        char *res = xmalloc((size_t)(total_len));
+        size_t head_len = (size_t)(after_stars - inner);
+        memcpy(res, inner, head_len);
+        char *p = res + head_len;
         for (int i = 0; i < dims_count; i++)
         {
             snprintf(p, 20, "[%d]", dims[i]);
             p += strlen(p);
         }
+        strcpy(p, after_stars);
+        zfree(inner);
 
         if (dims)
         {

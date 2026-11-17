@@ -243,13 +243,15 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
 // field name inside its declarator (`int32_t (*f)(int32_t)`), which
 // emit_var_decl_type does.
 static void emit_lambda_ctx_field(ParserContext *ctx, const char *tstr, const char *name,
-                                  int by_ref)
+                                  Type *type, int by_ref)
 {
     // Function pointers and arrays put the name inside the type: `int (*name)(int)`,
-    // `int name[3]`. By reference, a function pointer gets one more `*` and an array becomes
-    // a pointer to it, `int (*name)[3]` (`int *name[3]` would be an array of pointers).
-    int is_fn_ptr = strstr(tstr, "(*") != NULL;
-    if (is_fn_ptr || strchr(tstr, '['))
+    // `int name[3]`, `int (*name[2])(int)`. By reference, an array becomes a pointer to it,
+    // `int (*name)[3]`, `int (*(*name)[2])(int)` (`int *name[3]` would be an array of
+    // pointers), and a function pointer gets one more `*`.
+    int is_array = is_fixed_size_array(type);
+    int is_fn_ptr = !is_array && strstr(tstr, "(*") != NULL;
+    if (is_fn_ptr || is_array)
     {
         size_t decl_sz = strlen(name) + 4;
         char *decl_name = xmalloc(decl_sz);
@@ -286,7 +288,8 @@ void emit_lambda_defs(ParserContext *ctx)
             {
                 int by_ref = node->lambda.capture_modes && node->lambda.capture_modes[i] == 1;
                 emit_lambda_ctx_field(ctx, capture_c_type(ctx, node, i),
-                                      c_name(ctx, node->lambda.captured_vars[i]), by_ref);
+                                      c_name(ctx, node->lambda.captured_vars[i]),
+                                      node->lambda.captured_types_info[i], by_ref);
                 if (!by_ref && capture_needs_drop(ctx, node, i))
                 {
                     EMIT(ctx, "int __z_drop_flag_%s;\n", node->lambda.captured_vars[i]);
