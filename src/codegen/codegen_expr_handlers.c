@@ -577,7 +577,7 @@ static void emit_plain_binary(ParserContext *ctx, ASTNode *node)
             {
                 TypeKind k = node->binary.left->type_info->kind;
                 if (k == TYPE_POINTER || k == TYPE_ENUM ||
-                    is_enum_type_name(ctx, type_def_name(node->binary.left->type_info)))
+                    is_enum_type(ctx, node->binary.left->type_info))
                 {
                     should_cast = 1;
                 }
@@ -886,7 +886,9 @@ skip_method_mangling:
 
     if (node->call.callee->kind == NODE_EXPR_VAR)
     {
-        ASTNode *def = find_struct_def(ctx, node->call.callee->var_ref.name);
+        // `Point()`: the name of a struct, which the typechecker resolved (var_ref.symbol).
+        ZenSymbol *sym = node->call.callee->var_ref.symbol;
+        ASTNode *def = sym && sym->kind == SYM_STRUCT ? sym->data.node : NULL;
         if (def && def->kind == NODE_STRUCT)
         {
             EMIT(ctx, "(struct %s){0}", node->call.callee->var_ref.name);

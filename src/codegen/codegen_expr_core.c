@@ -172,7 +172,8 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
     else
     {
         // The name the parser resolved: a local, a function, `Type__method`, `Enum__Variant`.
-        ZenSymbol *sym = find_symbol_in_all(ctx, name);
+        // The symbol the typechecker resolved the name to (var_ref.symbol): its C name.
+        ZenSymbol *sym = node->var_ref.symbol;
         EMIT(ctx, "%s", sym && sym->link_name ? sym->link_name : c_name(ctx, name));
     }
 

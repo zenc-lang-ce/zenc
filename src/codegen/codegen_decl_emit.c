@@ -88,8 +88,10 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
                                        : (node->var_decl.init_expr
                                               ? node_c_type(ctx, node->var_decl.init_expr)
                                               : NULL);
-                if (ctx->config->use_cpp && tname &&
-                    (strchr(tname, '*') || is_enum_type_name(ctx, tname)))
+                Type *init_type = declared ? node->type_info : node->var_decl.init_expr->type_info;
+                if (ctx->config->use_cpp && tname && init_type &&
+                    (get_inner_type(init_type)->kind == TYPE_POINTER ||
+                     is_enum_type(ctx, init_type)))
                 {
                     EMIT(ctx, "(%s)(", tname);
                     codegen_expression(ctx, node->var_decl.init_expr);

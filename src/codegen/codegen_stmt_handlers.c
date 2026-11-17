@@ -777,8 +777,10 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 emit_var_decl_type(ctx, inferred, node->var_decl.name);
                 add_symbol_local(ctx, node->var_decl.name, NULL);
                 EMIT(ctx, " = ");
-                if (ctx->config->use_cpp && inferred &&
-                    (strchr(inferred, '*') || is_enum_type_name(ctx, inferred)))
+                Type *init_type = node->var_decl.init_expr->type_info;
+                if (ctx->config->use_cpp && inferred && init_type &&
+                    (get_inner_type(init_type)->kind == TYPE_POINTER ||
+                     is_enum_type(ctx, init_type)))
                 {
                     EMIT(ctx, "(%s)(", inferred);
                     emit_var_init(ctx, node, temp);

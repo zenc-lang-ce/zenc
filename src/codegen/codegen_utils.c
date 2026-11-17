@@ -38,19 +38,11 @@ void emit_mangled_name(ParserContext *ctx, const char *base, const char *method)
     zfree(merged);
 }
 
-int is_enum_type_name(ParserContext *ctx, const char *name)
+// Whether `t` is an enum, by its declaration: a value of a user's enum may have TYPE_STRUCT.
+int is_enum_type(ParserContext *ctx, Type *t)
 {
-    if (!name || !ctx)
-    {
-        return 0;
-    }
-    const char *clean = name;
-    if (strncmp(clean, "struct ", 7) == 0)
-    {
-        clean += 7;
-    }
-    ASTNode *def = find_struct_def(ctx, clean);
-    return (def && def->kind == NODE_ENUM);
+    ASTNode *def = named_type_def(ctx, t);
+    return def && def->kind == NODE_ENUM;
 }
 
 const char *c_name(ParserContext *ctx, const char *name)
@@ -667,7 +659,7 @@ void codegen_expression_with_move(ParserContext *ctx, ASTNode *node)
 int impl_on_template(ParserContext *ctx, ASTNode *impl)
 {
     Type *target = impl->kind == NODE_IMPL ? impl->impl.target : impl->impl_trait.target;
-    ASTNode *def = target ? find_struct_def(ctx, type_impl_name(target)) : NULL;
+    ASTNode *def = named_type_def(ctx, target);
     return def && ((def->kind == NODE_STRUCT && def->strct.is_template) ||
                    (def->kind == NODE_ENUM && def->enm.is_template));
 }
