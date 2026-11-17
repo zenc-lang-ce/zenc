@@ -2002,7 +2002,8 @@ static int list_import_dir(const char *base, void *data)
         {
             continue;
         }
-        char full[MAX_PATH_LEN];
+        // The directory, a `/` and a name of the directory (at most 255 bytes).
+        char full[MAX_PATH_LEN + 257];
         snprintf(full, sizeof(full), "%s/%s", path, name);
         struct stat st;
         if (stat(full, &st) != 0)
