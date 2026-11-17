@@ -285,7 +285,9 @@ static void emit_coalesce(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, "); })");
 }
 
-// `==` and `!=`: a struct compares through its `eq` (or `neq`), anything else as in C.
+// `==` and `!=`: a struct, or an enum with a payload, compares through its `eq` (`!=` negates
+// it), two strings through strcmp, anything else as in C. The parser already turns most `==` on
+// a struct into a call to `eq`; what reaches the `eq` here is the code @derive(Eq) generates.
 static void emit_equality(ParserContext *ctx, ASTNode *node)
 {
     Type *t = node->binary.left->type_info;
