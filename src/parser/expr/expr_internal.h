@@ -58,7 +58,6 @@ int slice_follows(Lexer *l);
  */
 ASTNode *parse_slice_rest(ParserContext *ctx, Lexer *l, ASTNode *array, ASTNode *start,
                           Token token);
-int type_is_unsigned(Type *t);
 char *infer_scan_format(ParserContext *ctx, ASTNode **args, int ac);
 
 // From expr_field.c

@@ -20,6 +20,8 @@ This new release brings breaking changes to the language:
 - Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name: the special message "is a function of std/io.zc, which is not imported" is gone.
 
 ### Fixes
+- `@derive(FromJson, ToJson)` reads and writes an integer field of any width as a number: a `u8`, `i16`, `u16` or `isize` field no longer generates calls to a `uint8_t__to_json` that does not exist.
+- An `asm` operand of type `usize`, `isize`, `c_long` or `c_ulong` takes a 64-bit register, as its value needs, and not a 32-bit one.
 - A pointer to a struct becomes a trait object wherever a trait is expected, whatever expression gives it: `area_of(&holder.sq)`, `area_of(&items[1])` and `return sq;` in a function returning a trait no longer fail in the C compiler. Only a variable or the address of one was converted.
 - With `--misra`, an `embed` is no longer reported as a raw C block (MISRA Rule Zen 1.1): the compiler writes its C, the program does not.
 - A `match` pattern can be a negative literal or a range with negative bounds (`-1 =>`, `-5..-2 =>`): a pattern that is a value is read as an expression, which `zc check` checks. Before, `-1 =>` was "Expected => after match pattern".

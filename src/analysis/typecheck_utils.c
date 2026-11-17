@@ -678,23 +678,15 @@ void mark_type_as_used(TypeChecker *tc, Type *t)
 
 // Internal MISRA helpers moved to platform/misra.c
 
+// The width of the register an asm operand of type `t` takes: its own, at least 32 bits.
 int get_asm_register_size(Type *t)
 {
     if (!t)
     {
         return 0;
     }
-    if (t->kind == TYPE_F64 || t->kind == TYPE_I64 || t->kind == TYPE_U64 ||
-        (t->kind == TYPE_STRUCT && t->name &&
-         (0 == strcmp(t->name, "int64_t") || 0 == strcmp(t->name, "uint64_t"))))
-    {
-        return 64;
-    }
-    if (t->kind == TYPE_I128 || t->kind == TYPE_U128)
-    {
-        return 128;
-    }
-    return 32;
+    int width = resolve_alias(t)->kind == TYPE_F64 ? 64 : integer_type_width(t);
+    return width > 32 ? width : 32;
 }
 
 // EXPRESSION CHECKERS

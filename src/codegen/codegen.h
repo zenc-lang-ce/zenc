@@ -241,5 +241,4 @@ enum
 int impl_on_template(ParserContext *ctx, ASTNode *impl);
 
 #endif
-ZEN_CONST bool is_int_type(TypeKind k);
 int should_emit_source_mapping(ASTNode *node);

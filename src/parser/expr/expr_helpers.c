@@ -453,22 +453,6 @@ void check_move_usage(ParserContext *ctx, ASTNode *node, Token t)
     }
 }
 
-int type_is_unsigned(Type *t)
-{
-    if (!t)
-    {
-        return 0;
-    }
-
-    return (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 ||
-            t->kind == TYPE_U64 || t->kind == TYPE_USIZE || t->kind == TYPE_BYTE ||
-            t->kind == TYPE_U128 ||
-            (t->kind == TYPE_STRUCT && t->name &&
-             (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
-              0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
-              0 == strcmp(t->name, "size_t"))));
-}
-
 // The sscanf conversion that writes a value of type `t`: its length modifier
 // must match the size of the variable, or the value overwrites what follows it.
 static const char *scan_conversion(Type *t)

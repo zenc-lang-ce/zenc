@@ -162,3 +162,36 @@ ZEN_CONST const char *primitive_zen_name(TypeKind kind)
         return NULL;
     }
 }
+
+// clang-format off
+static const IntegerKind integer_kinds[] = {
+    {TYPE_BOOL,   0,   INTEGER_NO_SIGN},
+    {TYPE_CHAR,   8,   INTEGER_NO_SIGN},
+    {TYPE_I8,     8,   INTEGER_SIGNED},       {TYPE_U8,          8,   INTEGER_UNSIGNED},
+    {TYPE_BYTE,   8,   INTEGER_UNSIGNED},
+    {TYPE_C_CHAR, 8,   INTEGER_SIGNED},       {TYPE_C_UCHAR,     8,   INTEGER_UNSIGNED},
+    {TYPE_I16,    16,  INTEGER_SIGNED},       {TYPE_U16,         16,  INTEGER_UNSIGNED},
+    {TYPE_C_SHORT, 16, INTEGER_SIGNED},       {TYPE_C_USHORT,    16,  INTEGER_UNSIGNED},
+    {TYPE_I32,    32,  INTEGER_SIGNED},       {TYPE_U32,         32,  INTEGER_UNSIGNED},
+    {TYPE_RUNE,   32,  INTEGER_SIGNED},
+    {TYPE_C_INT,  32,  INTEGER_SIGNED},       {TYPE_C_UINT,      32,  INTEGER_UNSIGNED},
+    {TYPE_I64,    64,  INTEGER_SIGNED},       {TYPE_U64,         64,  INTEGER_UNSIGNED},
+    {TYPE_ISIZE,  64,  INTEGER_SIGNED},       {TYPE_USIZE,       64,  INTEGER_UNSIGNED},
+    {TYPE_C_LONG, 64,  INTEGER_SIGNED},       {TYPE_C_ULONG,     64,  INTEGER_UNSIGNED},
+    {TYPE_C_LONGLONG, 64, INTEGER_SIGNED},    {TYPE_C_ULONGLONG, 64,  INTEGER_UNSIGNED},
+    {TYPE_I128,   128, INTEGER_SIGNED},       {TYPE_U128,        128, INTEGER_UNSIGNED},
+    {TYPE_BITINT, 0,   INTEGER_SIGNED},       {TYPE_UBITINT,     0,   INTEGER_UNSIGNED},
+};
+// clang-format on
+
+ZEN_CONST const IntegerKind *integer_kind(TypeKind kind)
+{
+    for (size_t i = 0; i < sizeof(integer_kinds) / sizeof(integer_kinds[0]); i++)
+    {
+        if (integer_kinds[i].kind == kind)
+        {
+            return &integer_kinds[i];
+        }
+    }
+    return NULL;
+}

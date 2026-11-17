@@ -1498,7 +1498,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
             }
 
-            if (lhs->type_info && type_is_unsigned(lhs->type_info))
+            if (lhs->type_info && is_unsigned_type(lhs->type_info))
             {
                 if (rhs->kind == NODE_EXPR_LITERAL && rhs->literal.kind == LITERAL_INT &&
                     rhs->literal.int_val == 0)
@@ -1957,12 +1957,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             int rhs_is_ptr = (rhs->type_info->kind == TYPE_POINTER ||
                                               rhs->type_info->kind == TYPE_STRING ||
                                               (t2 && strstr(t2, "*") != NULL));
-                            int lhs_is_int =
-                                (is_integer_type(lhs->type_info) || (t1 && str_is_int_type(t1)) ||
-                                 (t1 && str_is_usize_type(t1)) || (t1 && str_is_isize_type(t1)));
-                            int rhs_is_int =
-                                (is_integer_type(rhs->type_info) || (t2 && str_is_int_type(t2)) ||
-                                 (t2 && str_is_usize_type(t2)) || (t2 && str_is_isize_type(t2)));
+                            int lhs_is_int = is_integer_type(lhs->type_info);
+                            int rhs_is_int = is_integer_type(rhs->type_info);
 
                             if ((lhs_is_ptr && rhs_is_int) || (lhs_is_int && rhs_is_ptr))
                             {

@@ -437,16 +437,15 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                     }
 
                     // Map types to appropriate get_* calls
-                    int is_int_type = strcmp(ft, "int") == 0 || strcmp(ft, "int32_t") == 0 ||
-                                      strcmp(ft, "i32") == 0 || strcmp(ft, "i64") == 0 ||
-                                      strcmp(ft, "int64_t") == 0 || strcmp(ft, "u32") == 0 ||
-                                      strcmp(ft, "uint32_t") == 0 || strcmp(ft, "u64") == 0 ||
-                                      strcmp(ft, "uint64_t") == 0 || strcmp(ft, "usize") == 0 ||
-                                      strcmp(ft, "size_t") == 0;
+                    // A number: an integer with a sign (bool and char have their own branch).
+                    int is_int_type =
+                        is_signed_type(f->type_info) || is_unsigned_type(f->type_info);
                     if (is_int_type)
                     {
-                        snprintf(assign, 2048, "let _f_%s = (*j).get_int(\"%s\").unwrap_or(0);\n",
-                                 fn, fn);
+                        // get_int gives an `int`: converted to the field's own width.
+                        snprintf(assign, 2048,
+                                 "let _f_%s = (%s)(*j).get_int(\"%s\").unwrap_or(0);\n", fn,
+                                 type_to_string(f->type_info), fn);
                     }
                     else if (strcmp(ft, "double") == 0)
                     {
@@ -595,12 +594,9 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                         continue;
                     }
 
-                    int is_int_type = strcmp(ft, "int") == 0 || strcmp(ft, "int32_t") == 0 ||
-                                      strcmp(ft, "i32") == 0 || strcmp(ft, "i64") == 0 ||
-                                      strcmp(ft, "int64_t") == 0 || strcmp(ft, "u32") == 0 ||
-                                      strcmp(ft, "uint32_t") == 0 || strcmp(ft, "u64") == 0 ||
-                                      strcmp(ft, "uint64_t") == 0 || strcmp(ft, "usize") == 0 ||
-                                      strcmp(ft, "size_t") == 0;
+                    // A number: an integer with a sign (bool and char have their own branch).
+                    int is_int_type =
+                        is_signed_type(f->type_info) || is_unsigned_type(f->type_info);
                     if (is_int_type)
                     {
                         snprintf(set_call, 2048,

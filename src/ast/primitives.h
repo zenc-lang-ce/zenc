@@ -54,4 +54,26 @@ TypeKind find_primitive_kind(const char *name);
  */
 ZEN_CONST const char *primitive_zen_name(TypeKind kind);
 
+/** @brief The sign of an integer kind: `bool` and `char` have none. */
+typedef enum
+{
+    INTEGER_NO_SIGN,
+    INTEGER_SIGNED,
+    INTEGER_UNSIGNED
+} IntegerSign;
+
+/** @brief What the compiler knows of an integer kind. */
+typedef struct
+{
+    TypeKind kind;
+    int width; ///< Bits; 0 when it is not fixed (`bool`, `_BitInt(N)`).
+    IntegerSign sign;
+} IntegerKind;
+
+/**
+ * @brief The facts of the integer kind `kind`, or NULL when it is not an integer. The one table
+ *        of them: is_integer_type, is_signed_type, is_unsigned_type and integer_type_width read it.
+ */
+ZEN_CONST const IntegerKind *integer_kind(TypeKind kind);
+
 #endif
