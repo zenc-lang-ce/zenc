@@ -2,7 +2,50 @@
 // collect: registers each declaration where later code looks it up, from its node.
 #include "parser.h"
 #include "ast/ast.h"
+#include "constants.h"
+#include <stdio.h>
 #include <string.h>
+
+// The struct `node`, named `name` in C, against what is registered before it: another concrete
+// struct (or enum) by that name is a redefinition. Generic templates are registered apart, so a
+// concrete struct and a generic one with the same name (a user `struct Box` and the std's
+// `Box<T>`) would be merged without a word: the generic's impls, Drop included, would apply to
+// the concrete struct.
+static void check_struct_name(ParserContext *ctx, ASTNode *node, const char *name)
+{
+    if (ctx->config->mode_lsp)
+    {
+        return;
+    }
+    int gp_count = node->strct.generic_param_count;
+    const char *own_name = node->strct.name;
+    if (gp_count == 0 && find_concrete_struct_def(ctx, name))
+    {
+        zerror_at(node->token, "Redefinition of %s '%s'", node->strct.is_union ? "union" : "struct",
+                  own_name);
+    }
+    GenericTemplate *tpl = ctx->templates;
+    while (tpl && strcmp(tpl->name, name) != 0)
+    {
+        tpl = tpl->next;
+    }
+    ASTNode *concrete = gp_count > 0 ? find_concrete_struct_def(ctx, name) : NULL;
+    concrete = concrete && concrete->kind == NODE_STRUCT ? concrete : NULL;
+    if ((gp_count == 0 && tpl) || concrete)
+    {
+        ASTNode *other = tpl ? tpl->struct_node : concrete;
+        const char *where =
+            (other && other->strct.defined_in_file) ? other->strct.defined_in_file : "?";
+        char msg[MAX_SHORT_MSG_LEN];
+        snprintf(msg, sizeof(msg), "Struct '%s' clashes with the %s struct '%s' from %s", own_name,
+                 gp_count == 0 ? "generic" : "concrete", own_name, where);
+        const char *hints[] = {"A generic and a concrete struct cannot share a name",
+                               "Rename one of them (std types such as Box, Vec, Option, "
+                               "Map or String keep their names)",
+                               NULL};
+        zpanic_with_hints(node->token, msg, hints);
+    }
+}
 
 // A struct, or an enum, by its C name: the type's name, and the definition's or the template's.
 static void collect_type(ParserContext *ctx, ASTNode *node)
@@ -11,6 +54,7 @@ static void collect_type(ParserContext *ctx, ASTNode *node)
     int is_template = node->kind == NODE_STRUCT ? node->strct.is_template : node->enm.is_template;
     if (node->kind == NODE_STRUCT)
     {
+        check_struct_name(ctx, node, name);
         add_to_struct_list(ctx, node);
         if (is_template)
         {

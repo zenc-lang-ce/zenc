@@ -419,44 +419,6 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
         name = prefixed_name;
     }
 
-    // Generic templates are registered separately, so a concrete struct and a
-    // generic one with the same name (a user `struct Box` and the std's
-    // `Box<T>`) would be silently merged: the generic's impls, Drop included,
-    // would apply to the concrete struct.
-    if (!ctx->config->mode_lsp)
-    {
-        if (gp_count == 0)
-        {
-            ASTNode *existing = find_concrete_struct_def(ctx, name);
-            if (existing)
-            {
-                zerror_at(name_token, "Redefinition of %s '%s'", is_union ? "union" : "struct",
-                          own_name);
-            }
-        }
-        GenericTemplate *tpl = ctx->templates;
-        while (tpl && strcmp(tpl->name, name) != 0)
-        {
-            tpl = tpl->next;
-        }
-        ASTNode *concrete = gp_count > 0 ? find_concrete_struct_def(ctx, name) : NULL;
-        concrete = concrete && concrete->kind == NODE_STRUCT ? concrete : NULL;
-        if ((gp_count == 0 && tpl) || concrete)
-        {
-            ASTNode *other = tpl ? tpl->struct_node : concrete;
-            const char *where =
-                (other && other->strct.defined_in_file) ? other->strct.defined_in_file : "?";
-            char msg[MAX_SHORT_MSG_LEN];
-            snprintf(msg, sizeof(msg), "Struct '%s' clashes with the %s struct '%s' from %s",
-                     own_name, gp_count == 0 ? "generic" : "concrete", own_name, where);
-            const char *hints[] = {"A generic and a concrete struct cannot share a name",
-                                   "Rename one of them (std types such as Box, Vec, Option, "
-                                   "Map or String keep their names)",
-                                   NULL};
-            zpanic_with_hints(name_token, msg, hints);
-        }
-    }
-
     ASTNode *node = ast_create(NODE_STRUCT);
     node->token = name_token;
     node->link_name = definition_link_name(ctx, link_name, name);
