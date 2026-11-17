@@ -447,8 +447,9 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         module_base_name = module_prefix_for(ctx, fn);
         for (size_t i = 0; i < symbols.length; i++)
         {
-            register_selective_import(ctx, symbols.data[i], aliases.data[i], module_base_name);
-            record_file_selective_import(ctx, symbols.data[i], aliases.data[i], module_base_name);
+            register_selective_import(ctx, symbols.data[i], aliases.data[i], module_base_name, fn);
+            record_file_selective_import(ctx, symbols.data[i], aliases.data[i], module_base_name,
+                                         fn);
         }
     }
 
@@ -620,14 +621,14 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
 
     if (is_wildcard && temp_module_prefix)
     {
-        re_export_wildcard_symbols(ctx, temp_module_prefix);
+        re_export_wildcard_symbols(ctx, temp_module_prefix, fn);
         zmap_put(&ctx->imports.wildcard_imports, temp_module_prefix, temp_module_prefix);
     }
 
     ctx->current_filename = (char *)saved_fn;
     if (is_wildcard && temp_module_prefix)
     {
-        record_file_wildcard_import(ctx, temp_module_prefix);
+        record_file_wildcard_import(ctx, temp_module_prefix, fn);
     }
 
     ctx->imports.current_module_prefix = prev_module_prefix;

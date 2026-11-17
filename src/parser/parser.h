@@ -262,6 +262,7 @@ typedef struct SelectiveImport
     char *symbol;        ///< Symbol name.
     char *alias;         ///< Local alias.
     char *source_module; ///< Origin module.
+    char *source_path;   ///< The origin module's file, whose declarations it names.
 } SelectiveImport;
 
 /**
@@ -1039,10 +1040,10 @@ void record_file_import(ParserContext *ctx, const char *alias, const char *path,
 
 /** @brief Records, for the file being parsed, `symbol` imported one by one (as `alias`). */
 void record_file_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
-                                  const char *source_module);
+                                  const char *source_module, const char *source_path);
 
-/** @brief Records, for the file being parsed, the module `module_base` imported with `as *`. */
-void record_file_wildcard_import(ParserContext *ctx, const char *module_base);
+/** @brief Records, for the file being parsed, the module at `path` imported with `as *`. */
+void record_file_wildcard_import(ParserContext *ctx, const char *module_base, const char *path);
 
 /**
  * @brief The declaration (struct or enum node) of the named type `t`, or NULL for any other type.
@@ -1192,7 +1193,8 @@ char *module_function_name(ParserContext *ctx, const char *name);
  */
 char *zen_c_type_spelling(ParserContext *ctx, Type *t);
 SelectiveImport *find_selective_import(ParserContext *ctx, const char *name);
-void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base);
+void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base,
+                                const char *module_path);
 void re_export_propagated(ParserContext *ctx, const char *alias, const char *parent_prefix,
                           const char *base_name);
 ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name);
@@ -1257,7 +1259,7 @@ void register_template(ParserContext *ctx, const char *name, ASTNode *node);
 void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag);
 void register_plugin(ParserContext *ctx, const char *name, const char *alias);
 void register_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
-                               const char *source_module);
+                               const char *source_module, const char *source_path);
 void register_deprecated_func(ParserContext *ctx, const char *name, const char *replacement);
 void try_parse_macro_const(ParserContext *ctx, const char *name);
 void parser_audit_preprocessor(ParserContext *ctx, Token t);

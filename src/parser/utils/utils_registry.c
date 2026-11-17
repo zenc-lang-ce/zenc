@@ -776,6 +776,109 @@ Module *find_module(ParserContext *ctx, const char *alias)
     return mod_ptr ? *mod_ptr : NULL;
 }
 
+// The key of `name` in `file`'s part of a registry: the two, joined by the unit separator, which
+// neither a path nor a name has.
+static char *file_key(const char *file, const char *name)
+{
+    size_t size = strlen(file) + strlen(name) + 2;
+    char *key = xmalloc(size);
+    snprintf(key, size, "%s\x1f%s", file, name);
+    return key;
+}
+
+// The module the alias `scope` names in the file being parsed. In 0.5 (FF_COMPATIBILITY_0_5) the
+// program's table: an alias any file imports, the first import of it. From 0.6 the file's own
+// imports.
+static Module *imported_module(ParserContext *ctx, const char *scope)
+{
+#if FF_COMPATIBILITY_0_5
+    return find_module(ctx, scope);
+#else
+    if (!ctx->current_filename)
+    {
+        return NULL;
+    }
+    char *key = file_key(ctx->current_filename, scope);
+    Module **found = zmap_get(&ctx->imports.file_modules, key);
+    zfree(key);
+    return found ? *found : NULL;
+#endif
+}
+
+// The C name of the top-level declaration `decl`: its name, which carries the module prefix.
+static const char *declaration_c_name(ASTNode *decl)
+{
+    switch (decl->kind)
+    {
+    case NODE_FUNCTION:
+        return decl->func.name;
+    case NODE_STRUCT:
+        return decl->strct.name;
+    case NODE_ENUM:
+        return decl->enm.name;
+    case NODE_TRAIT:
+        return decl->trait.name;
+    case NODE_TYPE_ALIAS:
+        return decl->type_alias.alias;
+    case NODE_CONST:
+    case NODE_VAR_DECL:
+        return decl->var_decl.name;
+    default:
+        return NULL;
+    }
+}
+
+// The import, one by one or with `as *`, that brings `name` into the file being parsed; NULL when
+// none. In 0.5 (FF_COMPATIBILITY_0_5) the program's table, where `as *` registers each name of
+// the module. From 0.6 the file's own imports, then the modules it imports with `as *`.
+static SelectiveImport *imported_by_name(ParserContext *ctx, const char *name)
+{
+#if FF_COMPATIBILITY_0_5
+    return find_selective_import(ctx, name);
+#else
+    if (!ctx->current_filename)
+    {
+        return NULL;
+    }
+    char *key = file_key(ctx->current_filename, name);
+    SelectiveImport **found = zmap_get(&ctx->imports.file_selective_imports, key);
+    zfree(key);
+    if (found)
+    {
+        return *found;
+    }
+    size_t file_len = strlen(ctx->current_filename);
+    zmap_iter_FileSet it = zmap_iter_init(FileSet, &ctx->imports.file_wildcard_imports);
+    const char *wildcard_key;
+    const char *path;
+    while (zmap_iter_next(&it, &wildcard_key, &path))
+    {
+        if (strncmp(wildcard_key, ctx->current_filename, file_len) == 0 &&
+            wildcard_key[file_len] == '\x1f' && find_file_declaration(ctx, path, name))
+        {
+            SelectiveImport *imported = xcalloc(1, sizeof(SelectiveImport));
+            imported->symbol = xstrdup(name);
+            imported->source_module = xstrdup(wildcard_key + file_len + 1);
+            imported->source_path = xstrdup(path);
+            return imported;
+        }
+    }
+    return NULL;
+#endif
+}
+
+// The C name of what `imported` names: its module's declaration of it, or, for one the module
+// does not declare, the module's prefix and the name.
+static char *imported_c_name(ParserContext *ctx, SelectiveImport *imported)
+{
+    ASTNode *decl = imported->source_path
+                        ? find_file_declaration(ctx, imported->source_path, imported->symbol)
+                        : NULL;
+    const char *c_name = decl ? declaration_c_name(decl) : NULL;
+    return c_name ? xstrdup(c_name)
+                  : mangle_module_symbol(imported->source_module, imported->symbol);
+}
+
 char *module_written_name(ParserContext *ctx, const char *name)
 {
     const char *alias = ctx->imports.current_module_alias;
@@ -857,65 +960,14 @@ char *type_declaration_name(ParserContext *ctx, const char *name)
     // Imported one by one, or with `as *`: the module's type, by the name the import gives it.
     if (!ctx->imports.current_module_prefix)
     {
-        SelectiveImport *imported = find_selective_import(ctx, name);
+        // Imported one by one, or with `as *`: the module's declaration of it.
+        SelectiveImport *imported = imported_by_name(ctx, name);
         if (imported)
         {
-            return mangle_module_symbol(imported->source_module, imported->symbol);
+            return imported_c_name(ctx, imported);
         }
     }
     return module_type_name(ctx, name);
-}
-
-// The key of `name` in `file`'s part of a registry: the two, joined by the unit separator, which
-// neither a path nor a name has.
-static char *file_key(const char *file, const char *name)
-{
-    size_t size = strlen(file) + strlen(name) + 2;
-    char *key = xmalloc(size);
-    snprintf(key, size, "%s\x1f%s", file, name);
-    return key;
-}
-
-// The module the alias `scope` names in the file being parsed. In 0.5 (FF_COMPATIBILITY_0_5) the
-// program's table: an alias any file imports, the first import of it. From 0.6 the file's own
-// imports.
-static Module *imported_module(ParserContext *ctx, const char *scope)
-{
-#if FF_COMPATIBILITY_0_5
-    return find_module(ctx, scope);
-#else
-    if (!ctx->current_filename)
-    {
-        return NULL;
-    }
-    char *key = file_key(ctx->current_filename, scope);
-    Module **found = zmap_get(&ctx->imports.file_modules, key);
-    zfree(key);
-    return found ? *found : NULL;
-#endif
-}
-
-// The C name of the top-level declaration `decl`: its name, which carries the module prefix.
-static const char *declaration_c_name(ASTNode *decl)
-{
-    switch (decl->kind)
-    {
-    case NODE_FUNCTION:
-        return decl->func.name;
-    case NODE_STRUCT:
-        return decl->strct.name;
-    case NODE_ENUM:
-        return decl->enm.name;
-    case NODE_TRAIT:
-        return decl->trait.name;
-    case NODE_TYPE_ALIAS:
-        return decl->type_alias.alias;
-    case NODE_CONST:
-    case NODE_VAR_DECL:
-        return decl->var_decl.name;
-    default:
-        return NULL;
-    }
 }
 
 static char *module_member_name(ParserContext *ctx, Module *mod, const char *name)
@@ -979,12 +1031,13 @@ char *zen_c_type_spelling(ParserContext *ctx, Type *t)
 }
 
 void register_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
-                               const char *source_module)
+                               const char *source_module, const char *source_path)
 {
     SelectiveImport *si = xmalloc(sizeof(SelectiveImport));
     si->symbol = xstrdup(symbol);
     si->alias = alias ? xstrdup(alias) : NULL;
     si->source_module = xstrdup(source_module);
+    si->source_path = source_path ? xstrdup(source_path) : NULL;
     const char *key = alias ? alias : symbol;
     zmap_put(&ctx->imports.selective_imports, key, si);
 }
@@ -1016,7 +1069,8 @@ void re_export_propagated(ParserContext *ctx, const char *alias, const char *par
     }
 }
 
-void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base)
+void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base,
+                                const char *module_path)
 {
     if (!ctx->global_scope || !module_base)
     {
@@ -1044,7 +1098,7 @@ void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base)
                 continue;
             }
 
-            register_selective_import(ctx, bare_name, NULL, module_base);
+            register_selective_import(ctx, bare_name, NULL, module_base, module_path);
         }
         sym = sym->next;
     }
@@ -1289,7 +1343,7 @@ void record_file_import(ParserContext *ctx, const char *alias, const char *path,
 }
 
 void record_file_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
-                                  const char *source_module)
+                                  const char *source_module, const char *source_path)
 {
     if (!ctx->current_filename)
     {
@@ -1299,16 +1353,17 @@ void record_file_selective_import(ParserContext *ctx, const char *symbol, const 
     si->symbol = xstrdup(symbol);
     si->alias = alias ? xstrdup(alias) : NULL;
     si->source_module = xstrdup(source_module);
+    si->source_path = source_path ? xstrdup(source_path) : NULL;
     zmap_put(&ctx->imports.file_selective_imports,
              file_key(ctx->current_filename, alias ? alias : symbol), si);
 }
 
-void record_file_wildcard_import(ParserContext *ctx, const char *module_base)
+void record_file_wildcard_import(ParserContext *ctx, const char *module_base, const char *path)
 {
-    if (!ctx->current_filename || !module_base)
+    if (!ctx->current_filename || !module_base || !path)
     {
         return;
     }
-    char *key = file_key(ctx->current_filename, module_base);
-    zmap_put(&ctx->imports.file_wildcard_imports, key, key);
+    zmap_put(&ctx->imports.file_wildcard_imports, file_key(ctx->current_filename, module_base),
+             xstrdup(path));
 }
