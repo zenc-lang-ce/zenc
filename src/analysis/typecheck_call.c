@@ -311,7 +311,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
             // Check if it's a built-in macro injected by the compiler
             if (strcmp(func_name, "_z_str") == 0)
             {
-                // _z_str is a generic format macro from ZC_C_GENERIC_STR
+                // _z_str is the preamble's format of a value (PRINT_CONVERSIONS)
                 check_node(tc, node->call.args, depth + 1); // Still check the argument
                 node->type_info = type_new(TYPE_STRING);
                 return;
