@@ -23,14 +23,20 @@ void audit_section_5(ParserContext *ctx, Scope *scope, const char *name, const c
 
     if (!ctx->config->misra_mode)
     {
-        // Only shadowing is reported: each symbol of this name in the scopes around this one.
+        // Only shadowing is reported: each symbol of this name in the scopes around this one that
+        // this file sees. A module does not see the program that imports it: a name in it hides
+        // none of the program's.
         if (!ctx->silent_warnings)
         {
             for (Scope *p = scope->parent; p; p = p->parent)
             {
                 for (ZenSymbol *sh = symbol_lookup_local(p, name); sh; sh = sh->next_same_name)
                 {
-                    warn_shadowing(tok, name);
+                    const char *file = sh->decl_token.file;
+                    if (!file || !tok.file || file_sees(ctx, tok.file, file))
+                    {
+                        warn_shadowing(tok, name);
+                    }
                 }
             }
         }

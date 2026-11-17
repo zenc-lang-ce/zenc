@@ -1,0 +1,17 @@
+// ARGS: check
+// A name hides only what its file sees: the module's `count` and `total` hide nothing of this
+// program, which the module does not import; this program's `helper` hides the module's.
+import "./modules/_hides_names.zc"
+
+fn count() -> int {
+    return 1;
+}
+
+fn total() -> int {
+    return 2;
+}
+
+fn main() {
+    let helper = count() + total();
+    printf("%d\n", helper);
+}

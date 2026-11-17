@@ -410,9 +410,10 @@ struct ParserContext
     struct PendingInstance *pending_instances;      ///< Instances waiting for the declarations.
     struct PendingInstance *pending_instances_tail; ///< Last of `pending_instances`.
     int declarations_read; ///< Set once every declaration is read: instances are made at once.
-    struct WaitingStruct *waiting_structs; ///< Structs whose `use` waits for the declarations.
-    ASTNode *instantiated_structs;         ///< List of AST nodes for instantiated structs.
-    ASTNode *instantiated_funcs;           ///< List of AST nodes for instantiated functions.
+    struct WaitingStruct *waiting_structs;    ///< Structs whose `use` waits for the declarations.
+    struct FileDependency *file_dependencies; ///< Which file imports which (file_sees).
+    ASTNode *instantiated_structs;            ///< List of AST nodes for instantiated structs.
+    ASTNode *instantiated_funcs;              ///< List of AST nodes for instantiated functions.
 
     // Structs/Enums
     StructRef *parsed_structs_list; ///< List of all parsed struct nodes.
@@ -638,6 +639,14 @@ typedef struct WaitingStruct
     int done;
     struct WaitingStruct *next;
 } WaitingStruct;
+
+/** @brief One import: the file `importer` imports the module `imported` (file_sees). */
+typedef struct FileDependency
+{
+    const char *importer;
+    const char *imported;
+    struct FileDependency *next;
+} FileDependency;
 
 typedef struct TypeUsage
 {
@@ -1266,6 +1275,15 @@ ASTNode *find_trait_def(ParserContext *ctx, const char *name);
 int is_trait(ParserContext *ctx, const char *name);
 int is_extern_symbol(ParserContext *ctx, const char *name);
 int is_file_imported(ParserContext *ctx, const char *path);
+/**
+ * @brief Records that the file `importer` imports the module `imported`.
+ */
+void record_file_dependency(ParserContext *ctx, const char *importer, const char *imported);
+/**
+ * @brief Whether the file `from` sees the declarations of the file `to`: it is that file, or
+ *        imports it, directly or through the modules it imports.
+ */
+int file_sees(ParserContext *ctx, const char *from, const char *to);
 void mark_file_imported(ParserContext *ctx, const char *path);
 /**
  * @brief Whether the headers of the C preamble declare `name` (strstr, fputs, va_end...): it

@@ -908,6 +908,57 @@ int is_file_imported(ParserContext *ctx, const char *path)
     return zmap_get(&ctx->imports.imported_files, path) != NULL;
 }
 
+void record_file_dependency(ParserContext *ctx, const char *importer, const char *imported)
+{
+    if (!importer || !imported || strcmp(importer, imported) == 0)
+    {
+        return;
+    }
+    for (FileDependency *d = ctx->file_dependencies; d; d = d->next)
+    {
+        if (strcmp(d->importer, importer) == 0 && strcmp(d->imported, imported) == 0)
+        {
+            return;
+        }
+    }
+    FileDependency *d = xmalloc(sizeof(FileDependency));
+    d->importer = xstrdup(importer);
+    d->imported = xstrdup(imported);
+    d->next = ctx->file_dependencies;
+    ctx->file_dependencies = d;
+}
+
+// Whether `from` reaches `to` through the imports, without going through a file in `seen`.
+static int file_reaches(ParserContext *ctx, const char *from, const char *to, zvec_Text *seen)
+{
+    if (strcmp(from, to) == 0)
+    {
+        return 1;
+    }
+    for (size_t i = 0; i < seen->length; i++)
+    {
+        if (strcmp(seen->data[i], from) == 0)
+        {
+            return 0;
+        }
+    }
+    zvec_push_Text(seen, (char *)from);
+    for (FileDependency *d = ctx->file_dependencies; d; d = d->next)
+    {
+        if (strcmp(d->importer, from) == 0 && file_reaches(ctx, d->imported, to, seen))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int file_sees(ParserContext *ctx, const char *from, const char *to)
+{
+    zvec_Text seen = {0};
+    return file_reaches(ctx, from, to, &seen);
+}
+
 void mark_file_imported(ParserContext *ctx, const char *path)
 {
     // Duplicate into the arena so the map key outlives callers that free the

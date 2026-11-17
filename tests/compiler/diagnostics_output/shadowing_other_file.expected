@@ -1,0 +1,16 @@
+   Compiling tests/compiler/diagnostics_output/shadowing_other_file.zc...
+warning: Variable 'helper' shadows a previous declaration
+  --> tests/compiler/diagnostics_output/shadowing_other_file.zc:15:9
+   |
+15 |     let helper = count() + total();
+   |         ^ here
+   |
+   = note: This can lead to confusion
+warning: Variable 'helper' shadows a previous declaration
+  --> tests/compiler/diagnostics_output/shadowing_other_file.zc:15:9
+   |
+15 |     let helper = count() + total();
+   |         ^ here
+   |
+   = note: This can lead to confusion
+[exit 0]
