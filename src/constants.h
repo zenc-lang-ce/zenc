@@ -27,68 +27,7 @@ enum
     MAX_PATH_LEN = 4096
 };
 
-// Type checking helpers
-
-static inline bool str_is_int_type(const char *t)
-{
-    return t &&
-           (strcmp(t, "int") == 0 || strcmp(t, "uint") == 0 || strcmp(t, "i8") == 0 ||
-            strcmp(t, "I8") == 0 || strcmp(t, "u8") == 0 || strcmp(t, "U8") == 0 ||
-            strcmp(t, "i16") == 0 || strcmp(t, "I16") == 0 || strcmp(t, "u16") == 0 ||
-            strcmp(t, "U16") == 0 || strcmp(t, "i32") == 0 || strcmp(t, "I32") == 0 ||
-            strcmp(t, "u32") == 0 || strcmp(t, "U32") == 0 || strcmp(t, "i64") == 0 ||
-            strcmp(t, "I64") == 0 || strcmp(t, "u64") == 0 || strcmp(t, "U64") == 0 ||
-            strcmp(t, "i128") == 0 || strcmp(t, "I128") == 0 || strcmp(t, "u128") == 0 ||
-            strcmp(t, "U128") == 0 || strcmp(t, "byte") == 0 || strcmp(t, "rune") == 0 ||
-            strcmp(t, "long") == 0 || strcmp(t, "short") == 0 || strcmp(t, "ulong") == 0 ||
-            strcmp(t, "ushort") == 0 || strcmp(t, "int8_t") == 0 || strcmp(t, "uint8_t") == 0 ||
-            strcmp(t, "int16_t") == 0 || strcmp(t, "uint16_t") == 0 || strcmp(t, "int32_t") == 0 ||
-            strcmp(t, "uint32_t") == 0 || strcmp(t, "int64_t") == 0 || strcmp(t, "uint64_t") == 0);
-}
-
-static inline bool str_is_bool_type(const char *t)
-{
-    return t && strcmp(t, "bool") == 0;
-}
-
-static inline bool str_is_char_type(const char *t)
-{
-    return t && strcmp(t, "char") == 0;
-}
-
-static inline bool str_is_void_type(const char *t)
-{
-    return t && strcmp(t, "void") == 0;
-}
-
-static inline bool str_is_float_type(const char *t)
-{
-    return t && (strcmp(t, "float") == 0 || strcmp(t, "f32") == 0 || strcmp(t, "F32") == 0);
-}
-
-static inline bool str_is_double_type(const char *t)
-{
-    return t && (strcmp(t, "double") == 0 || strcmp(t, "f64") == 0 || strcmp(t, "F64") == 0);
-}
-
-static inline bool str_is_usize_type(const char *t)
-{
-    return t && (strcmp(t, "usize") == 0 || strcmp(t, "size_t") == 0);
-}
-
-static inline bool str_is_isize_type(const char *t)
-{
-    return t &&
-           (strcmp(t, "isize") == 0 || strcmp(t, "ptrdiff_t") == 0 || strcmp(t, "ssize_t") == 0);
-}
-
-static inline bool str_is_basic_type(const char *t)
-{
-    return t && (str_is_int_type(t) || str_is_bool_type(t) || str_is_char_type(t) ||
-                 str_is_void_type(t) || str_is_float_type(t) || str_is_double_type(t) ||
-                 str_is_usize_type(t) || str_is_isize_type(t) || strcmp(t, "__auto_type") == 0);
-}
-
+// The `struct ` a C type name may start with.
 static inline bool str_is_struct_prefix(const char *t)
 {
     return t && strncmp(t, "struct ", 7) == 0;
