@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "analysis/declaration_checks.h"
 
 typedef struct Diagnostic
 {

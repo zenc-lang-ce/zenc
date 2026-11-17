@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include "analysis/drop_traits.h"
 
 LSPProject *g_project = NULL;
 

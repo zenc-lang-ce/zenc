@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "analysis/drop_traits.h"
 
 // Strip template suffix from a type name (for example, "MyStruct<T>" -> "MyStruct")
 // Returns newly allocated string, caller must free.

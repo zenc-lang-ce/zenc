@@ -96,6 +96,8 @@ src/analysis/typecheck_call.c
 src/analysis/typecheck_stmt.c
 src/analysis/comptime_interpreter.c
 src/analysis/move_check.c
+src/analysis/declaration_checks.c
+src/analysis/drop_traits.c
 src/analysis/const_fold.c
 src/lsp/json_rpc.c
 src/lsp/lsp_main.c

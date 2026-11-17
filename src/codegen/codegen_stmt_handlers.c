@@ -13,6 +13,7 @@
 #include "ast.h"
 #include "zprep_plugin.h"
 #include "codegen_internal.h"
+#include "analysis/drop_traits.h"
 
 typedef void (*CodegenHandler)(ParserContext *ctx, ASTNode *node);
 

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "analysis/drop_traits.h"
 
 // The C names of the types a struct or enum holds by value (its fields, or its
 // variants' payloads), collected once: topo_sort_structs compares every pair of
