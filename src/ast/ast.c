@@ -2423,6 +2423,17 @@ Type *pointee_of(Type *t)
     return t->kind == TYPE_STRING ? type_new(TYPE_CHAR) : NULL;
 }
 
+ASTNode *ast_turn_into(ASTNode *node, NodeType kind)
+{
+    ASTNode *was = ast_create(node->kind);
+    *was = *node;
+    was->next = NULL;
+
+    node->kind = kind;
+    memset(&node->root, 0, sizeof(ASTNode) - offsetof(ASTNode, root)); // The union, last.
+    return was;
+}
+
 ASTNode *written_expr(ASTNode *node)
 {
     while (node && node->kind == NODE_IMPLICIT_CONVERSION)

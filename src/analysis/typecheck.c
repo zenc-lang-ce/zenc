@@ -617,12 +617,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
 
                 // The node becomes the call it stands for and keeps `v[i]` as written, for
                 // what shows the program's own form (F7: elaborate without losing it).
-                ASTNode *written = ast_create(NODE_EXPR_INDEX);
-                *written = *node;
-                written->next = NULL;
-
-                node->kind = NODE_EXPR_CALL;
-                memset(&node->call, 0, sizeof(node->call));
+                ASTNode *written = ast_turn_into(node, NODE_EXPR_CALL);
                 node->call.written = written;
 
                 ASTNode *callee = ast_create(NODE_EXPR_MEMBER);

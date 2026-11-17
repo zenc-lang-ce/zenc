@@ -955,6 +955,14 @@ int is_string_literal(ASTNode *node);
 ASTNode *written_expr(ASTNode *node);
 
 /**
+ * @brief Turns `node` into an empty node of kind `kind`, in place, and returns what it was, in a
+ *        node of its own (outside any list). Whoever points at `node` then points at the new
+ *        node, which keeps the place in the list, the position and the type: the way to wrap a
+ *        node (the old one becomes a child) or to elaborate it (the old one is kept as written).
+ */
+ASTNode *ast_turn_into(ASTNode *node, NodeType kind);
+
+/**
  * @brief Whether `t` is a pointer: a `T*`, or a `string`, which is a `char*`.
  */
 int is_pointer_type(Type *t);
