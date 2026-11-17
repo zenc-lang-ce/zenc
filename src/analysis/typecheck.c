@@ -1383,8 +1383,6 @@ static void check_program_prepass(TypeChecker *tc, ASTNode *root, int depth)
     RECURSION_EXIT(tc->pctx);
 }
 
-// The instances of generic functions and impls, which are not in the tree. Checking one can
-// instantiate more, so the list is walked until every instance has been checked.
 // The std modules the compiler loaded on its own, which are not in the tree.
 static void check_implicit_std_imports(TypeChecker *tc)
 {
@@ -1394,23 +1392,20 @@ static void check_implicit_std_imports(TypeChecker *tc)
     }
 }
 
+// The instances of generic functions and impls, which are not in the tree. Checking one can
+// instantiate more, which add_instantiated_func puts at the head of the list: what is checked is
+// always the list from `checked` on, and the new ones are those before it.
 static void check_instantiations(TypeChecker *tc)
 {
-    int changed = 1;
-    while (changed)
+    ASTNode *checked = NULL;
+    while (tc->pctx->instantiated_funcs != checked)
     {
-        changed = 0;
-        for (ASTNode *inst = tc->pctx->instantiated_funcs; inst; inst = inst->next)
+        ASTNode *newest = tc->pctx->instantiated_funcs;
+        for (ASTNode *inst = newest; inst != checked; inst = inst->next)
         {
-            if (!inst->is_checked)
-            {
-                check_node(tc, inst, 0);
-                inst->is_checked = 1;
-                changed = 1;
-                // Restart from head to catch newly added instantiations that might be before us
-                break;
-            }
+            check_node(tc, inst, 0);
         }
+        checked = newest;
     }
 }
 
@@ -1432,7 +1427,6 @@ int check_program(ParserContext *ctx, ASTNode *root)
     check_program_prepass(&tc, root, 0);
 
     check_node(&tc, root, 0);
-    root->is_checked = 1;
     check_implicit_std_imports(&tc);
     check_instantiations(&tc);
     check_uncalled_lambdas(&tc, NULL);
