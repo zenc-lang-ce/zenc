@@ -20,6 +20,7 @@ static void *cache_calloc(size_t count, size_t size)
     if (!p)
     {
         zfatal("c_header_cache: out of memory");
+        exit(1); // whitelisted: zfatal returns in the language server, as for xmalloc
     }
     memset(p, 0, count * size);
     return p;
