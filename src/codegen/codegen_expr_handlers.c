@@ -285,7 +285,9 @@ static void emit_coalesce(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, "); })");
 }
 
-// `==` and `!=`: a struct compares through its `eq` (or `neq`), anything else as in C.
+// `==` and `!=`: a struct, or an enum with a payload, compares through its `eq` (`!=` negates
+// it), two strings through strcmp, anything else as in C. The parser already turns most `==` on
+// a struct into a call to `eq`; what reaches the `eq` here is the code @derive(Eq) generates.
 static void emit_equality(ParserContext *ctx, ASTNode *node)
 {
     Type *t = node->binary.left->type_info;
@@ -493,12 +495,11 @@ static void emit_plain_binary(ParserContext *ctx, ASTNode *node)
 
             if (should_cast)
             {
-                char *c_type = NULL;
-                if (node->binary.left->type_info)
-                {
-                    c_type = c_type_spelling(ctx, node->binary.left->type_info);
-                }
-                if (c_type && strcmp(c_type, "unknown") != 0 && strcmp(c_type, "void") != 0)
+                Type *left = node->binary.left->type_info;
+                char *c_type = has_c_spelling(left) && left->kind != TYPE_VOID
+                                   ? c_type_spelling(ctx, left)
+                                   : NULL;
+                if (c_type)
                 {
                     EMIT(ctx, "(%s)(", c_type);
                     codegen_expression_with_move(ctx, node->binary.right);
@@ -754,27 +755,17 @@ skip_method_mangling:
         EMIT(ctx, "; ");
 
         Type *ft = callee_ti;
-        char *ret = c_type_spelling(ctx, ft->inner);
-        if (strcmp(ret, "string") == 0)
-        {
-            zfree(ret);
-            ret = xstrdup("char*");
-        }
-        if (strcmp(ret, "unknown") == 0)
-        {
-            zfree(ret);
-            ret = xstrdup("void*");
-        }
+        // A parameter or result whose type is not known is passed as a `void*`.
+        char *ret = !has_c_spelling(ft->inner) ? xstrdup("void*")
+                    : ft->inner->kind == TYPE_STRING && !ft->inner->is_const
+                        ? xstrdup("char*")
+                        : c_type_spelling(ctx, ft->inner);
 
         EMIT(ctx, "((%s (*)(void*", ret);
         for (int i = 0; i < ft->count; i++)
         {
-            char *as = c_type_spelling(ctx, ft->args[i]);
-            if (strcmp(as, "unknown") == 0)
-            {
-                zfree(as);
-                as = xstrdup("void*");
-            }
+            char *as =
+                has_c_spelling(ft->args[i]) ? c_type_spelling(ctx, ft->args[i]) : xstrdup("void*");
             EMIT(ctx, ", %s", as);
             zfree(as);
         }

@@ -308,28 +308,18 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
                 {
                     size_t stmt_sz = 256 + strlen(arg_name) * 2 + strlen(drop_type_name) * 2;
                     stmt_str = xmalloc(stmt_sz);
-                    // If it's self, it's already a pointer in C
-                    if (strcmp(arg_name, "self") == 0)
+                    // A `const` parameter is still owned: it is dropped through a mutable
+                    // pointer. (`self` is a pointer, which has nothing to drop.)
+                    if (arg_type->is_const)
                     {
-                        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(%s);",
-                                 arg_name, drop_type_name, arg_name);
+                        snprintf(stmt_str, stmt_sz,
+                                 "if (__z_drop_flag_%s) %s__Drop__glue((%s *)&%s);", arg_name,
+                                 drop_type_name, drop_type_name, arg_name);
                     }
                     else
                     {
-                        // A `const` parameter is still owned: it is dropped through a mutable
-                        // pointer.
-                        if (arg_type->is_const)
-                        {
-                            snprintf(stmt_str, stmt_sz,
-                                     "if (__z_drop_flag_%s) %s__Drop__glue((%s *)&%s);", arg_name,
-                                     drop_type_name, drop_type_name, arg_name);
-                        }
-                        else
-                        {
-                            snprintf(stmt_str, stmt_sz,
-                                     "if (__z_drop_flag_%s) %s__Drop__glue(&%s);", arg_name,
-                                     drop_type_name, arg_name);
-                        }
+                        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);",
+                                 arg_name, drop_type_name, arg_name);
                     }
                 }
                 defer_node->raw_stmt.content = stmt_str;
@@ -620,7 +610,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
     {
         char *tname = node_c_type(ctx, node);
 
-        if (tname && strcmp(tname, "void*") != 0 && strcmp(tname, "unknown") != 0)
+        if (tname && strcmp(tname, "void*") != 0)
         {
             char *clean_type = tname;
             if (strncmp(clean_type, "struct ", 7) == 0)
@@ -697,7 +687,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 inferred = node_c_type(ctx, node->var_decl.init_expr);
             }
 
-            if (inferred && strcmp(inferred, "__auto_type") != 0)
+            if (inferred)
             {
                 char *clean_type = inferred;
                 if (strncmp(clean_type, "struct ", 7) == 0)

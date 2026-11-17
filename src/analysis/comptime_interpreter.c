@@ -238,6 +238,10 @@ static CValue eval_literal(CInterp *ci, ASTNode *node)
         v.kind = VAL_INT;
         v.as.i = (int64_t)node->literal.int_val;
         break;
+    case LITERAL_BOOL:
+        v.kind = VAL_BOOL;
+        v.as.b = node->literal.int_val != 0;
+        break;
     default:
         v = val_null;
         break;
@@ -261,16 +265,6 @@ static CValue eval_var(CInterp *ci, ASTNode *node)
     if (strcmp(name, "__COMPTIME_FILE__") == 0)
     {
         return val_string(ci->source_file ? ci->source_file : "");
-    }
-    if (strcmp(name, "true") == 0)
-    {
-        CValue v = {VAL_BOOL, {.b = 1}};
-        return v;
-    }
-    if (strcmp(name, "false") == 0)
-    {
-        CValue v = {VAL_BOOL, {.b = 0}};
-        return v;
     }
 
     CValue *found = scope_find(ci->scope, name);
@@ -526,14 +520,11 @@ static CValue eval_call(CInterp *ci, ASTNode *node)
         return call_builtin(ci, name, node->call.args);
     }
 
-    // Look for @comptime function
-    for (StructRef *r = ci->pctx->parsed_funcs_list; r; r = r->next)
+    // A @comptime function
+    FuncSig *sig = find_func(ci->pctx, name);
+    if (sig && sig->decl && sig->decl->kind == NODE_FUNCTION && sig->decl->func.is_comptime)
     {
-        if (r->node && r->node->kind == NODE_FUNCTION && r->node->func.is_comptime &&
-            strcmp(function_c_name(r->node), name) == 0)
-        {
-            return call_comptime_fn(ci, r->node, node->call.args);
-        }
+        return call_comptime_fn(ci, sig->decl, node->call.args);
     }
 
     zerror_at(node->token, "comptime: undefined function '%s'", name);

@@ -1148,7 +1148,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
             if (has_named && arg_names)
             {
-                ASTNode *def = find_function_definition(ctx, sig->name);
+                ASTNode *def = sig->decl;
                 if (def)
                 {
                     validate_named_arguments(t, sig->name, arg_names, args_provided, def);
@@ -1337,6 +1337,15 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     node->literal.int_val = (unsigned long long)value;
                 }
                 // No need for resolution
+            }
+            else if (!variant.member && !owner && (is_token(t, "true") || is_token(t, "false")) &&
+                     strlen(acc) == t.len)
+            {
+                node = ast_create(NODE_EXPR_LITERAL);
+                node->token = t;
+                node->literal.kind = LITERAL_BOOL;
+                node->literal.int_val = is_token(t, "true") ? 1ULL : 0ULL;
+                node->type_info = type_new(TYPE_BOOL);
             }
             else
             {

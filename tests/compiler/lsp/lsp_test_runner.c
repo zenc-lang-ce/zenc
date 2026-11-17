@@ -3675,6 +3675,53 @@ static void test_diagnostics()
     }
 }
 
+// The server runs the typechecker on a document, as `zc build` does after parsing it: its
+// errors and its warnings (type errors in 0.5) show in the editor, only the document's, and an
+// edit replaces them.
+static void test_typechecker_diagnostics(void)
+{
+    printf("Running test_typechecker_diagnostics...\n");
+    const char *path = "/tmp/zc_lsp_c/typechecked.zc";
+    open_document(path, "fn twice(n: int) -> int {\n"
+                        "    let n2 = n * 2;\n"
+                        "    let n2 = n2;\n"
+                        "    return n2;\n"
+                        "}\n"
+                        "fn name() -> int {\n"
+                        "    return \"text\";\n"
+                        "}\n");
+    char *msg = wait_for_diagnostics("/typechecked.zc");
+    if (!msg || !strstr(msg, "'n2' is already declared in this block") ||
+        !strstr(msg, "\"severity\":1") || !strstr(msg, "an error from 0.6"))
+    {
+        printf("FAIL: test_typechecker_diagnostics: %s\n", msg ? msg : "(no diagnostics)");
+        exit(1);
+    }
+    free(msg);
+
+    change_document(path, 2, "fn twice(n: int) -> int {\n    let n2 = n * 2;\n    return n2;\n}\n");
+    msg = wait_for_diagnostics("/typechecked.zc");
+    if (!msg || strstr(msg, "already declared") || strstr(msg, "error from 0.6"))
+    {
+        printf("FAIL: test_typechecker_diagnostics after the fix: %s\n",
+               msg ? msg : "(no diagnostics)");
+        exit(1);
+    }
+    free(msg);
+
+    // A document that does not parse gets the syntax error only: the typechecker does not run.
+    change_document(path, 3, "fn twice(n: int) -> int {\n    let n2 = ;\n    let n2 = n2;\n}\n");
+    msg = wait_for_diagnostics("/typechecked.zc");
+    if (!msg || strstr(msg, "already declared"))
+    {
+        printf("FAIL: test_typechecker_diagnostics with a syntax error: %s\n",
+               msg ? msg : "(no diagnostics)");
+        exit(1);
+    }
+    free(msg);
+    printf("PASS: test_typechecker_diagnostics\n");
+}
+
 static void test_diagnostic_hints(void)
 {
     printf("Running test_diagnostic_hints...\n");
@@ -4400,6 +4447,7 @@ int main()
     test_struct_completion();
     test_diagnostics();
     test_diagnostic_hints();
+    test_typechecker_diagnostics();
     test_semantic_tokens();
     test_semantic_tokens_skip_text();
     test_semantic_token_modifiers();

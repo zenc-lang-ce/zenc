@@ -91,7 +91,11 @@ const char *field_c_type(ParserContext *ctx, ASTNode *field);
  *        @link_name), wherever the Type comes from.
  */
 char *c_type_spelling(ParserContext *ctx, Type *t);
-/** @brief A program's identifier as the generated C or C++ names it (c_safe_name). */
+/**
+ * @brief Whether c_type_spelling can spell `t`: not when its type is unknown (it writes
+ *        "unknown" then).
+ */
+int has_c_spelling(Type *t);
 /**
  * @brief The C name of the local `name` declared at `site` (its declaration's token): the one the
  *        typechecker gave it when it hides another (local_c_name_at), or its own (c_name).
@@ -106,10 +110,11 @@ const char *var_ref_c_name(ParserContext *ctx, ASTNode *ref);
 const char *local_decl_flag_name(ParserContext *ctx, Token site, const char *name);
 /** @brief The same for the variable a NODE_EXPR_VAR reads. */
 const char *var_ref_flag_name(ASTNode *ref);
+/** @brief A program's identifier as the generated C or C++ names it (c_safe_name). */
 const char *c_name(ParserContext *ctx, const char *name);
 /**
  * @brief The type of `node` (a declaration or an expression) spelled in C: its type_info, as the
- *        typechecker leaves it; NULL when it has none.
+ *        typechecker leaves it; NULL when it has none or C cannot spell it (has_c_spelling).
  */
 char *node_c_type(ParserContext *ctx, ASTNode *node);
 /**

@@ -73,6 +73,10 @@ char *ast_to_string_recursive(ASTNode *node, int depth)
         {
             snprintf(buf, buf_size, "%f", node->literal.float_val);
         }
+        else if (node->literal.kind == LITERAL_BOOL)
+        {
+            snprintf(buf, buf_size, "%s", node->literal.int_val ? "true" : "false");
+        }
         else if (node->literal.kind == LITERAL_STRING)
         {
             size_t s_len = strlen(node->literal.string_val);

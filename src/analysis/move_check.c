@@ -218,12 +218,10 @@ int is_type_copy(ParserContext *ctx, Type *t)
     }
     RECURSION_GUARD_TOKEN(ctx, TOKEN_UNKNOWN, 1);
 
+    // Whether a type has Drop is its declaration's (propagate_drop_traits marks it from its
+    // `impl Drop` and its fields), read through type_has_drop.
     int result = 1;
     if (type_has_drop(ctx, t))
-    {
-        result = 0;
-    }
-    else if (t->name && check_impl(ctx, "Drop", type_def_name(t)))
     {
         result = 0;
     }
@@ -260,10 +258,6 @@ int is_type_copy(ParserContext *ctx, Type *t)
             if (check_impl(ctx, "Copy", type_def_name(t)))
             {
                 result = 1;
-            }
-            else if (check_impl(ctx, "Drop", type_def_name(t)))
-            {
-                result = 0;
             }
             else if (t->name)
             {
@@ -410,11 +404,6 @@ void mark_symbol_moved(ParserContext *ctx, ZenSymbol *sym, ASTNode *context_node
 
     if (t && ctx && !copy)
     {
-        if (sym)
-        {
-            sym->is_moved = 1;
-        }
-
         if (ctx->move_state)
         {
             char *path = get_node_path(context_node, 0, ctx);
@@ -461,11 +450,6 @@ static void mark_valid_in_state(MoveState *state, const char *path, Token t)
 
 void mark_symbol_valid(ParserContext *ctx, ZenSymbol *sym, ASTNode *context_node)
 {
-    if (sym)
-    {
-        sym->is_moved = 0;
-    }
-
     if (ctx && ctx->move_state)
     {
         char *path = get_node_path(context_node, 0, ctx);

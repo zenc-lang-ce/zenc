@@ -6,6 +6,7 @@
 #include "../utils/string_list.h"
 #include "../utils/utils.h"
 #include "../constants.h"
+#include "../analysis/typecheck.h"
 #include "../platform/os.h"
 #include <ctype.h>
 #include <dirent.h>
@@ -1119,6 +1120,24 @@ void lsp_project_update_file(const char *uri, const char *src)
     g_project->ctx->generic_parameter_uses = before.generic_parameter_uses;
 
     g_project->ctx->current_filename = saved_filename;
+}
+
+void lsp_project_check_file(const char *uri)
+{
+    ProjectFile *pf = g_project ? lsp_project_get_file(uri) : NULL;
+    if (!pf || !pf->ast || g_project->ctx->compiler->error_count > 0)
+    {
+        return;
+    }
+    ParserContext *ctx = g_project->ctx;
+    Scope *saved_scope = ctx->current_scope;
+    const char *saved_filename = ctx->current_filename;
+    ctx->current_filename = pf->path;
+    // Which types have Drop is derived from their declarations and impls, as a build does first.
+    propagate_drop_traits(ctx);
+    check_program(ctx, pf->ast);
+    ctx->current_filename = saved_filename;
+    ctx->current_scope = saved_scope;
 }
 
 LSPRange *lsp_project_definition(ProjectFile *pf, LSPRange *r, ProjectFile **def_file)

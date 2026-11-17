@@ -210,21 +210,6 @@ int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b)
 #include "analysis/move_check.h"
 #include "utils/utils.h"
 
-ASTNode *find_function_definition(ParserContext *ctx, const char *name)
-{
-    StructRef *curr = ctx->parsed_funcs_list;
-    while (curr)
-    {
-        if (curr->node && function_c_name(curr->node) &&
-            strcmp(function_c_name(curr->node), name) == 0)
-        {
-            return curr->node;
-        }
-        curr = curr->next;
-    }
-    return NULL;
-}
-
 // Kinds the type check of `let` lets through whatever the other side is.
 static int skips_value_check(Type *t)
 {
@@ -336,31 +321,6 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
             }
 
             ASTNode *arg = parse_expression(ctx, l);
-            check_move_usage(ctx, arg, arg ? arg->token : t1);
-
-            if (arg && arg->kind == NODE_EXPR_VAR)
-            {
-                Type *inner_t =
-                    arg->type_info ? arg->type_info : find_symbol_type_info(ctx, arg->var_ref.name);
-                if (!inner_t)
-                {
-                    ZenSymbol *s = find_symbol_entry(ctx, arg->var_ref.name);
-                    if (s)
-                    {
-                        inner_t = s->type_info;
-                    }
-                }
-
-                if (!is_type_copy(ctx, inner_t))
-                {
-                    ZenSymbol *s = find_symbol_entry(ctx, arg->var_ref.name);
-                    if (s)
-                    {
-                        s->is_moved = 1;
-                    }
-                }
-            }
-
             if (sig && sig->arg_types && res.count < sig->total_args && arg && !res.has_named)
             {
                 check_argument_type(ctx, sig->arg_types[res.count], arg);
@@ -439,20 +399,6 @@ void validate_named_arguments(Token call_token, const char *func_name, char **ar
 }
 
 // Helper to check if a type is a struct type
-
-void check_move_usage(ParserContext *ctx, ASTNode *node, Token t)
-{
-    (void)t;
-    (void)ctx;
-    if (!node)
-    {
-        return;
-    }
-    if (node->kind == NODE_EXPR_VAR)
-    {
-        // Move check placeholder: find_symbol_entry(ctx, node->var_ref.name);
-    }
-}
 
 // The sscanf conversion that writes a value of type `t`: its length modifier
 // must match the size of the variable, or the value overwrites what follows it.

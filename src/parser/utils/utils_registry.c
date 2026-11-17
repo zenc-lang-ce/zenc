@@ -272,6 +272,7 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
         }
     }
 
+    ensure_global_scope(ctx);
     ZenSymbol *sym_existing = symbol_lookup_local(ctx->global_scope, name);
     ZenSymbol *sym = NULL;
     if (!sym_existing)
@@ -336,7 +337,7 @@ FuncSig *index_method(ParserContext *ctx, Type *t, const char *method)
         }
         for (ASTNode *m = it->impl_node->impl.methods; m; m = m->next)
         {
-            if (m->func.name && strcmp(m->func.name, template_name) == 0)
+            if (m->func.name && strcmp(function_c_name(m), template_name) == 0)
             {
                 sig = xcalloc(1, sizeof(FuncSig));
                 sig->ret_type = m->func.ret_type_info;
@@ -958,12 +959,11 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
         ASTNode *n = ctx->current_impl_methods;
         while (n)
         {
-            if (n->kind == NODE_FUNCTION && n->func.name[0] == name[0] &&
-                strcmp(n->func.name, name) == 0)
+            if (n->kind == NODE_FUNCTION && n->func.name && strcmp(function_c_name(n), name) == 0)
             {
                 FuncSig *sig = xcalloc(1, sizeof(FuncSig));
-                sig->name = n->func.name;
-                sig->own_name = n->func.method_name;
+                sig->name = function_c_name(n);
+                sig->own_name = n->func.is_method ? n->func.name : NULL;
                 sig->decl_token = n->token;
                 sig->total_args = n->func.count;
                 sig->default_values = n->func.default_values;

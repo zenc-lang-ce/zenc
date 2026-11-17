@@ -341,6 +341,19 @@ static int rewrite_index_set(TypeChecker *tc, ASTNode *node, int depth)
     return 1;
 }
 
+// Whether a value of type `t` (resolved) is a pointer, or a string, which C compares with null.
+static int is_pointer_like(Type *t)
+{
+    return t && (t->kind == TYPE_POINTER || t->kind == TYPE_STRING);
+}
+
+// Whether `e` is the literal 0: compared with a pointer, it is null.
+static int is_null_literal(ASTNode *e)
+{
+    return e && e->kind == NODE_EXPR_LITERAL && e->literal.kind == LITERAL_INT &&
+           e->literal.int_val == 0;
+}
+
 void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
 {
     OperatorKind binop = node->binary.op;
@@ -758,8 +771,16 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 int pointer_and_void_pointer =
                     (is_void_pointer(left_type) && right_resolved->kind == TYPE_POINTER) ||
                     (is_void_pointer(right_type) && left_resolved->kind == TYPE_POINTER);
+                // A pointer or a string compared with the literal 0 compares it with null.
+                int pointer_and_null =
+                    (is_pointer_like(left_resolved) && is_null_literal(node->binary.right)) ||
+                    (is_pointer_like(right_resolved) && is_null_literal(node->binary.left));
+                // A generic parameter is compared once it is a type, in each instance.
+                int generic =
+                    left_resolved->kind == TYPE_GENERIC || right_resolved->kind == TYPE_GENERIC;
 
-                if ((!left_numeric || !right_numeric) && !pointer_and_void_pointer)
+                if ((!left_numeric || !right_numeric) && !pointer_and_void_pointer &&
+                    !pointer_and_null && !generic)
                 {
                     if ((left_type && left_type->kind == TYPE_UNKNOWN) ||
                         (right_type && right_type->kind == TYPE_UNKNOWN))
@@ -767,11 +788,15 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                         node->type_info = type_new(TYPE_BOOL);
                         return;
                     }
+                    // It stopped the build when the parser reported it: so it does here.
                     char msg[MAX_SHORT_MSG_LEN];
-                    snprintf(msg, sizeof(msg), "Cannot compare '%s' with incompatible types", op);
-                    const char *hints[] = {"Ensure both operands have the same or compatible types",
-                                           NULL};
-                    tc_error_with_hints(tc, node->token, msg, hints);
+                    snprintf(msg, sizeof(msg),
+                             "Type mismatch in comparison: cannot compare '%s' and '%s'",
+                             zen_c_type_spelling(tc->pctx, left_type),
+                             zen_c_type_spelling(tc->pctx, right_type));
+                    const char *hints[] = {
+                        "Both operands must have compatible types for comparison", NULL};
+                    tc_error_stopping_build(tc, node->token, msg, hints, NULL);
                 }
             }
         }
@@ -1529,6 +1554,9 @@ void check_expr_literal(TypeChecker *tc, ASTNode *node)
         break;
     case LITERAL_CHAR:
         node->type_info = type_new(TYPE_CHAR);
+        break;
+    case LITERAL_BOOL:
+        node->type_info = type_new(TYPE_BOOL);
         break;
     default:
         break;
