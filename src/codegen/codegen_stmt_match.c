@@ -24,17 +24,23 @@ static void emit_alternative_condition(ParserContext *ctx, MatchPattern *p, int 
         EMIT(ctx, "1");
         break;
     case PATTERN_RANGE:
-        EMIT(ctx, "(%s%d >= %s && %s%d %s %s)", subject, id, p->range_start, subject, id,
-             p->is_inclusive ? "<=" : "<", p->range_end);
+        EMIT(ctx, "(%s%d >= ", subject, id);
+        codegen_expression_bare(ctx, p->range_start);
+        EMIT(ctx, " && %s%d %s ", subject, id, p->is_inclusive ? "<=" : "<");
+        codegen_expression_bare(ctx, p->range_end);
+        EMIT(ctx, ")");
         break;
     case PATTERN_LITERAL:
-        if (p->literal[0] == '"')
+        if (is_string_literal(p->value))
         {
-            EMIT(ctx, "strcmp(%s%d, %s) == 0", subject, id, p->literal);
+            EMIT(ctx, "strcmp(%s%d, ", subject, id);
+            codegen_expression_bare(ctx, p->value);
+            EMIT(ctx, ") == 0");
         }
         else
         {
-            EMIT(ctx, "%s%d == %s", subject, id, p->literal);
+            EMIT(ctx, "%s%d == ", subject, id);
+            codegen_expression_bare(ctx, p->value);
         }
         break;
     case PATTERN_NAME:

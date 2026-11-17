@@ -20,6 +20,7 @@ This new release brings breaking changes to the language:
 - Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name: the special message "is a function of std/io.zc, which is not imported" is gone.
 
 ### Fixes
+- A `match` pattern can be a negative literal or a range with negative bounds (`-1 =>`, `-5..-2 =>`): a pattern that is a value is read as an expression, which `zc check` checks. Before, `-1 =>` was "Expected => after match pattern".
 - A variant written without its enum in a `match` (`Red =>`) is the one of the matched value's enum. It was the first variant of that name found among all the enums, so when another enum declared a variant with the same name, the arm compared the other enum's tag and was never taken.
 - The step of a range loop (`for i in 0..n step k`) is checked as an expression: `zc check` reports a name it does not know, which only the C compiler did.
 - A returned lambda takes the function's return type (`fn adder(n: int) -> fn(int) -> int { return x => x + n; }`), as one in a `let` with a type or passed as an argument does.

@@ -29,6 +29,59 @@ static void expect_match_arm_end(Lexer *l)
     }
 }
 
+// Whether the next token is a range operator, which it eats: `..`, `..<` or `..=`. Sets
+// `is_inclusive` for `..=`.
+static int eat_range_operator(Lexer *l, int *is_inclusive)
+{
+    ZenTokenType k = lexer_peek(l).kind;
+    if (k != TOK_DOTDOT && k != TOK_DOTDOT_EQ && k != TOK_DOTDOT_LT)
+    {
+        return 0;
+    }
+    *is_inclusive = (k == TOK_DOTDOT_EQ);
+    lexer_next(l);
+    return 1;
+}
+
+// A value in a pattern: a primary expression, or a negated one (`-1`). Nothing after it is
+// read: in `3 -> 1`, `->` is left for parse_match, which reports an arm written with `->`.
+static ASTNode *parse_pattern_value(ParserContext *ctx, Lexer *l)
+{
+    Token minus = lexer_peek(l);
+    if (minus.kind != TOK_OP || minus.len != 1 || minus.start[0] != '-')
+    {
+        return parse_expr_prec(ctx, l, PREC_PRIMARY);
+    }
+    lexer_next(l);
+    ASTNode *operand = parse_expr_prec(ctx, l, PREC_PRIMARY);
+    ASTNode *negated = ast_create(NODE_EXPR_UNARY);
+    negated->token = minus;
+    negated->unary.op = OP_NEG;
+    negated->unary.operand = operand;
+    negated->type_info = operand ? operand->type_info : NULL;
+    return negated;
+}
+
+// A pattern that is a value, not a name: a literal, a negated one (`-1`), or a range of them
+// (`'a'..='z'`, `-5..-2`).
+static MatchPattern *parse_value_pattern(ParserContext *ctx, Lexer *l)
+{
+    MatchPattern *pattern = xcalloc(1, sizeof(MatchPattern));
+    ASTNode *value = parse_pattern_value(ctx, l);
+    if (eat_range_operator(l, &pattern->is_inclusive))
+    {
+        pattern->kind = PATTERN_RANGE;
+        pattern->range_start = value;
+        pattern->range_end = parse_pattern_value(ctx, l);
+    }
+    else
+    {
+        pattern->kind = PATTERN_LITERAL;
+        pattern->value = value;
+    }
+    return pattern;
+}
+
 ASTNode *parse_match(ParserContext *ctx, Lexer *l)
 {
     init_builtins();
@@ -89,118 +142,111 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
 
         while (1)
         {
-            Token p = lexer_next(l);
-            char *written_scope = NULL;
-            // The scope by the name it is declared under (`m::Shape` is `base__Shape`), read as
-            // any path to a type is.
-            char *scope_name = NULL;
-            int scope_parts = 0;
-            char *written_name = token_strdup(p);
-            Token name_token = p;
-            Token scope_token = TOKEN_UNKNOWN;
-
-            while (1)
+            MatchPattern *alternative = NULL;
+            if (lexer_peek(l).kind != TOK_IDENT)
             {
-                skip_comments(l);
-                Token pk = lexer_peek(l);
-                if (pk.kind == TOK_DCOLON)
-                {
-                    lexer_next(l); // eat ::
-                    Token suffix = lexer_next(l);
-                    if (written_scope)
-                    {
-                        size_t scope_size = strlen(written_scope) + strlen(written_name) + 3;
-                        char *joined = xmalloc(scope_size);
-                        snprintf(joined, scope_size, "%s::%s", written_scope, written_name);
-                        scope_name = qualified_type_name(ctx, scope_name, written_name);
-                        written_scope = joined;
-                    }
-                    else
-                    {
-                        written_scope = written_name;
-                        scope_name = written_name;
-                    }
-                    scope_parts++;
-                    written_name = token_strdup(suffix);
-                    scope_token = name_token;
-                    name_token = suffix;
-                }
-                else if (pk.kind == TOK_LANGLE)
-                {
-                    lexer_next(l); // eat <
-                    int depth = 1;
-                    while (depth > 0)
-                    {
-                        Token t = lexer_next(l);
-                        if (t.kind == TOK_LANGLE)
-                        {
-                            depth++;
-                        }
-                        else if (t.kind == TOK_RANGLE)
-                        {
-                            depth--;
-                        }
-                        else if (t.kind == TOK_EOF)
-                        {
-                            break;
-                        }
-                    }
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            // A scope of one name (`Side::Right`) is a bare type name: one imported one by
-            // one, or in a module its own type.
-            if (scope_parts == 1)
-            {
-                char *declared = type_declaration_name(ctx, scope_name);
-                if (declared)
-                {
-                    scope_name = declared;
-                }
-            }
-
-            char *range_start = NULL;
-            char *range_end = NULL;
-            int range_is_inclusive = 0;
-            if (lexer_peek(l).kind == TOK_DOTDOT || lexer_peek(l).kind == TOK_DOTDOT_EQ ||
-                lexer_peek(l).kind == TOK_DOTDOT_LT)
-            {
-                range_is_inclusive = (lexer_peek(l).kind == TOK_DOTDOT_EQ);
-                lexer_next(l); // eat operator
-                Token end_tok = lexer_next(l);
-                range_start =
-                    scope_name ? mangle_module_symbol(scope_name, written_name) : written_name;
-                range_end = token_strdup(end_tok);
-            }
-
-            MatchPattern *alternative = xcalloc(1, sizeof(MatchPattern));
-            if (range_end)
-            {
-                alternative->kind = PATTERN_RANGE;
-                alternative->range_start = range_start;
-                alternative->range_end = range_end;
-                alternative->is_inclusive = range_is_inclusive;
-            }
-            else if (p.kind == TOK_IDENT && !written_scope && strcmp(written_name, "_") == 0)
-            {
-                alternative->kind = PATTERN_WILDCARD;
-            }
-            else if (p.kind == TOK_IDENT)
-            {
-                alternative->kind = PATTERN_NAME;
-                alternative->name.scope = scope_name;
-                alternative->name.name = written_name;
-                alternative->name_token = name_token;
-                alternative->scope_token = scope_token;
+                alternative = parse_value_pattern(ctx, l);
             }
             else
             {
-                alternative->kind = PATTERN_LITERAL;
-                alternative->literal = token_strdup(p);
+                Token p = lexer_next(l);
+                char *written_scope = NULL;
+                // The scope by the name it is declared under (`m::Shape` is `base__Shape`), read as
+                // any path to a type is.
+                char *scope_name = NULL;
+                int scope_parts = 0;
+                char *written_name = token_strdup(p);
+                Token name_token = p;
+                Token scope_token = TOKEN_UNKNOWN;
+
+                while (1)
+                {
+                    skip_comments(l);
+                    Token pk = lexer_peek(l);
+                    if (pk.kind == TOK_DCOLON)
+                    {
+                        lexer_next(l); // eat ::
+                        Token suffix = lexer_next(l);
+                        if (written_scope)
+                        {
+                            size_t scope_size = strlen(written_scope) + strlen(written_name) + 3;
+                            char *joined = xmalloc(scope_size);
+                            snprintf(joined, scope_size, "%s::%s", written_scope, written_name);
+                            scope_name = qualified_type_name(ctx, scope_name, written_name);
+                            written_scope = joined;
+                        }
+                        else
+                        {
+                            written_scope = written_name;
+                            scope_name = written_name;
+                        }
+                        scope_parts++;
+                        written_name = token_strdup(suffix);
+                        scope_token = name_token;
+                        name_token = suffix;
+                    }
+                    else if (pk.kind == TOK_LANGLE)
+                    {
+                        lexer_next(l); // eat <
+                        int depth = 1;
+                        while (depth > 0)
+                        {
+                            Token t = lexer_next(l);
+                            if (t.kind == TOK_LANGLE)
+                            {
+                                depth++;
+                            }
+                            else if (t.kind == TOK_RANGLE)
+                            {
+                                depth--;
+                            }
+                            else if (t.kind == TOK_EOF)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                // A scope of one name (`Side::Right`) is a bare type name: one imported one by
+                // one, or in a module its own type.
+                if (scope_parts == 1)
+                {
+                    char *declared = type_declaration_name(ctx, scope_name);
+                    if (declared)
+                    {
+                        scope_name = declared;
+                    }
+                }
+
+                alternative = xcalloc(1, sizeof(MatchPattern));
+                if (eat_range_operator(l, &alternative->is_inclusive))
+                {
+                    // A range from a constant (`LOW..10`): the start is that name.
+                    ASTNode *start = ast_create(NODE_EXPR_VAR);
+                    start->token = name_token;
+                    start->var_ref.name =
+                        scope_name ? mangle_module_symbol(scope_name, written_name) : written_name;
+                    alternative->kind = PATTERN_RANGE;
+                    alternative->range_start = start;
+                    alternative->range_end = parse_pattern_value(ctx, l);
+                }
+                else if (!written_scope && strcmp(written_name, "_") == 0)
+                {
+                    alternative->kind = PATTERN_WILDCARD;
+                }
+                else
+                {
+                    alternative->kind = PATTERN_NAME;
+                    alternative->name.scope = scope_name;
+                    alternative->name.name = written_name;
+                    alternative->name_token = name_token;
+                    alternative->scope_token = scope_token;
+                }
             }
             if (last_pattern)
             {

@@ -300,8 +300,10 @@ static char *rename_template(const char *text, const char *os, const char *ns)
     return os && ns ? replace_in_string(text, os, ns) : xstrdup(text);
 }
 
-// A copy of the alternatives of a match case, with rename_template applied to their text.
-static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char *os, const char *ns)
+// A copy of the alternatives of a match case: rename_template on the names, copy_ast_replacing
+// on the values.
+static MatchPattern *copy_patterns_replacing(ParserContext *ctx, MatchPattern *patterns,
+                                             const Bindings *b, const char *os, const char *ns)
 {
     MatchPattern *head = NULL;
     MatchPattern *last = NULL;
@@ -320,18 +322,9 @@ static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char 
         {
             copy->name.name = rename_template(src->name.name, os, ns);
         }
-        if (src->literal)
-        {
-            copy->literal = rename_template(src->literal, os, ns);
-        }
-        if (src->range_start)
-        {
-            copy->range_start = rename_template(src->range_start, os, ns);
-        }
-        if (src->range_end)
-        {
-            copy->range_end = rename_template(src->range_end, os, ns);
-        }
+        copy->value = copy_ast_replacing(ctx, src->value, b, os, ns);
+        copy->range_start = copy_ast_replacing(ctx, src->range_start, b, os, ns);
+        copy->range_end = copy_ast_replacing(ctx, src->range_end, b, os, ns);
         if (last)
         {
             last->next = copy;
@@ -545,7 +538,8 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         break;
 
     case NODE_MATCH_CASE:
-        new_node->match_case.patterns = copy_patterns_replacing(n->match_case.patterns, os, ns);
+        new_node->match_case.patterns =
+            copy_patterns_replacing(ctx, n->match_case.patterns, b, os, ns);
         new_node->match_case.binding_count = n->match_case.binding_count;
         if (n->match_case.binding_names)
         {

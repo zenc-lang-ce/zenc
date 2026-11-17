@@ -257,17 +257,17 @@ typedef enum
 typedef struct MatchPattern
 {
     PatternKind kind;
-    QualifiedName name; ///< PATTERN_NAME: the name; its scope by the name the type is declared
-                        ///< under (`base__Shape` for `m::Shape`, see type_declaration_name).
-    Token name_token;   ///< PATTERN_NAME: where the name is written, for the language server.
-    Token scope_token;  ///< PATTERN_NAME: where the last part of its scope is (`Color` of
-                        ///< `Color::Red`).
-    TypeMember variant; ///< PATTERN_NAME: the enum variant it names, which the typechecker
-                        ///< resolves (match_pattern_variant); no member for a constant.
-    char *literal;      ///< PATTERN_LITERAL: the literal, as written.
-    char *range_start;  ///< PATTERN_RANGE: the start, as written.
-    char *range_end;    ///< PATTERN_RANGE: the end, as written.
-    int is_inclusive;   ///< PATTERN_RANGE: `..=` rather than `..`.
+    QualifiedName name;   ///< PATTERN_NAME: the name; its scope by the name the type is declared
+                          ///< under (`base__Shape` for `m::Shape`, see type_declaration_name).
+    Token name_token;     ///< PATTERN_NAME: where the name is written, for the language server.
+    Token scope_token;    ///< PATTERN_NAME: where the last part of its scope is (`Color` of
+                          ///< `Color::Red`).
+    TypeMember variant;   ///< PATTERN_NAME: the enum variant it names, which the typechecker
+                          ///< resolves (match_pattern_variant); no member for a constant.
+    ASTNode *value;       ///< PATTERN_LITERAL: the value (`5`, `-1`, `'a'`, `"text"`).
+    ASTNode *range_start; ///< PATTERN_RANGE: the start.
+    ASTNode *range_end;   ///< PATTERN_RANGE: the end.
+    int is_inclusive;     ///< PATTERN_RANGE: `..=` rather than `..`.
     struct MatchPattern *next;
 } MatchPattern;
 

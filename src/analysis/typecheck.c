@@ -60,17 +60,21 @@ static void return_target(ParserContext *ctx, ASTNode *from, const char **name, 
     *type = from->func.ret_type_info;
 }
 
-// The enum variant each name of the match's patterns stands for (MatchPattern.variant): in the
-// enum its scope names (`Light::Red`), else in the matched value's enum (`Red` in a match on a
-// `Light`), else, when that type is not known, the first variant of that name. A name that is
-// none is a constant.
-static void resolve_pattern_variants(ParserContext *ctx, ASTNode *match)
+// The patterns of a match. Each value (`5`, `'a'..='z'`) is checked as an expression. Each name
+// gets the enum variant it stands for (MatchPattern.variant): in the enum its scope names
+// (`Light::Red`), else in the matched value's enum (`Red` in a match on a `Light`), else, when
+// that type is not known, the first variant of that name. A name that is none is a constant.
+static void check_patterns(TypeChecker *tc, ASTNode *match, int depth)
 {
+    ParserContext *ctx = tc->pctx;
     Type *subject = match_subject_type(match->match_stmt.expr->type_info);
     for (ASTNode *c = match->match_stmt.cases; c; c = c->next)
     {
         for (MatchPattern *p = c->match_case.patterns; p; p = p->next)
         {
+            check_node(tc, p->value, depth + 1);
+            check_node(tc, p->range_start, depth + 1);
+            check_node(tc, p->range_end, depth + 1);
             if (p->kind != PATTERN_NAME)
             {
                 continue;
@@ -449,7 +453,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
     }
     case NODE_MATCH:
         check_node(tc, node->match_stmt.expr, depth + 1);
-        resolve_pattern_variants(tc->pctx, node);
+        check_patterns(tc, node, depth);
         misra_check_match_stmt(tc->pctx, node);
         // Visit each match case
         {

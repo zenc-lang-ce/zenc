@@ -1,0 +1,14 @@
+// ARGS: check
+// A match arm is written with `=>`. A pattern that is a value is read up to its end, so the `->`
+// after it is reported as an arm written with `->`, not read as member access on the value.
+
+fn pick(x: int) -> int {
+    match x {
+        3 -> 1,
+        _ => 0,
+    }
+}
+
+fn main() {
+    let _a = pick(3);
+}
