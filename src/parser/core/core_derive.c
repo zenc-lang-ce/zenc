@@ -14,28 +14,32 @@
 #include "utils/emitter.h"
 #include "utils/utils.h"
 
-// 1 if `type_name` has a `clone` method: a concrete one (`String__clone`), one from a generic
-// impl whose instance this is (`Vec__int32_t` from `impl Vec<T>`), or one it derives further down.
-static int type_has_clone_method(ParserContext *ctx, const char *type_name)
+// 1 if `type` has a `clone` method: a concrete one (`String__clone`, `Point__Clone__clone`), one
+// from a generic impl of its template (`Vec<int>` from `impl Vec<T>`), or one it derives further
+// down.
+static int type_has_clone_method(ParserContext *ctx, Type *type)
 {
-    char *mangled = mangle_method_symbol(type_name, NULL, "clone");
-    if (find_func(ctx, mangled) || derives_pending(ctx, type_name, "Clone"))
+    char *type_name = type_def_name(type);
+    // From `impl X` or from `impl Clone for X`.
+    if (find_func(ctx, mangle_method_symbol(type_name, NULL, "clone")) ||
+        find_func(ctx, mangle_method_symbol(type_name, "Clone", "clone")) ||
+        derives_pending(ctx, type_name, "Clone"))
     {
         return 1;
     }
-    Instantiation *inst = find_instantiation(ctx, type_name);
-    const char *template_name = inst ? inst->template_name : type_name;
+    // An instance's template is in its type (`Vec` of `Vec<int>`), made or not yet.
+    const char *template_name = type->count > 0 ? type->name : type_name;
     for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
     {
         if (strcmp(it->struct_name, template_name) != 0)
         {
             continue;
         }
-        char *template_method = mangle_method_symbol(it->struct_name, NULL, "clone");
-        for (ASTNode *m = it->impl_node->impl.methods; m; m = m->next)
+        ASTNode *impl = it->impl_node;
+        ASTNode *methods = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
+        for (ASTNode *m = methods; m; m = m->next)
         {
-            if (m->kind == NODE_FUNCTION && m->func.name &&
-                strcmp(function_c_name(m), template_method) == 0)
+            if (m->kind == NODE_FUNCTION && m->func.name && strcmp(m->func.name, "clone") == 0)
             {
                 return 1;
             }
@@ -191,8 +195,8 @@ static void emit_clone(Emitter *code, ParserContext *ctx, ASTNode *decl, const c
             }
 
             Type *type = field->type_info;
-            int cloned = type && type->kind == TYPE_STRUCT && type->name &&
-                         type_has_clone_method(ctx, type_def_name(type));
+            int cloned =
+                type && type->kind == TYPE_STRUCT && type->name && type_has_clone_method(ctx, type);
             emitter_printf(code, "%s: self.%s%s, ", field->field.name, field->field.name,
                            cloned ? ".clone()" : "");
         }
