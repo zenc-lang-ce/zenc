@@ -1,15 +1,48 @@
 // compiler/check_clean: `zc check` must accept this file with no errors.
 // A literal written without a suffix, or an expression of such literals, takes
-// the type it is declared with; a lambda takes the function type it is
-// declared with. A `def` without a type has the type of its value.
+// the type its context expects: the declared type of a `let` or `def`, a
+// function's return type, a parameter's type, a field's type, the type of the
+// place assigned to, and in an array literal the element type. A lambda takes
+// the function type it is given. A `def` without a type has the type of its
+// value.
 
 def RATIO: f64 = 2;
 def MASK: u8 = 1 << 3;
 def SCALE = 2.5;
 def NAME = "zen";
 
+struct Point {
+    x: f32;
+    y: f64;
+}
+
+struct Pair<T> {
+    a: T;
+    b: T;
+}
+
+impl Pair<T> {
+    static fn zero() -> Pair<T> {
+        return Pair<T>{a: 0, b: -1};
+    }
+}
+
+alias Real = f64;
+
 fn twice(x: i32) -> i32 {
     return x * 2;
+}
+
+fn half() -> f64 {
+    return 1;
+}
+
+fn below() -> Real {
+    return -1;
+}
+
+fn sum(a: f32, b: f64, items: [f64]) -> f64 {
+    return (f64)a + b + items[1];
 }
 
 fn main() {
@@ -27,4 +60,17 @@ fn main() {
     let s: f64 = SCALE;
     let n: string = NAME;
     assert(s == 2.5 && n[0] == 'z', "the untyped constants");
+
+    let neg: f64 = -1;
+    assert(neg == -1.0 && half() == 1.0 && below() == -1.0, "a negated literal and a return");
+    let p = Point{x: 1, y: 2 * 3};
+    assert(p.x == 1.0 && p.y == 6.0, "the fields");
+    let z = Pair<f32>::zero();
+    let q = Pair<f64>{a: 4, b: -4};
+    assert(z.a == 0.0 && z.b == -1.0 && q.a == 4.0 && q.b == -4.0, "a generic struct's fields");
+    assert(sum(1, 2, [0, 3]) == 6.0, "the arguments and a slice literal");
+    let r: Real = 0.5;
+    r = 2;
+    let grid: f32[2][2] = [[0, 1], [2, -3]];
+    assert(r == 2.0 && grid[1][1] == -3.0, "an assignment and an array literal");
 }

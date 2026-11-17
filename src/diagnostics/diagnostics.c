@@ -329,6 +329,16 @@ void warn_shadowing(Token t, const char *var_name)
     zwarn_with_suggestion(t, msg, "This can lead to confusion");
 }
 
+void warn_unreachable_code(Token t)
+{
+    if (!is_diag_enabled(DIAG_LOGIC_UNREACHABLE))
+    {
+        return;
+    }
+    zwarn_with_suggestion(t, "Unreachable code detected",
+                          "Remove unreachable code or restructure control flow");
+}
+
 void warn_comparison_always_true(Token t, const char *reason)
 {
     if (!is_diag_enabled(DIAG_LOGIC_ALWAYS_TRUE))

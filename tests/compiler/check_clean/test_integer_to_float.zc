@@ -1,0 +1,33 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// An integer converts to a float without a cast, as in C, wherever a value is
+// checked against a type: a `let`, a field, an argument, a `return` and an
+// assignment, also through an alias.
+
+struct Sample {
+    value: f64;
+}
+
+alias Count = u16;
+
+fn half(v: f32) -> f32 {
+    return v / 2.0;
+}
+
+fn as_real(n: i32) -> f64 {
+    return n;
+}
+
+test "an integer converts to a float" {
+    let i: i32 = 7;
+    let small: i16 = 3;
+    let c: Count = 8;
+    let a: f64 = i;
+    let b: f32 = small;
+    let s = Sample{value: i};
+    expect(a == 7.0 && b == 3.0, "a let should take the integer's value");
+    expect(s.value == 7.0, "a field should take the integer's value");
+    expect(half(c) == 4.0, "an argument should take the alias's integer value");
+    expect(as_real(i) == 7.0, "a return should take the integer's value");
+    a = i * 2;
+    expect(a == 14.0, "an assignment should take the integer's value");
+}

@@ -1,0 +1,17 @@
+// ARGS: check
+// A constant shift amount must be below the width of what is shifted, as C
+// requires; a type narrower than int is shifted as an int. Named constants and
+// negative amounts count too.
+
+def BIG = 70;
+
+fn main() {
+    let b: u8 = 1;
+    let w: u64 = 1;
+    let i: i32 = 1;
+    let _bad_wide = w << 64;
+    let _bad_int = i << 32;
+    let _bad_named = w << BIG;
+    let _bad_negative = i >> -1;
+    let _bad_narrow = b << 32;
+}

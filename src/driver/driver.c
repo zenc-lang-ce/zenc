@@ -269,7 +269,6 @@ static int compile_program(ZenCompiler *compiler)
     // Semantic Analysis & Validation
     if (!compiler->config.mode_doc || compiler->config.use_typecheck)
     {
-        propagate_vector_inner_types(&ctx);
         propagate_drop_traits(&ctx);
         fix_type_refs_has_drop(&ctx);
 

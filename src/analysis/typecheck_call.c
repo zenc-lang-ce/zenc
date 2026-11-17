@@ -250,7 +250,10 @@ static void check_format_string(TypeChecker *tc, ASTNode *call)
 
 void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
 {
+    int prev_callee = tc->is_callee;
+    tc->is_callee = node->call.callee && node->call.callee->kind == NODE_EXPR_VAR;
     check_node(tc, node->call.callee, depth + 1);
+    tc->is_callee = prev_callee;
 
     const char *func_name = NULL;
     FuncSig *sig = NULL;
@@ -325,26 +328,6 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                 if (c_return)
                 {
                     node->type_info = c_return;
-                }
-            }
-
-            if (!sym)
-            {
-                ZenSymbol *global_sym = find_symbol_in_all(tc->pctx, func_name);
-                if (!global_sym && !should_suppress_undef_warning(tc->pctx, func_name))
-                {
-                    char msg[MAX_SHORT_MSG_LEN];
-                    if (tc->pctx->config->misra_mode)
-                    {
-                        snprintf(msg, sizeof(msg), "Undefined function '%s' (MISRA Rule 17.3)",
-                                 func_name);
-                    }
-                    else
-                    {
-                        snprintf(msg, sizeof(msg), "Undefined function '%s'", func_name);
-                    }
-                    const char *hints[] = {"Check if the function is defined or imported", NULL};
-                    tc_error_with_hints(tc, node->call.callee->token, msg, hints);
                 }
             }
         }

@@ -11,6 +11,14 @@
 
 struct MoveState; // Forward declaration
 
+/// A loop being checked, so that a `break` can say it leaves it.
+typedef struct LoopFrame
+{
+    const char *label;       ///< The loop's label, or NULL.
+    int has_break;           ///< A `break` leaves this loop: the code after it is reachable.
+    struct LoopFrame *outer; ///< The enclosing loop in the same function.
+} LoopFrame;
+
 // Type Checker Context
 // Holds the state during the semantic analysis pass.
 // Unlike the parser, this focuses on semantic validity (types, definitions).
@@ -35,6 +43,7 @@ typedef struct TypeChecker
     struct MoveState *loop_continue_state;
     struct MoveState *loop_start_state;
     int in_loop_pass2;
+    LoopFrame *current_loop; ///< Innermost loop being checked; NULL outside loops.
 
     // Configuration
     int move_checks_only; ///< If true, only report move semantics violations (no type errors).
@@ -43,6 +52,7 @@ typedef struct TypeChecker
     int is_assign_lhs;      ///< If true, currently evaluating LHS of assignment.
     int is_stmt_context;    ///< If true, expression is a top-level statement.
     int is_forget_receiver; ///< If true, receiver of a .forget() call (use-after-move is expected).
+    int is_callee;          ///< If true, the name being checked is the one a call calls.
     int loop_break_count;   ///< Count of breaks for Rule 15.4
     int func_return_count;  ///< Count of returns for Rule 15.5
     int current_depth;      ///< Current nesting level for escape analysis (0=global).
@@ -77,6 +87,11 @@ int check_moves_only(ParserContext *ctx, ASTNode *root);
 // Error helpers available to move_check.c
 void tc_error(TypeChecker *tc, Token t, const char *msg);
 void tc_warning(TypeChecker *tc, Token t, const char *msg);
+
+/**
+ * @brief Reports code that no path reaches: a warning, or an error under MISRA (Rule 2.1).
+ */
+void tc_unreachable_code(TypeChecker *tc, Token t);
 int tc_file_in_std(TypeChecker *tc, const char *file);
 /**
  * @brief Where the place `place` lives, for escape analysis: the scope depth of a variable (0 for

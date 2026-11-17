@@ -1,0 +1,58 @@
+   Compiling tests/compiler/diagnostics_output/vector_operator_errors.zc...
+warning: Unused variable 'flipped'
+  --> tests/compiler/diagnostics_output/vector_operator_errors.zc:12:9
+   |
+12 |     let flipped = ~a;
+   |         ^ here
+   |
+   = note: Consider removing it or prefixing with '_'
+warning: Unused variable 'bits'
+  --> tests/compiler/diagnostics_output/vector_operator_errors.zc:11:9
+   |
+11 |     let bits = a & a;
+   |         ^ here
+   |
+   = note: Consider removing it or prefixing with '_'
+warning: Unused variable 'scalar'
+  --> tests/compiler/diagnostics_output/vector_operator_errors.zc:10:9
+   |
+10 |     let scalar = a * 2.0;
+   |         ^ here
+   |
+   = note: Consider removing it or prefixing with '_'
+warning: Unused variable 'mixed'
+  --> tests/compiler/diagnostics_output/vector_operator_errors.zc:9:9
+   |
+9  |     let mixed = a + i;
+   |         ^ here
+   |
+   = note: Consider removing it or prefixing with '_'
+error: Vector operation requires operands of same vector type
+  --> tests/compiler/diagnostics_output/vector_operator_errors.zc:9:19
+   |
+9  |     let mixed = a + i;
+   |                   ^ here
+   |
+error: Vector operation requires operands of same vector type
+  --> tests/compiler/diagnostics_output/vector_operator_errors.zc:10:20
+   |
+10 |     let scalar = a * 2.0;
+   |                    ^ here
+   |
+error: Bitwise operator '&' requires integers or vectors of integers
+  --> tests/compiler/diagnostics_output/vector_operator_errors.zc:11:18
+   |
+11 |     let bits = a & a;
+   |                  ^ here
+   |
+   = help: Bitwise operators only work on integers and vectors of integers
+error: Cannot apply ~ to non-integer type
+  --> tests/compiler/diagnostics_output/vector_operator_errors.zc:12:19
+   |
+12 |     let flipped = ~a;
+   |                   ^ here
+   |
+   = help: Bitwise NOT requires an integer operand
+     error: semantic analysis found 4 errors
+       Check failed with 4 errors
+[exit 1]

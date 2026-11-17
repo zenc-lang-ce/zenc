@@ -1,0 +1,25 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A `@vector` struct is a vector wherever its name is used (a literal, a
+// parameter, a return type): the operators apply lane by lane, and indexing
+// gives a lane.
+import "std/simd.zc"
+
+fn add(a: f32x4, b: f32x4) -> f32x4 {
+    return a + b * a - b / a;
+}
+
+fn mask(x: i32x4, y: i32x4) -> i32x4 {
+    return ~((x & y) | (x ^ y));
+}
+
+test "vector operators" {
+    let a = f32x4{v: 1.0};
+    let b = f32x4{1.0, 2.0, 3.0, 4.0};
+    let c = add(a, b);
+    let lane: f32 = c[1];
+    let n = -c;
+    let m = mask(i32x4{v: 3}, i32x4{v: 6});
+    assert(lane == 1.0, "a + b * a - b / a, lane 1");
+    assert(n[1] == -1.0, "negation");
+    assert(m[2] == -8, "~(3 & 6 | 3 ^ 6)");
+}

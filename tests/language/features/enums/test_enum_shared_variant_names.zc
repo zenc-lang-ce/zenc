@@ -18,7 +18,6 @@ fn value_of(subject: Subject) -> Value {
         Subject::Person(_) => { return Value::Nothing; },
         _ => { return Value::Hour(1); },
     }
-    return Value::Hour(2);
 }
 
 test "comparison against a shared variant name" {

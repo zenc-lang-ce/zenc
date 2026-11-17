@@ -742,9 +742,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 // Vector positional init: e.g. f32x4{1.0, 2.0, 3.0, 4.0}
                 // First token is not an ident (it's a literal/expr), check if this is a vector type
-                ASTNode *vec_def = find_struct_def(ctx, acc);
-                if (vec_def && vec_def->kind == NODE_STRUCT && vec_def->type_info &&
-                    vec_def->type_info->kind == TYPE_VECTOR)
+                if (vector_type_named(ctx, acc))
                 {
                     is_struct_init = 1;
                 }
@@ -854,8 +852,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
                 // Check if this is a vector type for positional init
                 int is_vector_init = 0;
-                if (def && def->kind == NODE_STRUCT && def->type_info &&
-                    def->type_info->kind == TYPE_VECTOR)
+                if (def && def->kind == NODE_STRUCT && vector_type_of(ctx, def->type_info))
                 {
                     // Peek ahead: if first value is not followed by ':',
                     // this is positional vector init like f32x4{1.0, 2.0, 3.0, 4.0}
@@ -1142,96 +1139,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     ASTNode *def = copy_default_value(ctx, sig, i, t);
                     Type *expected = sig->arg_types[i];
+                    // A trait parameter takes a trait object, built as for a written argument.
                     if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
                     {
-                        Type *arg_type = def->type_info
-                                             ? def->type_info
-                                             : ((def->kind == NODE_EXPR_VAR)
-                                                    ? find_symbol_type_info(ctx, def->var_ref.name)
-                                                    : NULL);
-
-                        if (!arg_type && def->kind == NODE_EXPR_UNARY &&
-                            def->unary.op == OP_ADDRESS)
-                        {
-                            if (def->unary.operand->kind == NODE_EXPR_VAR)
-                            {
-                                Type *inner =
-                                    find_symbol_type_info(ctx, def->unary.operand->var_ref.name);
-                                if (inner && inner->kind == TYPE_STRUCT)
-                                {
-                                    if (check_impl(ctx, type_def_name(expected),
-                                                   type_def_name(inner)))
-                                    {
-                                        ASTNode *init = ast_create(NODE_EXPR_STRUCT_INIT);
-                                        init->struct_init.struct_name = xstrdup(expected->name);
-
-                                        Type *trait_type = type_new(TYPE_STRUCT);
-                                        trait_type->name = xstrdup(expected->name);
-                                        init->type_info = trait_type;
-
-                                        ASTNode *f_self = ast_create(NODE_FIELD_INIT);
-                                        f_self->var_decl.name = xstrdup("self");
-                                        f_self->var_decl.init_expr = def;
-
-                                        char *vtable_name = mangle_vtable_symbol(
-                                            type_def_name(inner), type_def_name(expected));
-
-                                        ASTNode *vtable_var = ast_create(NODE_EXPR_VAR);
-                                        vtable_var->var_ref.name = xstrdup(vtable_name);
-
-                                        ASTNode *vtable_ref = ast_create(NODE_EXPR_UNARY);
-                                        vtable_ref->unary.op = OP_ADDRESS;
-                                        vtable_ref->unary.operand = vtable_var;
-
-                                        ASTNode *f_vtable = ast_create(NODE_FIELD_INIT);
-                                        f_vtable->var_decl.name = xstrdup("vtable");
-                                        f_vtable->var_decl.init_expr = vtable_ref;
-
-                                        f_self->next = f_vtable;
-                                        init->struct_init.fields = f_self;
-
-                                        def = init;
-                                    }
-                                }
-                            }
-                        }
-                        else if (arg_type && arg_type->kind == TYPE_POINTER && arg_type->inner &&
-                                 arg_type->inner->kind == TYPE_STRUCT)
-                        {
-                            if (check_impl(ctx, type_def_name(expected),
-                                           type_def_name(arg_type->inner)))
-                            {
-                                ASTNode *init = ast_create(NODE_EXPR_STRUCT_INIT);
-                                init->struct_init.struct_name = xstrdup(expected->name);
-
-                                Type *trait_type = type_new(TYPE_STRUCT);
-                                trait_type->name = xstrdup(expected->name);
-                                init->type_info = trait_type;
-
-                                ASTNode *f_self = ast_create(NODE_FIELD_INIT);
-                                f_self->var_decl.name = xstrdup("self");
-                                f_self->var_decl.init_expr = def;
-
-                                char *vtable_name = mangle_vtable_symbol(
-                                    type_def_name(arg_type->inner), type_def_name(expected));
-
-                                ASTNode *vtable_var = ast_create(NODE_EXPR_VAR);
-                                vtable_var->var_ref.name = xstrdup(vtable_name);
-
-                                ASTNode *vtable_ref = ast_create(NODE_EXPR_UNARY);
-                                vtable_ref->unary.op = OP_ADDRESS;
-                                vtable_ref->unary.operand = vtable_var;
-
-                                ASTNode *f_vtable = ast_create(NODE_FIELD_INIT);
-                                f_vtable->var_decl.name = xstrdup("vtable");
-                                f_vtable->var_decl.init_expr = vtable_ref;
-
-                                f_self->next = f_vtable;
-                                init->struct_init.fields = f_self;
-
-                                def = init;
-                            }
-                        }
+                        def = transform_to_trait_object(ctx, type_def_name(expected), def);
                     }
 
                     if (!head)
@@ -1258,6 +1169,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             node = ast_create(NODE_EXPR_CALL);
             node->token = t;
             ASTNode *callee = ast_create(NODE_EXPR_VAR);
+            callee->token = t;
             callee->var_ref.name = acc;
             callee->var_ref.variant = variant;
             callee->var_ref.instance = instance;
@@ -2032,23 +1944,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 {
                     idx_node->type_info = arr_type->inner;
                 }
-                else if (arr_type && arr_type->name &&
-                         (arr_type->kind == TYPE_VECTOR || arr_type->kind == TYPE_STRUCT ||
-                          arr_type->kind == TYPE_ARRAY))
+                else if (vector_type_of(ctx, arr_type))
                 {
-                    // Look up struct def to check if it's a vector type
-                    ASTNode *def = find_struct_def(ctx, type_def_name(arr_type));
-                    if (def && def->kind == NODE_STRUCT && def->type_info &&
-                        def->type_info->kind == TYPE_VECTOR && def->strct.fields &&
-                        def->strct.fields->type_info)
-                    {
-                        arr_type->inner = def->strct.fields->type_info;
-                        idx_node->type_info = def->strct.fields->type_info;
-                    }
-                    else
-                    {
-                        idx_node->type_info = type_new(TYPE_I32);
-                    }
+                    idx_node->type_info = vector_type_of(ctx, arr_type)->inner;
                 }
                 else
                 {

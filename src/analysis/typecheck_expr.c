@@ -61,8 +61,32 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
     }
 }
 
+// What an arithmetic or bitwise operator works on: the element of a vector (it applies lane by
+// lane), or, for an opaque alias of a number, that number in the file that defines it.
+static Type *operand_scalar(TypeChecker *tc, Type *t, Token at)
+{
+    Type *vector = vector_type_of(tc->pctx, t);
+    return vector ? vector->inner : type_seen_from(t, at.file);
+}
+
+// `void*`, the generic pointer: it converts to and from any pointer, and compares with one.
+static int is_void_pointer(Type *t)
+{
+    t = resolve_alias(t);
+    return t && t->kind == TYPE_POINTER && t->inner && resolve_alias(t->inner)->kind == TYPE_VOID;
+}
+
 void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
 {
+    // `&&label` (GNU C) is the address of a label, a void*: its operand names a label, not a value.
+    if (node->unary.op == OP_PREFIX_AND_AND)
+    {
+        Type *void_pointer = type_new(TYPE_POINTER);
+        void_pointer->inner = type_new(TYPE_VOID);
+        node->type_info = void_pointer;
+        return;
+    }
+
     check_node(tc, node->unary.operand, depth + 1);
 
     Type *operand_type = node->unary.operand->type_info;
@@ -83,7 +107,8 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     // Numeric negation: -
     if (unop == OP_NEG)
     {
-        if (!is_integer_type(operand_type) && !is_float_type(operand_type))
+        Type *scalar = operand_scalar(tc, operand_type, node->token);
+        if (!is_integer_type(scalar) && !is_float_type(scalar))
         {
             const char *hints[] = {"Negation requires a numeric operand", NULL};
             tc_error_with_hints(tc, node->token, "Cannot negate non-numeric type", hints);
@@ -129,7 +154,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     // Bitwise NOT: ~
     if (unop == OP_BIT_NOT)
     {
-        if (!is_integer_type(operand_type))
+        if (!is_integer_type(operand_scalar(tc, operand_type, node->token)))
         {
             const char *hints[] = {"Bitwise NOT requires an integer operand", NULL};
             tc_error_with_hints(tc, node->token, "Cannot apply ~ to non-integer type", hints);
@@ -201,12 +226,31 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
     }
 }
 
+// MISRA Rule 12.4: a constant `+`, `-` or `*`, the binary `node`, must not wrap around in the
+// unsigned type `target` it is evaluated in.
+static void misra_check_constant_wrap(TypeChecker *tc, ASTNode *node, Type *target)
+{
+    OperatorKind op = node->binary.op;
+    if (!tc->pctx->config->misra_mode || !target || !is_integer_type(target) ||
+        (op != OP_ADD && op != OP_SUB && op != OP_MUL))
+    {
+        return;
+    }
+    long long lval, rval;
+    if (!eval_const_int_expr(node->binary.left, tc->pctx, &lval) ||
+        !eval_const_int_expr(node->binary.right, tc->pctx, &rval))
+    {
+        return;
+    }
+    long long res = op == OP_ADD ? lval + rval : op == OP_SUB ? lval - rval : lval * rval;
+    misra_check_unsigned_wrap(tc->pctx, op, lval, rval, res, target, node->token);
+}
+
 void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
 {
     OperatorKind binop = node->binary.op;
     const char *op = operator_spelling(binop);
     OperatorClass op_class = operator_class(binop);
-    Type *contextual_type = node->type_info;
 
     if (is_assignment_operator(binop))
     {
@@ -502,13 +546,12 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 return;
             }
 
-            // An opaque alias of a number is a number in the file that defines it.
-            Type *left_seen = type_seen_from(left_type, node->token.file);
-            Type *right_seen = type_seen_from(right_type, node->token.file);
-            int left_numeric = is_integer_type(left_seen) || is_float_type(left_seen) ||
-                               left_type->kind == TYPE_VECTOR;
-            int right_numeric = is_integer_type(right_seen) || is_float_type(right_seen) ||
-                                right_type->kind == TYPE_VECTOR;
+            Type *left_scalar = operand_scalar(tc, left_type, node->token);
+            Type *right_scalar = operand_scalar(tc, right_type, node->token);
+            Type *left_vector = vector_type_of(tc->pctx, left_type);
+            Type *right_vector = vector_type_of(tc->pctx, right_type);
+            int left_numeric = is_integer_type(left_scalar) || is_float_type(left_scalar);
+            int right_numeric = is_integer_type(right_scalar) || is_float_type(right_scalar);
 
             if (!left_numeric || !right_numeric)
             {
@@ -525,9 +568,9 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                     NULL};
                 tc_error_with_hints(tc, node->token, msg, hints);
             }
-            else if (left_type->kind == TYPE_VECTOR || right_type->kind == TYPE_VECTOR)
+            else if (left_vector || right_vector)
             {
-                if (left_type->kind != right_type->kind || !type_eq(left_type, right_type))
+                if (left_vector != right_vector)
                 {
                     tc_error(tc, node->token,
                              "Vector operation requires operands of same vector type");
@@ -541,38 +584,9 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 misra_check_binary_op_essential_types(tc->pctx, node->binary.left,
                                                       node->binary.right, node->token);
 
-                // MISRA Rule 12.4: Evaluation of constant expressions shall not lead to unsigned
-                // wrap Use the contextually pushed down type (stored in node->type_info before this
-                // function) or fall back to the inferred operand type.
-                Type *target_type = contextual_type ? contextual_type : left_type;
-
-                if (tc->pctx->config->misra_mode && target_type && is_integer_type(target_type))
-                {
-                    long long lval, rval;
-                    if (eval_const_int_expr(node->binary.left, tc->pctx, &lval) &&
-                        eval_const_int_expr(node->binary.right, tc->pctx, &rval))
-                    {
-                        long long res = 0;
-                        if (binop == OP_ADD)
-                        {
-                            res = lval + rval;
-                        }
-                        else if (binop == OP_SUB)
-                        {
-                            res = lval - rval;
-                        }
-                        else if (binop == OP_MUL)
-                        {
-                            res = lval * rval;
-                        }
-
-                        if (binop == OP_ADD || binop == OP_SUB || binop == OP_MUL)
-                        {
-                            misra_check_unsigned_wrap(tc->pctx, binop, lval, rval, res, target_type,
-                                                      node->token);
-                        }
-                    }
-                }
+                // MISRA Rule 12.4, in the operands' type; in the type of its context, where the
+                // constant takes it (check_type_compatibility).
+                misra_check_constant_wrap(tc, node, left_type);
 
                 // Rule 10.2: Character arithmetic
                 misra_check_char_arithmetic(tc->pctx, left_type, right_type, binop, node->token);
@@ -636,8 +650,13 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 Type *right_seen = type_seen_from(right_type, node->token.file);
                 int left_numeric = is_integer_type(left_seen) || is_float_type(left_seen);
                 int right_numeric = is_integer_type(right_seen) || is_float_type(right_seen);
+                Type *left_resolved = resolve_alias(left_type);
+                Type *right_resolved = resolve_alias(right_type);
+                int pointer_and_void_pointer =
+                    (is_void_pointer(left_type) && right_resolved->kind == TYPE_POINTER) ||
+                    (is_void_pointer(right_type) && left_resolved->kind == TYPE_POINTER);
 
-                if (!left_numeric || !right_numeric)
+                if ((!left_numeric || !right_numeric) && !pointer_and_void_pointer)
                 {
                     if ((left_type && left_type->kind == TYPE_UNKNOWN) ||
                         (right_type && right_type->kind == TYPE_UNKNOWN))
@@ -667,53 +686,53 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
     // Bitwise operators: &, |, ^, <<, >>
     if (op_class == OPERATOR_BITWISE || op_class == OPERATOR_SHIFT)
     {
-        // MISRA Rule 12.2: Shift amount validation for << and >>
-        if (tc->pctx->config->misra_mode && op_class == OPERATOR_SHIFT)
+        // A constant shift amount must be below the width of what is shifted, as C requires: C
+        // shifts a type narrower than int as an int. MISRA Rule 12.2 counts the type's own width.
+        long long shift_amt;
+        int width = integer_type_width(get_inner_type(left_type));
+        int promoted = !tc->pctx->config->misra_mode && width > 0 && width < 32;
+        if (promoted)
         {
-            long long shift_amt;
-            if (eval_const_int_expr(node->binary.right, tc->pctx, &shift_amt))
+            width = 32;
+        }
+        if (op_class == OPERATOR_SHIFT && width > 0 &&
+            eval_const_int_expr(node->binary.right, tc->pctx, &shift_amt) &&
+            (shift_amt < 0 || shift_amt >= width))
+        {
+            if (tc->pctx->config->misra_mode)
             {
-                int width = integer_type_width(left_type);
                 misra_check_shift_amount(tc->pctx, shift_amt, width, node->token);
             }
-        }
-        else if (op_class == OPERATOR_SHIFT && node->binary.right &&
-                 node->binary.right->kind == NODE_EXPR_LITERAL &&
-                 node->binary.right->literal.kind == LITERAL_INT)
-        {
-            // Legacy/Non-MISRA warnings
-            unsigned long long shift_amt = node->binary.right->literal.int_val;
-            if (shift_amt >= 64)
+            else
             {
-                const char *hints[] = {"Shift amount exceeds bit width, result is undefined", NULL};
-                tc_error_with_hints(tc, node->binary.right->token, "Shift amount too large", hints);
-            }
-            else if (shift_amt >= 32 && left_type &&
-                     (left_type->kind == TYPE_I32 || left_type->kind == TYPE_U32 ||
-                      left_type->kind == TYPE_C_INT || left_type->kind == TYPE_C_UINT))
-            {
-                const char *hints[] = {
-                    "Shift amount >= 32 is undefined behavior for 32-bit integers", NULL};
-                tc_error_with_hints(tc, node->binary.right->token,
-                                    "Shift amount exceeds 32-bit type width", hints);
+                char msg[MAX_SHORT_MSG_LEN];
+                snprintf(msg, sizeof(msg), "Shift amount %lld is out of range for '%s' (%s%d bits)",
+                         shift_amt, type_to_string(left_type), promoted ? "shifted as int, " : "",
+                         width);
+                const char *hints[] = {"Shifting by a negative amount or by the width of the type "
+                                       "or more is undefined behavior",
+                                       NULL};
+                tc_error_with_hints(tc, node->binary.right->token, msg, hints);
             }
         }
 
         if (left_type && right_type)
         {
-            if ((!is_integer_type(left_type) && left_type->kind != TYPE_VECTOR) ||
-                (!is_integer_type(right_type) && right_type->kind != TYPE_VECTOR))
+            Type *left_vector = vector_type_of(tc->pctx, left_type);
+            Type *right_vector = vector_type_of(tc->pctx, right_type);
+            if (!is_integer_type(operand_scalar(tc, left_type, node->token)) ||
+                !is_integer_type(operand_scalar(tc, right_type, node->token)))
             {
                 char msg[MAX_SHORT_MSG_LEN];
                 snprintf(msg, sizeof(msg),
-                         "Bitwise operator '%s' requires integer or vector operands", op);
-                const char *hints[] = {"Bitwise operators only work on integer or vector types",
-                                       NULL};
+                         "Bitwise operator '%s' requires integers or vectors of integers", op);
+                const char *hints[] = {
+                    "Bitwise operators only work on integers and vectors of integers", NULL};
                 tc_error_with_hints(tc, node->token, msg, hints);
             }
-            else if (left_type->kind == TYPE_VECTOR || right_type->kind == TYPE_VECTOR)
+            else if (left_vector || right_vector)
             {
-                if (left_type->kind != right_type->kind || !type_eq(left_type, right_type))
+                if (left_vector != right_vector)
                 {
                     tc_error(tc, node->token, "Vector bitwise operation requires same vector type");
                 }
@@ -813,6 +832,60 @@ static void view_array_as_slice(ASTNode *node, Type *slice)
     node->type_info = slice;
 }
 
+// Whether the operator `op` makes a constant that a `target` can hold: arithmetic for any number,
+// bitwise operators and shifts for an integer.
+static int is_constant_operator(OperatorKind op, Type *target)
+{
+    OperatorClass c = operator_class(op);
+    if (c == OPERATOR_ARITHMETIC)
+    {
+        return 1;
+    }
+    return (c == OPERATOR_BITWISE || c == OPERATOR_SHIFT) && is_integer_type(target);
+}
+
+// Whether `node` is made only of untyped literals (`5`, `0.5`) under arithmetic and bitwise
+// operators, and `target` can hold it: an integer literal any integer or float type, a float
+// literal any float type.
+static int is_untyped_constant(ASTNode *node, Type *target)
+{
+    switch (node->kind)
+    {
+    case NODE_EXPR_LITERAL:
+        if (!node->literal.is_untyped)
+        {
+            return 0;
+        }
+        if (node->literal.kind == LITERAL_INT)
+        {
+            return is_integer_type(target) || is_float_type(target);
+        }
+        return node->literal.kind == LITERAL_FLOAT && is_float_type(target);
+    case NODE_EXPR_UNARY:
+        return is_constant_operator(node->unary.op, target) &&
+               is_untyped_constant(node->unary.operand, target);
+    case NODE_EXPR_BINARY:
+        return is_constant_operator(node->binary.op, target) &&
+               is_untyped_constant(node->binary.left, target) &&
+               is_untyped_constant(node->binary.right, target);
+    default:
+        return 0;
+    }
+}
+
+// Each element of the array literal `literal` against the element type `element`, one by one.
+static int check_elements_against(TypeChecker *tc, Type *element, ASTNode *literal, int is_call_arg)
+{
+    for (ASTNode *elem = literal->array_literal.elements; elem; elem = elem->next)
+    {
+        if (!check_type_compatibility(tc, element, elem->type_info, elem->token, elem, is_call_arg))
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 // An array, `value`, where the slice `target` is expected: each element must fit the slice's
 // element type (an array literal's, one by one).
 static int check_array_as_slice(TypeChecker *tc, Type *target, Type *value, Token t,
@@ -821,15 +894,9 @@ static int check_array_as_slice(TypeChecker *tc, Type *target, Type *value, Toke
     Type *slice_elem = slice_element(resolve_alias(target));
     if (value_node && value_node->kind == NODE_EXPR_ARRAY_LITERAL)
     {
-        ASTNode *elem = value_node->array_literal.elements;
-        while (elem)
+        if (!check_elements_against(tc, slice_elem, value_node, is_call_arg))
         {
-            if (!check_type_compatibility(tc, slice_elem, elem->type_info, elem->token, elem,
-                                          is_call_arg))
-            {
-                return 0;
-            }
-            elem = elem->next;
+            return 0;
         }
     }
     else if (!check_type_compatibility(tc, slice_elem, resolve_alias(value)->inner, t, NULL,
@@ -842,6 +909,30 @@ static int check_array_as_slice(TypeChecker *tc, Type *target, Type *value, Toke
         view_array_as_slice(value_node, target);
     }
     return 1;
+}
+
+// Warns when an integer of type `value`, the expression `value_node`, may not be held exactly by
+// the float type `target`, so large values are rounded, as an integer narrowing changes them. A
+// constant is judged by its value, as for integer targets.
+static void warn_inexact_integer_to_float(TypeChecker *tc, Type *target, Type *value,
+                                          ASTNode *value_node, Token t)
+{
+    long long constant;
+    int exact = (value_node && eval_const_int_expr(value_node, tc->pctx, &constant))
+                    ? float_holds_integer(target, constant)
+                    : float_holds_integer_type(target, value);
+    if (exact)
+    {
+        return;
+    }
+    char *t_str = zen_c_type_spelling(tc->pctx, target);
+    char *v_str = zen_c_type_spelling(tc->pctx, value);
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "Implicit conversion from '%s' to '%s' rounds values above 2^%d",
+             v_str, t_str, float_significand_bits(target));
+    tc_warning(tc, t, msg);
+    zfree(t_str);
+    zfree(v_str);
 }
 
 // Whether the integer constant `value` keeps its value in the integer type `t`.
@@ -872,6 +963,22 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
 
     Type *resolved_target = resolve_alias(target);
     Type *resolved_value = resolve_alias(value);
+
+    // A constant without a suffix (`5`, `-5`, `0.5`, `255 + 1`) takes the expected type when that
+    // type can hold it, as C converts its value. Every context compares its value here, after
+    // checking it, so the rule holds for all of them and no check of an expression has to keep a
+    // type given beforehand. Its literals keep the type C computes them in (`1 << 40` is still a
+    // shift of an `int`, which the checks of the operator saw).
+    if (value_node && is_untyped_constant(value_node, get_inner_type(target)))
+    {
+        if (value_node->kind == NODE_EXPR_BINARY)
+        {
+            misra_check_constant_wrap(tc, value_node, target);
+        }
+        value_node->type_info = target;
+        value = target;
+        resolved_value = resolved_target;
+    }
 
     // MISRA Pointer & Constant Checks (Rules 11.5, 11.9, etc.)
     if (tc->pctx->config->misra_mode && resolved_target->kind == TYPE_POINTER)
@@ -990,14 +1097,7 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         return 1;
     }
 
-    // void* is generic pointer
-    if (resolved_target->kind == TYPE_POINTER && resolved_target->inner &&
-        resolved_target->inner->kind == TYPE_VOID)
-    {
-        return 1;
-    }
-    if (resolved_value->kind == TYPE_POINTER && resolved_value->inner &&
-        resolve_alias(resolved_value->inner)->kind == TYPE_VOID)
+    if (is_void_pointer(resolved_target) || is_void_pointer(resolved_value))
     {
         return 1;
     }
@@ -1021,6 +1121,20 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         }
     }
 
+    // An array literal where an array of its size is expected: each element against the element
+    // type (a constant takes it), and the literal takes the array type.
+    if (value_node && value_node->kind == NODE_EXPR_ARRAY_LITERAL &&
+        resolved_target->kind == TYPE_ARRAY && resolved_value->kind == TYPE_ARRAY &&
+        resolved_target->inner && resolved_target->array_size == resolved_value->array_size)
+    {
+        if (!check_elements_against(tc, resolved_target->inner, value_node, is_call_arg))
+        {
+            return 0;
+        }
+        value_node->type_info = target;
+        return 1;
+    }
+
     // Array to slice: a fixed-size array or an array literal where a slice is expected.
     Type *slice_elem = slice_element(resolved_target);
     if (slice_elem && resolved_value->kind == TYPE_ARRAY && resolved_value->inner)
@@ -1036,6 +1150,21 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     // Float compatibility
     if (is_float_type(resolved_target) && is_float_type(resolved_value))
     {
+        return 1;
+    }
+
+    // An integer converts to a float, as in C. A float to an integer does not: it drops the
+    // fraction, so it needs a cast.
+    if (is_float_type(resolved_target) && is_integer_type(resolved_value))
+    {
+        if (tc->pctx->config->misra_mode)
+        {
+            misra_check_implicit_conversion(tc->pctx, target, value, value_node, t);
+        }
+        else
+        {
+            warn_inexact_integer_to_float(tc, target, value, value_node, t);
+        }
         return 1;
     }
 
@@ -1064,6 +1193,28 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     zfree(t_str);
     zfree(v_str);
     return 0;
+}
+
+// A name no scope declares and that is not of C: an undefined variable or, where a call calls
+// it, an undefined function.
+static void report_undefined_name(TypeChecker *tc, ASTNode *node)
+{
+    const char *name = node->var_ref.name;
+    char msg[MAX_SHORT_MSG_LEN];
+    char help[MAX_SHORT_MSG_LEN];
+    const char *hints[] = {NULL, NULL};
+    snprintf(msg, sizeof(msg), "Undefined %s '%s'%s", tc->is_callee ? "function" : "variable", name,
+             tc->pctx->config->misra_mode ? " (MISRA Rule 17.3)" : "");
+    if (node->var_ref.suggestion)
+    {
+        snprintf(help, sizeof(help), "Did you mean '%s'?", node->var_ref.suggestion);
+        hints[0] = help;
+    }
+    else if (tc->is_callee)
+    {
+        hints[0] = "Check if the function is defined or imported";
+    }
+    tc_error_with_hints(tc, node->token, msg, hints);
 }
 
 void check_expr_var(TypeChecker *tc, ASTNode *node)
@@ -1150,12 +1301,9 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
             {
                 node->type_info = c_type;
             }
-            else if (tc->pctx->config->misra_mode && !is_c_name)
+            else if (!is_c_name && !sym && !find_symbol_in_all(tc->pctx, node->var_ref.name))
             {
-                char msg[MAX_SHORT_MSG_LEN];
-                snprintf(msg, sizeof(msg), "Undefined variable '%s' (MISRA Rule 17.3)",
-                         node->var_ref.name);
-                tc_error(tc, node->token, msg);
+                report_undefined_name(tc, node);
             }
         }
     }
@@ -1166,70 +1314,13 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
     }
 }
 
-// Whether the operator `op` makes a constant that a `target` can hold: arithmetic for any number,
-// bitwise operators and shifts for an integer.
-static int is_constant_operator(OperatorKind op, Type *target)
-{
-    OperatorClass c = operator_class(op);
-    if (c == OPERATOR_ARITHMETIC)
-    {
-        return 1;
-    }
-    return (c == OPERATOR_BITWISE || c == OPERATOR_SHIFT) && is_integer_type(target);
-}
-
-// Whether `node` is made only of untyped literals (`5`, `0.5`) under arithmetic and bitwise
-// operators, and `target` can hold it: an integer literal any integer or float type, a float
-// literal any float type.
-static int is_untyped_constant(ASTNode *node, Type *target)
-{
-    switch (node->kind)
-    {
-    case NODE_EXPR_LITERAL:
-        if (!node->literal.is_untyped)
-        {
-            return 0;
-        }
-        if (node->literal.kind == LITERAL_INT)
-        {
-            return is_integer_type(target) || is_float_type(target);
-        }
-        return node->literal.kind == LITERAL_FLOAT && is_float_type(target);
-    case NODE_EXPR_UNARY:
-        return is_constant_operator(node->unary.op, target) &&
-               is_untyped_constant(node->unary.operand, target);
-    case NODE_EXPR_BINARY:
-        return is_constant_operator(node->binary.op, target) &&
-               is_untyped_constant(node->binary.left, target) &&
-               is_untyped_constant(node->binary.right, target);
-    default:
-        return 0;
-    }
-}
-
-// A value whose type comes from its context takes the type `expected` before it is checked:
-// - an untyped constant (`5`, `-5`, `0.5`, `255 + 1`) when that type can hold it. The expression
-//   takes the type, as C converts its value to it; its literals keep the type C computes them in
-//   (`1 << 40` is still a shift of an `int`, which the checks of the operator see);
-// - a lambda, when a function type is expected (check_expr_lambda reads it: a lambda for a
-//   `fn*` is emitted without a context).
-// Any other value keeps its own type, for the caller to compare with the expected one.
+// A lambda takes the function type `expected` before it is checked: check_expr_lambda reads it (a
+// lambda for a `fn*` is emitted without a context). A constant takes its context's type in
+// check_type_compatibility, after it is checked.
 void adopt_context_type(ASTNode *value, Type *expected)
 {
-    if (!value || !expected)
-    {
-        return;
-    }
-    Type *target = get_inner_type(expected);
-    if (value->kind == NODE_LAMBDA)
-    {
-        if (target->kind == TYPE_FUNCTION)
-        {
-            value->type_info = expected;
-        }
-        return;
-    }
-    if (is_untyped_constant(value, target))
+    if (value && expected && value->kind == NODE_LAMBDA &&
+        get_inner_type(expected)->kind == TYPE_FUNCTION)
     {
         value->type_info = expected;
     }
@@ -1300,6 +1391,9 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         return;
     }
 
+    // The values of a vector literal are its lanes, whatever their names (`{v: x}` fills all).
+    Type *vector = vector_type_named(tc->pctx, struct_name);
+
     // Iterate provided fields
     ASTNode *field_init = node->struct_init.fields;
     while (field_init)
@@ -1321,9 +1415,9 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         }
 
         // Find corresponding field in definition
-        ASTNode *def_field = def ? def->strct.fields : NULL;
-        Type *expected_type = NULL;
-        int found = 0;
+        ASTNode *def_field = (def && !vector) ? def->strct.fields : NULL;
+        Type *expected_type = vector ? vector->inner : NULL;
+        int found = vector != NULL;
 
         while (def_field)
         {
@@ -1521,6 +1615,8 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
 
     int prev_unreachable = tc->is_unreachable;
     tc->is_unreachable = 0;
+    LoopFrame *prev_loop = tc->current_loop; // A `break` cannot leave the lambda.
+    tc->current_loop = NULL;
 
     // A `return` in the body is the lambda's, not the enclosing function's.
     ASTNode *prev_returns_from = tc->returns_from;
@@ -1543,6 +1639,7 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
 
     tc->returns_from = prev_returns_from;
     tc->is_unreachable = prev_unreachable;
+    tc->current_loop = prev_loop;
     tc_exit_scope(tc);
 }
 

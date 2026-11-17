@@ -1,0 +1,38 @@
+   Compiling tests/compiler/diagnostics_output/err_undefined_names.zc...
+error: Undefined variable 'cont'
+  --> tests/compiler/diagnostics_output/err_undefined_names.zc:12:26
+   |
+12 |     let _typo_variable = cont + 1;
+   |                          ^ here
+   |
+   = help: Did you mean 'count'?
+error: Undefined variable 'zzqq'
+  --> tests/compiler/diagnostics_output/err_undefined_names.zc:13:29
+   |
+13 |     let _unknown_variable = zzqq;
+   |                             ^ here
+   |
+error: Undefined function 'compte'
+  --> tests/compiler/diagnostics_output/err_undefined_names.zc:14:26
+   |
+14 |     let _typo_function = compte(1);
+   |                          ^ here
+   |
+   = help: Check if the function is defined or imported
+error: Undefined function 'missing_fn'
+  --> tests/compiler/diagnostics_output/err_undefined_names.zc:15:5
+   |
+15 |     missing_fn(count);
+   |     ^ here
+   |
+   = help: Check if the function is defined or imported
+error: Undefined function 'nosuch__thing'
+  --> tests/compiler/diagnostics_output/err_undefined_names.zc:16:5
+   |
+16 |     nosuch::thing(1);
+   |     ^ here
+   |
+   = help: Check if the function is defined or imported
+     error: semantic analysis found 5 errors
+       Check failed with 5 errors
+[exit 1]

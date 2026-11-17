@@ -634,18 +634,12 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 node->type_info = type_clone(slice_element(t));
                 node->type_info->lifetime_depth = node->index.array->type_info->lifetime_depth;
             }
-            else if (t->kind == TYPE_ARRAY || t->kind == TYPE_POINTER || t->kind == TYPE_VECTOR)
+            else if (t->kind == TYPE_ARRAY || t->kind == TYPE_POINTER ||
+                     vector_type_of(tc->pctx, t))
             {
-                if (t->kind == TYPE_VECTOR && !t->inner && t->name)
-                {
-                    ASTNode *def = find_struct_def(tc->pctx, type_def_name(t));
-                    if (def && def->kind == NODE_STRUCT && def->strct.fields)
-                    {
-                        t->inner = def->strct.fields->type_info;
-                    }
-                }
+                Type *vector = vector_type_of(tc->pctx, t);
                 // Propagate lifetime from array/slice to the indexed element
-                node->type_info = type_clone(t->inner);
+                node->type_info = type_clone(vector ? vector->inner : t->inner);
                 if (node->type_info && node->index.array->type_info)
                 {
                     node->type_info->lifetime_depth = node->index.array->type_info->lifetime_depth;
@@ -700,6 +694,12 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
             Type *target_type = get_inner_type(node->member.target->type_info);
+            // `p.field` reads through the pointer (deref_to_one_pointer left at most one).
+            int through_pointer = target_type->kind == TYPE_POINTER && target_type->inner;
+            if (through_pointer)
+            {
+                target_type = get_inner_type(target_type->inner);
+            }
             Type *tuple = tuple_of(node->member.target->type_info);
             Type *element = tuple ? tuple_element_type(tuple, node->member.field) : NULL;
             if (element)
@@ -707,7 +707,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 node->type_info = type_clone(element);
                 node->type_info->lifetime_depth = node->member.target->type_info->lifetime_depth;
             }
-            else if (target_type->kind == TYPE_STRUCT && target_type->name)
+            else if ((target_type->kind == TYPE_STRUCT || target_type->kind == TYPE_ENUM) &&
+                     target_type->name)
             {
                 if (tc->pctx->config->misra_mode)
                 {
@@ -719,7 +720,15 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     }
                 }
                 ASTNode *struct_def = find_struct_def(tc->pctx, type_def_name(target_type));
-                if (struct_def)
+                if (struct_def && struct_def->kind == NODE_ENUM)
+                {
+                    // The member of an enum value is its tag, a constant of a C `enum`: an int.
+                    if (strcmp(node->member.field, "tag") == 0)
+                    {
+                        node->type_info = type_new(TYPE_C_INT);
+                    }
+                }
+                else if (struct_def)
                 {
                     ASTNode *field = struct_def->strct.fields;
                     while (field)
@@ -729,7 +738,9 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                         {
                             // Propagate lifetime from struct container to the member access result
                             node->type_info = type_clone(field->type_info);
-                            if (node->type_info && node->member.target->type_info)
+                            // Through a pointer the field is not in the container: it keeps
+                            // its own depth (where escape analysis looks is its own question).
+                            if (node->type_info && !through_pointer)
                             {
                                 // Depth must be at least that of the container.
                                 // (If field itself is static/global, it will be 0, but container's
@@ -1084,6 +1095,15 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             misra_check_iteration_termination(tc->pctx, node->token);
         }
         tc->loop_break_count++;
+        for (LoopFrame *loop = tc->current_loop; loop; loop = loop->outer)
+        {
+            const char *target = node->break_stmt.target_label;
+            if (!target || (loop->label && strcmp(loop->label, target) == 0))
+            {
+                loop->has_break = 1;
+                break;
+            }
+        }
 
         if (tc->move_checks_only)
         {
@@ -1163,18 +1183,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         break;
     case NODE_COMPTIME:
     {
-        // Register comptime builtins for the body
-        register_comptime_builtins(tc->pctx);
-
-        // Type-check the comptime body
-        ASTNode *stmt = node->comptime.body;
-        while (stmt)
-        {
-            check_node(tc, stmt, depth + 1);
-            stmt = stmt->next;
-        }
-
-        // Interpret the comptime body
+        // The body runs in the comptime interpreter, with its own rules (`+` joins strings) and
+        // its own errors; only the code it yields is program code to check.
         char *output =
             interpret_comptime(tc->pctx, node->comptime.body, tc->pctx->current_filename);
         if (!output)

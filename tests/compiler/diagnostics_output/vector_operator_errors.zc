@@ -1,0 +1,13 @@
+// ARGS: check
+// The operators of a `@vector` struct apply lane by lane to two vectors of the
+// same type; bitwise ones only to vectors of integers, as in C.
+import "std/simd.zc"
+
+fn main() {
+    let a = f32x4{v: 1.0};
+    let i = i32x4{v: 1};
+    let mixed = a + i;
+    let scalar = a * 2.0;
+    let bits = a & a;
+    let flipped = ~a;
+}

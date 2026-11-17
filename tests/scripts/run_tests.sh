@@ -159,7 +159,7 @@ run_test() {
     
     # Skip tests logic (duplicated for subprocess context)
     if [[ "$CC_NAME" == *"tcc"* ]]; then
-        if [[ "$test_file" == *"test_intel.zc"* ]] || [[ "$test_file" == *"test_attributes.zc"* ]] || [[ "$test_file" == *"test_simd_native.zc"* ]]; then
+        if [[ "$test_file" == *"test_intel.zc"* ]] || [[ "$test_file" == *"test_attributes.zc"* ]] || [[ "$test_file" == *"test_simd_native.zc"* ]] || [[ "$test_file" == *"test_vector_operators.zc"* ]]; then
             echo "SKIP" > "$result_file.status"
             return
         fi
@@ -175,7 +175,7 @@ run_test() {
         fi
     fi
     if [ $USE_CPP -eq 1 ]; then
-        if [[ "$test_file" == *"test_asm"* ]] || [[ "$test_file" == *"test_intel.zc"* ]] || [[ "$test_file" == *"test_simd_native.zc"* ]]; then
+        if [[ "$test_file" == *"test_asm"* ]] || [[ "$test_file" == *"test_intel.zc"* ]] || [[ "$test_file" == *"test_simd_native.zc"* ]] || [[ "$test_file" == *"test_vector_operators.zc"* ]]; then
             echo "SKIP" > "$result_file.status"
             return
         fi

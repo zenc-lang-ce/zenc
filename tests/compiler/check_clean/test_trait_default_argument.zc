@@ -1,0 +1,17 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// The default value of a trait parameter becomes a trait object as a written
+// argument does: the address of a global or a pointer variable.
+trait Speak { fn say(self) -> int; }
+struct Dog { x: int; }
+impl Speak for Dog { fn say(self) -> int { return self.x; } }
+
+let g_dog = Dog{x: 3};
+let g_ptr: Dog* = &g_dog;
+
+fn by_address(s: Speak = &g_dog) -> int { return s.say(); }
+fn by_pointer(s: Speak = g_ptr) -> int { return s.say(); }
+
+test "trait defaults" {
+    assert(by_address() == 3, "default &global");
+    assert(by_pointer() == 3, "default pointer variable");
+}

@@ -1,0 +1,30 @@
+   Compiling tests/compiler/diagnostics_output/integer_float_conversions.zc...
+warning: Implicit conversion from 'i64' to 'f64' rounds values above 2^53
+  --> tests/compiler/diagnostics_output/integer_float_conversions.zc:13:9
+   |
+13 |     let _rounded: f64 = wide;
+   |         ^ here
+   |
+warning: Implicit conversion from 'u32' to 'f32' rounds values above 2^24
+  --> tests/compiler/diagnostics_output/integer_float_conversions.zc:14:9
+   |
+14 |     let _rounded32: f32 = count;
+   |         ^ here
+   |
+warning: Implicit conversion from 'i64' to 'f64' rounds values above 2^53
+  --> tests/compiler/diagnostics_output/integer_float_conversions.zc:16:9
+   |
+16 |     let _rounded_constant: f64 = ROUNDED;
+   |         ^ here
+   |
+error: Type mismatch: expected 'i32', but found 'f64'
+  --> tests/compiler/diagnostics_output/integer_float_conversions.zc:17:9
+   |
+17 |     let _truncated: i32 = ok;
+   |         ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+     error: semantic analysis found 1 error
+       Check failed with 1 errors
+[exit 1]

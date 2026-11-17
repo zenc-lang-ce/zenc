@@ -1,0 +1,30 @@
+   Compiling tests/compiler/diagnostics_output/unreachable_code.zc...
+warning: Unreachable code detected
+  --> tests/compiler/diagnostics_output/unreachable_code.zc:7:9
+   |
+7  |     let dead = 2;
+   |         ^ here
+   |
+   = note: Remove unreachable code or restructure control flow
+warning: Unreachable code detected
+  --> tests/compiler/diagnostics_output/unreachable_code.zc:16:5
+   |
+16 |     return 30;
+   |     ^ here
+   |
+   = note: Remove unreachable code or restructure control flow
+warning: Unreachable code detected
+  --> tests/compiler/diagnostics_output/unreachable_code.zc:21:5
+   |
+21 |     return 0;
+   |     ^ here
+   |
+   = note: Remove unreachable code or restructure control flow
+warning: Unreachable code detected
+  --> tests/compiler/diagnostics_output/unreachable_code.zc:27:7
+   |
+27 |     x = 100;
+   |       ^ here
+   |
+   = note: Remove unreachable code or restructure control flow
+[exit 0]

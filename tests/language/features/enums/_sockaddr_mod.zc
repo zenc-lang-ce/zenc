@@ -10,7 +10,7 @@ extern fn WSAStringToAddressA(addr_str: string, af: int, p: void*, sa: void*, si
 impl sockaddr {
    fn init (self, addr_str: string) {
       let sa_size = 16;
-      ws2::WSAStringToAddressA (addr_str, af_inet, NULL, self, (int*) &sa_size);
+      WSAStringToAddressA (addr_str, af_inet, NULL, self, (int*) &sa_size);
    }
    fn new () -> sockaddr* {
       return (sockaddr*) NULL;

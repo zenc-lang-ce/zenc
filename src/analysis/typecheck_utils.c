@@ -447,6 +447,23 @@ void tc_warning(TypeChecker *tc, Token t, const char *msg)
     tc->warning_count++;
 }
 
+void tc_unreachable_code(TypeChecker *tc, Token t)
+{
+    if (tc->pctx->config->misra_mode)
+    {
+        const char *hints[] = {"Remove unreachable code or restructure control flow", NULL};
+        tc_error_with_hints(tc, t, "MISRA Rule 2.1: Unreachable code detected", hints);
+        return;
+    }
+    // The second pass over a loop body sees the same statements again.
+    if (tc->in_loop_pass2 || tc_in_std(tc, t))
+    {
+        return;
+    }
+    warn_unreachable_code(t);
+    tc->warning_count++;
+}
+
 void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
 {
     if (tc->move_checks_only || tc_in_std(tc, t))

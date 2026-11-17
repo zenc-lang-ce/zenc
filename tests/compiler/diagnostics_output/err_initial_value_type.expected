@@ -47,13 +47,13 @@ error: Type mismatch: expected 'i32', but found 'const f64'
    |
    = help: Check if you need an explicit cast
    = help: Ensure the types match exactly (no implicit conversions for strict types)
-error: Shift amount exceeds 32-bit type width
+error: Shift amount 40 is out of range for 'i32' (32 bits)
   --> tests/compiler/diagnostics_output/err_initial_value_type.zc:26:27
    |
 26 |     let _wide: i64 = 1 << 40;
    |                           ^ here
    |
-   = help: Shift amount >= 32 is undefined behavior for 32-bit integers
+   = help: Shifting by a negative amount or by the width of the type or more is undefined behavior
      error: semantic analysis found 7 errors
        Check failed with 7 errors
 [exit 1]
