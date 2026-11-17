@@ -568,7 +568,7 @@ int emit_moved_out(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, "))");
         return 1;
     }
-    if (node->kind != NODE_EXPR_VAR || strcmp(node->var_ref.name, "self") == 0)
+    if (node->kind != NODE_EXPR_VAR)
     {
         return 0;
     }

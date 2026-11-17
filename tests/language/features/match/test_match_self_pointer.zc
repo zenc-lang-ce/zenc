@@ -1,0 +1,45 @@
+// language/features/match: `self` is a pointer to the receiver, and `match self` matches the
+// value it points to, as any pointer subject does, also with `ref` bindings and as an expression.
+
+enum Shape {
+    Circle(int),
+    Square(int),
+}
+
+impl Shape {
+    fn area(self) -> int {
+        match self {
+            Circle(r) => return 3 * r * r,
+            Square(s) => return s * s,
+        }
+    }
+
+    fn side(self) -> int {
+        let n = match self {
+            Circle(r) => r,
+            Square(s) => s,
+        };
+        return n;
+    }
+
+    fn grow(self) {
+        match self {
+            Circle(ref r) => *r = *r + 1,
+            Square(ref s) => *s = *s * 2,
+        }
+    }
+}
+
+test "match_self_reads_the_receiver" {
+    let c = Shape::Circle(2);
+    let s = Shape::Square(4);
+    assert(c.area() == 12, "circle area");
+    assert(s.area() == 16, "square area");
+    assert(s.side() == 4, "match self as an expression");
+}
+
+test "match_self_ref_bindings_change_the_receiver" {
+    let s = Shape::Square(3);
+    s.grow();
+    assert(s.side() == 6, "a ref binding of match self points into the receiver");
+}
