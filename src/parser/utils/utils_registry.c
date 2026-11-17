@@ -719,7 +719,12 @@ static void resolve_pending_type_name(ParserContext *ctx, PendingTypeName *list,
     ctx->imports.current_module_prefix = p->module_prefix;
     ctx->current_filename = p->filename;
     Type *t = p->type;
-    TypeAlias *alias = !p->scope && t->count == 0 ? find_type_alias_node(ctx, p->name) : NULL;
+    // A copy of a known alias, or a name (with no arguments) that turned out to be one.
+    TypeAlias *alias = p->alias;
+    if (!alias && !p->scope && t->kind == TYPE_STRUCT && t->count == 0)
+    {
+        alias = find_type_alias_node(ctx, p->name);
+    }
     if (p->scope)
     {
         // `m::Name`, now that `m` is imported.

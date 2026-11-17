@@ -31,3 +31,33 @@ test "a tuple of an alias declared further down" {
     let (c, d) = int_pair();
     expect_eq(a + b + c + d, 10, "(Celsius, int) and (int, int) are one tuple");
 }
+
+alias Step = fn*(Machine*, int) -> bool;
+alias Snapshot = (Machine, int);
+alias MachineCell = Box2<Machine>;
+
+struct Program {
+    step: Step;
+    snapshot: Snapshot;
+    cell: MachineCell;
+}
+
+struct Box2<T> {
+    v: T;
+}
+
+struct Machine {
+    x: int;
+}
+
+fn reached(m: Machine*, n: int) -> bool {
+    return m.x == n;
+}
+
+test "aliases declared first whose types name a struct declared further down" {
+    let m = Machine { x: 3 };
+    let p = Program { step: reached, snapshot: (Machine { x: 4 }, 5), cell: Box2<Machine> { v: Machine { x: 6 } } };
+    expect_eq((int)p.step(&m, 3), 1, "a function pointer alias");
+    expect_eq(p.snapshot.0.x + p.snapshot.1, 9, "a tuple alias");
+    expect_eq(p.cell.v.x, 6, "a generic instance alias");
+}

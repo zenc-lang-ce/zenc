@@ -52,7 +52,8 @@ Type *type_from_name(ParserContext *ctx, const char *name)
 
 // Records that the type `ty`, named `name` (of `scope`, for `scope::name`) where `t` is, waits
 // for the declarations.
-static void push_pending_type_name(ParserContext *ctx, Type *ty, char *name, Token t, char *scope)
+static PendingTypeName *push_pending_type_name(ParserContext *ctx, Type *ty, char *name, Token t,
+                                               char *scope)
 {
     PendingTypeName *p = xcalloc(1, sizeof(PendingTypeName));
     p->type = ty;
@@ -63,6 +64,7 @@ static void push_pending_type_name(ParserContext *ctx, Type *ty, char *name, Tok
     p->filename = ctx->current_filename;
     p->next = ctx->pending_type_names;
     ctx->pending_type_names = p;
+    return p;
 }
 
 // Whether `scope` of `scope::Name` is a module this file has imported.
@@ -128,7 +130,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             // once that one is resolved (resolve_pending_type_names).
             if (!ctx->declarations_read && type_names_pending(ctx, alias_node->type_info))
             {
-                push_pending_type_name(ctx, aliased, name, t, NULL);
+                push_pending_type_name(ctx, aliased, name, t, NULL)->alias = alias_node;
             }
             return aliased;
         }

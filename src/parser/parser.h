@@ -648,6 +648,7 @@ typedef struct PendingTypeName
     Type *type;           ///< The type, shared by whatever names it.
     char *name;           ///< The name as written; the member of `scope` for `scope::name`.
     char *scope;          ///< `m` of `m::Name`, a module imported further down; else NULL.
+    TypeAlias *alias;     ///< For a copy of a known alias whose type waits: the alias; else NULL.
     Token token;          ///< Where it is written.
     char *module_prefix;  ///< The module it was read in.
     const char *filename; ///< The file it was read in.
