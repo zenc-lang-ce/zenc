@@ -12,6 +12,27 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
+void set_def_value(ZenSymbol *s, long long val)
+{
+    s->is_const_value = 1;
+    s->const_int_val = val;
+    s->is_def = 1;
+
+    // Auto-infer type for def if unknown: `int`, or `i64` when the
+    // value does not fit in 32 bits.
+    if (!s->type_info || s->type_info->kind == TYPE_UNKNOWN)
+    {
+        int is_wide = val < INT32_MIN || val > INT32_MAX;
+        if (s->type_info)
+        {
+            zfree(s->type_info);
+        }
+        s->type_info = type_new(is_wide ? TYPE_I64 : TYPE_I32);
+        s->is_untyped = !is_wide;
+        s->type_info->is_const = 1;
+    }
+}
+
 ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
 {
     lexer_next(l); // eat def
@@ -59,31 +80,20 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
         {
             i = parse_expression(ctx, l);
 
-            // Try to evaluate constant expression for symbol table
+            // Its integer value, for the symbol table. One that names a declaration further
+            // down is computed once every declaration is read (resolve_pending_constants).
             long long val;
             if (eval_const_int_expr(i, ctx, &val))
             {
                 ZenSymbol *s = find_symbol_entry(ctx, ns);
                 if (s)
                 {
-                    s->is_const_value = 1;
-                    s->const_int_val = val;
-                    s->is_def = 1;
-
-                    // Auto-infer type for def if unknown: `int`, or `i64` when the
-                    // value does not fit in 32 bits.
-                    if (!s->type_info || s->type_info->kind == TYPE_UNKNOWN)
-                    {
-                        int is_wide = val < INT32_MIN || val > INT32_MAX;
-                        if (s->type_info)
-                        {
-                            zfree(s->type_info);
-                        }
-                        s->type_info = type_new(is_wide ? TYPE_I64 : TYPE_I32);
-                        s->is_untyped = !is_wide;
-                        s->type_info->is_const = 1;
-                    }
+                    set_def_value(s, val);
                 }
+            }
+            else if (!ctx->declarations_read && sym_entry)
+            {
+                wait_for_constant(ctx, i, NULL, sym_entry, n);
             }
             // Any other value without a type gives the `def` its type, as it gives a `let` its
             // own: a float or a string literal, a struct literal.

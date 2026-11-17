@@ -6,6 +6,7 @@
 #include "../zprep.h"
 #include "codegen.h"
 #include "compat.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,7 +83,32 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
                     zfree(inferred);
                 }
             }
-            if (node->var_decl.init_expr)
+            // A `def` of an integer type is its value: the C does not depend on the order of the
+            // constants it names (`def M = N * 2;` before `def N = 4;`).
+            ZenSymbol *constant =
+                node->kind == NODE_CONST ? find_symbol_entry(ctx, node->var_decl.name) : NULL;
+            // The type the C declares it with: the written one, or its value's.
+            Type *c_type = declared                   ? node->type_info
+                           : node->var_decl.init_expr ? node->var_decl.init_expr->type_info
+                                                      : NULL;
+            if (constant && constant->is_def && constant->is_const_value && c_type &&
+                is_integer_type(c_type) && !is_boolean_type(c_type))
+            {
+                long long value = constant->const_int_val;
+                if (value < 0 && is_unsigned_type(c_type))
+                {
+                    EMIT(ctx, " = %lluULL", (unsigned long long)value); // Above LLONG_MAX.
+                }
+                else if (value == LLONG_MIN)
+                {
+                    EMIT(ctx, " = (-9223372036854775807LL - 1)"); // No literal is LLONG_MIN.
+                }
+                else
+                {
+                    EMIT(ctx, " = %lld", value);
+                }
+            }
+            else if (node->var_decl.init_expr)
             {
                 EMIT(ctx, " = ");
                 char *tname = declared ? declared

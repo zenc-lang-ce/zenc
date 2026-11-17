@@ -170,6 +170,10 @@ static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
     }
 
     int *dims = NULL;
+    // The size of each dimension as written: one that names a declaration further down waits
+    // (array_size_or_wait).
+    ASTNode **dim_sizes = NULL;
+    Token *dim_tokens = NULL;
     int dims_cap = 0;
     int dims_count = 0;
 
@@ -181,7 +185,10 @@ static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
         {
             dims_cap = dims_cap == 0 ? 4 : dims_cap * 2;
             dims = xrealloc(dims, sizeof(int) * (size_t)(dims_cap));
+            dim_sizes = xrealloc(dim_sizes, sizeof(ASTNode *) * (size_t)(dims_cap));
+            dim_tokens = xrealloc(dim_tokens, sizeof(Token) * (size_t)(dims_cap));
         }
+        dim_sizes[dims_count] = NULL;
 
         if (lexer_peek(l).kind == TOK_RBRACKET)
         {
@@ -190,19 +197,21 @@ static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
             continue;
         }
 
+        Token size_token = lexer_peek(l);
         ASTNode *size_expr = parse_constant_expression(ctx, l);
-        long long compiled_size = 0;
-        int size = 0;
         if (!size_expr)
         {
             zpanic_at(lexer_peek(l), "Expected array size expression");
             return NULL;
         }
-        if (eval_const_int_expr(size_expr, ctx, &compiled_size))
+        int size = 0;
+        int known = array_size_now(ctx, size_expr, &size);
+        if (known == 0)
         {
-            size = (int)compiled_size;
+            dim_sizes[dims_count] = size_expr;
+            dim_tokens[dims_count] = size_token;
         }
-        else
+        else if (known < 0)
         {
             // Use lexer token for error location — the parsed expression's token
             // may have a corrupted start position from malformed input.
@@ -238,12 +247,18 @@ static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
         Type *arr = type_new(TYPE_ARRAY);
         arr->inner = t;
         arr->array_size = dims[i];
+        if (dim_sizes[i])
+        {
+            wait_for_constant(ctx, dim_sizes[i], arr, NULL, dim_tokens[i]);
+        }
         t = arr;
     }
 
     if (dims)
     {
         zfree(dims);
+        zfree(dim_sizes);
+        zfree(dim_tokens);
     }
 
     if (is_restrict)
