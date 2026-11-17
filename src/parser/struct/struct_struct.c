@@ -113,42 +113,12 @@ static void copy_or_wait_for_uses(ParserContext *ctx, ASTNode *node, StructUse *
     WaitingStruct *waiting = xcalloc(1, sizeof(WaitingStruct));
     waiting->strct = node;
     waiting->uses = uses;
-    waiting->module_prefix = ctx->imports.current_module_prefix;
-    waiting->filename = ctx->current_filename;
-    waiting->scope = ctx->current_scope;
     WaitingStruct **last = &ctx->waiting_structs;
     while (*last)
     {
         last = &(*last)->next;
     }
     *last = waiting;
-}
-
-// Derives what the struct derives, in the module it was read in, after the struct.
-static void derive_waiting_struct(ParserContext *ctx, WaitingStruct *waiting)
-{
-    char *saved_prefix = ctx->imports.current_module_prefix;
-    const char *saved_filename = ctx->current_filename;
-    Scope *saved_scope = ctx->current_scope;
-    ctx->imports.current_module_prefix = waiting->module_prefix;
-    ctx->current_filename = waiting->filename;
-    ctx->current_scope = waiting->scope;
-    ASTNode *impls =
-        generate_derive_impls(ctx, waiting->strct, waiting->derived_traits, waiting->derived_count);
-    ctx->imports.current_module_prefix = saved_prefix;
-    ctx->current_filename = saved_filename;
-    ctx->current_scope = saved_scope;
-    if (!impls)
-    {
-        return;
-    }
-    ASTNode *last = impls;
-    while (last->next)
-    {
-        last = last->next;
-    }
-    last->next = waiting->strct->next;
-    waiting->strct->next = impls;
 }
 
 static void resolve_waiting_struct(ParserContext *ctx, WaitingStruct *waiting)
@@ -185,10 +155,6 @@ static void resolve_waiting_struct(ParserContext *ctx, WaitingStruct *waiting)
     copy_used_fields(ctx, waiting->strct, waiting->uses);
     waiting->resolving = 0;
     waiting->done = 1;
-    if (waiting->derived_count > 0)
-    {
-        derive_waiting_struct(ctx, waiting);
-    }
 }
 
 void resolve_waiting_structs(ParserContext *ctx)

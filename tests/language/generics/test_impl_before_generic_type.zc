@@ -1,0 +1,72 @@
+// language/generics: test_impl_before_generic_type
+// An impl written before the generic struct or enum it is for is read once every declaration
+// is: a trait impl naming the type with or without its parameter, an `impl Drop`, an inherent
+// `impl Cell<T>`, and an instance named before them all.
+
+fn shown(c: Cell<int>) -> int {
+    return c.show();
+}
+
+trait Show {
+    fn show(self) -> int;
+}
+
+impl Show for Cell {
+    fn show(self) -> int {
+        return (int)self.v + 1;
+    }
+}
+
+impl Cell<T> {
+    fn twice(self) -> int {
+        return (int)self.v * 2;
+    }
+}
+
+struct Cell<T> {
+    v: T;
+}
+
+impl<T> Show for Maybe<T> {
+    fn show(self) -> int {
+        return 3;
+    }
+}
+
+enum Maybe<T> {
+    Some(T),
+    Nothing
+}
+
+test "a trait impl and an inherent impl before their generic struct" {
+    let c = Cell<int> { v: 4 };
+    let d = Cell<i64> { v: 9 };
+    expect_eq(shown(c), 5, "Cell<int> has show, from an instance named before the impl");
+    expect_eq(d.show(), 10, "Cell<i64> has show");
+    expect_eq(c.twice(), 8, "Cell<int> has twice");
+}
+
+test "a trait impl before its generic enum" {
+    let m = Maybe<int>::Some(2);
+    expect_eq(m.show(), 3, "Maybe<int> has show");
+}
+
+static let drops = 0;
+
+impl Drop for Holder {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+struct Holder<T> {
+    v: T;
+}
+
+test "an impl Drop before its generic struct" {
+    {
+        let h = Holder<int> { v: 1 };
+        expect_eq(h.v, 1, "Holder<int> keeps its value");
+    }
+    expect_eq(drops, 1, "Holder<int> is dropped once at the end of its block");
+}

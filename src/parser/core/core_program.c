@@ -52,6 +52,125 @@ static void apply_global_attributes(ASTNode *decls, int is_static,
     }
 }
 
+void push_pending_declaration(ParserContext *ctx, PendingDeclaration *pending)
+{
+    if (ctx->pending_declarations_tail)
+    {
+        ctx->pending_declarations_tail->next = pending;
+    }
+    else
+    {
+        ctx->pending_declarations = pending;
+    }
+    ctx->pending_declarations_tail = pending;
+}
+
+// Makes what the struct or enum `decl` derives, after it among the declarations.
+static void add_derived_impls(ParserContext *ctx, ASTNode *decl, char **traits, int count)
+{
+    ASTNode *impls = generate_derive_impls(ctx, decl, traits, count);
+    if (!impls)
+    {
+        return;
+    }
+    ASTNode *last = impls;
+    while (last->next)
+    {
+        last = last->next;
+    }
+    last->next = decl->next;
+    decl->next = impls;
+}
+
+// The `@derive` of the struct or enum `decl`: it reads the fields and the impls of their types,
+// so while declarations are read it waits for them (parse_pending_declarations).
+static void derive(ParserContext *ctx, ASTNode *decl, DeclarationAttributes *attrs)
+{
+    if (attrs->derived_count == 0)
+    {
+        return;
+    }
+    if (ctx->declarations_read)
+    {
+        add_derived_impls(ctx, decl, attrs->derived_traits, attrs->derived_count);
+        return;
+    }
+    PendingDeclaration *pending = xcalloc(1, sizeof(PendingDeclaration));
+    pending->derived = decl;
+    pending->derived_traits = attrs->derived_traits;
+    pending->derived_count = attrs->derived_count;
+    pending->module_prefix = ctx->imports.current_module_prefix;
+    pending->filename = ctx->current_filename;
+    pending->scope = ctx->current_scope;
+    push_pending_declaration(ctx, pending);
+}
+
+int derives_pending(ParserContext *ctx, const char *type_name, const char *trait)
+{
+    for (PendingDeclaration *p = ctx->pending_declarations; p; p = p->next)
+    {
+        if (p->is_impl || !declared_type_c_name(p->derived) ||
+            strcmp(declared_type_c_name(p->derived), type_name) != 0)
+        {
+            continue;
+        }
+        for (int i = 0; i < p->derived_count; i++)
+        {
+            if (strcmp(p->derived_traits[i], trait) == 0)
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+void parse_pending_declarations(ParserContext *ctx)
+{
+    char *saved_prefix = ctx->imports.current_module_prefix;
+    const char *saved_filename = ctx->current_filename;
+    Scope *saved_scope = ctx->current_scope;
+    // A parse_program_nodes inside one (an import) does not start another round.
+    ctx->parse_depth++;
+    // The impls first, then the derives, which read them (a field's `clone`); each in the order
+    // written. A derive still waiting is what its type will have (derives_pending).
+    for (int impls = 1; impls >= 0; impls--)
+    {
+        PendingDeclaration **link = &ctx->pending_declarations;
+        while (*link)
+        {
+            PendingDeclaration *pending = *link;
+            if (pending->is_impl != impls)
+            {
+                link = &pending->next;
+                continue;
+            }
+            *link = pending->next;
+            ctx->imports.current_module_prefix = pending->module_prefix;
+            ctx->current_filename = pending->filename;
+            ctx->current_scope = pending->scope;
+            ctx->had_error = 0;
+            if (pending->is_impl)
+            {
+                Lexer l = pending->start;
+                ctx->impl_slot = pending->impl;
+                parse_impl(ctx, &l);
+                ctx->impl_slot = NULL;
+            }
+            else
+            {
+                add_derived_impls(ctx, pending->derived, pending->derived_traits,
+                                  pending->derived_count);
+            }
+        }
+    }
+    ctx->pending_declarations_tail = NULL;
+    ctx->parse_depth--;
+    ctx->imports.current_module_prefix = saved_prefix;
+    ctx->current_filename = saved_filename;
+    ctx->current_scope = saved_scope;
+}
+
 static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
 {
     ASTNode *h = 0, *tl = 0;
@@ -541,28 +660,11 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
             {
                 register_deprecated_func(ctx, declared_type_c_name(s), attrs.deprecated_msg);
             }
-            // The derived code reads the fields, which may wait for a struct `s` uses.
-            WaitingStruct *waiting = find_waiting_struct(ctx, s);
-            if (waiting)
-            {
-                waiting->derived_traits = attrs.derived_traits;
-                waiting->derived_count = attrs.derived_count;
-            }
-            else if (attrs.derived_count > 0)
-            {
-                ASTNode *impls =
-                    generate_derive_impls(ctx, s, attrs.derived_traits, attrs.derived_count);
-                s->next = impls;
-            }
+            derive(ctx, s, &attrs);
         }
         else if (s && s->kind == NODE_ENUM)
         {
-            if (attrs.derived_count > 0)
-            {
-                ASTNode *impls =
-                    generate_derive_impls(ctx, s, attrs.derived_traits, attrs.derived_count);
-                s->next = impls;
-            }
+            derive(ctx, s, &attrs);
         }
 
         if (s)
@@ -642,6 +744,7 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
     {
         ctx->declarations_read = 1;
         resolve_waiting_structs(ctx);
+        parse_pending_declarations(ctx);
         resolve_pending_instances(ctx);
         parse_pending_bodies(ctx);
         ctx->declarations_read = 0;
@@ -668,6 +771,9 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
     ctx->pending_instances_tail = NULL;
     ctx->declarations_read = 0;
     ctx->waiting_structs = NULL;
+    ctx->pending_declarations = NULL;
+    ctx->pending_declarations_tail = NULL;
+    ctx->impl_slot = NULL;
     ctx->pending_template_bodies = NULL;
     ctx->pending_template_bodies_tail = NULL;
     ctx->body_copies = NULL;

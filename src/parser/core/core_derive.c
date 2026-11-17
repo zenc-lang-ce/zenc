@@ -13,12 +13,12 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
-// 1 if `type_name` has a `clone` method: a concrete one (`String__clone`) or one
-// from a generic impl whose instance this is (`Vec__int32_t` from `impl Vec<T>`).
+// 1 if `type_name` has a `clone` method: a concrete one (`String__clone`), one from a generic
+// impl whose instance this is (`Vec__int32_t` from `impl Vec<T>`), or one it derives further down.
 static int type_has_clone_method(ParserContext *ctx, const char *type_name)
 {
     char *mangled = mangle_method_symbol(type_name, NULL, "clone");
-    if (find_func(ctx, mangled))
+    if (find_func(ctx, mangled) || derives_pending(ctx, type_name, "Clone"))
     {
         return 1;
     }

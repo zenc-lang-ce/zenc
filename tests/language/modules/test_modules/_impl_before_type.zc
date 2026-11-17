@@ -1,0 +1,30 @@
+// Helper for test_impl_before_type_import.zc: impls written before the types they are for.
+trait Measure {
+    fn measure(self) -> int;
+}
+
+impl Measure for Cell {
+    fn measure(self) -> int {
+        return 5;
+    }
+}
+
+impl Cell<T> {
+    fn twice(self) -> int {
+        return (int)self.v * 2;
+    }
+}
+
+impl Measure for Plain {
+    fn measure(self) -> int {
+        return self.v + 1;
+    }
+}
+
+struct Cell<T> {
+    v: T;
+}
+
+struct Plain {
+    v: int;
+}

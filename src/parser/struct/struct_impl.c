@@ -101,8 +101,91 @@ static Type *impl_target(ParserContext *ctx, const char *name)
     return def && def->type_info && !is_template ? def->type_info : type_from_name(ctx, name);
 }
 
+// The node of an impl: the one made when the impl was first read (defer_impl), else a new one.
+static ASTNode *impl_node(ParserContext *ctx, NodeType kind)
+{
+    ASTNode *slot = ctx->impl_slot;
+    ctx->impl_slot = NULL;
+    return slot && slot->kind == kind ? slot : ast_create(kind);
+}
+
+// Whether the token is the identifier `text`.
+static int is_word(Token t, const char *text)
+{
+    return t.kind == TOK_IDENT && (size_t)t.len == strlen(text) &&
+           strncmp(t.start, text, t.len) == 0;
+}
+
+// Reads `<T>` if it comes next: whether it did.
+static int skip_generic_param(Lexer *l)
+{
+    if (lexer_peek(l).kind != TOK_LANGLE)
+    {
+        return 0;
+    }
+    lexer_next(l);
+    return lexer_next(l).kind == TOK_IDENT && lexer_next(l).kind == TOK_RANGLE;
+}
+
+// While declarations are read, an impl waits until every one is: its type may be declared further
+// down (parse_pending_declarations). Its header says what node it makes, which takes its place
+// among the declarations now: none for `impl Box<T>`, which is a template only. Returns 0, reading
+// nothing, for a header that is not one, which is then read at once to report it.
+static int defer_impl(ParserContext *ctx, Lexer *l, ASTNode **node)
+{
+    Lexer scan = *l;
+    lexer_next(&scan); // impl
+    int generic = skip_generic_param(&scan);
+    Token trait = lexer_next(&scan);
+    if (trait.kind != TOK_IDENT)
+    {
+        return 0;
+    }
+    generic = skip_generic_param(&scan) || generic;
+    int for_trait = is_word(lexer_peek(&scan), "for");
+    if (for_trait)
+    {
+        lexer_next(&scan);
+        if (lexer_next(&scan).kind != TOK_IDENT)
+        {
+            return 0;
+        }
+        skip_generic_param(&scan);
+    }
+    if (lexer_peek(&scan).kind != TOK_LBRACE)
+    {
+        return 0;
+    }
+
+    PendingDeclaration *pending = xcalloc(1, sizeof(PendingDeclaration));
+    pending->is_impl = 1;
+    pending->start = *l;
+    pending->module_prefix = ctx->imports.current_module_prefix;
+    pending->filename = ctx->current_filename;
+    pending->scope = ctx->current_scope;
+    pending->impl = for_trait ? ast_create(NODE_IMPL_TRAIT)
+                    : generic ? NULL
+                              : ast_create(NODE_IMPL);
+    push_pending_declaration(ctx, pending);
+
+    // Implementing Drop, Copy or Clone imports std/mem.zc, where it is written.
+    if (for_trait && (is_word(trait, "Drop") || is_word(trait, "Copy") || is_word(trait, "Clone")))
+    {
+        auto_import_std_mem(ctx);
+    }
+    *l = scan;
+    skip_braced_block(l);
+    *node = pending->impl;
+    return 1;
+}
+
 ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 {
+    ASTNode *deferred = NULL;
+    if (!ctx->declarations_read && defer_impl(ctx, l, &deferred))
+    {
+        return deferred;
+    }
 
     lexer_next(l); // eat impl
 
@@ -216,7 +299,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
         lexer_next(l);
         ASTNode *h = parse_impl_methods(ctx, l, name1);
         ctx->current_impl_target = NULL; // Restore context
-        ASTNode *n = ast_create(NODE_IMPL_TRAIT);
+        ASTNode *n = impl_node(ctx, NODE_IMPL_TRAIT);
         n->impl_trait.trait_name = name1;
         n->impl_trait.target = target;
         n->impl_trait.trait_token = t1;
@@ -262,7 +345,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
                 return NULL;
             }
             ASTNode *h = parse_impl_methods(ctx, l, NULL);
-            ASTNode *n = ast_create(NODE_IMPL);
+            ASTNode *n = impl_node(ctx, NODE_IMPL);
             n->token = t1;
             n->impl.target = target;
             n->impl.target_token = t1;
@@ -278,7 +361,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
             // REGULAR IMPL
             lexer_next(l);
             ASTNode *h = parse_impl_methods(ctx, l, NULL);
-            ASTNode *n = ast_create(NODE_IMPL);
+            ASTNode *n = impl_node(ctx, NODE_IMPL);
             n->impl.target = target;
             n->impl.target_token = t1;
             n->impl.methods = h;
