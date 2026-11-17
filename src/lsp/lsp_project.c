@@ -81,25 +81,19 @@ void lsp_project_init(const char *root_path)
     fprintf(stderr, "zls: project root: %s\n", root_path);
     g_project->use_gitignore = 1;
 
-    // Create a persistent global context
-    g_project->ctx = xcalloc(1, sizeof(ParserContext));
-    g_project->ctx->compiler = g_server_compiler;
-    g_project->ctx->config = &g_server_compiler->config;
+    // One context for the whole project. It is the parser, token and diagnostic context: without
+    // config the lexer and parser read ctx->config (misra_mode...) and crash on the first didOpen,
+    // and without the diagnostic context a parse error would fall through to exit(1) and end the
+    // server.
+    g_project->ctx = xmalloc(sizeof(ParserContext));
+    parser_context_init(g_project->ctx, g_server_compiler, NULL);
     g_project->ctx->is_fault_tolerant = 1;
-    module_state_init(&g_project->ctx->imports);
     g_project->ctx->cg.hoist_out = tmpfile(); // Support hoisting in LSP
     if (!g_project->ctx->cg.hoist_out)
     {
         fprintf(stderr, "zls: Warning: Failed to create hoist_out temporary file. Hoisting will be "
                         "disabled.\n");
     }
-
-    // Register this persistent context as the parser/token/diagnostic context.
-    // Without config the lexer/parser deref ctx->config (e.g. misra_mode) and
-    // segfault on the first didOpen, and without the diagnostic context a parse
-    // error would fall through to exit(1) and kill the whole server.
-    token_set_parser_ctx(g_project->ctx);
-    diag_set_parser_ctx(g_project->ctx);
 
     CompilerConfig *cfg = &g_project->ctx->compiler->config;
 

@@ -93,6 +93,13 @@ typedef struct DeclarationAttributes
 DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l);
 
 /**
+ * @brief Starts `ctx` empty for a parse of `filename` (NULL when there is none yet) by
+ *        `compiler`, with its configuration, and registers it as the context diagnostics and
+ *        tokens report to.
+ */
+void parser_context_init(ParserContext *ctx, ZenCompiler *compiler, const char *filename);
+
+/**
  * @brief Parses a program.
  */
 ASTNode *parse_program(ParserContext *ctx, Lexer *l);

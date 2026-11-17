@@ -118,13 +118,7 @@ static int compile_program(ZenCompiler *compiler)
     compiler->warning_count = 0;
 
     ParserContext ctx;
-    memset(&ctx, 0, sizeof(ctx));
-    ctx.compiler = compiler;
-    ctx.config = &compiler->config;
-    ctx.current_filename = compiler->config.input_file;
-    module_state_init(&ctx.imports);
-    diag_set_parser_ctx(&ctx);
-    token_set_parser_ctx(&ctx);
+    parser_context_init(&ctx, compiler, compiler->config.input_file);
 
     // Set runtime hooks based on configuration
     if (ctx.config->misra_mode)
