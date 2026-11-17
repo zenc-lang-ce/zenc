@@ -64,11 +64,10 @@ void emit_source_mapping(ParserContext *ctx, ASTNode *node)
         }
     }
 
+    // A node the compiler made without a place in the source gets no #line: the C compiler keeps
+    // counting from the last one.
     if (!node->token.start || !node->token.file)
     {
-        zwarn_at(node->token,
-                 "Encountered source mapping issue for node type %i, please report this issue.",
-                 (int)node->kind);
         return;
     }
 
