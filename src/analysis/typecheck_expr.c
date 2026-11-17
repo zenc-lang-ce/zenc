@@ -1684,6 +1684,27 @@ static int lambda_is_waiting(TypeChecker *tc, ASTNode *node)
     return 0;
 }
 
+// A lambda whose parameters take their types from its first call (`let add = (x, y) => x + y;`):
+// from 0.6 a parameter needs a type where nothing at the lambda gives it one.
+static void report_untyped_lambda_parameter(TypeChecker *tc, ASTNode *node)
+{
+    Type *t = get_inner_type(node->type_info);
+    int i = 0;
+    while (i < node->lambda.count - 1 && t && t->kind == TYPE_FUNCTION && t->args && i < t->count &&
+           t->args[i] && get_inner_type(t->args[i])->kind != TYPE_UNKNOWN)
+    {
+        i++;
+    }
+    const char *name = node->lambda.param_names[i];
+    Token where = node->lambda.param_tokens ? node->lambda.param_tokens[i] : node->token;
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "Lambda parameter '%s' has no type", name);
+    const char *hints[] = {"Write the type of each parameter, as in '(x: int) => x * 2', or give "
+                           "the lambda a function type, as in 'let f: fn(int) -> int = ...'",
+                           NULL};
+    tc_error_from_0_6(tc, where, msg, hints);
+}
+
 // Checks a lambda's body, in the scope that holds its parameters and captures.
 static void check_lambda_body(TypeChecker *tc, ASTNode *node, int depth)
 {
@@ -1810,6 +1831,7 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
     {
         if (!lambda_is_waiting(tc, node))
         {
+            report_untyped_lambda_parameter(tc, node);
             WaitingLambda w = {node, tc->pctx->current_scope, tc->current_depth, depth,
                                tc->current_func};
             tc->waiting_lambdas =

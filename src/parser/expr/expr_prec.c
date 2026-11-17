@@ -1855,7 +1855,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
             }
 
-            // Backward Inference for Lambda Params
+#if FF_COMPATIBILITY_0_5
+            // A lambda parameter without a type takes the type of what it is combined with
+            // (`x => x * 2` makes `x` an i32). From 0.6 a parameter without a type needs one
+            // from the lambda's context, and nothing is guessed.
             // LHS is Unknown Var, RHS is Known
             if (lhs->kind == NODE_EXPR_VAR && lhs->type_info &&
                 lhs->type_info->kind == TYPE_UNKNOWN && rhs->type_info &&
@@ -1889,6 +1892,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     rhs->type_info = lhs->type_info;
                 }
             }
+#endif
 
             if (is_comparison_operator(bin->binary.op))
             {
@@ -2037,47 +2041,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                     if (!is_ptr_arith && !alias_match)
                     {
-                        // ** Backward Inference for Binary Ops **
-                        // Case 1: LHS is Unknown Var, RHS is Known
-                        if (lhs->kind == NODE_EXPR_VAR && lhs->type_info &&
-                            lhs->type_info->kind == TYPE_UNKNOWN && rhs->type_info &&
-                            rhs->type_info->kind != TYPE_UNKNOWN)
-                        {
-                            // Infer LHS type from RHS
-                            ZenSymbol *sym = find_symbol_entry(ctx, lhs->var_ref.name);
-                            if (sym)
-                            {
-                                // Update ZenSymbol
-                                sym->type_info = rhs->type_info;
-
-                                // Update AST Node
-                                lhs->type_info = rhs->type_info;
-
-                                bin->type_info = rhs->type_info;
-                                goto bin_inference_success;
-                            }
-                        }
-
-                        // Case 2: RHS is Unknown Var, LHS is Known
-                        if (rhs->kind == NODE_EXPR_VAR && rhs->type_info &&
-                            rhs->type_info->kind == TYPE_UNKNOWN && lhs->type_info &&
-                            lhs->type_info->kind != TYPE_UNKNOWN)
-                        {
-                            // Infer RHS type from LHS
-                            ZenSymbol *sym = find_symbol_entry(ctx, rhs->var_ref.name);
-                            if (sym)
-                            {
-                                // Update ZenSymbol
-                                sym->type_info = lhs->type_info;
-
-                                // Update AST Node
-                                rhs->type_info = lhs->type_info;
-
-                                bin->type_info = lhs->type_info;
-                                goto bin_inference_success;
-                            }
-                        }
-
                         // Allow assigning 0 to pointer (NULL)
                         int is_null_assign = 0;
                         if (bin->binary.op == OP_ASSIGN)
@@ -2156,8 +2119,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                 zpanic_with_suggestion(op, msg, suggestion);
                             }
                         }
-
-                    bin_inference_success:;
                     }
                 }
             }

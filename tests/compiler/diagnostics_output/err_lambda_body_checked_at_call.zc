@@ -1,10 +1,21 @@
 // ARGS: check
-// A lambda whose parameters have no type gets them from its first call, and its body is
-// checked then, with them: `x` is an `i32` here, which `take` does not accept. A lambda that
-// is never called is checked with what it has.
+// A lambda parameter without a type needs one from where the lambda is written: a function type
+// in its `let`, the parameter of a call or the return type of a function. Without it, the first
+// call gives it, and the body is checked then, with it: `x` is an `i32` here, which `take` does
+// not accept. A lambda that is never called is checked with what it has.
+// FF_COMPATIBILITY_0_5 (src/feature_flags.h): in 0.5 a parameter without a type and without
+// context is a warning; from 0.6 it is an error, and this file's expected output changes.
 
 fn take(_s: string) -> int {
     return 0;
+}
+
+fn apply(f: fn(int) -> int, v: int) -> int {
+    return f(v);
+}
+
+fn adder(n: int) -> fn(int) -> int {
+    return x => x + n;
 }
 
 fn main() {
@@ -15,4 +26,10 @@ fn main() {
     let _never = (y) => {
         return y;
     };
+    let typed: fn(int) -> int = (v) => v * 2;
+    let _t = typed(3);
+    let _a = apply((v) => v + 1, 4);
+    let _w = adder(1)(2);
+    let written = (v: int) => v;
+    let _x = written(5);
 }

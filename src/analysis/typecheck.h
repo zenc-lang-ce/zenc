@@ -111,6 +111,12 @@ int tc_file_in_std(TypeChecker *tc, const char *file);
  */
 int tc_storage_depth(TypeChecker *tc, ASTNode *place);
 void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
+
+/**
+ * @brief Reports what 0.6 makes an error: in 0.5 (FF_COMPATIBILITY_0_5) a warning that says
+ *        so, in `zc check` and in a build, since the program was valid; from 0.6 an error.
+ */
+void tc_error_from_0_6(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
 void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
 void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints,
                               const DiagnosticNote *note);

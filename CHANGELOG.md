@@ -9,15 +9,18 @@ This new release brings breaking changes to the language:
 - A slice no longer has a `cap` field: it is `{ data, len }`. Code that reads `.cap`, or that builds a slice in C with three fields, must change.
 - Returning an array literal as a slice (`fn f() -> [float] { return [1.0, 2.0]; }`) is an error, as it already is for a local array: its elements live on the function's stack. Return a fixed-size array (`float[2]`) or a `Vec<T>`. Before, the literal was copied to the heap and never freed.
 - `Enum_Variant` and `Enum_Variant_Tag` (`Result_Ok`, `Result_Ok_Tag`) no longer stand for `Enum::Variant` and its tag: write `Result::Ok`.
+- A lambda parameter needs a type where nothing at the lambda gives it one: `let add = (x, y) => x + y;` is an error. Write the types (`(x: int, y: int) => x + y`) or give the lambda a function type (`let add: fn(int, int) -> int = (x, y) => x + y;`); a lambda passed as an argument or returned takes the type of the parameter or of the return. The type is no longer guessed from the body: `x => x * 2` made `x` an `i32`, and `doubler(2.5)` returned 4.
 
 ## 0.5.3 (WIP)
 
 ### Changes
+- A lambda parameter without a type where nothing at the lambda gives it one (`let add = (x, y) => x + y;`) is a warning, "an error from 0.6". A parameter whose type 0.5 guesses from the body (`x => x * 2`) is not reported yet, and is an error in 0.6 too.
 - `zc build` and `zc run` run the same typechecker as `zc check`. The errors `zc check` reports that a build did not (a type mismatch, an undefined variable, a pointer that escapes its scope, a `match` that is not exhaustive...) are warnings in a build, marked "an error from 0.6": from 0.6 they stop the build. With `--misra` they are errors, as they already were.
 - The backend no longer repeats what the typechecker reports: the warnings "Non-exhaustive match", "Undefined variable" and, with `-Wpedantic`, "Undefined function" are gone from a build, which now gets them from the typechecker. An undefined function gets the closest declared name as a hint ("Did you mean 'compute'?"), as an undefined variable did.
 - Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name: the special message "is a function of std/io.zc, which is not imported" is gone.
 
 ### Fixes
+- A returned lambda takes the function's return type (`fn adder(n: int) -> fn(int) -> int { return x => x + n; }`), as one in a `let` with a type or passed as an argument does.
 - A lambda whose parameters have no type (`let add = (x, y) => x + y;`) gets them from its first call, and `zc check` checks its body then, with those types: before, it checked the body with the types unknown, and an error in it (passing `x` where a `string` is expected, when the call gives an `int`) went unreported.
 - An index on a struct with `get`/`set` (the operator overload) is decided in one place, the typechecker, with the rule the parser, the typechecker and the backend each had their own copy of: `v[i, j] = x` passes every index to `set`, a pointer is still indexed directly, and the result of `get` is a temporary a method can be called on (`m[k].unwrap()`).
 - A function with a return type whose last statement is an expression and not a `return` (`fn twice(x: int) -> int { x * 2 }`) is "may not return a value on all code paths". `zc check` took the expression as the function's value, but the C returns nothing there: the caller got garbage.

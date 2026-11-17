@@ -13,7 +13,7 @@ test "test_complex_lambdas" {
     println("Testing complex lambda scenarios...");
     
     // Lambda with multiple parameters
-    let add_three = (a, b, c) => a + b + c;
+    let add_three = (a: I32, b: I32, c: I32) => a + b + c;
     let res1 = add_three(1, 2, 3);
     assert(res1 == 6, "Multi-param lambda: Failed");
     println("  -> Multi-param lambda: Passed");
@@ -30,8 +30,8 @@ test "test_complex_lambdas" {
     println("  -> Returned lambda: Passed");
     
     // Lambda composition
-    let doubler = x => x * 2;
-    let add5 = x => x + 5;
+    let doubler: fn(I32) -> I32 = x => x * 2;
+    let add5 = (x: I32) => x + 5;
     let res4 = add5(doubler(10));
     assert(res4 == 25, "Lambda composition: Failed");
     println("  -> Lambda composition: Passed");
@@ -84,12 +84,12 @@ test "reference_capture" {
     assert(val == 11, f"Block ref capture failed: val={val} (expected 11)");
     println("  -> Block ref capture: Passed");
     
-    let modify_arrow = [&] x => val += x;
+    let modify_arrow = [&] (x: int) => val += x;
     modify_arrow(5);
     assert(val == 16, f"Arrow ref capture failed: val={val} (expected 16)");
     println("  -> Arrow ref capture: Passed");
     
-    let sum_into = [&] (a, b) => val += (a + b);
+    let sum_into = [&] (a: int, b: int) => val += (a + b);
     sum_into(2, 2);
     assert(val == 20, f"Arrow multi-arg ref capture failed: val={val} (expected 20)");
     println("  -> Arrow multi-arg ref capture: Passed");

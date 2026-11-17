@@ -259,6 +259,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             // rules (notably Rule 17.7, unused return value) to calls inside it.
             int old_stmt_ctx = tc->is_stmt_context;
             tc->is_stmt_context = 0;
+            if (tc->returns_from)
+            {
+                // A returned lambda takes the return type (`return x => x + n;`).
+                const char *ret_name = NULL;
+                Type *ret_type = NULL;
+                return_target(tc->pctx, tc->returns_from, &ret_name, &ret_type);
+                adopt_context_type(node->ret.value, ret_type);
+            }
             check_node(tc, node->ret.value, depth + 1);
             tc->is_stmt_context = old_stmt_ctx;
             // Only this move rule applies to a returned value for now: what returning an index

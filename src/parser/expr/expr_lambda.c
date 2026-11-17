@@ -70,7 +70,8 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
         }
     }
 
-    // Update parameter types from symbol table (in case inference happened)
+#if FF_COMPATIBILITY_0_5
+    // The body may have given the parameter a type (`x => x * 2`: see parse_expr_prec_impl).
     ZenSymbol *sym = find_symbol_entry(ctx, param_name);
     if (sym && sym->type_info && sym->type_info->kind != TYPE_UNKNOWN)
     {
@@ -85,6 +86,7 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
             sym->type_info = t->args[0]; // Bind AST node type implicitly!
         }
     }
+#endif
 
     lambda->lambda.lambda_id = ctx->lambda_counter++;
     lambda->lambda.is_expression = 1;
