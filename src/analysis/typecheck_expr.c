@@ -1081,7 +1081,13 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         {
             misra_check_constant_wrap(tc, value_node, target);
         }
-        wrap_in_conversion(value_node, target);
+        // Only when its representation changes: an `i32` constant where an `i32` (or an alias of
+        // one) is expected is not converted.
+        if (!value_node->type_info ||
+            resolve_alias(value_node->type_info)->kind != resolve_alias(target)->kind)
+        {
+            wrap_in_conversion(value_node, target);
+        }
         value = target;
         resolved_value = resolved_target;
     }
