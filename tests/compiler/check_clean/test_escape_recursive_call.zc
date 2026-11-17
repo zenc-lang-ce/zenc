@@ -1,0 +1,23 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A function that returns the pointer it was given, called on itself: the
+// depth worked out for the recursive call is the call's own, so the `return`
+// after it still returns what the caller passed.
+struct Node {
+    value: int;
+    left: Node*;
+}
+
+fn insert(node: Node*, leaf: Node*) -> Node* {
+    if node == NULL {
+        return leaf;
+    }
+    node.left = insert(node.left, leaf);
+    return node;
+}
+
+test "a recursive call keeps the function's return depth" {
+    let leaf = Node{value: 2, left: NULL};
+    let root = Node{value: 1, left: NULL};
+    let top = insert(&root, &leaf);
+    assert(top == &root && root.left == &leaf, "insert returns the node it was given");
+}

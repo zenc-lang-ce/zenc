@@ -1,0 +1,32 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A cursor read through a pointer, moved along the text it points into and
+// stored back, does not escape: after each assignment it still points where
+// the caller's text is.
+include <ctype.h>
+
+fn skip_spaces(p: char**) {
+    let ptr = *p;
+    while (ptr[0] != 0 && isspace((int)ptr[0])) {
+        ptr = &ptr[1];
+    }
+    *p = ptr;
+}
+
+fn next_word(p: char**) -> char* {
+    skip_spaces(p);
+    let ptr = *p;
+    let start = ptr;
+    while (ptr[0] != 0 && !isspace((int)ptr[0])) {
+        ptr = &ptr[1];
+    }
+    *p = ptr;
+    ptr = *p;
+    return start;
+}
+
+test "a cursor moves along the caller's text" {
+    let text: char[16] = "  zen c";
+    let cursor: char* = &text[0];
+    let word = next_word(&cursor);
+    assert(word[0] == 'z' && cursor[0] == ' ', "the cursor stops after the first word");
+}

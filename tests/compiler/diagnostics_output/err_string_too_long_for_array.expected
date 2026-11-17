@@ -1,0 +1,18 @@
+   Compiling tests/compiler/diagnostics_output/err_string_too_long_for_array.zc...
+error: A string of 4 bytes (with its NUL) does not fit in 'char[3]'
+  --> tests/compiler/diagnostics_output/err_string_too_long_for_array.zc:10:9
+   |
+10 |     let _short: char[3] = "abc";
+   |         ^ here
+   |
+   = help: Make the array larger, or the string shorter
+error: A string of 8 bytes (with its NUL) does not fit in 'char[4]'
+  --> tests/compiler/diagnostics_output/err_string_too_long_for_array.zc:11:20
+   |
+11 |     let _n = Named{name: "toolong"};
+   |                    ^ here
+   |
+   = help: Make the array larger, or the string shorter
+     error: semantic analysis found 2 errors
+       Check failed with 2 errors
+[exit 1]

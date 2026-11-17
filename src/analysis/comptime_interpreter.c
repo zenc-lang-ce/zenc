@@ -115,96 +115,11 @@ static CValue val_string(const char *s)
     return v;
 }
 
-// The character a one-letter escape (`\n`, `\t`...) stands for, or -1.
-static int simple_escape(char c)
-{
-    switch (c)
-    {
-    case 'n':
-        return '\n';
-    case 't':
-        return '\t';
-    case 'r':
-        return '\r';
-    case 'a':
-        return '\a';
-    case 'b':
-        return '\b';
-    case 'f':
-        return '\f';
-    case 'v':
-        return '\v';
-    case 'e':
-        return 27;
-    default:
-        return -1;
-    }
-}
-
-static int is_hex_digit(char c)
-{
-    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-}
-
-// A string literal's string_val holds its text as written in C (escapes
-// included), ready for codegen. At compile time we need the characters
-// themselves: `code("];\n")` must yield a newline, not `\` and `n`.
-static char *unescape_c_string(const char *s)
-{
-    char *out = xmalloc(strlen(s) + 1);
-    char *p = out;
-    while (*s)
-    {
-        if (*s != '\\' || !s[1])
-        {
-            *p++ = *s++;
-            continue;
-        }
-        s++;
-        char c = *s++;
-        int simple = simple_escape(c);
-        if (simple >= 0)
-        {
-            *p++ = (char)simple;
-        }
-        else if (c == 'x')
-        {
-            unsigned int val = 0;
-            for (int digits = 0; digits < 2 && is_hex_digit(*s); digits++, s++)
-            {
-                val = (val << 4) | (unsigned int)(*s <= '9' ? *s - '0' : (*s | 0x20) - 'a' + 10);
-            }
-            *p++ = (char)val;
-        }
-        else if (c >= '0' && c <= '7')
-        {
-            unsigned int val = (unsigned int)(c - '0');
-            for (int k = 0; k < 2 && *s >= '0' && *s <= '7'; k++)
-            {
-                val = (val << 3) | (unsigned int)(*s++ - '0');
-            }
-            *p++ = (char)val;
-        }
-        else
-        {
-            // \\, \", \' and anything unknown: the character itself.
-            *p++ = c;
-        }
-    }
-    *p = '\0';
-    return out;
-}
-
-// The value of a string literal: raw strings already hold their characters.
+// The value of a string literal: its characters (string_literal_text).
 static CValue string_literal_value(ASTNode *node)
 {
-    const char *text = node->literal.string_val ? node->literal.string_val : "";
-    if (node->literal.kind == LITERAL_RAW_STRING)
-    {
-        return val_string(text);
-    }
     CValue v = {VAL_STRING, {0}};
-    v.as.s = unescape_c_string(text);
+    v.as.s = string_literal_text(node);
     return v;
 }
 

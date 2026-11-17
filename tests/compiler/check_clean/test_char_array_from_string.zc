@@ -1,0 +1,18 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// A string literal initializes an array of characters it fits in, with its
+// terminating NUL: in a `let`, in a struct field, and counting an escape as
+// the one byte it stands for.
+struct Named {
+    name: char[8];
+}
+
+test "string literals fill char arrays" {
+    let exact: char[4] = "abc";
+    let roomy: char[16] = "hi";
+    let escaped: char[3] = "a\n";
+    let n = Named{name: "zen"};
+    assert(exact[2] == 'c' && exact[3] == 0, "exact fits with its NUL");
+    assert(roomy[1] == 'i' && roomy[2] == 0, "a shorter string leaves zeros");
+    assert(escaped[1] == '\n', "an escape is one byte");
+    assert(n.name[0] == 'z', "a struct field");
+}

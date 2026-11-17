@@ -746,8 +746,9 @@ static int is_char_ptr(Type *t)
     {
         return 0;
     }
-    // Handle both primitive char* and legacy struct char*.
-    if (TYPE_POINTER == t->kind && t->inner && TYPE_CHAR == t->inner->kind)
+    // Handle both primitive char* and legacy struct char*. `c_char` is C's char too.
+    if (TYPE_POINTER == t->kind && t->inner &&
+        (TYPE_CHAR == t->inner->kind || TYPE_C_CHAR == t->inner->kind))
     {
         return 1;
     }
@@ -2300,3 +2301,113 @@ char *get_field_type_str(ParserContext *ctx, const char *struct_name, const char
 }
 
 // Type inference.
+
+// The character a one-letter escape (`\n`, `\t`...) stands for, or -1.
+static int simple_escape(char c)
+{
+    switch (c)
+    {
+    case 'n':
+        return '\n';
+    case 't':
+        return '\t';
+    case 'r':
+        return '\r';
+    case 'a':
+        return '\a';
+    case 'b':
+        return '\b';
+    case 'f':
+        return '\f';
+    case 'v':
+        return '\v';
+    case 'e':
+        return 27;
+    default:
+        return -1;
+    }
+}
+
+static int is_hex_digit(char c)
+{
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+// A string literal's string_val holds its text as written in C (escapes
+// included), ready for codegen. At compile time we need the characters
+// themselves: `code("];\n")` must yield a newline, not `\` and `n`.
+static char *unescape_c_string(const char *s)
+{
+    char *out = xmalloc(strlen(s) + 1);
+    char *p = out;
+    while (*s)
+    {
+        if (*s != '\\' || !s[1])
+        {
+            *p++ = *s++;
+            continue;
+        }
+        s++;
+        char c = *s++;
+        int simple = simple_escape(c);
+        if (simple >= 0)
+        {
+            *p++ = (char)simple;
+        }
+        else if (c == 'x')
+        {
+            unsigned int val = 0;
+            for (int digits = 0; digits < 2 && is_hex_digit(*s); digits++, s++)
+            {
+                val = (val << 4) | (unsigned int)(*s <= '9' ? *s - '0' : (*s | 0x20) - 'a' + 10);
+            }
+            *p++ = (char)val;
+        }
+        else if (c >= '0' && c <= '7')
+        {
+            unsigned int val = (unsigned int)(c - '0');
+            for (int k = 0; k < 2 && *s >= '0' && *s <= '7'; k++)
+            {
+                val = (val << 3) | (unsigned int)(*s++ - '0');
+            }
+            *p++ = (char)val;
+        }
+        else
+        {
+            // \\, \", \' and anything unknown: the character itself.
+            *p++ = c;
+        }
+    }
+    *p = '\0';
+    return out;
+}
+
+char *string_literal_text(ASTNode *literal)
+{
+    const char *text = literal->literal.string_val ? literal->literal.string_val : "";
+    if (literal->literal.kind == LITERAL_RAW_STRING)
+    {
+        return xstrdup(text);
+    }
+    return unescape_c_string(text);
+}
+
+int is_pointer_type(Type *t)
+{
+    t = resolve_alias(t);
+    return t && (t->kind == TYPE_POINTER || t->kind == TYPE_STRING);
+}
+
+Type *pointee_of(Type *t)
+{
+    t = resolve_alias(t);
+    if (!t)
+    {
+        return NULL;
+    }
+    if (t->kind == TYPE_POINTER)
+    {
+        return t->inner;
+    }
+    return t->kind == TYPE_STRING ? type_new(TYPE_CHAR) : NULL;
+}

@@ -69,6 +69,51 @@ static Type *operand_scalar(TypeChecker *tc, Type *t, Token at)
     return vector ? vector->inner : type_seen_from(t, at.file);
 }
 
+// The pointer `t` is in arithmetic: itself if it is a pointer (or a string), the pointer to its
+// first element if it is an array, which decays to it as in C. NULL for anything else.
+static Type *decayed_pointer(Type *t)
+{
+    if (is_pointer_type(t))
+    {
+        return t;
+    }
+    Type *resolved = resolve_alias(t);
+    if (resolved && resolved->kind == TYPE_ARRAY && resolved->inner)
+    {
+        Type *pointer = type_new_ptr(resolved->inner);
+        pointer->lifetime_depth = t->lifetime_depth;
+        return pointer;
+    }
+    return NULL;
+}
+
+static int is_string_literal(ASTNode *node)
+{
+    return node->kind == NODE_EXPR_LITERAL &&
+           (node->literal.kind == LITERAL_STRING || node->literal.kind == LITERAL_RAW_STRING);
+}
+
+// An array of bytes C lets a string literal initialize: of char, signed or unsigned.
+static int is_byte_array(Type *t)
+{
+    if (!t || t->kind != TYPE_ARRAY || !t->inner)
+    {
+        return 0;
+    }
+    switch (resolve_alias(t->inner)->kind)
+    {
+    case TYPE_CHAR:
+    case TYPE_C_CHAR:
+    case TYPE_C_UCHAR:
+    case TYPE_I8:
+    case TYPE_U8:
+    case TYPE_BYTE:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 // `void*`, the generic pointer: it converts to and from any pointer, and compares with one.
 static int is_void_pointer(Type *t)
 {
@@ -129,19 +174,15 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
             return;
         }
 
-        Type *resolved = resolve_alias(operand_type);
-        if (resolved->kind != TYPE_POINTER && resolved->kind != TYPE_STRING)
+        Type *pointee = pointee_of(operand_type);
+        if (!is_pointer_type(operand_type))
         {
             const char *hints[] = {"Only pointers can be dereferenced", NULL};
             tc_error_with_hints(tc, node->token, "Cannot dereference non-pointer type", hints);
         }
-        else if (resolved->kind == TYPE_STRING)
+        else if (pointee)
         {
-            node->type_info = type_new(TYPE_CHAR);
-        }
-        else if (resolved->inner)
-        {
-            node->type_info = resolved->inner;
+            node->type_info = pointee;
             CompilerConfig *cfg = &tc->pctx->compiler->config;
             if (cfg->misra_mode)
             {
@@ -193,7 +234,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
             }
         }
         if (!is_integer_type(operand_type) && !is_float_type(operand_type) &&
-            operand_type->kind != TYPE_POINTER)
+            !is_pointer_type(operand_type))
         {
             tc_error(tc, node->token, "Increment/decrement requires a numeric or pointer operand");
         }
@@ -244,6 +285,24 @@ static void misra_check_constant_wrap(TypeChecker *tc, ASTNode *node, Type *targ
     }
     long long res = op == OP_ADD ? lval + rval : op == OP_SUB ? lval - rval : lval * rval;
     misra_check_unsigned_wrap(tc->pctx, op, lval, rval, res, target, node->token);
+}
+
+// The variable whose own storage an assignment to `place` writes: `v`, or `v` for a field or an
+// element of it, at any depth. NULL when the place is reached through a pointer (`*p`, `p.f`
+// with a pointer `p`), which writes where the pointer points.
+static ASTNode *written_variable(ASTNode *place)
+{
+    while (place && (place->kind == NODE_EXPR_MEMBER || place->kind == NODE_EXPR_INDEX))
+    {
+        ASTNode *holder =
+            place->kind == NODE_EXPR_MEMBER ? place->member.target : place->index.array;
+        if (!holder || is_pointer_type(holder->type_info))
+        {
+            return NULL;
+        }
+        place = holder;
+    }
+    return place && place->kind == NODE_EXPR_VAR ? place : NULL;
 }
 
 void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
@@ -384,11 +443,13 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
             place_type->lifetime_depth = tc_storage_depth(tc, node->binary.left);
             check_type_compatibility(tc, place_type, right_type, node->binary.right->token,
                                      node->binary.right, 0);
-            // A variable points as deep as any value assigned to it. Its symbol gets its own
-            // copy of the type: a parameter's is the signature's.
-            if (node->binary.left->kind == NODE_EXPR_VAR && right_type)
+            // A variable points as deep as any value assigned to it, also to a field or an
+            // element of it that is part of it (not reached through a pointer). Its symbol gets
+            // its own copy of the type: a parameter's is the signature's.
+            ASTNode *written = written_variable(node->binary.left);
+            if (written && right_type)
             {
-                ZenSymbol *var = tc_lookup(tc, node->binary.left->var_ref.name);
+                ZenSymbol *var = tc_lookup(tc, written->var_ref.name);
                 if (var && var->type_info &&
                     right_type->lifetime_depth > var->type_info->lifetime_depth)
                 {
@@ -517,14 +578,15 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
             Type *lhs_resolved = resolve_alias(left_type);
             Type *rhs_resolved = resolve_alias(right_type);
 
-            // Pointer Arithmetic
-            if (lhs_resolved->kind == TYPE_POINTER || lhs_resolved->kind == TYPE_STRING)
+            // Pointer Arithmetic. An array is the pointer to its first element it decays to.
+            Type *lhs_pointer = decayed_pointer(left_type);
+            Type *rhs_pointer = decayed_pointer(right_type);
+            if (lhs_pointer)
             {
                 misra_check_pointer_arithmetic(tc->pctx, lhs_resolved, node->token);
 
                 // Ptr - Ptr -> isize
-                if (binop == OP_SUB &&
-                    (rhs_resolved->kind == TYPE_POINTER || rhs_resolved->kind == TYPE_STRING))
+                if (binop == OP_SUB && rhs_pointer)
                 {
                     node->type_info = type_new(TYPE_ISIZE);
                     return;
@@ -533,16 +595,15 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                 // Ptr - Int -> Ptr
                 if ((binop == OP_ADD || binop == OP_SUB) && is_integer_type(rhs_resolved))
                 {
-                    node->type_info = left_type;
+                    node->type_info = lhs_pointer;
                     return;
                 }
             }
             // Int + Ptr -> Ptr
-            if (binop == OP_ADD && is_integer_type(lhs_resolved) &&
-                (rhs_resolved->kind == TYPE_POINTER || rhs_resolved->kind == TYPE_STRING))
+            if (binop == OP_ADD && is_integer_type(lhs_resolved) && rhs_pointer)
             {
                 misra_check_pointer_arithmetic(tc->pctx, rhs_resolved, node->token);
-                node->type_info = right_type;
+                node->type_info = rhs_pointer;
                 return;
             }
 
@@ -1062,7 +1123,7 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
                                    "invalid when that scope ends.",
                                    "Consider copying the value instead of taking a reference.",
                                    NULL};
-            tc_error_with_hints(tc, t, msg, hints);
+            tc_escape_error(tc, t, msg, hints);
             return 0;
         }
     }
@@ -1102,22 +1163,38 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         return 1;
     }
 
-    // Array decay: Array[T] -> T*
-    // This allows passing a fixed-size array where a pointer is expected.
-    if (resolved_target->kind == TYPE_POINTER && resolved_value->kind == TYPE_ARRAY)
+    // A string literal fills an array of characters it fits in, with its terminating NUL, as in
+    // C (`let name: char[8] = "abc";`).
+    if (value_node && is_string_literal(value_node) && is_byte_array(resolved_target))
     {
-        if (resolved_target->inner && resolved_value->inner)
+        char *text = string_literal_text(value_node);
+        size_t needed = strlen(text) + 1;
+        if (resolved_target->array_size > 0 && needed <= (size_t)resolved_target->array_size)
         {
-            // Recursive check for inner types (e.g. char* <- char[10])
-            if (type_eq(resolved_target->inner, resolved_value->inner))
-            {
-                return 1;
-            }
-            // Allow char* <- char[N] explicitly if type_eq is too strict
-            if (is_char_type(resolved_target->inner) && is_char_type(resolved_value->inner))
-            {
-                return 1;
-            }
+            return 1;
+        }
+        char msg[MAX_SHORT_MSG_LEN];
+        snprintf(msg, sizeof(msg), "A string of %zu bytes (with its NUL) does not fit in '%s'",
+                 needed, type_to_string(target));
+        const char *hints[] = {"Make the array larger, or the string shorter", NULL};
+        tc_error_with_hints(tc, t, msg, hints);
+        return 0;
+    }
+
+    // Array decay: Array[T] -> T* (a `string` is a char*).
+    // This allows passing a fixed-size array where a pointer is expected.
+    Type *target_pointee = pointee_of(resolved_target);
+    if (target_pointee && resolved_value->kind == TYPE_ARRAY && resolved_value->inner)
+    {
+        // Recursive check for inner types (e.g. char* <- char[10])
+        if (type_eq(target_pointee, resolved_value->inner))
+        {
+            return 1;
+        }
+        // Allow char* <- char[N] explicitly if type_eq is too strict
+        if (is_char_type(target_pointee) && is_char_type(resolved_value->inner))
+        {
+            return 1;
         }
     }
 
@@ -1587,7 +1664,9 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
         tc_add_symbol(tc, pname, ptype, node->token, 0);
     }
 
-    // Add captured variables to the scope to ensure visibility and immutability inside the lambda.
+    // Add captured variables to the scope of the lambda. One captured by value is the closure's own
+    // copy, which the body may change (the closure keeps it between calls); the original does not
+    // change. One captured by reference is the original.
     if (node->lambda.captured_vars)
     {
         int saved_silent = tc->pctx->silent_warnings;
@@ -1595,16 +1674,13 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
         for (int i = 0; i < node->lambda.capture_count; i++)
         {
             char *var_name = node->lambda.captured_vars[i];
-            int mode = node->lambda.capture_modes ? node->lambda.capture_modes[i]
-                                                  : node->lambda.default_capture_mode;
 
             // Lookup original symbol to get its type
             ZenSymbol *orig_sym = tc_lookup(tc, var_name);
             if (orig_sym)
             {
-                // Shadow the original variable in the lambda scope
-                // Value captures are immutable.
-                tc_add_symbol(tc, var_name, orig_sym->type_info, node->token, (mode == 0));
+                // Shadow the original variable in the lambda scope.
+                tc_add_symbol(tc, var_name, orig_sym->type_info, node->token, 0);
             }
         }
         tc->pctx->silent_warnings = saved_silent;

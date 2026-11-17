@@ -366,6 +366,18 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         report_missing_method(tc, node);
     }
 
+    // `a.f(...)` calls a method, which takes `a` as its first argument, unless `f` is a field
+    // holding a function pointer: that call passes only the arguments written.
+    Type *member_type = node->call.callee && node->call.callee->kind == NODE_EXPR_MEMBER
+                            ? get_inner_type(node->call.callee->type_info)
+                            : NULL;
+    int calls_field = member_type && !sig && member_type->kind == TYPE_FUNCTION;
+    int passes_receiver = member_type && !calls_field;
+    if (calls_field && !func_name)
+    {
+        func_name = node->call.callee->member.field;
+    }
+
     // Count arguments
     int count = 0;
     ASTNode *arg = node->call.args;
@@ -374,9 +386,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         count++;
         arg = arg->next;
     }
-
-    // Member call (a.b()) counts as +1 arg (the receiver)
-    if (node->call.callee && node->call.callee->kind == NODE_EXPR_MEMBER)
+    if (passes_receiver)
     {
         count++;
     }
@@ -424,9 +434,10 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
             }
         }
     }
-    else if (node->call.callee && node->call.callee->kind == NODE_EXPR_VAR && callee_type &&
-             callee_type->kind == TYPE_FUNCTION)
+    else if (node->call.callee && (node->call.callee->kind == NODE_EXPR_VAR || calls_field) &&
+             callee_type && get_inner_type(callee_type)->kind == TYPE_FUNCTION)
     {
+        callee_type = get_inner_type(callee_type);
         min_args = max_args = callee_type->count;
         is_varargs = callee_type->is_varargs;
     }
@@ -456,7 +467,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     int sig_arg_idx = 0;
 
     // For member calls, the first signature argument is the receiver
-    if (node->call.callee && node->call.callee->kind == NODE_EXPR_MEMBER)
+    if (passes_receiver)
     {
         if (sig && sig->total_args > 0 && sig->arg_types && sig->arg_types[0])
         {
@@ -570,11 +581,9 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     // Propagate return type from function signature
     if (sig && sig->ret_type)
     {
-        if (!node->type_info)
-        {
-            // Deep clone return type to ensure caller doesn't modify callee's metadata
-            node->type_info = type_clone(sig->ret_type);
-        }
+        // The call's own copy: its depth is set below, and the parser may have left the
+        // signature's return type itself here, which every call and `return` shares.
+        node->type_info = type_clone(node->type_info ? node->type_info : sig->ret_type);
 
         // Apply Lifetime Elision
         if (sig->elide_from_idx != -1 && node->type_info->kind == TYPE_POINTER)

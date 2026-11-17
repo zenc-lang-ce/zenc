@@ -926,6 +926,23 @@ int is_float_type(Type *t);
  * every integer whose magnitude fits in them is exact in `t`.
  */
 int float_significand_bits(Type *t);
+
+/**
+ * @brief The characters a string literal stands for, as a new string: a raw literal's text as
+ *        it is, any other with its escapes (`\n`, `\x41`...) decoded.
+ */
+char *string_literal_text(ASTNode *literal);
+
+/**
+ * @brief Whether `t` is a pointer: a `T*`, or a `string`, which is a `char*`.
+ */
+int is_pointer_type(Type *t);
+
+/**
+ * @brief What the pointer `t` points to: the `T` of a `T*`, `char` for a `string`. NULL for
+ *        anything else.
+ */
+Type *pointee_of(Type *t);
 /**
  * @brief Whether the float type `float_type` holds every value of the integer type `integer_type`
  * exactly: the integer's magnitude fits in the float's significand (24 bits in an `f32`, 53 in an
