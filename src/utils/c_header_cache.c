@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "c_header_cache.h"
+#include "../diagnostics/diagnostics.h"
 #include "zalloc.h"
 #include "../arena.h"
 #include "../platform/os.h"
@@ -18,8 +19,7 @@ static void *cache_calloc(size_t count, size_t size)
     void *p = libc_malloc(count * size);
     if (!p)
     {
-        fprintf(stderr, "zc: out of memory\n");
-        exit(1);
+        zfatal("c_header_cache: out of memory");
     }
     memset(p, 0, count * size);
     return p;
