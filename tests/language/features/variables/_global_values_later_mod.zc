@@ -1,0 +1,11 @@
+// Helper for test_global_values_declared_later.zc: globals whose values name what the module
+// declares further down, in a module imported with an alias.
+
+let ORIGIN: Pair<int, int> = Pair<int, int> { a: STEP, b: STEP * 2 };
+
+struct Pair<A, B> {
+    a: A;
+    b: B;
+}
+
+def STEP = 5;
