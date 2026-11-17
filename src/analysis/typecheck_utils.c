@@ -47,8 +47,7 @@ int tc_expr_has_side_effects(ASTNode *node)
 
     case NODE_EXPR_UNARY:
         // Increment/Decrement are side effects (prefix and postfix)
-        if (node->unary.op == OP_PRE_INC || node->unary.op == OP_PRE_DEC ||
-            node->unary.op == OP_POST_INC || node->unary.op == OP_POST_DEC)
+        if (is_increment_operator(node->unary.op))
         {
             return 1;
         }
@@ -153,8 +152,7 @@ void collect_symbols(ASTNode *node, SymbolSet *reads, SymbolSet *writes)
         break;
 
     case NODE_EXPR_UNARY:
-        if (node->unary.op == OP_PRE_INC || node->unary.op == OP_PRE_DEC ||
-            node->unary.op == OP_POST_INC || node->unary.op == OP_POST_DEC)
+        if (is_increment_operator(node->unary.op))
         {
             if (node->unary.operand->kind == NODE_EXPR_VAR)
             {

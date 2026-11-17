@@ -82,7 +82,8 @@ typedef enum
     OPERATOR_COMPARISON, ///< `== != < <= > >=`.
     OPERATOR_LOGICAL,    ///< `&& ||`, unary `!`.
     OPERATOR_ASSIGNMENT, ///< `=` and the compound assignments.
-    OPERATOR_OTHER,      ///< `??`, `|>`, and the unary `*`, `&`, `++`, `--` and their forms.
+    OPERATOR_INCREMENT,  ///< `++` and `--`, prefix and postfix: they write their operand.
+    OPERATOR_OTHER,      ///< `??`, `|>`, and the unary `*` and `&` and their forms.
 } OperatorClass;
 
 typedef struct
@@ -116,6 +117,9 @@ OperatorClass operator_class(OperatorKind kind);
 int is_assignment_operator(OperatorKind kind);
 /** @brief Whether `kind` compares: `== != < <= > >=`. */
 int is_comparison_operator(OperatorKind kind);
+/** @brief Whether `kind` is `++` or `--`, prefix or postfix: an operator that writes its operand.
+ */
+int is_increment_operator(OperatorKind kind);
 /** @brief The method that overloads `kind` (`add` for `+`, `neg` for unary `-`), or NULL. */
 const char *operator_method(OperatorKind kind);
 /** @brief How the AST writes `kind` (`+=`, `_post++`); "" for OP_NONE. */

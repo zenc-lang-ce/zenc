@@ -202,7 +202,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
         return;
     }
 
-    if (unop == OP_PRE_INC || unop == OP_PRE_DEC || unop == OP_POST_INC || unop == OP_POST_DEC)
+    if (is_increment_operator(unop))
     {
         misra_check_inc_dec_result_used(tc->pctx, node->token);
         // Track as a write
