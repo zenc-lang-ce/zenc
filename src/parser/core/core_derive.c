@@ -34,7 +34,7 @@ static int type_has_clone_method(ParserContext *ctx, const char *type_name)
         for (ASTNode *m = it->impl_node->impl.methods; m; m = m->next)
         {
             if (m->kind == NODE_FUNCTION && m->func.name &&
-                strcmp(m->func.name, template_method) == 0)
+                strcmp(function_c_name(m), template_method) == 0)
             {
                 return 1;
             }

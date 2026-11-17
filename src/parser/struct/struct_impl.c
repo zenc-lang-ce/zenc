@@ -61,7 +61,8 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         }
         ATTACH_DOC_COMMENT(ctx, f);
         f->func.method_name = f->func.name;
-        f->func.name = mangle_method_symbol(type_name, trait_name, f->func.method_name);
+        f->func.trait_name = trait_name;
+        (void)type_name; // The owner is the impl's target, which the method keeps (impl_target).
 
         if (attrs.cfg_condition)
         {
@@ -75,16 +76,16 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
         {
             char **params = xmalloc(sizeof(char *));
             params[0] = xstrdup(template_param);
-            register_func_template(ctx, f->func.name, params, 1, f);
+            register_func_template(ctx, function_c_name(f), params, 1, f);
         }
         else if (f->func.generic_param_count > 0)
         {
-            register_func_template(ctx, f->func.name, f->func.generic_params,
+            register_func_template(ctx, function_c_name(f), f->func.generic_params,
                                    f->func.generic_param_count, f);
         }
         else
         {
-            register_function(ctx, ctx->current_scope, f, f->func.name, 0);
+            register_function(ctx, ctx->current_scope, f, function_c_name(f), 0);
         }
 
         if (!h)

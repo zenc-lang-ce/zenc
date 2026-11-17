@@ -1732,8 +1732,33 @@ char *function_c_name(ASTNode *fn)
     {
         return NULL;
     }
-    return fn->func.is_module_prefixed ? mangle_module_symbol(fn->func.module_prefix, fn->func.name)
-                                       : fn->func.name;
+    char *base = method_c_name(fn);
+    if (!base)
+    {
+        base = fn->func.is_module_prefixed
+                   ? mangle_module_symbol(fn->func.module_prefix, fn->func.name)
+                   : fn->func.name;
+    }
+    if (fn->func.instance_arg_count == 0)
+    {
+        return base;
+    }
+    char **args = xmalloc(sizeof(char *) * (size_t)fn->func.instance_arg_count);
+    for (int i = 0; i < fn->func.instance_arg_count; i++)
+    {
+        args[i] = type_mangle_spelling(fn->func.instance_args[i]);
+    }
+    return mangle_generic_name(base, args, fn->func.instance_arg_count);
+}
+
+char *method_c_name(ASTNode *fn)
+{
+    if (!fn || !fn->func.method_name || !fn->func.impl_target)
+    {
+        return NULL;
+    }
+    return mangle_method_symbol(type_impl_name(fn->func.impl_target), fn->func.trait_name,
+                                fn->func.method_name);
 }
 
 char *declared_type_c_name(ASTNode *decl)

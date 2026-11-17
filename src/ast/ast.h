@@ -299,7 +299,7 @@ struct ASTNode
 
         struct
         {
-            char *name;
+            char *name; // As the program writes it (`push`, `helper`); function_c_name gives C's.
             char **generic_params; // `T`, `U` of `fn f<T, U>`; NULL when not generic.
             int generic_param_count;
             ASTNode *body;
@@ -341,12 +341,16 @@ struct ASTNode
             // `name` is the name the module writes; its C name has the module's prefix
             // (function_c_name), as module_prefixed_name decided when it was declared.
             int is_module_prefixed;
-            Type *impl_target;    // Type of the enclosing impl block (NULL for free function)
-            char *method_name;    // Name written in the impl or trait (`get` of `Point__get`);
-                                  // NULL for a free function
-            char *written_name;   // As programs write it when `name` has a module prefix:
-                                  // `geo::helper` for `_geo__helper`
-            const char *filename; // Source file that declares the function
+            Type *impl_target;      // Type of the enclosing impl block (NULL for free function)
+            char *method_name;      // Name written in the impl or trait (`get` of `Point__get`);
+                                    // NULL for a free function
+            const char *trait_name; // The trait an `impl Trait for T` method implements (`Show`
+                                    // of `Point__Show__show`); NULL in an inherent impl
+            Type **instance_args;   // An instance of a generic function: the types its generic
+            int instance_arg_count; // parameters take (`int` of `id__int32_t`); 0 otherwise
+            char *written_name;     // As programs write it when `name` has a module prefix:
+                                    // `geo::helper` for `_geo__helper`
+            const char *filename;   // Source file that declares the function
         } func;
 
         struct
@@ -1054,10 +1058,18 @@ typedef const char *(*CNameLookup)(void *context, const char *name);
 char *type_to_c_string_with(Type *t, int misra_mode, CNameLookup lookup, void *context);
 Type *get_inner_type(Type *t);
 /**
- * @brief The C name of the function `fn`: its name, with its module's prefix when it has one
- *        (`geo__helper` for `helper`). A method or an instance has its C name as its name.
+ * @brief The C name of the function `fn`, from its written name (`name`): a method's
+ *        (method_c_name), or its name with its module's prefix when it has one (`geo__helper`
+ *        for `helper`); an instance of a generic function adds its type arguments
+ *        (`id__int32_t`, `Vec__int32_t__map__double`). The one rule for every function.
  */
 char *function_c_name(struct ASTNode *fn);
+/**
+ * @brief The C name of the method `fn`: its owner's (impl_target, the instance's type in an
+ *        instance), its trait's if it implements one, and its written name (`Vec__int32_t__push`,
+ *        `Point__Show__show`). NULL when `fn` is no method.
+ */
+char *method_c_name(struct ASTNode *fn);
 /**
  * @brief The C name of the struct or enum `decl`: its name, with its module's prefix when it has
  *        one (`geo__Point` for `Point`). A template or an instance has its C name as its name.

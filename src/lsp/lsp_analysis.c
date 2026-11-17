@@ -934,8 +934,8 @@ static int takes_self(ASTNode *method)
 // (method or function), unless an item has its name. Returns whether it added it.
 static int add_method_completion(cJSON *items, ASTNode *method, const char *owner, int kind)
 {
-    // The name as written: `func.name` is the C name of an impl's method (`Point__len2`), and a
-    // trait's method has the token of its `fn`.
+    // The name as written; a method without one (`method_name`) is no method of an impl or a
+    // trait.
     const char *name = method->func.method_name;
     if (!name)
     {
@@ -2516,7 +2516,7 @@ cJSON *lsp_workspace_symbol(const char *query)
                 {
                     continue;
                 }
-                // `func.name` is the C name (`Rect__area`).
+                // The name the impl writes (`area`; its C name is `Rect__area`).
                 const char *short_name = method->func.method_name;
                 if (matches_query(short_name, query))
                 {

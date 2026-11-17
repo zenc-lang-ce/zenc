@@ -286,8 +286,9 @@ char *instantiate_function(ParserContext *ctx, FunctionInstance instance)
         return NULL;
     }
 
-    zfree(new_fn->func.name);
-    new_fn->func.name = xstrdup(mangled);
+    // The copy keeps the template's written name; its C name adds the type arguments.
+    new_fn->func.instance_args = instance.args;
+    new_fn->func.instance_arg_count = instance.count;
     new_fn->func.generic_params = NULL;
     new_fn->func.generic_param_count = 0;
 
@@ -373,10 +374,10 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
         remember_body_copy(ctx, meth, template_meth, b, it->struct_name, mangled_struct_name);
 
         // The instance's name for the method: `Vec__int32_t__push`, `Wrap__int32_t__Show__show`.
-        meth->func.name =
-            mangle_method_symbol(mangled_struct_name, trait_name, meth->func.method_name);
-
-        register_function(ctx, ctx->global_scope, meth, meth->func.name, meth->func.is_export);
+        meth->func.trait_name = trait_name;
+        meth->func.impl_target = target;
+        register_function(ctx, ctx->global_scope, meth, function_c_name(meth),
+                          meth->func.is_export);
 
         // The instances the method's return type names (`-> Option<T>`).
         trigger_type_instantiation(ctx, meth->func.ret_type_info);
