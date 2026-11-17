@@ -76,6 +76,12 @@ int emit_legacy_variant_name(ParserContext *ctx, const char *name);
 #endif
 
 /**
+ * @brief Whether `node` names a variant of an enum without payloads, which C writes as its
+ *        constant (`Rate__Double_Tag`).
+ */
+int is_plain_enum_variant(ParserContext *ctx, ASTNode *node);
+
+/**
  * @brief emit_c_decl for a variable, by its C name.
  */
 void emit_var_decl_type(ParserContext *ctx, Type *t, const char *var_name);

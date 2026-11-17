@@ -1,0 +1,22 @@
+// language/features/enums: test_plain_variant_constants
+// A variant of an enum without payloads is a constant: it can be the value of a global, of a
+// `def` and of the elements of a global array, written with or without `()`, and with the enum
+// declared before or after.
+enum Rate { Normal, Double }
+
+let START: Rate = Rate::Double;
+let OTHER = Rate::Normal();
+def FIXED: Rate = Rate::Double;
+let TABLE: Rate[2] = [Rate::Normal, Rate::Double];
+let LATER: Speed = Speed::Fast;
+
+enum Speed { Slow, Fast }
+
+test "a variant without payloads is a constant" {
+    expect_eq((int)START, 1, "a global");
+    expect_eq((int)OTHER, 0, "a global written as a call");
+    expect_eq((int)FIXED, 1, "a def");
+    expect_eq((int)TABLE[1], 1, "an element of a global array");
+    expect_eq((int)LATER, 1, "an enum declared further down");
+    expect(START == Rate::Double, "compared with the variant");
+}

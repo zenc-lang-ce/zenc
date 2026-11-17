@@ -640,6 +640,13 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
 
     emit_source_mapping(ctx, node);
 
+    // `Rate::Double()`: a variant of a plain enum is its constant, called or not.
+    if (!node->call.args && is_plain_enum_variant(ctx, node->call.callee))
+    {
+        codegen_expression(ctx, node->call.callee);
+        return;
+    }
+
     if (node->call.callee->kind == NODE_EXPR_MEMBER)
     {
         Type *callee_ti = get_inner_type(node->call.callee->type_info);
