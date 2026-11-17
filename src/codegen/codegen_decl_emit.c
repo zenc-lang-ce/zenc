@@ -116,24 +116,14 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             // A global with Drop has a drop flag: assigning to it drops the old value.
             if (node->kind == NODE_VAR_DECL)
             {
-                char *tname =
-                    declared ? declared
-                             : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                         : NULL);
-                if (tname)
+                Type *t = node->type_info            ? node->type_info
+                          : node->var_decl.init_expr ? node->var_decl.init_expr->type_info
+                                                     : NULL;
+                ASTNode *def = named_type_def(ctx, t);
+                if (def && def->type_info && def->type_info->traits.has_drop)
                 {
-                    char *ct = tname;
-                    if (strncmp(ct, "struct ", 7) == 0)
-                    {
-                        ct += 7;
-                    }
-                    ASTNode *def = find_struct_def(ctx, ct);
-                    if (def && def->type_info && def->type_info->traits.has_drop)
-                    {
-                        EMIT(ctx, "int __z_drop_flag_%s = %d;\n", node->var_decl.name,
-                             node->var_decl.init_expr ? 1 : 0);
-                    }
-                    zfree(tname);
+                    EMIT(ctx, "int __z_drop_flag_%s = %d;\n", node->var_decl.name,
+                         node->var_decl.init_expr ? 1 : 0);
                 }
             }
             if (node->cfg_condition)

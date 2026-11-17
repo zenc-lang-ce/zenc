@@ -504,34 +504,13 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
 
 char *value_drop_struct(ParserContext *ctx, ASTNode *value)
 {
-    if (value->type_info && value->type_info->kind == TYPE_TUPLE)
+    Type *t = value->type_info;
+    if (t && t->kind == TYPE_TUPLE)
     {
-        return type_needs_drop(ctx, value->type_info) ? drop_glue_name(value->type_info) : NULL;
+        return type_needs_drop(ctx, t) ? drop_glue_name(t) : NULL;
     }
-    char *tname = NULL;
-    if (value->type_info && value->type_info->kind == TYPE_STRUCT && value->type_info->name)
-    {
-        tname = type_def_name(value->type_info);
-    }
-    else
-    {
-        tname = infer_type(ctx, value);
-    }
-    if (!tname || strchr(tname, '*'))
-    {
-        return NULL;
-    }
-    if (strncmp(tname, "struct ", 7) == 0)
-    {
-        tname += 7;
-    }
-    ASTNode *def = find_struct_def(ctx, tname);
-    if (def && (def->kind == NODE_STRUCT || def->kind == NODE_ENUM) && def->type_info &&
-        def->type_info->traits.has_drop)
-    {
-        return tname;
-    }
-    return NULL;
+    ASTNode *def = named_type_def(ctx, t);
+    return def && def->type_info && def->type_info->traits.has_drop ? type_def_name(t) : NULL;
 }
 
 char *drop_glue_name(Type *t)
@@ -575,22 +554,10 @@ int moves_drop_value(ParserContext *ctx, ASTNode *node)
     {
         return 0;
     }
-    char *type_name = infer_type(ctx, node);
-    ASTNode *def = NULL;
-    if (type_name)
-    {
-        char *clean_type = type_name;
-        if (strncmp(clean_type, "struct ", 7) == 0)
-        {
-            clean_type += 7;
-        }
-        def = find_struct_def(ctx, clean_type);
-    }
-
     Type *t = node->type_info;
     if (!t)
     {
-        return def && def->type_info && def->type_info->traits.has_drop;
+        return 0;
     }
     if (t->kind == TYPE_FUNCTION || t->kind == TYPE_TUPLE)
     {
@@ -598,12 +565,7 @@ int moves_drop_value(ParserContext *ctx, ASTNode *node)
     }
     if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
     {
-        // The definition the type names, or else the one its C spelling names.
-        ASTNode *tdef = named_type_def(ctx, t);
-        if (tdef)
-        {
-            def = tdef;
-        }
+        ASTNode *def = named_type_def(ctx, t);
         return (def && def->type_info) ? def->type_info->traits.has_drop : t->traits.has_drop;
     }
     return 0;

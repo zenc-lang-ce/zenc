@@ -689,7 +689,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 
             if (!defer_typed_local_drop(ctx, node, node->type_info))
             {
-                ASTNode *def = find_struct_def(ctx, clean_type);
+                ASTNode *def = named_type_def(ctx, node->type_info);
                 if (def && def->type_info && def->type_info->traits.has_drop)
                 {
                     defer_local_drop(ctx, node, clean_type);
@@ -767,7 +767,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 
                 if (!defer_typed_local_drop(ctx, node, node->var_decl.init_expr->type_info))
                 {
-                    ASTNode *def = find_struct_def(ctx, clean_type);
+                    ASTNode *def = named_type_def(ctx, node->var_decl.init_expr->type_info);
                     if (def && def->type_info && def->type_info->traits.has_drop)
                     {
                         defer_local_drop(ctx, node, clean_type);
