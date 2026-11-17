@@ -9,8 +9,7 @@
 #include <stdio.h>
 #include <ctype.h>
 
-// Forward declarations from analysis headers (standalone functions only, no TypeChecker dependency)
-int tc_expr_has_side_effects(ASTNode *node);
+// Forward declaration from the constant folder.
 int eval_const_int_expr(struct ASTNode *node, struct ParserContext *ctx, long long *out);
 
 // Standard C macro/type names from headers used in the MISRA preamble
