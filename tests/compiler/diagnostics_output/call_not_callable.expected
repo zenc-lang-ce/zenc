@@ -1,0 +1,36 @@
+   Compiling tests/compiler/diagnostics_output/call_not_callable.zc...
+error: No method 'len' on 'Counter'
+  --> tests/compiler/diagnostics_output/call_not_callable.zc:18:16
+   |
+18 |     let _a = b.len();
+   |                ^ here
+   |
+   = help: 'len' is a field of type 'i32', which cannot be called
+error: No method 'len' on 'Vec<i32>'
+  --> tests/compiler/diagnostics_output/call_not_callable.zc:20:16
+   |
+20 |     let _b = v.len();
+   |                ^ here
+   |
+   = help: 'len' is a field of type 'usize', which cannot be called
+error: Cannot call 'x', a value of type 'i32'
+  --> tests/compiler/diagnostics_output/call_not_callable.zc:22:14
+   |
+22 |     let _c = x();
+   |              ^ here
+   |
+error: Cannot call 'LIMIT', a value of type 'i32'
+  --> tests/compiler/diagnostics_output/call_not_callable.zc:23:14
+   |
+23 |     let _d = LIMIT();
+   |              ^ here
+   |
+error: Cannot call a value of type 'i32'
+  --> tests/compiler/diagnostics_output/call_not_callable.zc:24:14
+   |
+24 |     let _e = number()();
+   |              ^ here
+   |
+     error: semantic analysis found 5 errors
+       Check failed with 5 errors
+[exit 1]

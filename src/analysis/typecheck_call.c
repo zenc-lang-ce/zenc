@@ -6,44 +6,120 @@
 // Reports `value.method()` when the struct or enum of `value`, declared in Zen C, has no such
 // method: there is no function for codegen to call. Reported in a build too, which would
 // otherwise fail in the C compiler, on the mangled name.
-static void report_missing_method(TypeChecker *tc, ASTNode *call)
+// Whether a value of type `t` can be called: a function, a pointer to one, or a type the compiler
+// cannot judge (unknown, generic, or a struct or enum that only C declares).
+static int value_is_callable(TypeChecker *tc, Type *t)
 {
-    ASTNode *callee = call->call.callee;
-    ASTNode *target = callee->member.target;
-    // A field found is called through its value (a function pointer or a closure).
-    if (!target || !target->type_info || !callee->type_info ||
-        callee->type_info->kind != TYPE_UNKNOWN)
+    Type *r = resolve_alias(t);
+    if (!r)
     {
-        return;
+        return 1;
     }
-    // The receiver's type, as codegen takes it to name the method.
-    Type *owner = target->type_info;
-    if (owner->kind == TYPE_POINTER)
+    switch (r->kind)
     {
-        owner = owner->inner;
-    }
-    Type *t = get_inner_type(owner);
-    if (!t || (t->kind != TYPE_STRUCT && t->kind != TYPE_ENUM) || !t->name)
+    case TYPE_FUNCTION:
+    case TYPE_UNKNOWN:
+    case TYPE_GENERIC:
+    case TYPE_UNSAFE_ANY:
+        return 1;
+    case TYPE_POINTER:
     {
-        return;
+        Type *pointee = resolve_alias(r->inner);
+        return !pointee || pointee->kind == TYPE_FUNCTION || pointee->kind == TYPE_UNKNOWN ||
+               pointee->kind == TYPE_GENERIC;
     }
-    // A value of a trait calls through its table; a generic one is named for each instance.
-    const char *name = type_def_name(t);
-    ASTNode *def = find_struct_def(tc->pctx, name);
-    if (!def || is_trait(tc->pctx, name) || type_is_generic_dependent(tc->pctx, t) ||
-        (def->kind == NODE_STRUCT && def->strct.is_template) ||
-        (def->kind == NODE_ENUM && def->enm.is_template))
-    {
-        return;
+    case TYPE_STRUCT:
+    case TYPE_ENUM:
+        return named_type_def(tc->pctx, r) == NULL;
+    default:
+        return 0;
     }
-    // Checking the member found the method (find_method_call_target).
+}
+
+// `value.name(...)` that calls nothing: no method of that name (find_method_call_target found
+// none), not a trait's, and no field that holds a function. Codegen would name a method that does
+// not exist. A receiver the compiler cannot judge (unknown, generic, a template, a C struct) is
+// let through, and so is the `len` of an array.
+static void report_call_of_no_method(TypeChecker *tc, ASTNode *callee)
+{
     if (callee->member.method)
+    {
+        return;
+    }
+    Type *receiver = callee->member.target ? callee->member.target->type_info : NULL;
+    if (receiver && receiver->kind == TYPE_POINTER)
+    {
+        receiver = receiver->inner;
+    }
+    Type *t = receiver ? get_inner_type(receiver) : NULL;
+    if (!t || t->kind == TYPE_UNKNOWN || t->kind == TYPE_GENERIC ||
+        type_is_generic_dependent(tc->pctx, t))
+    {
+        return;
+    }
+    if (t->kind == TYPE_ARRAY && strcmp(callee->member.field, "len") == 0)
+    {
+        return;
+    }
+    if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
+    {
+        // A value of a trait calls through its table; a generic one is named for each instance.
+        const char *name = t->name ? type_def_name(t) : NULL;
+        ASTNode *def = name ? find_struct_def(tc->pctx, name) : NULL;
+        if (!def || is_trait(tc->pctx, name) ||
+            (def->kind == NODE_STRUCT && def->strct.is_template) ||
+            (def->kind == NODE_ENUM && def->enm.is_template))
+        {
+            return;
+        }
+    }
+    Type *field = callee->type_info;
+    int has_field = field && field->kind != TYPE_UNKNOWN;
+    if (has_field && value_is_callable(tc, field))
     {
         return;
     }
     char *spelled = zen_c_type_spelling(tc->pctx, t);
     char msg[MAX_SHORT_MSG_LEN];
     snprintf(msg, sizeof(msg), "No method '%s' on '%s'", callee->member.field, spelled);
+    zfree(spelled);
+    char hint[MAX_SHORT_MSG_LEN];
+    const char *hints[] = {hint, NULL};
+    if (has_field)
+    {
+        char *field_type = zen_c_type_spelling(tc->pctx, field);
+        snprintf(hint, sizeof(hint), "'%s' is a field of type '%s', which cannot be called",
+                 callee->member.field, field_type);
+        zfree(field_type);
+    }
+    tc_ctrl_flow_error(tc, callee->token, msg, has_field ? hints : NULL);
+}
+
+// A call whose callee is a value (a variable, a field read through an expression, the result of
+// a call) of a type that cannot be called, such as an `i32`: C would reject it.
+static void report_call_of_value(TypeChecker *tc, ASTNode *callee)
+{
+    ZenSymbol *sym = callee->kind == NODE_EXPR_VAR ? callee->var_ref.symbol : NULL;
+    if (sym && (sym->kind == SYM_STRUCT || sym->kind == SYM_ENUM))
+    {
+        return; // `Point()` and `Enum::Variant()` build a value.
+    }
+    Type *t = callee->type_info;
+    if (!t || value_is_callable(tc, t))
+    {
+        return;
+    }
+    char *spelled = zen_c_type_spelling(tc->pctx, t);
+    char msg[MAX_SHORT_MSG_LEN];
+    if (callee->kind == NODE_EXPR_VAR)
+    {
+        snprintf(msg, sizeof(msg), "Cannot call '%s', a value of type '%s'", callee->var_ref.name,
+                 spelled);
+    }
+    else
+    {
+        snprintf(msg, sizeof(msg), "Cannot call a value of type '%s'", spelled);
+    }
     zfree(spelled);
     tc_ctrl_flow_error(tc, callee->token, msg, NULL);
 }
@@ -370,7 +446,11 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
         }
-        report_missing_method(tc, node);
+        report_call_of_no_method(tc, node->call.callee);
+    }
+    if (node->call.callee && node->call.callee->kind != NODE_EXPR_MEMBER && !sig)
+    {
+        report_call_of_value(tc, node->call.callee);
     }
 
     // `a.f(...)` calls a method, which takes `a` as its first argument, unless `f` is a field
