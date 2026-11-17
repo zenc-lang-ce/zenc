@@ -1249,19 +1249,13 @@ int check_impl(ParserContext *ctx, const char *trait, const char *strct)
 
 FuncSig *find_func(ParserContext *ctx, const char *name)
 {
-    ZenSymbol *sym = symbol_lookup_kind(ctx->current_scope, name, SYM_FUNCTION);
-    if (sym)
-    {
-        return sym->data.sig;
-    }
-
-    // Every function declared, the one registered last first, as func_registry lists them.
-    FuncSig **registered = zmap_get(&ctx->func_registry_by_name, name);
+    FuncSig **registered = zmap_get(&ctx->func_registry, name);
     if (registered)
     {
         return *registered;
     }
 
+    // A method of the generic impl being parsed, which is a template and registers none.
     if (ctx->current_impl_methods)
     {
         ASTNode *n = ctx->current_impl_methods;
@@ -1280,7 +1274,6 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
                 sig->ret_type = n->func.ret_type_info;
                 sig->is_varargs = n->func.is_varargs;
                 sig->required = 0;
-                sig->next = NULL;
                 return sig;
             }
             n = n->next;

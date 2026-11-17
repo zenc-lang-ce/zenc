@@ -122,7 +122,6 @@ typedef struct FuncSig
     const char *own_name;     ///< The name the program writes, when the C name adds to it:
                               ///< `push` of `Vec__int32_t__push`, `Rect` of `Shape__Rect`.
     int elide_from_idx;       ///< Index of parameter for lifetime elision (-1 if none)
-    struct FuncSig *next;     ///< Next function in registry.
 } FuncSig;
 
 /**
@@ -399,9 +398,8 @@ struct ParserContext
     int recursion_depth;    ///< Guard against stack overflow.
     Scope *global_scope;    ///< Root of the unified symbol table.
     Scope *current_scope;   ///< Current lexical scope for variable lookup.
-    FuncSig *func_registry; ///< Registry of declared function signatures (DEPRECATED: moved to
-                            ///< global_scope).
-    zmap_FuncByName func_registry_by_name; ///< func_registry by name: the one registered last.
+    /// Every function declared, by its C name: the one registered last (find_func).
+    zmap_FuncByName func_registry;
     /// Top-level declarations by module and written name, `file<US>name` (register_declaration).
     zmap_DeclByName declarations;
 
