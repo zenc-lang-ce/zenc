@@ -395,7 +395,6 @@ struct ParserContext
     // Lambdas
     LambdaRef *global_lambdas; ///< All lambdas generated during parsing, in creation order.
     int lambda_counter;        ///< Counter for generating unique lambda IDs.
-    int fstring_counter;       ///< Counter for generating unique f-string IDs.
 
 // Generics
 #define MAX_KNOWN_GENERICS 1024
@@ -477,7 +476,6 @@ struct ParserContext
     zmap_FileSet c_macro_names;    ///< C macro that is only another name -> that name.
     StringList c_system_includes;  ///< The headers of `include <x.h>`, as written.
     int c_system_headers_read;     ///< Those and the preamble's are in the maps above.
-    int is_comptime;               // Flag for comptime execution context
     char **extern_symbols;         ///< Explicitly declared extern symbols.
     int extern_symbol_count;       ///< Count of external symbols.
 

@@ -99,9 +99,4 @@ static inline const char *str_strip_struct_prefix(const char *t)
     return str_is_struct_prefix(t) ? t + 7 : t;
 }
 
-static inline bool str_is_vec_type(const char *t)
-{
-    return t && strncmp(t, "Vec__", 5) == 0;
-}
-
 #endif // ZEN_CONSTANTS_H

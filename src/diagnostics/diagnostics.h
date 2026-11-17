@@ -91,19 +91,6 @@ void warn_misra_violation(Token t, const char *msg);
 
 typedef enum
 {
-    CAT_NONE,
-    CAT_INTEROP,
-    CAT_PEDANTIC,
-    CAT_UNUSED,
-    CAT_STYLE,
-    CAT_TYPE,
-    CAT_SAFETY,
-    CAT_LOGIC,
-    CAT_CONVERSION
-} DiagnosticCategory;
-
-typedef enum
-{
     DIAG_NONE,
     // Interop
     DIAG_INTEROP_UNDEF_FUNC, // W100

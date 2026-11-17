@@ -55,7 +55,6 @@ typedef struct CompilerConfig
     int verbose;
     int quiet;
     int mode_doc;
-    int repl_mode;
     int is_freestanding;
     int use_cpp;
     int use_cuda;
