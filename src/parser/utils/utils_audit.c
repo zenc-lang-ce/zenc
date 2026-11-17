@@ -9,6 +9,24 @@
 #include <ctype.h>
 #include "analysis/const_fold.h"
 
+// Whether `name`, declared in `scope` at `tok`, hides a symbol of the scopes around it that the
+// file of `tok` sees.
+static int hides_a_visible_symbol(ParserContext *ctx, Scope *scope, const char *name, Token tok)
+{
+    for (Scope *p = scope->parent; p; p = p->parent)
+    {
+        for (ZenSymbol *sh = symbol_lookup_local(p, name); sh; sh = sh->next_same_name)
+        {
+            const char *file = sh->decl_token.file;
+            if (!file || !tok.file || file_sees(ctx, tok.file, file))
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 void audit_section_5(ParserContext *ctx, Scope *scope, const char *name, const char *link_name,
                      Token tok)
 {
@@ -23,22 +41,12 @@ void audit_section_5(ParserContext *ctx, Scope *scope, const char *name, const c
 
     if (!ctx->config->misra_mode)
     {
-        // Only shadowing is reported: each symbol of this name in the scopes around this one that
-        // this file sees. A module does not see the program that imports it: a name in it hides
-        // none of the program's.
-        if (!ctx->silent_warnings)
+        // Only shadowing is reported, once: when a symbol of this name in the scopes around this
+        // one is one this file sees. A module does not see the program that imports it: a name in
+        // it hides none of the program's.
+        if (!ctx->silent_warnings && hides_a_visible_symbol(ctx, scope, name, tok))
         {
-            for (Scope *p = scope->parent; p; p = p->parent)
-            {
-                for (ZenSymbol *sh = symbol_lookup_local(p, name); sh; sh = sh->next_same_name)
-                {
-                    const char *file = sh->decl_token.file;
-                    if (!file || !tok.file || file_sees(ctx, tok.file, file))
-                    {
-                        warn_shadowing(tok, name);
-                    }
-                }
-            }
+            warn_shadowing(tok, name);
         }
         return;
     }

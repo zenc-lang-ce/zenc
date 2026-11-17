@@ -109,6 +109,11 @@ void check_def(TypeChecker *tc, ASTNode *node, int depth)
     {
         check_initial_value(tc, node->type_info, &node->var_decl.init_expr, node->token, depth);
     }
+    // A `def` in a block is one more local of it, as a `let` is.
+    if (tc->current_depth > 0)
+    {
+        tc_add_symbol(tc, node->var_decl.name, node->type_info, node->token, 1);
+    }
 }
 
 void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
@@ -252,7 +257,11 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
             misra_check_tuple_size(tc->pctx, param_type, node->token);
             misra_check_pointer_nesting(tc->pctx, param_type, node->token);
             misra_check_reserved_identifier(tc->pctx, node->func.param_names[i], node->token);
-            tc_declare_local(tc, node->func.param_names[i], param_type, node->token,
+            // Where the parameter is written; a function made by the compiler has no place for it.
+            Token param_token = node->func.param_tokens && node->func.param_tokens[i].start
+                                    ? node->func.param_tokens[i]
+                                    : node->token;
+            tc_declare_local(tc, node->func.param_names[i], param_type, param_token,
                              tc->pctx->config->misra_mode, NULL, 0);
         }
     }
@@ -408,7 +417,7 @@ static const char *loop_label(ASTNode *loop)
 
 // The body of a `for` range, in a scope where its variable is declared: in each pass of the loop.
 // The variable has the type of the start, as codegen declares it (ZC_AUTO), and is seen by the
-// body only; the parser reported it if it shadows a name.
+// body only.
 static void check_range_body(TypeChecker *tc, ASTNode *node, int depth)
 {
     tc_enter_scope(tc);
@@ -416,12 +425,9 @@ static void check_range_body(TypeChecker *tc, ASTNode *node, int depth)
     {
         ASTNode *header[] = {node->for_range.start, node->for_range.end, node->for_range.step};
         Type *start = node->for_range.start ? node->for_range.start->type_info : NULL;
-        int saved_silent = tc->pctx->silent_warnings;
-        tc->pctx->silent_warnings = 1;
         tc_declare_local(tc, node->for_range.var_name,
                          start && start->kind != TYPE_UNKNOWN ? start : type_new(TYPE_I32),
                          node->for_range.var_token, 0, header, 3);
-        tc->pctx->silent_warnings = saved_silent;
     }
     check_node(tc, node->for_range.body, depth + 1);
     tc_exit_scope(tc);
