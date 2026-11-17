@@ -1134,7 +1134,13 @@ const char *match_missing_variant(ParserContext *ctx, ASTNode *match, Type *scru
  *        resolves), or NULL for a pattern that names none: a constant, `_`, a literal.
  */
 EnumVariantReg *pattern_variant(ParserContext *ctx, MatchPattern *p);
-int expr_is_rvalue(ParserContext *ctx, ASTNode *e);
+/**
+ * @brief Whether `e` designates a place whose address C can take: a variable, a field of one
+ *        (or reached through a pointer), an element of an array or through a pointer, `*p`. A
+ *        call, an operation, a literal, an overloaded index (its `get`) and a variant
+ *        constructor are values without one.
+ */
+int expr_has_address(ParserContext *ctx, ASTNode *e);
 TypeAlias *find_type_alias_node(ParserContext *ctx, const char *name);
 char *extract_module_name(const char *path);
 char *module_prefix_for(ParserContext *ctx, const char *path);

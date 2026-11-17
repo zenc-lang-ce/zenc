@@ -229,7 +229,7 @@ static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, Operator
     }
 
     if (rhs->kind == NODE_EXPR_UNARY && rhs->unary.op == OP_ADDRESS && rhs->unary.operand &&
-        expr_is_rvalue(ctx, rhs->unary.operand))
+        !expr_has_address(ctx, rhs->unary.operand))
     {
         // `&make()`: C cannot take the address of a call result.
         rhs->unary.op = OP_ADDRESS_RVALUE;
@@ -243,7 +243,7 @@ static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, Operator
     }
 
     // Need pointer, have value
-    int is_rvalue = expr_is_rvalue(ctx, rhs);
+    int is_rvalue = !expr_has_address(ctx, rhs);
     ASTNode *addr = ast_create(NODE_EXPR_UNARY);
     addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
     addr->unary.owns_temp = is_rvalue;
@@ -395,7 +395,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                     if (sig->total_args > 0 && sig->arg_types[0]->kind == TYPE_POINTER && !is_ptr)
                     {
-                        int is_rvalue = expr_is_rvalue(ctx, operand);
+                        int is_rvalue = !expr_has_address(ctx, operand);
                         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                         addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
                         addr->unary.operand = operand;
@@ -863,7 +863,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                 if (!is_lhs_ptr)
                                 {
                                     // Function expects ptr, have value -> &obj
-                                    int is_rvalue = expr_is_rvalue(ctx, obj);
+                                    int is_rvalue = !expr_has_address(ctx, obj);
 
                                     ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                                     addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
@@ -1708,7 +1708,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         if (!is_lhs_ptr)
                         {
                             // Value -> Pointer.
-                            int is_rvalue = expr_is_rvalue(ctx, lhs);
+                            int is_rvalue = !expr_has_address(ctx, lhs);
 
                             ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                             addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;

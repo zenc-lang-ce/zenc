@@ -152,12 +152,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     int m_is_ptr = has_ref_binding || subject_is_ptr;
 
     // A subject that designates a place: a `ref` binding points into it instead of a copy.
-    // `*p` is one too: `&*p` is the address p holds.
-    ASTNode *subject_expr = node->match_stmt.expr;
-    int is_lvalue_opt =
-        (subject_expr->kind == NODE_EXPR_VAR || subject_expr->kind == NODE_EXPR_MEMBER ||
-         subject_expr->kind == NODE_EXPR_INDEX ||
-         (subject_expr->kind == NODE_EXPR_UNARY && subject_expr->unary.op == OP_DEREF));
+    int is_lvalue_opt = expr_has_address(ctx, node->match_stmt.expr);
 
     emit_source_mapping(ctx, node); // Step through match statements elegantly
 
