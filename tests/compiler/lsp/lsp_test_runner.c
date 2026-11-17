@@ -379,6 +379,49 @@ static void test_fstring_interpolation_lookup(void)
     printf("PASS: test_fstring_interpolation_lookup\n");
 }
 
+// A method or a function used as a value (`Cpu::lda`, passed or stored, not called) refers to its
+// declaration where the path writes its name, as a call does.
+static void test_method_reference(void)
+{
+    printf("Running test_method_reference...\n");
+    // Line 0: struct Cpu { a: int; }
+    // Line 1: impl Cpu {
+    // Line 2:     fn lda(self, v: int) -> int { return v; }
+    // Line 3: }
+    // Line 4: fn twice(x: int) -> int { return x * 2; }
+    // Line 5: fn main() {
+    // Line 6:     let f = Cpu::lda;
+    // Line 7:     let g = twice;
+    // Line 8: }
+    const char *uri = "file:///tmp/test_method_reference.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_method_reference.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Cpu { a: int; }\\nimpl Cpu {\\n    fn lda(self, v: int) -> int { return "
+                 "v; }\\n}\\nfn twice(x: int) -> int { return x * 2; }\\nfn main() {\\n    let f = "
+                 "Cpu::lda;\\n    let g = twice;\\n}\\n\"}}}");
+    usleep(100000);
+
+    // The method, where the path writes it; the path's start is still the type.
+    expect_hover_in(uri, 991, 6, 18, "fn lda(self, v: int) -> int");
+    expect_hover_in(uri, 992, 6, 13, "struct Cpu");
+    expect_hover_in(uri, 993, 7, 13, "fn twice(x: int) -> int");
+
+    // Go to definition leads to the method's declaration.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 994, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/test_method_reference.zc\"}, "
+                 "\"position\": {\"line\": 6, \"character\": 18}}}");
+    char *resp = wait_for_response(994);
+    if (!resp || !strstr(resp, "test_method_reference.zc") || !strstr(resp, "\"line\":2"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition must lead from Cpu::lda to the method's declaration");
+    }
+    free(resp);
+    printf("PASS: test_method_reference\n");
+}
+
 static void test_hover_parameters(void)
 {
     printf("Running test_hover_parameters...\n");
@@ -4428,6 +4471,7 @@ int main()
     test_unclosed_include_keeps_server_alive();
     test_fstring_interpolation_lookup();
     test_hover_parameters();
+    test_method_reference();
     test_occurrences_by_scope();
     test_enum_rename();
     test_field_occurrences();

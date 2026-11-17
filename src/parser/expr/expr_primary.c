@@ -1175,11 +1175,11 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             callee->var_ref.instance = instance;
             callee->var_ref.owner = owner;
             callee->var_ref.member = owner_member;
+            callee->var_ref.member_token = member_token;
             node->call.callee = callee;
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
             node->call.count = args_provided;
-            node->call.member_token = member_token;
             if (sig)
             {
                 node->definition_token = sig->decl_token;
@@ -1214,6 +1214,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             callee->var_ref.instance = instance;
             callee->var_ref.owner = owner;
             callee->var_ref.member = owner_member;
+            callee->var_ref.member_token = member_token;
             // The closest declared name, for the error the typechecker gives (as for a variable).
             callee->var_ref.suggestion =
                 should_suppress_undef_warning(ctx, acc) ? NULL : find_similar_symbol(ctx, acc);
@@ -1221,7 +1222,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             node->call.args = head;
             node->call.arg_names = has_named ? arg_names : NULL;
             node->call.count = args_provided;
-            node->call.member_token = member_token;
             node->definition_token = member_declaration;
 
             GenericFuncTemplate *tpl = find_func_template(ctx, acc);
@@ -1358,6 +1358,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 node->var_ref.instance = instance;
                 node->var_ref.owner = owner;
                 node->var_ref.member = owner_member;
+                node->var_ref.member_token = member_token;
                 node->type_info = find_symbol_type_info(ctx, acc);
                 // A variant without payload is a value of its enum, not a function: an enum
                 // has no symbol for it, but an instance of a generic one has a constructor.

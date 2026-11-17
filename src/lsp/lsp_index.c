@@ -576,13 +576,14 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
         // Reference logic.
         if (node->definition_token.line > 0)
         {
-            // A call through a path (`Id::of(1)`) refers to its function where the path writes
-            // it, and `Mode::On` to its variant; the path's start is the type's name.
-            Token at = (node->kind == NODE_EXPR_CALL && node->call.member_token.line > 0)
-                           ? node->call.member_token
-                       : (node->kind == NODE_EXPR_VAR && node->var_ref.variant.token.line > 0)
-                           ? node->var_ref.variant.token
-                           : node->token;
+            // A path (`Id::of(1)`, `Cpu::lda`, `Mode::On`) refers to what it names where it
+            // writes its last segment; the path's start is the type's name. A call's is its
+            // callee's.
+            ASTNode *named = node->kind == NODE_EXPR_CALL ? node->call.callee : node;
+            Token at =
+                (named && named->kind == NODE_EXPR_VAR && named->var_ref.member_token.line > 0)
+                    ? named->var_ref.member_token
+                    : node->token;
             lsp_index_add_ref(idx, at, node->definition_token, node);
         }
         if (node->kind == NODE_MATCH && node->match_stmt.expr)
