@@ -104,6 +104,35 @@ static char *impl_trait_template_param(ParserContext *ctx, ASTNode *node, const 
     return NULL;
 }
 
+// A trait impl for a generic type is a template too, instantiated with each instance of the type.
+static void register_impl_trait_template(ParserContext *ctx, ASTNode *node)
+{
+    char *type_name = type_impl_name(node->impl_trait.target);
+    char *param = impl_trait_template_param(ctx, node, type_name);
+    if (param)
+    {
+        char **params = xmalloc(sizeof(char *));
+        params[0] = param;
+        register_impl_template(ctx, type_name, params, 1, node);
+    }
+}
+
+void resolve_waiting_impls(ParserContext *ctx)
+{
+    for (StructRef *r = ctx->waiting_impls; r; r = r->next)
+    {
+        ASTNode *node = r->node;
+        if (impl_trait_template_param(ctx, node, type_impl_name(node->impl_trait.target)))
+        {
+            // Its methods were read as concrete ones: an instance made before their bodies
+            // are read gets a copy of them, as from any template.
+            move_bodies_to_templates(ctx, node->impl_trait.methods);
+        }
+        register_impl_trait_template(ctx, node);
+    }
+    ctx->waiting_impls = NULL;
+}
+
 // `impl Trait for Type`: the type implements the trait, and its methods are functions; for a
 // generic type the impl is a template too.
 static void collect_impl_trait(ParserContext *ctx, ASTNode *node)
@@ -123,13 +152,23 @@ static void collect_impl_trait(ParserContext *ctx, ASTNode *node)
     }
     collect_methods(ctx, node->impl_trait.methods, NULL);
     add_to_impl_list(ctx, node);
-    char *param = impl_trait_template_param(ctx, node, type_name);
-    if (param)
+    // While declarations are read, a type written without its parameter (`for Box`) may be
+    // declared further down: whether it is generic is known once every declaration is.
+    if (!node->impl_trait.generic_param && !ctx->declarations_read &&
+        !find_struct_def(ctx, type_name))
     {
-        char **params = xmalloc(sizeof(char *));
-        params[0] = param;
-        register_impl_template(ctx, type_name, params, 1, node);
+        StructRef *waiting = xmalloc(sizeof(StructRef));
+        waiting->node = node;
+        waiting->next = NULL;
+        StructRef **last = &ctx->waiting_impls;
+        while (*last)
+        {
+            last = &(*last)->next;
+        }
+        *last = waiting;
+        return;
     }
+    register_impl_trait_template(ctx, node);
 }
 
 void collect_declaration(ParserContext *ctx, ASTNode *node)

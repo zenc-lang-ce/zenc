@@ -43,6 +43,39 @@ static PendingBody *take_pending_body(PendingBody **head, PendingBody **tail)
     return pending;
 }
 
+void move_bodies_to_templates(ParserContext *ctx, ASTNode *functions)
+{
+    PendingBody *keep = NULL, *keep_tail = NULL;
+    PendingBody *pending = ctx->pending_bodies;
+    while (pending)
+    {
+        PendingBody *next = pending->next;
+        pending->next = NULL;
+        int moves = 0;
+        for (ASTNode *f = functions; f && !moves; f = f->next)
+        {
+            moves = pending->node == f;
+        }
+        if (moves)
+        {
+            pending->is_template = 1;
+            push_pending_body(ctx, pending);
+        }
+        else if (keep_tail)
+        {
+            keep_tail->next = pending;
+            keep_tail = pending;
+        }
+        else
+        {
+            keep = keep_tail = pending;
+        }
+        pending = next;
+    }
+    ctx->pending_bodies = keep;
+    ctx->pending_bodies_tail = keep_tail;
+}
+
 // Warns about the parameters in `scope` that the function body never used. `func_name` is
 // NULL for a lambda.
 void check_unused_parameters(ParserContext *ctx, Scope *scope, const char *func_name)

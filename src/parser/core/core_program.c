@@ -642,6 +642,7 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
     {
         ctx->declarations_read = 1;
         resolve_waiting_structs(ctx);
+        resolve_waiting_impls(ctx);
         resolve_pending_instances(ctx);
         parse_pending_bodies(ctx);
         ctx->declarations_read = 0;
@@ -668,6 +669,7 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
     ctx->pending_instances_tail = NULL;
     ctx->declarations_read = 0;
     ctx->waiting_structs = NULL;
+    ctx->waiting_impls = NULL;
     ctx->pending_template_bodies = NULL;
     ctx->pending_template_bodies_tail = NULL;
     ctx->body_copies = NULL;

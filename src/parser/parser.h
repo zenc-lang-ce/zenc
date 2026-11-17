@@ -411,8 +411,9 @@ struct ParserContext
     struct PendingInstance *pending_instances_tail; ///< Last of `pending_instances`.
     int declarations_read; ///< Set once every declaration is read: instances are made at once.
     struct WaitingStruct *waiting_structs; ///< Structs whose `use` waits for the declarations.
-    ASTNode *instantiated_structs;         ///< List of AST nodes for instantiated structs.
-    ASTNode *instantiated_funcs;           ///< List of AST nodes for instantiated functions.
+    StructRef *waiting_impls; ///< Trait impls for a type not declared yet (resolve_waiting_impls).
+    ASTNode *instantiated_structs; ///< List of AST nodes for instantiated structs.
+    ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
 
     // Structs/Enums
     StructRef *parsed_structs_list; ///< List of all parsed struct nodes.
@@ -1121,6 +1122,11 @@ ASTNode *find_struct_field(ParserContext *ctx, Type *struct_type, const char *fi
 ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char *link_name,
                         int is_export);
 void push_pending_body(ParserContext *ctx, PendingBody *pending);
+/**
+ * @brief Moves the waiting bodies of `functions` (a list) to the template bodies: they belong to
+ *        an impl found to be a template once every declaration was read.
+ */
+void move_bodies_to_templates(ParserContext *ctx, ASTNode *functions);
 void check_unused_parameters(ParserContext *ctx, Scope *scope, const char *func_name);
 void parse_pending_bodies(ParserContext *ctx);
 ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_packed, int align,
@@ -1406,6 +1412,11 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
  *        constant or variable.
  */
 void collect_declaration(ParserContext *ctx, ASTNode *node);
+/**
+ * @brief Registers as templates the trait impls read before the generic type they are for, once
+ *        every declaration is read.
+ */
+void resolve_waiting_impls(ParserContext *ctx);
 
 // decl/ declarations
 void replace_it_with_var(ASTNode *node, char *var_name);
