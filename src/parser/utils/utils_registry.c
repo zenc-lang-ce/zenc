@@ -516,6 +516,13 @@ Type *vector_type_of(ParserContext *ctx, Type *t)
     return vector_type_named(ctx, type_def_name(t));
 }
 
+ASTNode *named_type_def(ParserContext *ctx, Type *t)
+{
+    return (t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name)
+               ? find_struct_def(ctx, type_def_name(t))
+               : NULL;
+}
+
 ASTNode *find_struct_def(ParserContext *ctx, const char *name)
 {
     if (ctx)

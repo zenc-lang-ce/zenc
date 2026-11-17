@@ -119,7 +119,7 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
     {
         return NULL;
     }
-    ASTNode *def = find_struct_def(tc->pctx, type_def_name(t));
+    ASTNode *def = named_type_def(tc->pctx, t);
     if (def && def->kind == NODE_STRUCT &&
         (type_is_instance_of(t, "Option") || type_is_instance_of(t, "Result")))
     {
@@ -157,8 +157,7 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
 static Type *struct_field_type(ParserContext *ctx, Type *t, const char *name)
 {
     t = resolve_alias(t);
-    ASTNode *def =
-        (t && t->kind == TYPE_STRUCT && t->name) ? find_struct_def(ctx, type_def_name(t)) : NULL;
+    ASTNode *def = (t && t->kind == TYPE_STRUCT && t->name) ? named_type_def(ctx, t) : NULL;
     if (!def || def->kind != NODE_STRUCT)
     {
         return NULL;
@@ -186,7 +185,7 @@ static Type *try_value_type(ParserContext *ctx, Type *t)
     {
         return struct_field_type(ctx, t, "val");
     }
-    ASTNode *def = t->kind == TYPE_ENUM ? find_struct_def(ctx, type_def_name(t)) : NULL;
+    ASTNode *def = t->kind == TYPE_ENUM ? named_type_def(ctx, t) : NULL;
     for (ASTNode *variant = (def && def->kind == NODE_ENUM) ? def->enm.variants : NULL; variant;
          variant = variant->next)
     {
@@ -774,7 +773,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                         struct_sym->is_dereferenced = 1;
                     }
                 }
-                ASTNode *struct_def = find_struct_def(tc->pctx, type_def_name(target_type));
+                ASTNode *struct_def = named_type_def(tc->pctx, target_type);
                 if (struct_def && struct_def->kind == NODE_ENUM)
                 {
                     // The member of an enum value is its tag, a constant of a C `enum`: an int.

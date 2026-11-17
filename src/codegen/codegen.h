@@ -173,7 +173,6 @@ char *value_drop_struct(ParserContext *ctx, ASTNode *value);
  * closure's `drop`, or a loop over the elements of an array (`depth` names its index). */
 char *drop_value_stmt(Type *t, const char *lvalue, int depth);
 /** @brief The struct or enum definition the named type `t` refers to, or NULL. */
-ASTNode *named_type_def(ParserContext *ctx, Type *t);
 /** @brief Name of the drop glue of a value of type `t` that needs dropping: a struct's name, or
  * the C name of a tuple's struct. The glue is `<name>__Drop__glue`. */
 char *drop_glue_name(Type *t);

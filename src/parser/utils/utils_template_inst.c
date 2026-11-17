@@ -71,7 +71,7 @@ static int names_undeclared_type(ParserContext *ctx, Type *t)
         }
         if (t->count > 0)
         {
-            return !find_struct_def(ctx, type_def_name(t));
+            return !named_type_def(ctx, t);
         }
         return !find_struct_def(ctx, t->name) && !find_type_alias_node(ctx, t->name) &&
                !is_primitive_type_name(t->name) && !is_known_generic(ctx, t->name) &&

@@ -170,7 +170,7 @@ int capture_needs_drop(ParserContext *ctx, ASTNode *lambda, int index)
         return type_needs_drop(ctx, t);
     }
     ASTNode *def = t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name
-                       ? find_struct_def(ctx, type_def_name(t))
+                       ? named_type_def(ctx, t)
                        : NULL;
     return def && def->type_info && def->type_info->traits.has_drop;
 }
@@ -537,13 +537,6 @@ char *value_drop_struct(ParserContext *ctx, ASTNode *value)
 char *drop_glue_name(Type *t)
 {
     return (t && t->kind == TYPE_TUPLE) ? type_mangle_spelling(t) : type_def_name(t);
-}
-
-ASTNode *named_type_def(ParserContext *ctx, Type *t)
-{
-    return (t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name)
-               ? find_struct_def(ctx, type_def_name(t))
-               : NULL;
 }
 
 char *drop_value_stmt(Type *t, const char *lvalue, int depth)

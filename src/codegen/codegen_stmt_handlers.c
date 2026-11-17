@@ -283,7 +283,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
                 }
                 else
                 {
-                    ASTNode *def = find_struct_def(ctx, type_def_name(arg_type));
+                    ASTNode *def = named_type_def(ctx, arg_type);
                     if (def && (def->kind == NODE_STRUCT || def->kind == NODE_ENUM) &&
                         def->type_info && def->type_info->traits.has_drop)
                     {
