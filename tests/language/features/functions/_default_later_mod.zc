@@ -1,0 +1,25 @@
+// Helper for test_default_declared_later.zc: default values that name what the module declares
+// further down, in a module imported with an alias.
+
+fn scaled(amount: int, rate: Rate = Rate::Double) -> int {
+    if rate == Rate::Double {
+        return amount * 2;
+    }
+    return amount;
+}
+
+fn origin_x(p: Spot = Spot::origin()) -> int {
+    return p.x;
+}
+
+enum Rate { Normal, Double }
+
+struct Spot {
+    x: int;
+}
+
+impl Spot {
+    fn origin() -> Spot {
+        return Spot { x: 40 };
+    }
+}
