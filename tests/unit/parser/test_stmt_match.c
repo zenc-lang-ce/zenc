@@ -81,22 +81,23 @@ UTEST(match_patterns, ranges_literals_and_the_wildcard)
 
     MatchPattern *inclusive = c->match_case.patterns;
     ASSERT_EQ(PATTERN_RANGE, inclusive->kind);
-    ASSERT_STREQ("1", inclusive->range_start);
-    ASSERT_STREQ("5", inclusive->range_end);
+    ASSERT_EQ(1ull, inclusive->range_start->literal.int_val);
+    ASSERT_EQ(5ull, inclusive->range_end->literal.int_val);
     ASSERT_TRUE(inclusive->is_inclusive);
 
     c = c->next;
     ASSERT_TRUE(c != NULL);
     MatchPattern *exclusive = c->match_case.patterns;
     ASSERT_EQ(PATTERN_RANGE, exclusive->kind);
-    ASSERT_STREQ("6", exclusive->range_start);
-    ASSERT_STREQ("9", exclusive->range_end);
+    ASSERT_EQ(6ull, exclusive->range_start->literal.int_val);
+    ASSERT_EQ(9ull, exclusive->range_end->literal.int_val);
     ASSERT_FALSE(exclusive->is_inclusive);
 
     c = c->next;
     ASSERT_TRUE(c != NULL);
     ASSERT_EQ(PATTERN_LITERAL, c->match_case.patterns->kind);
-    ASSERT_STREQ("42", c->match_case.patterns->literal);
+    ASSERT_EQ(NODE_EXPR_LITERAL, c->match_case.patterns->value->kind);
+    ASSERT_EQ(42ull, c->match_case.patterns->value->literal.int_val);
 
     c = c->next;
     ASSERT_TRUE(c != NULL);

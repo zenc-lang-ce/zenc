@@ -411,7 +411,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 owner_member = owner ? token_strdup(suffix) : NULL;
                 generic_type = NULL;
 
-                if (find_module(ctx, acc))
+                if (imported_module(ctx, acc))
                 {
                     // `m::Point`: the module's type, a member of it follows.
                     char *member = token_strdup(suffix);
@@ -793,11 +793,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         }
                         lexer_next(l); // Eat }
 
-                        if (is_trait(ctx, acc))
-                        {
-                            return transform_to_trait_object(ctx, acc, node);
-                        }
-
                         ASTNode *cast = ast_create(NODE_EXPR_CAST);
                         cast->token = t;
                         cast->cast.expr = node;
@@ -1138,12 +1133,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 if (sig->default_values && sig->default_values[i])
                 {
                     ASTNode *def = copy_default_value(ctx, sig, i, t);
-                    Type *expected = sig->arg_types[i];
-                    // A trait parameter takes a trait object, built as for a written argument.
-                    if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
-                    {
-                        def = transform_to_trait_object(ctx, type_def_name(expected), def);
-                    }
 
                     if (!head)
                     {
@@ -1229,9 +1218,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 Type *inferred_type = NULL;
                 ASTNode *func_node = tpl->func_node;
-                char *gen_param = tpl->generic_param;
+                char *gen_param = tpl->generic_param_count == 1 ? tpl->generic_params[0] : NULL;
 
-                if (func_node->func.arg_types && gen_param && !strchr(gen_param, ','))
+                if (func_node->func.arg_types && gen_param)
                 {
                     ASTNode *actual_arg = head;
                     for (int i = 0; i < func_node->func.count && actual_arg; i++)
@@ -1552,12 +1541,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     }
                     ASTNode *target = parse_expr_prec(ctx, l, PREC_UNARY);
 
-                    char *cast_type = type_mangle_spelling(cast_type_obj);
-                    if (is_trait(ctx, cast_type))
-                    {
-                        return transform_to_trait_object(ctx, cast_type, target);
-                    }
-
                     node = ast_create(NODE_EXPR_CAST);
                     node->token = next;
                     node->cast.expr = target;
@@ -1859,71 +1842,10 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 }
             }
 
-            int overloaded_get = 0;
-            // A slice is indexed directly, although `Slice<T>` has a `get`.
-            if (node->type_info && node->type_info->kind == TYPE_STRUCT &&
-                !slice_element(node->type_info))
-            {
-                Type *st = node->type_info;
-                char *struct_name =
-                    (st->kind == TYPE_STRUCT) ? type_def_name(st) : type_def_name(st->inner);
-                int is_ptr = (st->kind == TYPE_POINTER);
+            // An overloaded index (`get`) stays an INDEX: the typechecker turns it into the call.
+            // The parser needs only its type, for a `let` that takes it.
+            FuncSig *get = index_method(ctx, node->type_info, "get");
 
-                char *mangled = mangle_method_symbol(struct_name, NULL, "get");
-                FuncSig *sig = find_func(ctx, mangled);
-
-                if (sig)
-                {
-                    // Rewrite to Call: node.get(index, ...)
-                    ASTNode *call = ast_create(NODE_EXPR_CALL);
-                    call->token = t;
-                    ASTNode *callee = ast_create(NODE_EXPR_VAR);
-                    callee->var_ref.name = xstrdup(mangled);
-                    call->call.callee = callee;
-
-                    // Arg 1: Self
-                    ASTNode *arg1 = node;
-                    if (sig->arg_types && sig->total_args > 0 &&
-                        sig->arg_types[0]->kind == TYPE_POINTER && !is_ptr)
-                    {
-                        // Needs ptr, have value -> &node (through a temporary if it has no address)
-                        ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                        addr->unary.op = expr_is_rvalue(ctx, node) ? OP_ADDRESS_RVALUE : OP_ADDRESS;
-                        addr->unary.operand = node;
-                        addr->type_info = type_new_ptr(st);
-                        arg1 = addr;
-                    }
-                    else if (sig->arg_types && is_ptr && sig->arg_types[0]->kind != TYPE_POINTER)
-                    {
-                        // Needs value, have ptr -> *node
-                        ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                        deref->unary.op = OP_DEREF;
-                        deref->unary.operand = node;
-                        arg1 = deref;
-                    }
-
-                    // Arg 2: Index
-                    arg1->next = index;
-                    // Chain extra indices as additional args
-                    if (extra_head)
-                    {
-                        index->next = extra_head;
-                    }
-                    else
-                    {
-                        index->next = NULL;
-                    }
-                    call->call.args = arg1;
-
-                    call->type_info = sig->ret_type;
-
-                    node = call;
-                    overloaded_get = 1;
-                }
-                zfree(mangled);
-            }
-
-            if (!overloaded_get)
             {
                 ASTNode *idx_node = ast_create(NODE_EXPR_INDEX);
                 idx_node->token = t;
@@ -1939,7 +1861,11 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     arr_type = find_symbol_type_info(ctx, node->var_ref.name);
                 }
 
-                if (slice_element(arr_type))
+                if (get)
+                {
+                    idx_node->type_info = get->ret_type;
+                }
+                else if (slice_element(arr_type))
                 {
                     idx_node->type_info = slice_element(arr_type);
                 }

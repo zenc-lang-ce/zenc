@@ -22,55 +22,20 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
         struct_name = ctx->cg.current_impl_type;
     }
 
-    // The name written in the C: the struct's @link_name if it has one.
-    const char *struct_c_name = struct_name;
-    int is_zen_struct = 0;
-    int is_union = 0;
-    StructRef *sr = ctx->parsed_structs_list;
-    int is_vector = 0;
-    while (sr)
+    // The struct the literal builds, from its type: the name written in the C is its @link_name
+    // if it has one.
+    ASTNode *def = named_type_def(ctx, node->type_info);
+    if (def && def->kind != NODE_STRUCT)
     {
-        if (sr->node && sr->node->kind == NODE_STRUCT &&
-            strcmp(sr->node->strct.name, struct_name) == 0)
-        {
-            is_zen_struct = 1;
-            if (sr->node->link_name)
-            {
-                struct_c_name = sr->node->link_name;
-            }
-            if (sr->node->strct.is_union)
-            {
-                is_union = 1;
-            }
-            if (sr->node->type_info && sr->node->type_info->kind == TYPE_VECTOR)
-            {
-                is_vector = 1;
-            }
-            break;
-        }
-        sr = sr->next;
+        def = NULL;
     }
+    const char *struct_c_name = def && def->link_name ? def->link_name : struct_name;
+    int is_zen_struct = def != NULL;
+    int is_union = def && def->strct.is_union;
+    int is_vector = def && def->type_info && def->type_info->kind == TYPE_VECTOR;
+    int vec_size = is_vector ? def->type_info->array_size : 0;
 
     int in_func = (ctx->cg.current_func_ret_type_info != NULL || ctx->cg.current_lambda != NULL);
-
-    int vec_size = 0;
-    if (is_vector)
-    {
-        StructRef *v_chk = ctx->parsed_structs_list;
-        while (v_chk)
-        {
-            if (v_chk->node && v_chk->node->kind == NODE_STRUCT &&
-                strcmp(v_chk->node->strct.name, struct_name) == 0)
-            {
-                if (v_chk->node->type_info)
-                {
-                    vec_size = v_chk->node->type_info->array_size;
-                }
-                break;
-            }
-            v_chk = v_chk->next;
-        }
-    }
 
     if (ctx->config->use_cpp)
     {
@@ -81,9 +46,9 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
             while (f)
             {
                 int skip = 0;
-                if (f->var_decl.init_expr && f->var_decl.init_expr->kind == NODE_EXPR_LITERAL &&
-                    f->var_decl.init_expr->literal.kind == LITERAL_INT &&
-                    f->var_decl.init_expr->literal.int_val == 0)
+                ASTNode *written = written_expr(f->var_decl.init_expr);
+                if (written && written->kind == NODE_EXPR_LITERAL &&
+                    written->literal.kind == LITERAL_INT && written->literal.int_val == 0)
                 {
                     skip = 1;
                 }
@@ -230,9 +195,9 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
             while (f)
             {
                 int skip = 0;
-                if (f->var_decl.init_expr && f->var_decl.init_expr->kind == NODE_EXPR_LITERAL &&
-                    f->var_decl.init_expr->literal.kind == LITERAL_INT &&
-                    f->var_decl.init_expr->literal.int_val == 0)
+                ASTNode *written = written_expr(f->var_decl.init_expr);
+                if (written && written->kind == NODE_EXPR_LITERAL &&
+                    written->literal.kind == LITERAL_INT && written->literal.int_val == 0)
                 {
                     skip = 1;
                 }
@@ -261,10 +226,12 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
 }
 
 // `left = right` with fixed-size arrays. C cannot assign an array, so `right` is copied into a
-// temporary and the temporary's bytes into `left`; an array literal initializes the temporary,
-// since it is not an expression in C. An array of values that need dropping is moved, in the
-// order an assignment of a struct with Drop follows: the source is marked as moved out, and a
-// variable's old value is dropped before it takes the new one (so `a = a` keeps its value).
+// temporary and the temporary's bytes into `left`; an array literal or a string literal
+// initializes the temporary, since C copies only what the literal has and fills the rest with
+// zeros (a `memcpy` of the array's size would read past the end of a shorter string). An array of
+// values that need dropping is moved, in the order an assignment of a struct with Drop follows: the
+// source is marked as moved out, and a variable's old value is dropped before it takes the new one
+// (so `a = a` keeps its value).
 static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *right)
 {
     Type *t = left->type_info;
@@ -273,7 +240,7 @@ static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *ri
 
     EMIT(ctx, "({ ");
     emit_var_decl_type(ctx, c_type, "_z_src");
-    if (right->kind == NODE_EXPR_ARRAY_LITERAL)
+    if (right->kind == NODE_EXPR_ARRAY_LITERAL || is_string_literal(right))
     {
         EMIT(ctx, " = ");
         codegen_expression(ctx, right);
@@ -321,99 +288,66 @@ static void emit_coalesce(ParserContext *ctx, ASTNode *node)
 // `==` and `!=`: a struct compares through its `eq` (or `neq`), anything else as in C.
 static void emit_equality(ParserContext *ctx, ASTNode *node)
 {
-    char *t1 = infer_type(ctx, node->binary.left);
-    int is_ptr = 0;
-    char *fully_resolved = t1;
-    char *mangle_base = t1;
-    int found_opaque = 0;
-
-    if (t1)
+    Type *t = node->binary.left->type_info;
+    if (t && t->kind == TYPE_UNKNOWN)
     {
-        char *curr = t1;
-        int depth = 0;
-        while (depth++ < 20)
-        {
-            if (strchr(curr, '*'))
-            {
-                is_ptr = 1;
-                break;
-            }
-
-            int resolved = 0;
-            TypeAlias *ta = find_type_alias_node(ctx, curr);
-            if (ta)
-            {
-                if (ta->is_opaque)
-                {
-                    if (!found_opaque)
-                    {
-                        mangle_base = ta->alias;
-                        found_opaque = 1;
-                    }
-                }
-                else if (!found_opaque)
-                {
-                    mangle_base = type_mangle_spelling(ta->type_info);
-                }
-
-                curr = type_mangle_spelling(ta->type_info);
-                resolved = 1;
-            }
-
-            if (!resolved)
-            {
-                break;
-            }
-        }
-        fully_resolved = curr;
+        t = NULL;
     }
-
-    int is_basic = str_is_basic_type(fully_resolved);
-    ASTNode *def = t1 ? find_struct_def(ctx, t1) : NULL;
+    // An opaque alias keeps its name, and its `eq` is the alias's (`UserId__eq`); the type under
+    // it decides whether there is one.
+    Type *base = t;
+    const char *opaque_name = NULL;
+    while (base && base->kind == TYPE_ALIAS && base->inner)
+    {
+        if (!opaque_name && base->alias.is_opaque_alias)
+        {
+            opaque_name = base->name;
+        }
+        base = base->inner;
+    }
+    ASTNode *def = named_type_def(ctx, t);
 
     int is_simple_enum = 0;
     if (def && def->kind == NODE_ENUM)
     {
         is_simple_enum = 1;
-        ASTNode *v = def->enm.variants;
-        while (v)
+        for (ASTNode *v = def->enm.variants; v; v = v->next)
         {
             if (v->variant.payload)
             {
                 is_simple_enum = 0;
                 break;
             }
-            v = v->next;
         }
     }
 
-    if (t1 && (def || found_opaque) && !is_basic && !is_ptr && !is_simple_enum)
+    // A struct, or an enum with a payload, is compared with its `eq`; a simple enum, a number or
+    // a pointer with C's `==`.
+    int calls_eq = (def || opaque_name) && base &&
+                   (base->kind == TYPE_STRUCT || base->kind == TYPE_ENUM) && !is_simple_enum;
+    Type *right = node->binary.right->type_info;
+    if (calls_eq)
     {
-        char *base = mangle_base;
-        if (strncmp(base, "struct ", 7) == 0)
-        {
-            base += 7;
-        }
+        char *spelling = opaque_name ? xstrdup(opaque_name) : c_type_spelling(ctx, t);
+        const char *base_name = str_strip_struct_prefix(spelling);
 
         if (node->binary.op == OP_NE)
         {
             EMIT(ctx, "(!");
         }
         // `eq` of the Eq trait, or an inherent `eq`.
-        char *trait_eq = mangle_method_symbol(base, "Eq", "eq");
+        char *trait_eq = mangle_method_symbol(base_name, "Eq", "eq");
         ZenSymbol *sym = find_symbol_in_all(ctx, trait_eq);
         if (!sym || !sym->data.sig)
         {
-            sym = find_symbol_in_all(ctx, mangle_method_symbol(base, NULL, "eq"));
+            sym = find_symbol_in_all(ctx, mangle_method_symbol(base_name, NULL, "eq"));
         }
         FuncSig *sig = sym ? sym->data.sig : NULL;
         const char *call_name = sig ? sig->name : trait_eq;
 
         EMIT(ctx, "%s(", (sig && sig->link_name) ? sig->link_name : call_name);
 
-        if (node->binary.left->kind == NODE_EXPR_VAR ||
-            node->binary.left->kind == NODE_EXPR_INDEX ||
-            node->binary.left->kind == NODE_EXPR_MEMBER)
+        if (expr_has_address(ctx, node->binary.left))
         {
             EMIT(ctx, "&");
             codegen_expression(ctx, node->binary.left);
@@ -431,9 +365,7 @@ static void emit_equality(ParserContext *ctx, ASTNode *node)
             needs_ptr = (sig->total_args > 1 && sig->arg_types[1]->kind == TYPE_POINTER);
         }
 
-        if (needs_ptr && (node->binary.right->kind == NODE_EXPR_VAR ||
-                          node->binary.right->kind == NODE_EXPR_INDEX ||
-                          node->binary.right->kind == NODE_EXPR_MEMBER))
+        if (needs_ptr && expr_has_address(ctx, node->binary.right))
         {
             EMIT(ctx, "&");
             codegen_expression(ctx, node->binary.right);
@@ -453,32 +385,14 @@ static void emit_equality(ParserContext *ctx, ASTNode *node)
             EMIT(ctx, ")");
         }
     }
-    else if (t1 && (strcmp(t1, "string") == 0))
+    else if (t && t->kind == TYPE_STRING && right && right->kind == TYPE_STRING)
     {
-        char *t2 = infer_type(ctx, node->binary.right);
-        if (t2 && (strcmp(t2, "string") == 0))
-        {
-            EMIT(ctx, "(strcmp(");
-            codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, ", ");
-            codegen_expression(ctx, node->binary.right);
-            if (node->binary.op == OP_EQ)
-            {
-                EMIT(ctx, ") == 0)");
-            }
-            else
-            {
-                EMIT(ctx, ") != 0)");
-            }
-        }
-        else
-        {
-            EMIT(ctx, "(");
-            codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, " %s ", operator_spelling(node->binary.op));
-            codegen_expression(ctx, node->binary.right);
-            EMIT(ctx, ")");
-        }
+        // Two strings compare their characters.
+        EMIT(ctx, "(strcmp(");
+        codegen_expression(ctx, node->binary.left);
+        EMIT(ctx, ", ");
+        codegen_expression(ctx, node->binary.right);
+        EMIT(ctx, node->binary.op == OP_EQ ? ") == 0)" : ") != 0)");
     }
     else
     {
@@ -487,10 +401,6 @@ static void emit_equality(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, " %s ", operator_spelling(node->binary.op));
         codegen_expression(ctx, node->binary.right);
         EMIT(ctx, ")");
-    }
-    if (t1)
-    {
-        zfree(t1);
     }
 }
 
@@ -575,7 +485,7 @@ static void emit_plain_binary(ParserContext *ctx, ASTNode *node)
             {
                 TypeKind k = node->binary.left->type_info->kind;
                 if (k == TYPE_POINTER || k == TYPE_ENUM ||
-                    is_enum_type_name(ctx, type_def_name(node->binary.left->type_info)))
+                    is_enum_type(ctx, node->binary.left->type_info))
                 {
                     should_cast = 1;
                 }
@@ -756,64 +666,6 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             }
         }
 
-        if (target->kind == NODE_EXPR_VAR)
-        {
-            char type_name[MAX_TYPE_NAME_LEN];
-            strncpy(type_name, target->var_ref.name, sizeof(type_name));
-            type_name[sizeof(type_name) - 1] = 0;
-
-            char *mangled_type = type_name;
-
-            ASTNode *def = find_struct_def(ctx, mangled_type);
-            if (def && def->kind == NODE_ENUM)
-            {
-                char *mangled = mangle_method_symbol(mangled_type, NULL, method);
-                FuncSig *sig = find_func(ctx, mangled);
-                if (sig)
-                {
-                    const char *emit_name = (sig->link_name) ? sig->link_name : mangled;
-                    EMIT(ctx, "%s(", emit_name);
-                    ASTNode *arg = node->call.args;
-                    int arg_idx = 0;
-                    while (arg)
-                    {
-                        if (arg_idx > 0)
-                        {
-                            EMIT(ctx, ", ");
-                        }
-
-                        Type *param_t =
-                            (arg_idx < sig->total_args) ? sig->arg_types[arg_idx] : NULL;
-
-                        if (param_t && param_t->kind == TYPE_TUPLE && sig->total_args == 1 &&
-                            node->call.count > 1)
-                        {
-                            EMIT(ctx, "(%s){", c_type_spelling(ctx, param_t));
-                            int first = 1;
-                            while (arg)
-                            {
-                                if (!first)
-                                {
-                                    EMIT(ctx, ", ");
-                                }
-                                first = 0;
-                                codegen_expression(ctx, arg);
-                                arg = arg->next;
-                            }
-                            EMIT(ctx, "}");
-                            break;
-                        }
-
-                        codegen_expression(ctx, arg);
-                        arg = arg->next;
-                        arg_idx++;
-                    }
-                    EMIT(ctx, ")");
-                    return;
-                }
-            }
-        }
-
         // The method's owner is the target's type, or the type it points to.
         Type *target_type = target->type_info;
         if (target_type && target_type->kind != TYPE_UNKNOWN)
@@ -821,17 +673,22 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             int is_pointer = target_type->kind == TYPE_POINTER;
             char *base = type_impl_name(is_pointer ? target_type->inner : target_type);
 
-            const char *call_base = base;
-            char *resolved_method = NULL;
-            int need_cast = 0;
-            if (find_method_call_target(ctx, base, method, &call_base, &resolved_method))
+            // The method the typechecker resolved (member.method): its C name, and its owner,
+            // when a mixed-in struct's method takes a pointer to that struct. A trait object has
+            // none: its call goes to the trait's dispatch function, `Trait__method`.
+            FuncSig *resolved = node->call.callee->member.method;
+            const char *call_base = resolved ? node->call.callee->member.method_owner : base;
+            int need_cast = resolved && strcmp(call_base, base) != 0;
+            if (resolved)
             {
-                method = resolved_method;
-                // A mixed-in struct's method takes a pointer to that struct.
-                need_cast = call_base != base;
+                EMIT(ctx, "%s", resolved->link_name ? resolved->link_name : resolved->name);
             }
-
-            emit_mangled_name(ctx, call_base, method);
+            else
+            {
+                char *dispatch = mangle_method_symbol(base, NULL, method);
+                EMIT(ctx, "%s", dispatch);
+                zfree(dispatch);
+            }
             EMIT(ctx, "(");
             if (need_cast)
             {
@@ -871,7 +728,6 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                 arg = arg->next;
             }
             EMIT(ctx, ")");
-            zfree(resolved_method);
             return;
         }
     }
@@ -880,7 +736,9 @@ skip_method_mangling:
 
     if (node->call.callee->kind == NODE_EXPR_VAR)
     {
-        ASTNode *def = find_struct_def(ctx, node->call.callee->var_ref.name);
+        // `Point()`: the name of a struct, which the typechecker resolved (var_ref.symbol).
+        ZenSymbol *sym = node->call.callee->var_ref.symbol;
+        ASTNode *def = sym && sym->kind == SYM_STRUCT ? sym->data.node : NULL;
         if (def && def->kind == NODE_STRUCT)
         {
             EMIT(ctx, "(struct %s){0}", node->call.callee->var_ref.name);
@@ -977,11 +835,8 @@ skip_callee_gen:
     }
     else
     {
-        FuncSig *sig = NULL;
-        if (node->call.callee->kind == NODE_EXPR_VAR)
-        {
-            sig = find_func(ctx, node->call.callee->var_ref.name);
-        }
+        // The function the typechecker resolved (call.function), for its parameter types.
+        FuncSig *sig = node->call.function;
 
         ASTNode *arg = node->call.args;
         int arg_idx = 0;

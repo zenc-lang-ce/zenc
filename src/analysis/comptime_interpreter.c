@@ -749,6 +749,9 @@ static CValue eval_expr(CInterp *ci, ASTNode *node)
     case NODE_EXPR_CAST:
         // Casts are transparent in the comptime value model.
         return eval_expr(ci, node->cast.expr);
+    case NODE_IMPLICIT_CONVERSION:
+        // So are the typechecker's implicit conversions (a @comptime fn is also checked).
+        return eval_expr(ci, node->conversion.expr);
     case NODE_EXPR_MEMBER:
         // Simple member access not supported yet
         zerror_at(node->token, "comptime: member access not supported yet");

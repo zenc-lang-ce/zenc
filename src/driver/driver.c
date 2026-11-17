@@ -118,13 +118,7 @@ static int compile_program(ZenCompiler *compiler)
     compiler->warning_count = 0;
 
     ParserContext ctx;
-    memset(&ctx, 0, sizeof(ctx));
-    ctx.compiler = compiler;
-    ctx.config = &compiler->config;
-    ctx.current_filename = compiler->config.input_file;
-    module_state_init(&ctx.imports);
-    diag_set_parser_ctx(&ctx);
-    token_set_parser_ctx(&ctx);
+    parser_context_init(&ctx, compiler, compiler->config.input_file);
 
     // Set runtime hooks based on configuration
     if (ctx.config->misra_mode)
@@ -270,7 +264,6 @@ static int compile_program(ZenCompiler *compiler)
     if (!compiler->config.mode_doc || compiler->config.use_typecheck)
     {
         propagate_drop_traits(&ctx);
-        fix_type_refs_has_drop(&ctx);
 
         if (!validate_types(&ctx))
         {
@@ -295,6 +288,10 @@ static int compile_program(ZenCompiler *compiler)
             fflush(stdout);
         }
         tc_result = check_program(&ctx, root);
+        if (tc_result == 0 && compiler->config.check_twice)
+        {
+            tc_result = check_program(&ctx, root);
+        }
         if (tc_result != 0 && !compiler->config.mode_check)
         {
             return 1;
@@ -384,8 +381,6 @@ static int compile_program(ZenCompiler *compiler)
         return 1;
     }
     emitter_init_file(&ctx.cg.emitter, out_f);
-    // Few structs are registered from here on, so misses are worth caching.
-    struct_miss_cache_enable(&ctx);
     codegen_node(&ctx, root);
     fclose(out_f);
 

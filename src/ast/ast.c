@@ -114,6 +114,7 @@ ASTChildren ast_children(ASTNode *node)
     case NODE_FOR_RANGE:
         add_child(&c, &node->for_range.start);
         add_child(&c, &node->for_range.end);
+        add_child(&c, &node->for_range.step);
         add_child(&c, &node->for_range.body);
         break;
     case NODE_LOOP:
@@ -168,6 +169,9 @@ ASTChildren ast_children(ASTNode *node)
         break;
     case NODE_EXPR_CAST:
         add_child(&c, &node->cast.expr);
+        break;
+    case NODE_IMPLICIT_CONVERSION:
+        add_child(&c, &node->conversion.expr);
         break;
     case NODE_EXPR_SIZEOF:
     case NODE_TYPEOF:
@@ -232,6 +236,7 @@ ASTChildren ast_children(ASTNode *node)
     case NODE_LINK:
     case NODE_IMPORT:
     case NODE_RAW_STMT:
+    case NODE_EMBED:
     case NODE_PREPROC_DIRECTIVE:
     case NODE_ASM:
     case NODE_PLUGIN:
@@ -303,6 +308,10 @@ const char *ast_kind_name(NodeType kind)
         return "INDEX";
     case NODE_EXPR_CAST:
         return "CAST";
+    case NODE_IMPLICIT_CONVERSION:
+        return "CONVERSION";
+    case NODE_EMBED:
+        return "EMBED";
     case NODE_EXPR_SIZEOF:
         return "SIZEOF";
     case NODE_EXPR_STRUCT_INIT:
@@ -760,59 +769,34 @@ static int is_char_ptr(Type *t)
     return 0;
 }
 
-int is_integer_type(Type *t)
+// The integer facts of `t` (integer_kind): through an alias that is not opaque, and for an
+// integer named as a struct (`int32_t`, `size_t`, `u8`), by its name. NULL for any other type.
+static const IntegerKind *integer_facts(Type *t)
 {
+    while (t && t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)
+    {
+        t = t->inner;
+    }
     if (!t)
     {
-        return 0;
+        return NULL;
     }
-
-    if (t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)
+    if (t->kind == TYPE_STRUCT && t->name)
     {
-        return is_integer_type(t->inner);
+        return integer_kind(find_primitive_kind(t->name));
     }
+    return integer_kind(t->kind);
+}
 
-    int res =
-        (t->kind == TYPE_CHAR || t->kind == TYPE_BOOL || t->kind == TYPE_I8 || t->kind == TYPE_U8 ||
-         t->kind == TYPE_I16 || t->kind == TYPE_U16 || t->kind == TYPE_I32 || t->kind == TYPE_U32 ||
-         t->kind == TYPE_I64 || t->kind == TYPE_U64 || t->kind == TYPE_USIZE ||
-         t->kind == TYPE_ISIZE || t->kind == TYPE_BYTE || t->kind == TYPE_RUNE ||
-         t->kind == TYPE_I128 || t->kind == TYPE_U128 || t->kind == TYPE_BITINT ||
-         t->kind == TYPE_UBITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_UINT ||
-         t->kind == TYPE_C_LONG || t->kind == TYPE_C_ULONG || t->kind == TYPE_C_LONGLONG ||
-         t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_USHORT ||
-         t->kind == TYPE_C_CHAR || t->kind == TYPE_C_UCHAR ||
-         (t->kind == TYPE_STRUCT && t->name &&
-          (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "uint8_t") ||
-           0 == strcmp(t->name, "int16_t") || 0 == strcmp(t->name, "uint16_t") ||
-           0 == strcmp(t->name, "int32_t") || 0 == strcmp(t->name, "uint32_t") ||
-           0 == strcmp(t->name, "int64_t") || 0 == strcmp(t->name, "uint64_t") ||
-           0 == strcmp(t->name, "size_t") || 0 == strcmp(t->name, "ssize_t") ||
-           0 == strcmp(t->name, "ptrdiff_t"))));
-    return res;
+int is_integer_type(Type *t)
+{
+    return integer_facts(t) != NULL;
 }
 
 int is_unsigned_type(Type *t)
 {
-    if (!t)
-    {
-        return 0;
-    }
-
-    if (t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)
-    {
-        return is_unsigned_type(t->inner);
-    }
-
-    int res = (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 ||
-               t->kind == TYPE_U64 || t->kind == TYPE_USIZE || t->kind == TYPE_U128 ||
-               t->kind == TYPE_UBITINT || t->kind == TYPE_C_UINT || t->kind == TYPE_C_ULONG ||
-               t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_UCHAR ||
-               (t->kind == TYPE_STRUCT && t->name &&
-                (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
-                 0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
-                 0 == strcmp(t->name, "size_t"))));
-    return res;
+    const IntegerKind *facts = integer_facts(t);
+    return facts && facts->sign == INTEGER_UNSIGNED;
 }
 
 // The type an alias stands for, through every alias of an alias.
@@ -851,44 +835,8 @@ Type *type_seen_from(Type *t, const char *file)
 
 int integer_type_width(Type *t)
 {
-    if (!t)
-    {
-        return 0;
-    }
-    switch (t->kind)
-    {
-    case TYPE_I8:
-    case TYPE_U8:
-    case TYPE_BYTE:
-    case TYPE_C_CHAR:
-    case TYPE_C_UCHAR:
-        return 8;
-    case TYPE_I16:
-    case TYPE_U16:
-    case TYPE_C_SHORT:
-    case TYPE_C_USHORT:
-        return 16;
-    case TYPE_I32:
-    case TYPE_U32:
-    case TYPE_RUNE:
-    case TYPE_C_INT:
-    case TYPE_C_UINT:
-        return 32;
-    case TYPE_I64:
-    case TYPE_U64:
-    case TYPE_ISIZE:
-    case TYPE_USIZE:
-    case TYPE_C_LONG:
-    case TYPE_C_ULONG:
-    case TYPE_C_LONGLONG:
-    case TYPE_C_ULONGLONG:
-        return 64;
-    case TYPE_I128:
-    case TYPE_U128:
-        return 128;
-    default:
-        return 0;
-    }
+    const IntegerKind *facts = integer_facts(t);
+    return facts ? facts->width : 0;
 }
 
 // The type C gives an operation on two integers, so the one the generated code computes in:
@@ -928,25 +876,8 @@ Type *integer_operation_type(ASTNode *left, ASTNode *right)
 
 int is_signed_type(Type *t)
 {
-    if (!t)
-    {
-        return 0;
-    }
-
-    if (t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)
-    {
-        return is_signed_type(t->inner);
-    }
-
-    int res = (t->kind == TYPE_I8 || t->kind == TYPE_I16 || t->kind == TYPE_I32 ||
-               t->kind == TYPE_I64 || t->kind == TYPE_ISIZE || t->kind == TYPE_I128 ||
-               t->kind == TYPE_BITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_LONG ||
-               t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_CHAR ||
-               (t->kind == TYPE_STRUCT && t->name &&
-                (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "int16_t") ||
-                 0 == strcmp(t->name, "int32_t") || 0 == strcmp(t->name, "int64_t") ||
-                 0 == strcmp(t->name, "ssize_t") || 0 == strcmp(t->name, "ptrdiff_t"))));
-    return res;
+    const IntegerKind *facts = integer_facts(t);
+    return facts && facts->sign == INTEGER_SIGNED;
 }
 
 int is_boolean_type(Type *t)
@@ -1008,7 +939,7 @@ int is_incomplete_type(struct ParserContext *ctx, Type *t)
     {
         return 0;
     }
-    ASTNode *def = find_struct_def(ctx, type_def_name(t));
+    ASTNode *def = named_type_def(ctx, t);
     if (!def)
     {
         return 1;
@@ -1586,10 +1517,15 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         return xstrdup(t->c_typedef_name);
     }
 
+    // A primitive, by the one table of C names.
+    const char *primitive = primitive_c_name(t->kind, misra_mode);
+    if (primitive)
+    {
+        return xstrdup(primitive);
+    }
+
     switch (t->kind)
     {
-    case TYPE_VOID:
-        return xstrdup("void");
     case TYPE_STRUCT:
     {
         const char *c_name = c_name_of(t, lookup, context);
@@ -1606,66 +1542,6 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
     }
     case TYPE_TUPLE:
         return tuple_struct_name(t);
-    case TYPE_BOOL:
-        return xstrdup("bool");
-    case TYPE_STRING:
-        return xstrdup("string");
-    case TYPE_CHAR:
-        return xstrdup("char");
-    case TYPE_I8:
-        return xstrdup("int8_t");
-    case TYPE_U8:
-        return xstrdup("uint8_t");
-    case TYPE_I16:
-        return xstrdup("int16_t");
-    case TYPE_U16:
-        return xstrdup("uint16_t");
-    case TYPE_I32:
-        return xstrdup("int32_t");
-    case TYPE_U32:
-        return xstrdup("uint32_t");
-    case TYPE_I64:
-        return xstrdup("int64_t");
-    case TYPE_U64:
-        return xstrdup("uint64_t");
-    case TYPE_F32:
-        return xstrdup("float");
-    case TYPE_F64:
-        return xstrdup("double");
-    case TYPE_USIZE:
-        return xstrdup("size_t");
-    case TYPE_ISIZE:
-        return xstrdup("ptrdiff_t");
-    case TYPE_BYTE:
-        return xstrdup("uint8_t");
-    case TYPE_I128:
-        return xstrdup("__int128");
-    case TYPE_U128:
-        return xstrdup("unsigned __int128");
-    case TYPE_RUNE:
-        return xstrdup("int32_t");
-
-    // Portable C Types (Map directly to C types)
-    case TYPE_C_INT:
-        return xstrdup(misra_mode ? "int32_t" : "int");
-    case TYPE_C_UINT:
-        return xstrdup(misra_mode ? "uint32_t" : "unsigned int");
-    case TYPE_C_LONG:
-        return xstrdup(misra_mode ? "int64_t" : "long");
-    case TYPE_C_ULONG:
-        return xstrdup(misra_mode ? "uint64_t" : "unsigned long");
-    case TYPE_C_LONGLONG:
-        return xstrdup(misra_mode ? "int64_t" : "long long");
-    case TYPE_C_ULONGLONG:
-        return xstrdup(misra_mode ? "uint64_t" : "unsigned long long");
-    case TYPE_C_SHORT:
-        return xstrdup(misra_mode ? "int16_t" : "short");
-    case TYPE_C_USHORT:
-        return xstrdup(misra_mode ? "uint16_t" : "unsigned short");
-    case TYPE_C_CHAR:
-        return xstrdup(misra_mode ? "int8_t" : "char");
-    case TYPE_C_UCHAR:
-        return xstrdup(misra_mode ? "uint8_t" : "unsigned char");
 
     case TYPE_BITINT:
     {
@@ -1871,437 +1747,6 @@ ASTNode *deref_to_one_pointer(ASTNode *expr)
     return expr;
 }
 
-// Type inference — resolve an expression node to its C type string.
-// (Moved from codegen_utils.c this is part of core, not codegen)
-
-char *infer_type(ParserContext *ctx, ASTNode *node)
-{
-    if (!node || !ctx)
-    {
-        return NULL;
-    }
-
-    if (node->type_info && node->type_info->kind != TYPE_UNKNOWN)
-    {
-        char *t =
-            type_to_c_string_with(node->type_info, ctx->config->misra_mode, link_name_of, ctx);
-        return t;
-    }
-
-    if (node->kind == NODE_EXPR_LITERAL)
-    {
-        if (node->type_info)
-        {
-            return type_to_c_string_with(node->type_info, ctx->config->misra_mode, link_name_of,
-                                         ctx);
-        }
-        return NULL;
-    }
-
-    if (node->kind == NODE_EXPR_VAR)
-    {
-        ZenSymbol *sym = find_symbol_entry(ctx, node->var_ref.name);
-        if (sym && sym->type_info)
-        {
-            return type_to_c_string_with(sym->type_info, ctx->config->misra_mode, link_name_of,
-                                         ctx);
-        }
-    }
-
-    if (node->kind == NODE_EXPR_CALL)
-    {
-        if (node->call.callee->kind == NODE_EXPR_VAR)
-        {
-            FuncSig *sig = find_func(ctx, node->call.callee->var_ref.name);
-            if (sig)
-            {
-                if (sig->ret_type)
-                {
-                    return type_to_c_string_with(sig->ret_type, ctx->config->misra_mode,
-                                                 link_name_of, ctx);
-                }
-            }
-
-            // Fallback for known stdlib memory/file functions.
-            if (strcmp(node->call.callee->var_ref.name, "malloc") == 0 ||
-                strcmp(node->call.callee->var_ref.name, "calloc") == 0 ||
-                strcmp(node->call.callee->var_ref.name, "realloc") == 0 ||
-                strcmp(node->call.callee->var_ref.name, "fopen") == 0 ||
-                strcmp(node->call.callee->var_ref.name, "popen") == 0 ||
-                strcmp(node->call.callee->var_ref.name, "fdopen") == 0)
-            {
-                return "void*";
-            }
-            ASTNode *sdef = find_struct_def(ctx, node->call.callee->var_ref.name);
-            if (sdef)
-            {
-                return node->call.callee->var_ref.name;
-            }
-
-            // Check for enum variants (constructors)
-            TypeMember *variant = &node->call.callee->var_ref.variant;
-            EnumVariantReg *ev =
-                variant->member
-                    ? find_enum_variant_of(ctx, type_def_name(variant->owner), variant->member)
-                    : find_enum_variant(ctx, node->call.callee->var_ref.name);
-            if (ev)
-            {
-                return ev->enum_name;
-            }
-        }
-        // Method call: target.method() - look up Type_method signature.
-        if (node->call.callee->kind == NODE_EXPR_MEMBER)
-        {
-            char *target_type = infer_type(ctx, node->call.callee->member.target);
-            if (target_type)
-            {
-                char clean_type[MAX_TYPE_NAME_LEN];
-                snprintf(clean_type, sizeof(clean_type), "%s", target_type);
-
-                // Robustly strip all pointer levels for method lookup
-                char *ptr = (char *)strchr(clean_type, '*');
-                if (ptr)
-                {
-                    *ptr = 0;
-                }
-
-                char *base = clean_type;
-                if (strncmp(base, "struct ", 7) == 0)
-                {
-                    base += 7;
-                }
-
-                char *func_name = mangle_method_symbol(base, NULL, node->call.callee->member.field);
-
-                FuncSig *sig = find_func(ctx, func_name);
-
-                if (sig && sig->ret_type)
-                {
-                    char *ret = type_to_c_string_with(sig->ret_type, ctx->config->misra_mode,
-                                                      link_name_of, ctx);
-                    zfree(func_name);
-                    return ret;
-                }
-                zfree(func_name);
-            }
-        }
-
-        if (node->call.callee->kind == NODE_EXPR_VAR)
-        {
-            ZenSymbol *sym = find_symbol_entry(ctx, node->call.callee->var_ref.name);
-            if (sym && sym->type_info && sym->type_info->kind == TYPE_FUNCTION &&
-                sym->type_info->inner)
-            {
-                return type_to_c_string_with(sym->type_info->inner, ctx->config->misra_mode,
-                                             link_name_of, ctx);
-            }
-        }
-    }
-
-    if (node->kind == NODE_TRY)
-    {
-        char *inner_type = infer_type(ctx, node->try_stmt.expr);
-        if (inner_type)
-        {
-            // Extract T from Result<T> or Option<T>
-            char *start = (char *)strchr(inner_type, '<');
-            if (start)
-            {
-                start++; // Skip <
-                char *end = (char *)strrchr(inner_type, '>');
-                if (end && end > start)
-                {
-                    ptrdiff_t len = end - start;
-                    char *extracted = xmalloc((size_t)(len + 1));
-                    strncpy(extracted, start, (size_t)(len));
-                    extracted[len] = 0;
-                    return extracted;
-                }
-            }
-
-            // Find the struct/enum definition and look for "Ok" or "val"
-            char *search_name = inner_type;
-            if (strncmp(search_name, "struct ", 7) == 0)
-            {
-                search_name += 7;
-            }
-
-            ASTNode *def = find_struct_def(ctx, search_name);
-            if (!def)
-            {
-                // check enums list explicitly if not found in instantiated list
-                StructRef *er = ctx->parsed_enums_list;
-                while (er)
-                {
-                    if (er->node && er->node->kind == NODE_ENUM &&
-                        strcmp(er->node->enm.name, search_name) == 0)
-                    {
-                        def = er->node;
-                        break;
-                    }
-                    er = er->next;
-                }
-            }
-
-            if (def)
-            {
-                if (def->kind == NODE_ENUM)
-                {
-                    // Look for "Ok" variant
-                    ASTNode *var = def->enm.variants;
-                    while (var)
-                    {
-                        if (var->variant.name && strcmp(var->variant.name, "Ok") == 0)
-                        {
-                            if (var->variant.payload)
-                            {
-                                return type_to_c_string_with(var->variant.payload,
-                                                             ctx->config->misra_mode, link_name_of,
-                                                             ctx);
-                            }
-                            // Ok with no payload? Then it's void/u0.
-                            return "void";
-                        }
-                        var = var->next;
-                    }
-                }
-                else if (def->kind == NODE_STRUCT)
-                {
-                    // Look for "val" field
-                    ASTNode *field = def->strct.fields;
-                    while (field)
-                    {
-                        if (field->field.name && strcmp(field->field.name, "val") == 0)
-                        {
-                            return type_to_string(field->type_info);
-                        }
-                        field = field->next;
-                    }
-                }
-            }
-        }
-    }
-
-    if (node->kind == NODE_EXPR_MEMBER)
-    {
-        char *parent_type = infer_type(ctx, node->member.target);
-        if (!parent_type)
-        {
-            return NULL;
-        }
-
-        char clean_name[MAX_TYPE_NAME_LEN];
-        snprintf(clean_name, sizeof(clean_name), "%s", parent_type);
-        char *ptr = (char *)strchr(clean_name, '*');
-        if (ptr)
-        {
-            *ptr = 0;
-        }
-
-        return get_field_type_str(ctx, clean_name, node->member.field);
-    }
-
-    if (node->kind == NODE_EXPR_BINARY)
-    {
-        if (node->binary.op == OP_COALESCE)
-        {
-            return infer_type(ctx, node->binary.left);
-        }
-
-        OperatorClass op_class = operator_class(node->binary.op);
-        char *left_type = infer_type(ctx, node->binary.left);
-        char *right_type = infer_type(ctx, node->binary.right);
-
-        int is_logical = op_class == OPERATOR_LOGICAL || op_class == OPERATOR_COMPARISON;
-
-        if (is_logical)
-        {
-            return xstrdup("int");
-        }
-
-        if (left_type && strcmp(left_type, "usize") == 0)
-        {
-            return "usize";
-        }
-        if (right_type && strcmp(right_type, "usize") == 0)
-        {
-            return "usize";
-        }
-        if (left_type && strcmp(left_type, "double") == 0)
-        {
-            return "double";
-        }
-
-        return left_type ? left_type : right_type;
-    }
-
-    if (node->kind == NODE_MATCH)
-    {
-        ASTNode *case_node = node->match_stmt.cases;
-        while (case_node)
-        {
-            char *type = infer_type(ctx, case_node->match_case.body);
-            if (type && strcmp(type, "void") != 0 && strcmp(type, "unknown") != 0)
-            {
-                return type;
-            }
-            case_node = case_node->next;
-        }
-        return NULL;
-    }
-
-    if (node->kind == NODE_EXPR_INDEX)
-    {
-        char *array_type = infer_type(ctx, node->index.array);
-        if (array_type)
-        {
-            // If T*, returns T. If T[], returns T.
-            char *ptr = (char *)strrchr(array_type, '*');
-            if (ptr)
-            {
-                ptrdiff_t len = ptr - array_type;
-                char *buf = xmalloc((size_t)(len + 1));
-                strncpy(buf, array_type, (size_t)(len));
-                buf[len] = 0;
-                return buf;
-            }
-
-            char *search_name = array_type;
-            if (strncmp(search_name, "struct ", 7) == 0)
-            {
-                search_name += 7;
-            }
-
-            ASTNode *def = find_struct_def(ctx, search_name);
-            if (def && def->type_info && def->type_info->kind == TYPE_VECTOR &&
-                def->type_info->inner)
-            {
-                return type_to_c_string_with(def->type_info->inner, ctx->config->misra_mode,
-                                             link_name_of, ctx);
-            }
-        }
-        return "int";
-    }
-
-    if (node->kind == NODE_EXPR_UNARY)
-    {
-        if (node->unary.op == OP_ADDRESS)
-        {
-            char *inner = infer_type(ctx, node->unary.operand);
-            if (inner)
-            {
-                char *buf = xmalloc(strlen(inner) + 2);
-                sprintf(buf, "%s*", inner); /* safe */
-                return buf;
-            }
-        }
-        if (node->unary.op == OP_DEREF)
-        {
-            char *inner = infer_type(ctx, node->unary.operand);
-            if (inner)
-            {
-                if (strcmp(inner, "string") == 0)
-                {
-                    return xstrdup("char");
-                }
-                char *ptr = (char *)strchr(inner, '*');
-                if (ptr)
-                {
-                    // Return base type (naive)
-                    ptrdiff_t len = ptr - inner;
-                    char *dup = xmalloc((size_t)(len + 1));
-                    strncpy(dup, inner, (size_t)(len));
-                    dup[len] = 0;
-                    return dup;
-                }
-            }
-        }
-        return infer_type(ctx, node->unary.operand);
-    }
-
-    if (node->kind == NODE_EXPR_CAST)
-    {
-        return type_to_c_string_with(node->type_info, ctx->config->misra_mode, link_name_of, ctx);
-    }
-
-    if (node->kind == NODE_EXPR_STRUCT_INIT)
-    {
-        return node->struct_init.struct_name;
-    }
-
-    if (node->kind == NODE_EXPR_ARRAY_LITERAL)
-    {
-        if (node->type_info)
-        {
-            return type_to_c_string_with(node->type_info, ctx->config->misra_mode, link_name_of,
-                                         ctx);
-        }
-        return NULL;
-    }
-
-    if (node->kind == NODE_EXPR_LITERAL)
-    {
-        if (node->literal.kind == LITERAL_STRING)
-        {
-            return xstrdup("string");
-        }
-        if (node->literal.kind == LITERAL_CHAR)
-        {
-            return xstrdup("char");
-        }
-        if (node->literal.kind == LITERAL_FLOAT)
-        {
-            return "double";
-        }
-        return "int";
-    }
-
-    return NULL;
-}
-
-// Extract variable names from argument string.
-
-// Parse original method name from mangled name.
-
-// Replace string type in arguments.
-
-// Helper to emit auto type or fallback.
-
-// Field type lookup — get the type string of a struct field.
-// (Moved from codegen_utils.c)
-
-char *get_field_type_str(ParserContext *ctx, const char *struct_name, const char *field_name)
-{
-    char clean_name[MAX_TYPE_NAME_LEN];
-    strncpy(clean_name, struct_name, sizeof(clean_name) - 1);
-    clean_name[sizeof(clean_name) - 1] = 0;
-
-    char *ptr = (char *)strchr(clean_name, '<');
-    if (ptr)
-    {
-        *ptr = 0;
-    }
-
-    ASTNode *def = find_struct_def(ctx, clean_name);
-    if (!def)
-    {
-        return NULL;
-    }
-
-    ASTNode *f = def->strct.fields;
-    while (f)
-    {
-        if (strcmp(f->field.name, field_name) == 0)
-        {
-            return type_to_string(f->type_info);
-        }
-        f = f->next;
-    }
-    return NULL;
-}
-
-// Type inference.
-
 // The character a one-letter escape (`\n`, `\t`...) stands for, or -1.
 static int simple_escape(char c)
 {
@@ -2382,6 +1827,12 @@ static char *unescape_c_string(const char *s)
     return out;
 }
 
+int is_string_literal(ASTNode *node)
+{
+    return node && node->kind == NODE_EXPR_LITERAL &&
+           (node->literal.kind == LITERAL_STRING || node->literal.kind == LITERAL_RAW_STRING);
+}
+
 char *string_literal_text(ASTNode *literal)
 {
     const char *text = literal->literal.string_val ? literal->literal.string_val : "";
@@ -2410,4 +1861,24 @@ Type *pointee_of(Type *t)
         return t->inner;
     }
     return t->kind == TYPE_STRING ? type_new(TYPE_CHAR) : NULL;
+}
+
+ASTNode *ast_turn_into(ASTNode *node, NodeType kind)
+{
+    ASTNode *was = ast_create(node->kind);
+    *was = *node;
+    was->next = NULL;
+
+    node->kind = kind;
+    memset(&node->root, 0, sizeof(ASTNode) - offsetof(ASTNode, root)); // The union, last.
+    return was;
+}
+
+ASTNode *written_expr(ASTNode *node)
+{
+    while (node && node->kind == NODE_IMPLICIT_CONVERSION)
+    {
+        node = node->conversion.expr;
+    }
+    return node;
 }

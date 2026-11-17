@@ -36,12 +36,9 @@ static void report_missing_method(TypeChecker *tc, ASTNode *call)
     {
         return;
     }
-    const char *method_owner = NULL;
-    char *method = NULL;
-    if (find_method_call_target(tc->pctx, type_impl_name(owner), callee->member.field,
-                                &method_owner, &method))
+    // Checking the member found the method (find_method_call_target).
+    if (callee->member.method)
     {
-        zfree(method);
         return;
     }
     char *spelled = zen_c_type_spelling(tc->pctx, t);
@@ -255,6 +252,15 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     check_node(tc, node->call.callee, depth + 1);
     tc->is_callee = prev_callee;
 
+    // `value.name(...)` where a field is named so too calls the method, as codegen does, unless the
+    // field is a function to call.
+    ASTNode *callee = node->call.callee;
+    if (callee && callee->kind == NODE_EXPR_MEMBER && !callee->member.method &&
+        !(callee->type_info && get_inner_type(callee->type_info)->kind == TYPE_FUNCTION))
+    {
+        resolve_member_method(tc, callee, 1);
+    }
+
     const char *func_name = NULL;
     FuncSig *sig = NULL;
 
@@ -265,6 +271,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
 
         // Look up function signature
         sig = find_func(tc->pctx, func_name);
+        node->call.function = sig;
 
         if (tc->pctx->config->misra_mode)
         {
@@ -311,7 +318,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
             // Check if it's a built-in macro injected by the compiler
             if (strcmp(func_name, "_z_str") == 0)
             {
-                // _z_str is a generic format macro from ZC_C_GENERIC_STR
+                // _z_str is the preamble's format of a value (PRINT_CONVERSIONS)
                 check_node(tc, node->call.args, depth + 1); // Still check the argument
                 node->type_info = type_new(TYPE_STRING);
                 return;
@@ -577,6 +584,9 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         sig_arg_idx++;
     }
     tc->is_forget_receiver = 0;
+
+    // The arguments may have given a lambda the types of its parameters: its body waited for them.
+    check_called_lambdas(tc);
 
     // Propagate return type from function signature
     if (sig && sig->ret_type)

@@ -143,98 +143,11 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c)
         return n;
     }
 
-    if (strcmp(c, "int") == 0)
+    // A primitive, by its name in Zen C or in C (`i32`, `int32_t`).
+    TypeKind kind = find_primitive_kind(c);
+    if (kind != TYPE_UNKNOWN)
     {
-        return type_new(TYPE_I32);
-    }
-    if (strcmp(c, "float") == 0)
-    {
-        return type_new(TYPE_F32);
-    }
-    if (strcmp(c, "void") == 0)
-    {
-        return type_new(TYPE_VOID);
-    }
-    if (strcmp(c, "string") == 0)
-    {
-        return type_new(TYPE_STRING);
-    }
-    if (strcmp(c, "bool") == 0)
-    {
-        return type_new(TYPE_BOOL);
-    }
-    if (strcmp(c, "char") == 0)
-    {
-        return type_new(TYPE_CHAR);
-    }
-    if (strcmp(c, "I8") == 0 || strcmp(c, "i8") == 0)
-    {
-        return type_new(TYPE_I8);
-    }
-    if (strcmp(c, "U8") == 0 || strcmp(c, "u8") == 0)
-    {
-        return type_new(TYPE_U8);
-    }
-    if (strcmp(c, "I16") == 0 || strcmp(c, "i16") == 0)
-    {
-        return type_new(TYPE_I16);
-    }
-    if (strcmp(c, "U16") == 0 || strcmp(c, "u16") == 0)
-    {
-        return type_new(TYPE_U16);
-    }
-    if (strcmp(c, "I32") == 0 || strcmp(c, "i32") == 0 || strcmp(c, "int32_t") == 0)
-    {
-        return type_new(TYPE_I32);
-    }
-    if (strcmp(c, "U32") == 0 || strcmp(c, "u32") == 0 || strcmp(c, "uint32_t") == 0)
-    {
-        return type_new(TYPE_U32);
-    }
-    if (strcmp(c, "I64") == 0 || strcmp(c, "i64") == 0 || strcmp(c, "int64_t") == 0)
-    {
-        return type_new(TYPE_I64);
-    }
-    if (strcmp(c, "U64") == 0 || strcmp(c, "u64") == 0 || strcmp(c, "uint64_t") == 0)
-    {
-        return type_new(TYPE_U64);
-    }
-    if (strcmp(c, "float") == 0 || strcmp(c, "f32") == 0)
-    {
-        return type_new(TYPE_F32);
-    }
-    if (strcmp(c, "double") == 0 || strcmp(c, "f64") == 0)
-    {
-        return type_new(TYPE_F64);
-    }
-    if (strcmp(c, "I128") == 0 || strcmp(c, "i128") == 0)
-    {
-        return type_new(TYPE_I128);
-    }
-    if (strcmp(c, "U128") == 0 || strcmp(c, "u128") == 0)
-    {
-        return type_new(TYPE_U128);
-    }
-    if (strcmp(c, "rune") == 0)
-    {
-        return type_new(TYPE_RUNE);
-    }
-    if (strcmp(c, "uint") == 0)
-    {
-        return type_new(TYPE_U32);
-    }
-
-    if (strcmp(c, "byte") == 0)
-    {
-        return type_new(TYPE_BYTE);
-    }
-    if (strcmp(c, "usize") == 0)
-    {
-        return type_new(TYPE_USIZE);
-    }
-    if (strcmp(c, "isize") == 0)
-    {
-        return type_new(TYPE_ISIZE);
+        return type_new(kind);
     }
 
     char *name = sanitize_mangled_name(c);
@@ -243,48 +156,12 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c)
     return n;
 }
 
-char *join_with_commas(char **parts, int count)
-{
-    size_t size = 1;
-    for (int i = 0; i < count; i++)
-    {
-        size += strlen(parts[i]) + 1;
-    }
-    char *out = xmalloc(size);
-    out[0] = '\0';
-    for (int i = 0; i < count; i++)
-    {
-        if (i > 0)
-        {
-            strcat(out, ",");
-        }
-        strcat(out, parts[i]);
-    }
-    return out;
-}
-
-Bindings bindings_new(const char *params, Type **args, int count)
+Bindings bindings_new(char **params, int param_count, Type **args, int count)
 {
     Bindings b = {0};
-    int param_count = 1;
-    for (const char *s = params; *s; s++)
-    {
-        param_count += (*s == ',');
-    }
+    b.params = params;
     b.count = param_count < count ? param_count : count;
-    b.params = xmalloc(sizeof(char *) * (size_t)param_count);
-    const char *start = params;
-    for (int i = 0; i < param_count; i++)
-    {
-        const char *end = strchr(start, ',');
-        size_t len = end ? (size_t)(end - start) : strlen(start);
-        b.params[i] = xmalloc(len + 1);
-        memcpy(b.params[i], start, len);
-        b.params[i][len] = '\0';
-        start = end ? end + 1 : start + len;
-    }
     b.args = args;
-
     return b;
 }
 
@@ -336,8 +213,10 @@ static char *rename_template(const char *text, const char *os, const char *ns)
     return os && ns ? replace_in_string(text, os, ns) : xstrdup(text);
 }
 
-// A copy of the alternatives of a match case, with rename_template applied to their text.
-static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char *os, const char *ns)
+// A copy of the alternatives of a match case: rename_template on the names, copy_ast_replacing
+// on the values.
+static MatchPattern *copy_patterns_replacing(ParserContext *ctx, MatchPattern *patterns,
+                                             const Bindings *b, const char *os, const char *ns)
 {
     MatchPattern *head = NULL;
     MatchPattern *last = NULL;
@@ -356,18 +235,9 @@ static MatchPattern *copy_patterns_replacing(MatchPattern *patterns, const char 
         {
             copy->name.name = rename_template(src->name.name, os, ns);
         }
-        if (src->literal)
-        {
-            copy->literal = rename_template(src->literal, os, ns);
-        }
-        if (src->range_start)
-        {
-            copy->range_start = rename_template(src->range_start, os, ns);
-        }
-        if (src->range_end)
-        {
-            copy->range_end = rename_template(src->range_end, os, ns);
-        }
+        copy->value = copy_ast_replacing(ctx, src->value, b, os, ns);
+        copy->range_start = copy_ast_replacing(ctx, src->range_start, b, os, ns);
+        copy->range_end = copy_ast_replacing(ctx, src->range_end, b, os, ns);
         if (last)
         {
             last->next = copy;
@@ -462,6 +332,8 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         new_node->call.args = copy_ast_replacing(ctx, n->call.args, b, os, ns);
         new_node->call.arg_names = n->call.arg_names; // Share pointer (shallow copy)
         new_node->call.count = n->call.count;
+        new_node->call.written = NULL; // The instance's own check resolves it again.
+        new_node->call.function = NULL;
         break;
     case NODE_EXPR_VAR:
     {
@@ -509,6 +381,9 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
     case NODE_EXPR_MEMBER:
         new_node->member.target = copy_ast_replacing(ctx, n->member.target, b, os, ns);
         new_node->member.field = n->member.field ? xstrdup(n->member.field) : NULL;
+        // The method of an instance is its own: checking the copy resolves it.
+        new_node->member.method = NULL;
+        new_node->member.method_owner = NULL;
         break;
     case NODE_EXPR_INDEX:
         new_node->index.array = copy_ast_replacing(ctx, n->index.array, b, os, ns);
@@ -516,6 +391,9 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         break;
     case NODE_EXPR_CAST:
         new_node->cast.expr = copy_ast_replacing(ctx, n->cast.expr, b, os, ns);
+        break;
+    case NODE_IMPLICIT_CONVERSION:
+        new_node->conversion.expr = copy_ast_replacing(ctx, n->conversion.expr, b, os, ns);
         break;
     case NODE_EXPR_STRUCT_INIT:
     {
@@ -572,11 +450,13 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
     case NODE_FOR_RANGE:
         new_node->for_range.start = copy_ast_replacing(ctx, n->for_range.start, b, os, ns);
         new_node->for_range.end = copy_ast_replacing(ctx, n->for_range.end, b, os, ns);
+        new_node->for_range.step = copy_ast_replacing(ctx, n->for_range.step, b, os, ns);
         new_node->for_range.body = copy_ast_replacing(ctx, n->for_range.body, b, os, ns);
         break;
 
     case NODE_MATCH_CASE:
-        new_node->match_case.patterns = copy_patterns_replacing(n->match_case.patterns, os, ns);
+        new_node->match_case.patterns =
+            copy_patterns_replacing(ctx, n->match_case.patterns, b, os, ns);
         new_node->match_case.binding_count = n->match_case.binding_count;
         if (n->match_case.binding_names)
         {

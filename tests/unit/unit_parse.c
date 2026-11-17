@@ -10,17 +10,11 @@ static ParserContext ctx;
 static ASTNode *parse_with(const char *src, int keep_comments)
 {
     memset(&compiler, 0, sizeof(compiler));
-    memset(&ctx, 0, sizeof(ctx));
     compiler.config.quiet = 1;
     compiler.config.keep_comments = keep_comments;
-    ctx.compiler = &compiler;
-    ctx.config = &compiler.config;
-    ctx.current_filename = "test.zc";
+    parser_context_init(&ctx, &compiler, "test.zc");
     ctx.is_fault_tolerant = 1;
-    module_state_init(&ctx.imports);
     ctx.cg.hoist_out = tmpfile();
-    token_set_parser_ctx(&ctx);
-    diag_set_parser_ctx(&ctx);
     register_builtins(&ctx);
 
     Lexer l;

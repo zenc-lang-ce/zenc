@@ -15,7 +15,4 @@
 // String manipulation
 char *replace_string_type(const char *args);
 
-// Type name mapping
-const char *map_to_c_type(const char *t);
-
 #endif // CODEGEN_SHARED_H

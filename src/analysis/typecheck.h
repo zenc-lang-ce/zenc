@@ -19,6 +19,17 @@ typedef struct LoopFrame
     struct LoopFrame *outer; ///< The enclosing loop in the same function.
 } LoopFrame;
 
+/// A lambda whose body waits for its parameters' types: `(x, y) => x + y` with no type to take
+/// them from gets them at its first call, and its body is checked then.
+typedef struct WaitingLambda
+{
+    ASTNode *lambda;
+    Scope *scope;    ///< The lambda's own scope: its parameters and captures.
+    int scope_depth; ///< tc->current_depth inside that scope.
+    int node_depth;  ///< The recursion depth the body is checked at.
+    ASTNode *func;   ///< The function it is written in.
+} WaitingLambda;
+
 // Type Checker Context
 // Holds the state during the semantic analysis pass.
 // Unlike the parser, this focuses on semantic validity (types, definitions).
@@ -47,6 +58,8 @@ typedef struct TypeChecker
     const char **escapes_reported; ///< Where an escape was reported (Token.start), so a loop's
                                    ///< second pass does not report it again.
     int escapes_reported_count;
+    WaitingLambda *waiting_lambdas; ///< Lambdas whose body waits for a call (WaitingLambda).
+    int waiting_lambda_count;
 
     // Configuration
     int rechecking; ///< Checking code a second time (a loop's second pass, the expressions of an
@@ -98,6 +111,12 @@ int tc_file_in_std(TypeChecker *tc, const char *file);
  */
 int tc_storage_depth(TypeChecker *tc, ASTNode *place);
 void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
+
+/**
+ * @brief Reports what 0.6 makes an error: in 0.5 (FF_COMPATIBILITY_0_5) a warning that says
+ *        so, in `zc check` and in a build, since the program was valid; from 0.6 an error.
+ */
+void tc_error_from_0_6(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
 void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
 void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints,
                               const DiagnosticNote *note);

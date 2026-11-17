@@ -3,7 +3,7 @@
 
 fn main() {
     let arrow = (x: int) => { return 1; };
-    let single = y => 2;
+    let single: fn(int) -> int = y => 2;
     let literal = fn(z: int) -> int { return 3; };
     let used = (a: int, _b: int) => { return a; };
     arrow(1);

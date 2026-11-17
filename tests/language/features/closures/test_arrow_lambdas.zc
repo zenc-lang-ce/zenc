@@ -6,7 +6,7 @@ fn test_no_args() {
 }
 
 fn test_implicit_args() {
-    let f1 = (a, b) => a + b;
+    let f1: fn(int, int) -> int = (a, b) => a + b;
     assert(f1(10, 20) == 30);
 }
 

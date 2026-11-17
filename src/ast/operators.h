@@ -15,6 +15,7 @@
 #ifndef OPERATORS_H
 #define OPERATORS_H
 
+#include "compat/c23_compat.h"
 #include <stddef.h>
 
 typedef enum
@@ -82,7 +83,8 @@ typedef enum
     OPERATOR_COMPARISON, ///< `== != < <= > >=`.
     OPERATOR_LOGICAL,    ///< `&& ||`, unary `!`.
     OPERATOR_ASSIGNMENT, ///< `=` and the compound assignments.
-    OPERATOR_OTHER,      ///< `??`, `|>`, and the unary `*`, `&`, `++`, `--` and their forms.
+    OPERATOR_INCREMENT,  ///< `++` and `--`, prefix and postfix: they write their operand.
+    OPERATOR_OTHER,      ///< `??`, `|>`, and the unary `*` and `&` and their forms.
 } OperatorClass;
 
 typedef struct
@@ -98,7 +100,7 @@ typedef struct
 } OperatorInfo;
 
 /** @brief The entry of `kind` in the table; NULL for OP_NONE. */
-const OperatorInfo *operator_info(OperatorKind kind);
+ZEN_CONST const OperatorInfo *operator_info(OperatorKind kind);
 
 /** @brief The binary operator written `text` (`len` bytes, not necessarily terminated). */
 OperatorKind binary_operator_from_text(const char *text, size_t len);
@@ -116,6 +118,9 @@ OperatorClass operator_class(OperatorKind kind);
 int is_assignment_operator(OperatorKind kind);
 /** @brief Whether `kind` compares: `== != < <= > >=`. */
 int is_comparison_operator(OperatorKind kind);
+/** @brief Whether `kind` is `++` or `--`, prefix or postfix: an operator that writes its operand.
+ */
+int is_increment_operator(OperatorKind kind);
 /** @brief The method that overloads `kind` (`add` for `+`, `neg` for unary `-`), or NULL. */
 const char *operator_method(OperatorKind kind);
 /** @brief How the AST writes `kind` (`+=`, `_post++`); "" for OP_NONE. */

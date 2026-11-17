@@ -104,10 +104,8 @@ void handle_node_block(ParserContext *ctx, ASTNode *node)
     int saved = ctx->cg.defer_count;
     EMIT(ctx, "{\n");
     emitter_indent(&ctx->cg.emitter);
-    enter_scope(ctx);
     codegen_walker(ctx, node->block.statements);
     emit_defers_down_to(ctx, saved);
-    exit_scope(ctx);
     ctx->cg.defer_count = saved;
     emitter_dedent(&ctx->cg.emitter);
     EMIT(ctx, "}\n");
@@ -122,7 +120,7 @@ void handle_node_impl(ParserContext *ctx, ASTNode *node)
 
 void handle_node_function(ParserContext *ctx, ASTNode *node)
 {
-    if (!node->func.body || node->func.generic_params)
+    if (!node->func.body || node->func.generic_param_count > 0)
     {
         return;
     }
@@ -283,7 +281,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
                 }
                 else
                 {
-                    ASTNode *def = find_struct_def(ctx, type_def_name(arg_type));
+                    ASTNode *def = named_type_def(ctx, arg_type);
                     if (def && (def->kind == NODE_STRUCT || def->kind == NODE_ENUM) &&
                         def->type_info && def->type_info->traits.has_drop)
                     {
@@ -483,19 +481,6 @@ void handle_node_destruct_var(ParserContext *ctx, ASTNode *node)
     }
 }
 
-// Records a local and its type for infer_type. The parser already audited the declaration
-// (shadowing, MISRA names), so this does not go through add_symbol.
-static void add_symbol_local(ParserContext *ctx, const char *name, Type *type_info)
-{
-    ZenSymbol *sym = symbol_add(ctx->current_scope, name, SYM_VARIABLE);
-    if (!sym)
-    {
-        return;
-    }
-    sym->is_local = (ctx->current_scope != ctx->global_scope);
-    sym->type_info = type_info;
-}
-
 // Declares the drop flag of the local `node` and drops it at the end of its scope: a closure
 // frees its context, any other value calls `<glue>__Drop__glue`.
 // Declares the drop flag of the local `node` and defers `stmt`, which drops it if the flag is set.
@@ -654,7 +639,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
         }
         else if (!node->type_info)
         {
-            char *ret_type = infer_type(ctx, node->var_decl.init_expr);
+            char *ret_type = node_c_type(ctx, node->var_decl.init_expr);
             if (!ret_type || strcmp(ret_type, "void") == 0)
             {
                 is_void = 1;
@@ -677,7 +662,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, "static ");
     }
     {
-        char *tname = declared_c_type(ctx, node);
+        char *tname = node_c_type(ctx, node);
 
         if (tname && strcmp(tname, "void*") != 0 && strcmp(tname, "unknown") != 0)
         {
@@ -689,7 +674,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 
             if (!defer_typed_local_drop(ctx, node, node->type_info))
             {
-                ASTNode *def = find_struct_def(ctx, clean_type);
+                ASTNode *def = named_type_def(ctx, node->type_info);
                 if (def && def->type_info && def->type_info->traits.has_drop)
                 {
                     defer_local_drop(ctx, node, clean_type);
@@ -697,7 +682,6 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             }
 
             emit_var_decl_type(ctx, tname, node->var_decl.name);
-            add_symbol_local(ctx, node->var_decl.name, node->type_info);
 
             ASTNode *init = node->var_decl.init_expr;
             if (init && (temp || init->kind != NODE_EXPR_ARRAY_LITERAL) &&
@@ -754,7 +738,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             char *inferred = NULL;
             if (node->var_decl.init_expr)
             {
-                inferred = infer_type(ctx, node->var_decl.init_expr);
+                inferred = node_c_type(ctx, node->var_decl.init_expr);
             }
 
             if (inferred && strcmp(inferred, "__auto_type") != 0)
@@ -767,7 +751,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 
                 if (!defer_typed_local_drop(ctx, node, node->var_decl.init_expr->type_info))
                 {
-                    ASTNode *def = find_struct_def(ctx, clean_type);
+                    ASTNode *def = named_type_def(ctx, node->var_decl.init_expr->type_info);
                     if (def && def->type_info && def->type_info->traits.has_drop)
                     {
                         defer_local_drop(ctx, node, clean_type);
@@ -775,10 +759,11 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 }
 
                 emit_var_decl_type(ctx, inferred, node->var_decl.name);
-                add_symbol_local(ctx, node->var_decl.name, NULL);
                 EMIT(ctx, " = ");
-                if (ctx->config->use_cpp && inferred &&
-                    (strchr(inferred, '*') || is_enum_type_name(ctx, inferred)))
+                Type *init_type = node->var_decl.init_expr->type_info;
+                if (ctx->config->use_cpp && inferred && init_type &&
+                    (get_inner_type(init_type)->kind == TYPE_POINTER ||
+                     is_enum_type(ctx, init_type)))
                 {
                     EMIT(ctx, "(%s)(", inferred);
                     emit_var_init(ctx, node, temp);
@@ -800,9 +785,6 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             {
                 emit_auto_type(ctx, node->var_decl.init_expr, node->token);
                 EMIT(ctx, " %s", c_name(ctx, node->var_decl.name));
-
-                add_symbol_local(ctx, node->var_decl.name, NULL);
-
                 EMIT(ctx, " = ");
                 emit_var_init(ctx, node, temp);
                 EMIT(ctx, ";\n");
@@ -819,7 +801,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 void handle_node_const(ParserContext *ctx, ASTNode *node)
 {
     EMIT(ctx, "__attribute__((unused)) const ");
-    char *declared = declared_c_type(ctx, node);
+    char *declared = node_c_type(ctx, node);
     if (declared)
     {
         EMIT(ctx, "%s %s", declared, c_name(ctx, node->var_decl.name));

@@ -1,0 +1,46 @@
+// language/features/traits: test_trait_object_from_any_pointer
+// A pointer to a struct that implements a trait becomes a trait object wherever one is
+// expected, whatever expression gives the pointer: a variable, the address of a field or of an
+// element, a returned pointer, and in a `let`, an argument, an assignment or a `return`.
+
+trait Shape {
+    fn area(self) -> int;
+}
+
+struct Square {
+    side: int;
+}
+
+impl Shape for Square {
+    fn area(self) -> int {
+        return self.side * self.side;
+    }
+}
+
+struct Holder {
+    sq: Square;
+}
+
+fn area_of(s: Shape) -> int {
+    return s.area();
+}
+
+fn as_shape(sq: Square*) -> Shape {
+    return sq;
+}
+
+test "a pointer from any expression becomes a trait object" {
+    let a = Square { side: 2 };
+    let h = Holder { sq: Square { side: 3 } };
+    let squares: Square[2] = [Square { side: 4 }, Square { side: 5 }];
+
+    assert(area_of(&a) == 4, "address of a variable");
+    assert(area_of(&h.sq) == 9, "address of a field");
+    assert(area_of(&squares[1]) == 25, "address of an element");
+    assert(as_shape(&a).area() == 4, "returned");
+
+    let s: Shape = &h.sq;
+    assert(s.area() == 9, "let");
+    s = &squares[0];
+    assert(s.area() == 16, "assignment");
+}

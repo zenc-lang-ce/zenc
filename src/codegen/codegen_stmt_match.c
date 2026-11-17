@@ -24,23 +24,28 @@ static void emit_alternative_condition(ParserContext *ctx, MatchPattern *p, int 
         EMIT(ctx, "1");
         break;
     case PATTERN_RANGE:
-        EMIT(ctx, "(%s%d >= %s && %s%d %s %s)", subject, id, p->range_start, subject, id,
-             p->is_inclusive ? "<=" : "<", p->range_end);
+        EMIT(ctx, "(%s%d >= ", subject, id);
+        codegen_expression_bare(ctx, p->range_start);
+        EMIT(ctx, " && %s%d %s ", subject, id, p->is_inclusive ? "<=" : "<");
+        codegen_expression_bare(ctx, p->range_end);
+        EMIT(ctx, ")");
         break;
     case PATTERN_LITERAL:
-        if (p->literal[0] == '"')
+        if (is_string_literal(p->value))
         {
-            EMIT(ctx, "strcmp(%s%d, %s) == 0", subject, id, p->literal);
+            EMIT(ctx, "strcmp(%s%d, ", subject, id);
+            codegen_expression_bare(ctx, p->value);
+            EMIT(ctx, ") == 0");
         }
         else
         {
-            EMIT(ctx, "%s%d == %s", subject, id, p->literal);
+            EMIT(ctx, "%s%d == ", subject, id);
+            codegen_expression_bare(ctx, p->value);
         }
         break;
     case PATTERN_NAME:
     {
-        EnumVariantReg *reg = p->name.scope ? find_enum_variant_of(ctx, p->name.scope, p->name.name)
-                                            : find_enum_variant(ctx, p->name.name);
+        EnumVariantReg *reg = pattern_variant(ctx, p);
         if (!reg)
         {
             // A constant, not a variant.
@@ -96,34 +101,13 @@ static int case_is_wildcard(ASTNode *c)
     return p && p->kind == PATTERN_WILDCARD && !p->next;
 }
 
-// Helper
-ZEN_CONST bool is_int_type(TypeKind k)
-{
-    static const bool is_int[] = {
-        [TYPE_CHAR] = true,        [TYPE_I8] = true,      [TYPE_U8] = true,
-        [TYPE_I16] = true,         [TYPE_U16] = true,     [TYPE_I32] = true,
-        [TYPE_U32] = true,         [TYPE_I64] = true,     [TYPE_U64] = true,
-        [TYPE_I128] = true,        [TYPE_U128] = true,    [TYPE_USIZE] = true,
-        [TYPE_ISIZE] = true,       [TYPE_BYTE] = true,    [TYPE_RUNE] = true,
-        [TYPE_ENUM] = true,        [TYPE_C_INT] = true,   [TYPE_C_UINT] = true,
-        [TYPE_C_LONG] = true,      [TYPE_C_ULONG] = true, [TYPE_C_LONGLONG] = true,
-        [TYPE_C_ULONGLONG] = true, [TYPE_C_SHORT] = true, [TYPE_C_USHORT] = true,
-        [TYPE_C_CHAR] = true,      [TYPE_C_UCHAR] = true, [TYPE_BITINT] = true,
-        [TYPE_UBITINT] = true};
-    if (k < (int)(sizeof(is_int) / sizeof(is_int[0])))
-    {
-        return is_int[k];
-    }
-    return false;
-}
-
 void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
 {
     int id = ctx->cg.tmp_counter++;
     int is_self = (node->match_stmt.expr->kind == NODE_EXPR_VAR &&
                    strcmp(node->match_stmt.expr->var_ref.name, "self") == 0);
 
-    char *ret_type = infer_type(ctx, node);
+    char *ret_type = node_c_type(ctx, node);
     int is_expr = (use_result && ret_type && strcmp(ret_type, "void") != 0);
 
     if (is_expr)
@@ -168,12 +152,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     int m_is_ptr = has_ref_binding || subject_is_ptr;
 
     // A subject that designates a place: a `ref` binding points into it instead of a copy.
-    // `*p` is one too: `&*p` is the address p holds.
-    ASTNode *subject_expr = node->match_stmt.expr;
-    int is_lvalue_opt =
-        (subject_expr->kind == NODE_EXPR_VAR || subject_expr->kind == NODE_EXPR_MEMBER ||
-         subject_expr->kind == NODE_EXPR_INDEX ||
-         (subject_expr->kind == NODE_EXPR_UNARY && subject_expr->unary.op == OP_DEREF));
+    int is_lvalue_opt = expr_has_address(ctx, node->match_stmt.expr);
 
     emit_source_mapping(ctx, node); // Step through match statements elegantly
 

@@ -38,19 +38,11 @@ void emit_mangled_name(ParserContext *ctx, const char *base, const char *method)
     zfree(merged);
 }
 
-int is_enum_type_name(ParserContext *ctx, const char *name)
+// Whether `t` is an enum, by its declaration: a value of a user's enum may have TYPE_STRUCT.
+int is_enum_type(ParserContext *ctx, Type *t)
 {
-    if (!name || !ctx)
-    {
-        return 0;
-    }
-    const char *clean = name;
-    if (strncmp(clean, "struct ", 7) == 0)
-    {
-        clean += 7;
-    }
-    ASTNode *def = find_struct_def(ctx, clean);
-    return (def && def->kind == NODE_ENUM);
+    ASTNode *def = named_type_def(ctx, t);
+    return def && def->kind == NODE_ENUM;
 }
 
 const char *c_name(ParserContext *ctx, const char *name)
@@ -63,9 +55,9 @@ char *c_type_spelling(ParserContext *ctx, Type *t)
     return type_to_c_string_with(t, ctx->config->misra_mode, link_name_of, ctx);
 }
 
-char *declared_c_type(ParserContext *ctx, ASTNode *decl)
+char *node_c_type(ParserContext *ctx, ASTNode *node)
 {
-    Type *t = decl->type_info;
+    Type *t = node ? node->type_info : NULL;
     return (t && t->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, t) : NULL;
 }
 
@@ -137,7 +129,11 @@ const char *zero_initializer(ParserContext *ctx, Type *t)
     {
         return ctx->config->use_cpp ? "{}" : "{0}";
     }
-    if (is_int_type(k))
+    if (k == TYPE_BOOL)
+    {
+        return "false";
+    }
+    if (integer_kind(k) || k == TYPE_ENUM)
     {
         return "0";
     }
@@ -148,10 +144,6 @@ const char *zero_initializer(ParserContext *ctx, Type *t)
     if (k == TYPE_F64)
     {
         return "0.0";
-    }
-    if (k == TYPE_BOOL)
-    {
-        return "false";
     }
     return NULL;
 }
@@ -170,7 +162,7 @@ int capture_needs_drop(ParserContext *ctx, ASTNode *lambda, int index)
         return type_needs_drop(ctx, t);
     }
     ASTNode *def = t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name
-                       ? find_struct_def(ctx, type_def_name(t))
+                       ? named_type_def(ctx, t)
                        : NULL;
     return def && def->type_info && def->type_info->traits.has_drop;
 }
@@ -229,7 +221,7 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
     char *inferred = NULL;
     if (init_expr)
     {
-        inferred = infer_type(ctx, init_expr);
+        inferred = node_c_type(ctx, init_expr);
     }
 
     if (inferred && strcmp(inferred, "__auto_type") != 0 && strcmp(inferred, "unknown") != 0)
@@ -256,7 +248,7 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
 // is itself a declarator (a function pointer or an array).
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr)
 {
-    char *type = infer_type(ctx, expr);
+    char *type = node_c_type(ctx, expr);
     if (!type || strcmp(type, "__auto_type") == 0 || strcmp(type, "unknown") == 0)
     {
         return NULL;
@@ -504,46 +496,18 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
 
 char *value_drop_struct(ParserContext *ctx, ASTNode *value)
 {
-    if (value->type_info && value->type_info->kind == TYPE_TUPLE)
+    Type *t = value->type_info;
+    if (t && t->kind == TYPE_TUPLE)
     {
-        return type_needs_drop(ctx, value->type_info) ? drop_glue_name(value->type_info) : NULL;
+        return type_needs_drop(ctx, t) ? drop_glue_name(t) : NULL;
     }
-    char *tname = NULL;
-    if (value->type_info && value->type_info->kind == TYPE_STRUCT && value->type_info->name)
-    {
-        tname = type_def_name(value->type_info);
-    }
-    else
-    {
-        tname = infer_type(ctx, value);
-    }
-    if (!tname || strchr(tname, '*'))
-    {
-        return NULL;
-    }
-    if (strncmp(tname, "struct ", 7) == 0)
-    {
-        tname += 7;
-    }
-    ASTNode *def = find_struct_def(ctx, tname);
-    if (def && (def->kind == NODE_STRUCT || def->kind == NODE_ENUM) && def->type_info &&
-        def->type_info->traits.has_drop)
-    {
-        return tname;
-    }
-    return NULL;
+    ASTNode *def = named_type_def(ctx, t);
+    return def && def->type_info && def->type_info->traits.has_drop ? type_def_name(t) : NULL;
 }
 
 char *drop_glue_name(Type *t)
 {
     return (t && t->kind == TYPE_TUPLE) ? type_mangle_spelling(t) : type_def_name(t);
-}
-
-ASTNode *named_type_def(ParserContext *ctx, Type *t)
-{
-    return (t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name)
-               ? find_struct_def(ctx, type_def_name(t))
-               : NULL;
 }
 
 char *drop_value_stmt(Type *t, const char *lvalue, int depth)
@@ -582,22 +546,10 @@ int moves_drop_value(ParserContext *ctx, ASTNode *node)
     {
         return 0;
     }
-    char *type_name = infer_type(ctx, node);
-    ASTNode *def = NULL;
-    if (type_name)
-    {
-        char *clean_type = type_name;
-        if (strncmp(clean_type, "struct ", 7) == 0)
-        {
-            clean_type += 7;
-        }
-        def = find_struct_def(ctx, clean_type);
-    }
-
     Type *t = node->type_info;
     if (!t)
     {
-        return def && def->type_info && def->type_info->traits.has_drop;
+        return 0;
     }
     if (t->kind == TYPE_FUNCTION || t->kind == TYPE_TUPLE)
     {
@@ -605,13 +557,7 @@ int moves_drop_value(ParserContext *ctx, ASTNode *node)
     }
     if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
     {
-        // The definition the type names, or else the one its C spelling names.
-        ASTNode *tdef = named_type_def(ctx, t);
-        if (tdef)
-        {
-            def = tdef;
-        }
-        return (def && def->type_info) ? def->type_info->traits.has_drop : t->traits.has_drop;
+        return type_has_drop(ctx, t);
     }
     return 0;
 }
@@ -712,7 +658,7 @@ void codegen_expression_with_move(ParserContext *ctx, ASTNode *node)
 int impl_on_template(ParserContext *ctx, ASTNode *impl)
 {
     Type *target = impl->kind == NODE_IMPL ? impl->impl.target : impl->impl_trait.target;
-    ASTNode *def = target ? find_struct_def(ctx, type_impl_name(target)) : NULL;
+    ASTNode *def = named_type_def(ctx, target);
     return def && ((def->kind == NODE_STRUCT && def->strct.is_template) ||
                    (def->kind == NODE_ENUM && def->enm.is_template));
 }

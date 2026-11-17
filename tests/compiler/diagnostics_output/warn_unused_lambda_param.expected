@@ -7,10 +7,10 @@ warning: Unused parameter 'x' in lambda
    |
    = note: Consider prefixing with '_' if intentionally unused
 warning: Unused parameter 'y' in lambda
-  --> tests/compiler/diagnostics_output/warn_unused_lambda_param.zc:6:18
+  --> tests/compiler/diagnostics_output/warn_unused_lambda_param.zc:6:34
    |
-6  |     let single = y => 2;
-   |                  ^ here
+6  |     let single: fn(int) -> int = y => 2;
+   |                                  ^ here
    |
    = note: Consider prefixing with '_' if intentionally unused
 warning: Unused parameter 'z' in lambda

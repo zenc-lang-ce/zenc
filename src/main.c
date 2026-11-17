@@ -292,6 +292,12 @@ int main(int argc, char **argv)
             cfg->mode_check = 1;
             cfg->use_typecheck = 1;
         }
+        else if (strcmp(arg, "--check-twice") == 0)
+        {
+            // For scripts/check_twice.sh: the analysis must leave a tree it can check again
+            // and get the same result (stage 2 of the architecture plan).
+            cfg->check_twice = 1;
+        }
         else if (strcmp(arg, "--no-check") == 0)
         {
             cfg->mode_check = 0;
@@ -307,7 +313,6 @@ int main(int argc, char **argv)
             const char *profile = argv[++i];
             if (strcmp(profile, "c11") == 0 || strcmp(profile, "gnu") == 0)
             {
-                cfg->profile = ZC_PROFILE_C11;
                 cfg->misra_mode = 0;
                 cfg->misra_output = 0;
             }
@@ -315,13 +320,11 @@ int main(int argc, char **argv)
             {
                 // MISRA-shaped codegen with a permissive source policy: the
                 // translation unit is allowed to use hosted APIs.
-                cfg->profile = ZC_PROFILE_HOSTED;
                 cfg->misra_mode = 0;
                 cfg->misra_output = 1;
             }
             else if (strcmp(profile, "misra-c2012") == 0)
             {
-                cfg->profile = ZC_PROFILE_MISRA_C2012;
                 cfg->misra_mode = 1;
                 cfg->misra_output = 1;
                 cfg->use_typecheck = 1;
@@ -337,7 +340,6 @@ int main(int argc, char **argv)
         }
         else if (strcmp(arg, "--misra") == 0)
         {
-            cfg->profile = ZC_PROFILE_MISRA_C2012;
             cfg->misra_mode = 1;
             cfg->misra_output = 1;
             cfg->use_typecheck = 1;

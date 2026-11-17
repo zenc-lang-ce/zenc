@@ -460,8 +460,9 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
             EMIT(ctx, "// Auto-Generated RAII Glue for %s\n", sname);
             EMIT(ctx, "void %s__Drop__glue(%s *self) {\n", sname, struct_c_type(s));
 
+            // The type's own `impl Drop` (traits.declares_drop) runs before its fields' drops.
             char *drop_method = mangle_method_symbol(sname, "Drop", "drop");
-            if (find_func(ctx, drop_method))
+            if (s->type_info->traits.declares_drop)
             {
                 EMIT(ctx, "    %s(self);\n", drop_method);
             }
@@ -645,8 +646,6 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
 
         ctx->cg.current_func_ret_type_info = NULL;
         ctx->cg.current_lambda = NULL;
-        ctx->cg.global_user_structs = kids;
-        struct_registry_changed(ctx);
         VisitedModules *visited = NULL;
 
         if (!ctx->cg.skip_preamble)

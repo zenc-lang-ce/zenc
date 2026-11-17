@@ -5,12 +5,12 @@ fn compute(op: fn(I32, I32) -> I32, a: I32, b: I32) -> I32 {
 }
 
 test "test_lambda_arrow" {
-    let doubler = x => x * 2;
+    let doubler = (x: I32) => x * 2;
     let res1 = doubler(5);
     println(f"doubler(5) = {res1}");
     assert(res1 == 10, "doubler(5) should be 10");
 
-    let add = (x, y) => x + y;
+    let add: fn(I32, I32) -> I32 = (x, y) => x + y;
     let res2 = add(10, 20);
     println(f"add(10, 20) = {res2}");
     assert(res2 == 30, "add(10, 20) should be 30");
@@ -21,7 +21,7 @@ test "test_lambda_arrow" {
 }
 
 test "lambda_inference_repro" {
-    let dble = x => x * 2.0;
+    let dble: fn(f64) -> f64 = x => x * 2.0;
     let res = dble(9.0);
     assert(res == 18.0, "dble(9.0) should be 18.0");
 }

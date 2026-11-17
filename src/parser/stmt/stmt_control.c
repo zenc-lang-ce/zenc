@@ -216,32 +216,13 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     n->for_range.end = end_expr;
                     n->for_range.is_inclusive = is_inclusive;
 
+                    // `step` and one operand: a value, or a negated one (`step -1`, the loop
+                    // goes down).
                     if (lexer_peek(l).kind == TOK_IDENT &&
                         strncmp(lexer_peek(l).start, "step", 4) == 0)
                     {
                         lexer_next(l);
-                        Token s_tok = lexer_next(l);
-
-                        if (s_tok.kind == TOK_OP && s_tok.len == 1 && s_tok.start[0] == '-')
-                        {
-                            Token num_tok = lexer_next(l);
-                            char *sval = xmalloc(s_tok.len + num_tok.len + 1);
-                            strncpy(sval, s_tok.start, s_tok.len);
-                            strncpy(sval + s_tok.len, num_tok.start, num_tok.len);
-                            sval[s_tok.len + num_tok.len] = 0;
-                            n->for_range.step = sval;
-                        }
-                        else
-                        {
-                            char *sval = xmalloc(s_tok.len + 1);
-                            strncpy(sval, s_tok.start, s_tok.len);
-                            sval[s_tok.len] = 0;
-                            n->for_range.step = sval;
-                        }
-                    }
-                    else
-                    {
-                        n->for_range.step = NULL;
+                        n->for_range.step = parse_expr_prec(ctx, l, PREC_UNARY);
                     }
 
                     enter_scope(ctx);

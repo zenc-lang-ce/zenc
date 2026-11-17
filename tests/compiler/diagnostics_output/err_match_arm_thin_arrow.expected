@@ -1,0 +1,9 @@
+   Compiling tests/compiler/diagnostics_output/err_match_arm_thin_arrow.zc...
+error: Match arms use '=>', not '->'
+  --> tests/compiler/diagnostics_output/err_match_arm_thin_arrow.zc:7:11
+   |
+7  |         3 -> 1,
+   |           ^ here
+   |
+   = help: write the arm as `pattern => value`
+[exit 1]
