@@ -74,6 +74,28 @@ fn break_in_lambda() -> int {
     }
 }
 
+// panic() and a function marked @noreturn end the flow as `return` does.
+@noreturn
+fn fail(message: string) {
+    panic(message);
+}
+
+fn after_panic() -> int {
+    panic("never returns");
+    return 1;
+}
+
+fn after_noreturn_call() -> int {
+    fail("never returns");
+    return 1;
+}
+
+// The deferred statement runs when the scope ends: the code after the `defer` is reachable.
+fn after_deferred_panic() -> int {
+    defer panic("at the end");
+    return 1;
+}
+
 fn main() {
     after_return();
     after_match(1);

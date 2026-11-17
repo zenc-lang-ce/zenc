@@ -27,4 +27,18 @@ warning: Unreachable code detected
    |       ^ here
    |
    = note: Remove unreachable code or restructure control flow
+warning: Unreachable code detected
+  --> tests/compiler/diagnostics_output/unreachable_code.zc:85:5
+   |
+85 |     return 1;
+   |     ^ here
+   |
+   = note: Remove unreachable code or restructure control flow
+warning: Unreachable code detected
+  --> tests/compiler/diagnostics_output/unreachable_code.zc:90:5
+   |
+90 |     return 1;
+   |     ^ here
+   |
+   = note: Remove unreachable code or restructure control flow
 [exit 0]

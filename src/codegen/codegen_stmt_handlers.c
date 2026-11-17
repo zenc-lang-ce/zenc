@@ -139,8 +139,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     {
         int has_attrs = node->func.constructor || node->func.destructor || node->func.noinline ||
                         node->func.unused || node->func.weak || node->func.cold || node->func.hot ||
-                        node->func.noreturn || node->func.pure || node->func.section ||
-                        node->func.is_export;
+                        node->func.pure || node->func.section || node->func.is_export;
         if (has_attrs)
         {
             EMIT(ctx, "__attribute__((");
@@ -160,7 +159,6 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
             EMIT_ATTR(node->func.weak, "weak");
             EMIT_ATTR(node->func.cold, "cold");
             EMIT_ATTR(node->func.hot, "hot");
-            EMIT_ATTR(node->func.noreturn, "noreturn");
             EMIT_ATTR(node->func.pure, "pure");
             EMIT_ATTR(node->func.is_export, "visibility(\"default\")");
             if (node->func.section)
