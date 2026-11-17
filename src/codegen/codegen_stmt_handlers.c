@@ -483,7 +483,7 @@ void handle_node_destruct_var(ParserContext *ctx, ASTNode *node)
     }
 }
 
-// Records a local and its type for infer_type. The parser already audited the declaration
+// Records a local and its type in codegen's scope. The parser already audited the declaration
 // (shadowing, MISRA names), so this does not go through add_symbol.
 static void add_symbol_local(ParserContext *ctx, const char *name, Type *type_info)
 {

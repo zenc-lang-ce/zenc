@@ -1037,9 +1037,6 @@ typedef const char *(*CNameLookup)(void *context, const char *name);
  * @brief type_to_c_string, asking `lookup` for the C name of each struct and enum.
  */
 char *type_to_c_string_with(Type *t, int misra_mode, CNameLookup lookup, void *context);
-char *infer_type(struct ParserContext *ctx, struct ASTNode *node);
-char *get_field_type_str(struct ParserContext *ctx, const char *struct_name,
-                         const char *field_name);
 Type *get_inner_type(Type *t);
 /**
  * @brief `expr` dereferenced down to one level of pointer: `pp`, a `P**`, becomes `*pp`, a `P*`.

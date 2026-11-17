@@ -985,7 +985,6 @@ static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brac
         zpanic_at(srctoken, "Could not parse expression in interpolation");
         return NULL;
     }
-    infer_type(ctx, expr_node);
 
     // An interpolation holds one expression: anything left over (`{x y}`,
     // `{x;}`, a code block in a multiline string) would be dropped silently.
