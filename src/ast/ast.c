@@ -236,6 +236,7 @@ ASTChildren ast_children(ASTNode *node)
     case NODE_LINK:
     case NODE_IMPORT:
     case NODE_RAW_STMT:
+    case NODE_EMBED:
     case NODE_PREPROC_DIRECTIVE:
     case NODE_ASM:
     case NODE_PLUGIN:
@@ -309,6 +310,8 @@ const char *ast_kind_name(NodeType kind)
         return "CAST";
     case NODE_IMPLICIT_CONVERSION:
         return "CONVERSION";
+    case NODE_EMBED:
+        return "EMBED";
     case NODE_EXPR_SIZEOF:
         return "SIZEOF";
     case NODE_EXPR_STRUCT_INIT:

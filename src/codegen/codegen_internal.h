@@ -71,6 +71,7 @@ void handle_expr_sizeof(ParserContext *ctx, ASTNode *node);
 void handle_typeof(ParserContext *ctx, ASTNode *node);
 void handle_expr_cast(ParserContext *ctx, ASTNode *node);
 void handle_implicit_conversion(ParserContext *ctx, ASTNode *node);
+void handle_embed(ParserContext *ctx, ASTNode *node);
 void handle_expr_unary(ParserContext *ctx, ASTNode *node);
 void handle_expr_array_literal(ParserContext *ctx, ASTNode *node);
 void handle_expr_tuple_literal(ParserContext *ctx, ASTNode *node);

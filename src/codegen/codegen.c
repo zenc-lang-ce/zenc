@@ -53,6 +53,7 @@ void codegen_expression(ParserContext *ctx, ASTNode *node)
         [NODE_VA_ARG] = handle_va_arg,
         [NODE_EXPR_CAST] = handle_expr_cast,
         [NODE_IMPLICIT_CONVERSION] = handle_implicit_conversion,
+        [NODE_EMBED] = handle_embed,
         [NODE_EXPR_SIZEOF] = handle_expr_sizeof,
         [NODE_TYPEOF] = handle_typeof,
         [NODE_REFLECTION] = handle_reflection,
