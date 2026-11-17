@@ -859,7 +859,7 @@ typedef struct BodyCopy
 } BodyCopy;
 
 /** @brief The bindings of the `param_count` `params` (`K`, `V`) to the `count` `args`. */
-Bindings bindings_new(char **params, int param_count, Type **args, int count);
+ZEN_CONST Bindings bindings_new(char **params, int param_count, Type **args, int count);
 /**
  * @brief A copy of `t` for an instance: each parameter becomes the type it is bound to, and the
  * template's name `os` without arguments (`Self`) becomes the instance's `ns`.
