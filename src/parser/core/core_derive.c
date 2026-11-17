@@ -92,9 +92,14 @@ static char *derive_self_type(ASTNode *strct)
             snprintf(params + used, sizeof(params) - used, "%s%s", i ? ", " : "", *param);
         }
     }
-    else if (strct->kind == NODE_ENUM && strct->enm.is_template && strct->enm.generic_param)
+    else if (strct->kind == NODE_ENUM && strct->enm.is_template)
     {
-        snprintf(params, sizeof(params), "%s", strct->enm.generic_param);
+        char **param = strct->enm.generic_params;
+        for (int i = 0; i < strct->enm.generic_param_count; i++, param++)
+        {
+            size_t used = strlen(params);
+            snprintf(params + used, sizeof(params) - used, "%s%s", i ? ", " : "", *param);
+        }
     }
     if (!params[0])
     {
@@ -148,7 +153,7 @@ static char *variant_value_type(ParserContext *ctx, ASTNode *variant, int index)
 static int enum_eq_body(ParserContext *ctx, ASTNode *enm, char *body, size_t size)
 {
     const char *name = enm->enm.name;
-    int is_generic = enm->enm.is_template && enm->enm.generic_param;
+    int is_generic = enm->enm.is_template && enm->enm.generic_param_count > 0;
     size_t used = 0;
     if (!append_text(body, size, &used,
                      "if self.tag != other.tag { return false; } match *self { "))

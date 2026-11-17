@@ -206,7 +206,12 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     node->type_info = type_new_enum(ename);
 
     node->enm.variants = h;
-    node->enm.generic_param = gp; // Store generic param
+    if (gp)
+    {
+        node->enm.generic_params = xmalloc(sizeof(char *));
+        node->enm.generic_params[0] = gp;
+        node->enm.generic_param_count = 1;
+    }
     node->enm.is_export = is_export;
 
     if (gp)

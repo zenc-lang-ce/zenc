@@ -149,9 +149,10 @@ typedef struct GenericTemplate
  */
 typedef struct GenericFuncTemplate
 {
-    char *name;          ///< Template name.
-    char *generic_param; ///< Generic parameters string (legacy).
-    ASTNode *func_node;  ///< The function AST node.
+    char *name;            ///< Template name.
+    char **generic_params; ///< Its generic parameters: `T`, `U`.
+    int generic_param_count;
+    ASTNode *func_node; ///< The function AST node.
     struct GenericFuncTemplate *next;
 } GenericFuncTemplate;
 
@@ -160,9 +161,10 @@ typedef struct GenericFuncTemplate
  */
 typedef struct GenericImplTemplate
 {
-    char *struct_name;   ///< Target struct name.
-    char *generic_param; ///< Generic parameters.
-    ASTNode *impl_node;  ///< The impl block AST node.
+    char *struct_name;     ///< Target struct name.
+    char **generic_params; ///< Its generic parameters (one: an impl declares one).
+    int generic_param_count;
+    ASTNode *impl_node; ///< The impl block AST node.
     struct GenericImplTemplate *next;
 } GenericImplTemplate;
 
@@ -856,10 +858,8 @@ typedef struct BodyCopy
     struct BodyCopy *next;
 } BodyCopy;
 
-/** @brief `parts` joined by commas: `K,V`. */
-char *join_with_commas(char **parts, int count);
-/** @brief The bindings of `params` (`K,V`) to `args`. */
-Bindings bindings_new(const char *params, Type **args, int count);
+/** @brief The bindings of the `param_count` `params` (`K`, `V`) to the `count` `args`. */
+Bindings bindings_new(char **params, int param_count, Type **args, int count);
 /**
  * @brief A copy of `t` for an instance: each parameter becomes the type it is bound to, and the
  * template's name `os` without arguments (`Self`) becomes the instance's `ns`.
@@ -873,7 +873,8 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
 /**
  * @brief Registers a function template.
  */
-void register_func_template(ParserContext *ctx, const char *name, const char *param, ASTNode *node);
+void register_func_template(ParserContext *ctx, const char *name, char **params, int param_count,
+                            ASTNode *node);
 
 /**
  * @brief Finds a function template.
@@ -912,7 +913,7 @@ TypeKind get_primitive_type_kind(const char *name);
 /**
  * @brief Registers an implementation template.
  */
-void register_impl_template(ParserContext *ctx, const char *sname, const char *param,
+void register_impl_template(ParserContext *ctx, const char *sname, char **params, int param_count,
                             ASTNode *node);
 /**
  * @brief Adds a struct to the list.

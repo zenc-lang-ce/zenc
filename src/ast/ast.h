@@ -294,7 +294,8 @@ struct ASTNode
         struct
         {
             char *name;
-            char *generic_params; // <T, U>
+            char **generic_params; // `T`, `U` of `fn f<T, U>`; NULL when not generic.
+            int generic_param_count;
             ASTNode *body;
             Type **arg_types;
             ASTNode **default_values; // Default value of each parameter, NULL where it has none.
@@ -373,7 +374,8 @@ struct ASTNode
             char *written_name; // As programs write it, when `name` has a module prefix.
             ASTNode *variants;
             int is_template;
-            char *generic_param;
+            char **generic_params; // `T` of `enum Option<T>` (an enum declares one at most).
+            int generic_param_count;
             int is_export;
         } enm;
 

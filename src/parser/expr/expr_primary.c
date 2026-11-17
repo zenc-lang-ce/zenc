@@ -1229,9 +1229,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 Type *inferred_type = NULL;
                 ASTNode *func_node = tpl->func_node;
-                char *gen_param = tpl->generic_param;
+                char *gen_param = tpl->generic_param_count == 1 ? tpl->generic_params[0] : NULL;
 
-                if (func_node->func.arg_types && gen_param && !strchr(gen_param, ','))
+                if (func_node->func.arg_types && gen_param)
                 {
                     ASTNode *actual_arg = head;
                     for (int i = 0; i < func_node->func.count && actual_arg; i++)

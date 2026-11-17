@@ -261,7 +261,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
             ASTNode *m = f->impl.methods;
             while (m)
             {
-                if (m->func.generic_params)
+                if (m->func.generic_param_count > 0)
                 {
                     m = m->next;
                     continue;
@@ -302,7 +302,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
             ASTNode *m = f->impl_trait.methods;
             while (m)
             {
-                if (m->func.generic_params)
+                if (m->func.generic_param_count > 0)
                 {
                     m = m->next;
                     continue;

@@ -178,11 +178,13 @@ const char *callee_own_name(ParserContext *ctx, ASTNode *callee)
     return callee->var_ref.instance.name;
 }
 
-void register_func_template(ParserContext *ctx, const char *name, const char *param, ASTNode *node)
+void register_func_template(ParserContext *ctx, const char *name, char **params, int param_count,
+                            ASTNode *node)
 {
     GenericFuncTemplate *t = xcalloc(1, sizeof(GenericFuncTemplate));
     t->name = xstrdup(name);
-    t->generic_param = xstrdup(param);
+    t->generic_params = params;
+    t->generic_param_count = param_count;
     t->func_node = node;
     t->next = ctx->func_templates;
     ctx->func_templates = t;
@@ -287,11 +289,13 @@ int type_is_generic_dependent(ParserContext *ctx, Type *t)
     return 0;
 }
 
-void register_impl_template(ParserContext *ctx, const char *sname, const char *param, ASTNode *node)
+void register_impl_template(ParserContext *ctx, const char *sname, char **params, int param_count,
+                            ASTNode *node)
 {
     GenericImplTemplate *t = xmalloc(sizeof(GenericImplTemplate));
     t->struct_name = xstrdup(sname);
-    t->generic_param = xstrdup(param);
+    t->generic_params = params;
+    t->generic_param_count = param_count;
     t->impl_node = node;
     t->next = ctx->impl_templates;
     ctx->impl_templates = t;

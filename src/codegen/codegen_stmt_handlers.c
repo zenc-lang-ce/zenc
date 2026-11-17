@@ -122,7 +122,7 @@ void handle_node_impl(ParserContext *ctx, ASTNode *node)
 
 void handle_node_function(ParserContext *ctx, ASTNode *node)
 {
-    if (!node->func.body || node->func.generic_params)
+    if (!node->func.body || node->func.generic_param_count > 0)
     {
         return;
     }

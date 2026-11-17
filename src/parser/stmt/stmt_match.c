@@ -456,10 +456,9 @@ ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_tok
 
                 if (enum_def)
                 {
-                    if (enum_def->enm.generic_param)
+                    for (int p = 0; p < enum_def->enm.generic_param_count; p++)
                     {
-                        char *param = enum_def->enm.generic_param;
-                        if (type_names_param(binding_type_info, param))
+                        if (type_names_param(binding_type_info, enum_def->enm.generic_params[p]))
                         {
                             is_generic_unresolved = 1;
                         }

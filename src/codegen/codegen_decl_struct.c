@@ -394,7 +394,8 @@ static char *trait_c_type(ParserContext *ctx, Type *t, Type *self)
     Type **args = xmalloc(sizeof(Type *) * 2);
     args[0] = self;
     args[1] = self;
-    Bindings b = bindings_new("Self,self", args, 2);
+    static char *self_names[] = {"Self", "self"};
+    Bindings b = bindings_new(self_names, 2, args, 2);
     return c_type_spelling(ctx, replace_type_formal(ctx, t, &b, NULL, NULL));
 }
 

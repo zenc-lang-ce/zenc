@@ -243,48 +243,12 @@ Type *type_from_string_helper(ParserContext *ctx, const char *c)
     return n;
 }
 
-char *join_with_commas(char **parts, int count)
-{
-    size_t size = 1;
-    for (int i = 0; i < count; i++)
-    {
-        size += strlen(parts[i]) + 1;
-    }
-    char *out = xmalloc(size);
-    out[0] = '\0';
-    for (int i = 0; i < count; i++)
-    {
-        if (i > 0)
-        {
-            strcat(out, ",");
-        }
-        strcat(out, parts[i]);
-    }
-    return out;
-}
-
-Bindings bindings_new(const char *params, Type **args, int count)
+Bindings bindings_new(char **params, int param_count, Type **args, int count)
 {
     Bindings b = {0};
-    int param_count = 1;
-    for (const char *s = params; *s; s++)
-    {
-        param_count += (*s == ',');
-    }
+    b.params = params;
     b.count = param_count < count ? param_count : count;
-    b.params = xmalloc(sizeof(char *) * (size_t)param_count);
-    const char *start = params;
-    for (int i = 0; i < param_count; i++)
-    {
-        const char *end = strchr(start, ',');
-        size_t len = end ? (size_t)(end - start) : strlen(start);
-        b.params[i] = xmalloc(len + 1);
-        memcpy(b.params[i], start, len);
-        b.params[i][len] = '\0';
-        start = end ? end + 1 : start + len;
-    }
     b.args = args;
-
     return b;
 }
 
