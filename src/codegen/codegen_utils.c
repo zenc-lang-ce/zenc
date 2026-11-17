@@ -38,19 +38,11 @@ void emit_mangled_name(ParserContext *ctx, const char *base, const char *method)
     zfree(merged);
 }
 
-int is_enum_type_name(ParserContext *ctx, const char *name)
+// Whether `t` is an enum, by its declaration: a value of a user's enum may have TYPE_STRUCT.
+int is_enum_type(ParserContext *ctx, Type *t)
 {
-    if (!name || !ctx)
-    {
-        return 0;
-    }
-    const char *clean = name;
-    if (strncmp(clean, "struct ", 7) == 0)
-    {
-        clean += 7;
-    }
-    ASTNode *def = find_struct_def(ctx, clean);
-    return (def && def->kind == NODE_ENUM);
+    ASTNode *def = named_type_def(ctx, t);
+    return def && def->kind == NODE_ENUM;
 }
 
 const char *c_name(ParserContext *ctx, const char *name)
@@ -58,14 +50,38 @@ const char *c_name(ParserContext *ctx, const char *name)
     return c_safe_name(name, ctx->config->use_cpp);
 }
 
+const char *local_decl_c_name(ParserContext *ctx, Token site, const char *name)
+{
+    const char *renamed = local_c_name_at(ctx, site.start, name);
+    return renamed ? renamed : c_name(ctx, name);
+}
+
+const char *var_ref_c_name(ParserContext *ctx, ASTNode *ref)
+{
+    ZenSymbol *sym = ref->var_ref.symbol;
+    return sym && sym->link_name ? sym->link_name : c_name(ctx, ref->var_ref.name);
+}
+
+const char *local_decl_flag_name(ParserContext *ctx, Token site, const char *name)
+{
+    const char *renamed = local_c_name_at(ctx, site.start, name);
+    return renamed ? renamed : name;
+}
+
+const char *var_ref_flag_name(ASTNode *ref)
+{
+    ZenSymbol *sym = ref->var_ref.symbol;
+    return sym && sym->link_name ? sym->link_name : ref->var_ref.name;
+}
+
 char *c_type_spelling(ParserContext *ctx, Type *t)
 {
     return type_to_c_string_with(t, ctx->config->misra_mode, link_name_of, ctx);
 }
 
-char *declared_c_type(ParserContext *ctx, ASTNode *decl)
+char *node_c_type(ParserContext *ctx, ASTNode *node)
 {
-    Type *t = decl->type_info;
+    Type *t = node ? node->type_info : NULL;
     return (t && t->kind != TYPE_UNKNOWN) ? c_type_spelling(ctx, t) : NULL;
 }
 
@@ -73,57 +89,6 @@ int is_fixed_size_array(Type *t)
 {
     t = resolve_alias(t);
     return t && t->kind == TYPE_ARRAY && t->array_size > 0;
-}
-
-int expr_names_var(ASTNode *expr, const char *name)
-{
-    if (!expr)
-    {
-        return 0;
-    }
-    char **refs = NULL;
-    int ref_count = 0;
-    find_var_refs(expr, &refs, &ref_count);
-    for (int i = 0; i < ref_count; i++)
-    {
-        if (strcmp(refs[i], name) == 0)
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-char *emit_init_temp(ParserContext *ctx, ASTNode *expr)
-{
-    char *temp = xmalloc(32);
-    snprintf(temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
-    if (z_path_match_compiler(ctx->config->cc, "tcc"))
-    {
-        // tcc has no __auto_type: the expression is written twice, once unevaluated.
-        EMIT(ctx, "__typeof__((");
-        codegen_expression(ctx, expr);
-        EMIT(ctx, ")) %s = ", temp);
-    }
-    else
-    {
-        EMIT(ctx, "ZC_AUTO %s = ", temp);
-    }
-    codegen_expression(ctx, expr);
-    EMIT(ctx, "; ");
-    return temp;
-}
-
-void emit_expr_or_temp(ParserContext *ctx, ASTNode *expr, const char *temp)
-{
-    if (temp)
-    {
-        EMIT(ctx, "%s", temp);
-    }
-    else
-    {
-        codegen_expression(ctx, expr);
-    }
 }
 
 const char *zero_initializer(ParserContext *ctx, Type *t)
@@ -137,7 +102,11 @@ const char *zero_initializer(ParserContext *ctx, Type *t)
     {
         return ctx->config->use_cpp ? "{}" : "{0}";
     }
-    if (is_int_type(k))
+    if (k == TYPE_BOOL)
+    {
+        return "false";
+    }
+    if (integer_kind(k) || k == TYPE_ENUM)
     {
         return "0";
     }
@@ -148,10 +117,6 @@ const char *zero_initializer(ParserContext *ctx, Type *t)
     if (k == TYPE_F64)
     {
         return "0.0";
-    }
-    if (k == TYPE_BOOL)
-    {
-        return "false";
     }
     return NULL;
 }
@@ -170,7 +135,7 @@ int capture_needs_drop(ParserContext *ctx, ASTNode *lambda, int index)
         return type_needs_drop(ctx, t);
     }
     ASTNode *def = t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name
-                       ? find_struct_def(ctx, type_def_name(t))
+                       ? named_type_def(ctx, t)
                        : NULL;
     return def && def->type_info && def->type_info->traits.has_drop;
 }
@@ -229,7 +194,7 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
     char *inferred = NULL;
     if (init_expr)
     {
-        inferred = infer_type(ctx, init_expr);
+        inferred = node_c_type(ctx, init_expr);
     }
 
     if (inferred && strcmp(inferred, "__auto_type") != 0 && strcmp(inferred, "unknown") != 0)
@@ -256,7 +221,7 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t)
 // is itself a declarator (a function pointer or an array).
 char *c_type_name_or_null(ParserContext *ctx, ASTNode *expr)
 {
-    char *type = infer_type(ctx, expr);
+    char *type = node_c_type(ctx, expr);
     if (!type || strcmp(type, "__auto_type") == 0 || strcmp(type, "unknown") == 0)
     {
         return NULL;
@@ -309,7 +274,7 @@ void emit_rvalue_address(ParserContext *ctx, ASTNode *expr)
 static int may_be_internal(ParserContext *ctx, ASTNode *func, const char *c_function_name)
 {
     return !func->func.is_export && !func->func.is_extern && !func->link_name && !func->func.weak &&
-           strcmp(func->func.name, "main") != 0 &&
+           strcmp(function_c_name(func), "main") != 0 &&
            !c_headers_declare_function(ctx, c_function_name);
 }
 
@@ -317,7 +282,7 @@ static int may_be_internal(ParserContext *ctx, ASTNode *func, const char *c_func
 static const char *func_c_name(ParserContext *ctx, ASTNode *func, const char *name_override)
 {
     return func->link_name ? func->link_name
-                           : c_name(ctx, name_override ? name_override : func->func.name);
+                           : c_name(ctx, name_override ? name_override : function_c_name(func));
 }
 
 // Whether the program reaches `func` only through calls by its name, which the C shows: it is
@@ -388,7 +353,8 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
     }
 
     // Emit MISRA static linkage
-    if (ctx->config->misra_mode && !func->func.is_export && strcmp(func->func.name, "main") != 0)
+    if (ctx->config->misra_mode && !func->func.is_export &&
+        strcmp(function_c_name(func), "main") != 0)
     {
         EMIT(ctx, "static ");
     }
@@ -504,46 +470,18 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
 
 char *value_drop_struct(ParserContext *ctx, ASTNode *value)
 {
-    if (value->type_info && value->type_info->kind == TYPE_TUPLE)
+    Type *t = value->type_info;
+    if (t && t->kind == TYPE_TUPLE)
     {
-        return type_needs_drop(ctx, value->type_info) ? drop_glue_name(value->type_info) : NULL;
+        return type_needs_drop(ctx, t) ? drop_glue_name(t) : NULL;
     }
-    char *tname = NULL;
-    if (value->type_info && value->type_info->kind == TYPE_STRUCT && value->type_info->name)
-    {
-        tname = type_def_name(value->type_info);
-    }
-    else
-    {
-        tname = infer_type(ctx, value);
-    }
-    if (!tname || strchr(tname, '*'))
-    {
-        return NULL;
-    }
-    if (strncmp(tname, "struct ", 7) == 0)
-    {
-        tname += 7;
-    }
-    ASTNode *def = find_struct_def(ctx, tname);
-    if (def && (def->kind == NODE_STRUCT || def->kind == NODE_ENUM) && def->type_info &&
-        def->type_info->traits.has_drop)
-    {
-        return tname;
-    }
-    return NULL;
+    ASTNode *def = named_type_def(ctx, t);
+    return def && def->type_info && def->type_info->traits.has_drop ? type_def_name(t) : NULL;
 }
 
 char *drop_glue_name(Type *t)
 {
     return (t && t->kind == TYPE_TUPLE) ? type_mangle_spelling(t) : type_def_name(t);
-}
-
-ASTNode *named_type_def(ParserContext *ctx, Type *t)
-{
-    return (t && (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM) && t->name)
-               ? find_struct_def(ctx, type_def_name(t))
-               : NULL;
 }
 
 char *drop_value_stmt(Type *t, const char *lvalue, int depth)
@@ -582,22 +520,10 @@ int moves_drop_value(ParserContext *ctx, ASTNode *node)
     {
         return 0;
     }
-    char *type_name = infer_type(ctx, node);
-    ASTNode *def = NULL;
-    if (type_name)
-    {
-        char *clean_type = type_name;
-        if (strncmp(clean_type, "struct ", 7) == 0)
-        {
-            clean_type += 7;
-        }
-        def = find_struct_def(ctx, clean_type);
-    }
-
     Type *t = node->type_info;
     if (!t)
     {
-        return def && def->type_info && def->type_info->traits.has_drop;
+        return 0;
     }
     if (t->kind == TYPE_FUNCTION || t->kind == TYPE_TUPLE)
     {
@@ -605,13 +531,7 @@ int moves_drop_value(ParserContext *ctx, ASTNode *node)
     }
     if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
     {
-        // The definition the type names, or else the one its C spelling names.
-        ASTNode *tdef = named_type_def(ctx, t);
-        if (tdef)
-        {
-            def = tdef;
-        }
-        return (def && def->type_info) ? def->type_info->traits.has_drop : t->traits.has_drop;
+        return type_has_drop(ctx, t);
     }
     return 0;
 }
@@ -669,7 +589,7 @@ int emit_moved_out(ParserContext *ctx, ASTNode *node)
             }
         }
     }
-    EMIT(ctx, "%s__z_drop_flag_%s = 0", df_prefix, node->var_ref.name);
+    EMIT(ctx, "%s__z_drop_flag_%s = 0", df_prefix, var_ref_flag_name(node));
     return 1;
 }
 
@@ -712,7 +632,7 @@ void codegen_expression_with_move(ParserContext *ctx, ASTNode *node)
 int impl_on_template(ParserContext *ctx, ASTNode *impl)
 {
     Type *target = impl->kind == NODE_IMPL ? impl->impl.target : impl->impl_trait.target;
-    ASTNode *def = target ? find_struct_def(ctx, type_impl_name(target)) : NULL;
+    ASTNode *def = named_type_def(ctx, target);
     return def && ((def->kind == NODE_STRUCT && def->strct.is_template) ||
                    (def->kind == NODE_ENUM && def->enm.is_template));
 }

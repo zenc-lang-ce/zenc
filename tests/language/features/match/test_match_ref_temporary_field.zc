@@ -1,0 +1,37 @@
+// language/features/match: a `ref` binding in a match on a field of a temporary (`make().held`)
+// points into a copy of the field: C cannot take the address of a call's result.
+struct Counter {
+    count: int;
+}
+
+enum Holder {
+    One(Counter),
+    Two(Counter)
+}
+
+struct Outer {
+    held: Holder;
+}
+
+fn make(n: int) -> Outer {
+    return Outer { held: Holder::One(Counter { count: n }) };
+}
+
+fn make_two(n: int) -> Outer {
+    return Outer { held: Holder::Two(Counter { count: n }) };
+}
+
+test "ref_binding_on_a_field_of_a_temporary" {
+    let seen = 0;
+    match make(5).held {
+        Holder::One(ref c) => { seen = c.count; }
+        Holder::Two(ref c) => { seen = -c.count; }
+    }
+    assert(seen == 5, "the field of the call's result");
+
+    match make_two(9).held {
+        Holder::One(ref c) => { seen = c.count; }
+        Holder::Two(ref c) => { seen = -c.count; }
+    }
+    assert(seen == -9, "the other variant");
+}

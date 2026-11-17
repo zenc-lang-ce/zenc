@@ -60,6 +60,84 @@ static void return_target(ParserContext *ctx, ASTNode *from, const char **name, 
     *type = from->func.ret_type_info;
 }
 
+// The patterns of a match. Each value (`5`, `'a'..='z'`) is checked as an expression. Each name
+// gets the enum variant it stands for (MatchPattern.variant): in the enum its scope names
+// (`Light::Red`), else in the matched value's enum (`Red` in a match on a `Light`), else, when
+// that type is not known, the first variant of that name. A name that is none is a constant.
+static void check_patterns(TypeChecker *tc, ASTNode *match, int depth)
+{
+    ParserContext *ctx = tc->pctx;
+    Type *subject = match_subject_type(match->match_stmt.expr->type_info);
+    for (ASTNode *c = match->match_stmt.cases; c; c = c->next)
+    {
+        for (MatchPattern *p = c->match_case.patterns; p; p = p->next)
+        {
+            check_node(tc, p->value, depth + 1);
+            check_node(tc, p->range_start, depth + 1);
+            check_node(tc, p->range_end, depth + 1);
+            if (p->kind != PATTERN_NAME)
+            {
+                continue;
+            }
+            Type *owner = NULL;
+            EnumVariantReg *reg = NULL;
+            if (p->name.scope)
+            {
+                reg = find_enum_variant_of(ctx, p->name.scope, p->name.name);
+            }
+            else if (subject && subject->kind != TYPE_UNKNOWN &&
+                     (reg = find_enum_variant_of(ctx, type_def_name(subject), p->name.name)))
+            {
+                owner = subject;
+            }
+            else
+            {
+                reg = find_enum_variant(ctx, p->name.name);
+            }
+            if (reg)
+            {
+                p->variant.owner = owner ? owner : type_new_enum(reg->enum_name);
+                p->variant.member = p->name.name;
+                p->variant.token = p->name_token;
+            }
+        }
+    }
+}
+
+// The method `member` names, by the rule codegen calls it by (find_method_call_target): the
+// type's own, one of a trait it implements, or one of a struct it mixes in. The member keeps it
+// (member.method). Its type becomes the method's when `replaces_field` (a call of `value.name`
+// where a field has the name too: codegen calls the method, as `opt.is_some()` of Option), or
+// when it has none; a copy of a template comes with its type.
+void resolve_member_method(TypeChecker *tc, ASTNode *member, int replaces_field)
+{
+    Type *receiver = member->member.target ? member->member.target->type_info : NULL;
+    if (!receiver)
+    {
+        return;
+    }
+    const char *base = type_impl_name(receiver->kind == TYPE_POINTER ? receiver->inner : receiver);
+    const char *owner = NULL;
+    char *method = NULL;
+    if (!base || !find_method_call_target(tc->pctx, base, member->member.field, &owner, &method))
+    {
+        return;
+    }
+    char *mangled = mangle_method_symbol(owner, NULL, method);
+    FuncSig *sig = find_func(tc->pctx, mangled);
+    if (sig)
+    {
+        member->member.method = sig;
+        member->member.method_owner = owner;
+        if (!member->type_info || replaces_field)
+        {
+            member->type_info = sig->ret_type;
+        }
+    }
+    zfree(mangled);
+    zfree(method);
+}
+
 // Type of the `index`-th of `count` bindings of a match case, read from the
 // payload of the variant the pattern names. NULL when it cannot be told (not an
 // enum, unknown variant, unresolved generic): the caller keeps UNSAFE_ANY.
@@ -75,7 +153,7 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
     {
         return NULL;
     }
-    ASTNode *def = find_struct_def(tc->pctx, type_def_name(t));
+    ASTNode *def = named_type_def(tc->pctx, t);
     if (def && def->kind == NODE_STRUCT &&
         (type_is_instance_of(t, "Option") || type_is_instance_of(t, "Result")))
     {
@@ -113,8 +191,7 @@ static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, MatchPattern *
 static Type *struct_field_type(ParserContext *ctx, Type *t, const char *name)
 {
     t = resolve_alias(t);
-    ASTNode *def =
-        (t && t->kind == TYPE_STRUCT && t->name) ? find_struct_def(ctx, type_def_name(t)) : NULL;
+    ASTNode *def = (t && t->kind == TYPE_STRUCT && t->name) ? named_type_def(ctx, t) : NULL;
     if (!def || def->kind != NODE_STRUCT)
     {
         return NULL;
@@ -138,13 +215,14 @@ static Type *try_value_type(ParserContext *ctx, Type *t)
     {
         return NULL;
     }
-    if (t->kind == TYPE_STRUCT)
+    // An enum by its declaration: the kind of a Type does not tell one from a struct (a value of a
+    // user's enum may have TYPE_STRUCT).
+    ASTNode *def = named_type_def(ctx, t);
+    if (!def || def->kind != NODE_ENUM)
     {
-        return struct_field_type(ctx, t, "val");
+        return t->kind == TYPE_STRUCT ? struct_field_type(ctx, t, "val") : NULL;
     }
-    ASTNode *def = t->kind == TYPE_ENUM ? find_struct_def(ctx, type_def_name(t)) : NULL;
-    for (ASTNode *variant = (def && def->kind == NODE_ENUM) ? def->enm.variants : NULL; variant;
-         variant = variant->next)
+    for (ASTNode *variant = def->enm.variants; variant; variant = variant->next)
     {
         if (variant->variant.name && (strcmp(variant->variant.name, "Ok") == 0 ||
                                       strcmp(variant->variant.name, "Some") == 0))
@@ -259,6 +337,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             // rules (notably Rule 17.7, unused return value) to calls inside it.
             int old_stmt_ctx = tc->is_stmt_context;
             tc->is_stmt_context = 0;
+            if (tc->returns_from)
+            {
+                // A returned lambda takes the return type (`return x => x + n;`).
+                const char *ret_name = NULL;
+                Type *ret_type = NULL;
+                return_target(tc->pctx, tc->returns_from, &ret_name, &ret_type);
+                adopt_context_type(node->ret.value, ret_type);
+            }
             check_node(tc, node->ret.value, depth + 1);
             tc->is_stmt_context = old_stmt_ctx;
             // Only this move rule applies to a returned value for now: what returning an index
@@ -288,18 +374,9 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             else if (node->ret.value && ret_type_info)
             {
                 apply_implicit_struct_pointer_conversions(tc, &node->ret.value, ret_type_info);
-                Type *returned = node->ret.value->type_info;
-                Type *expected = get_inner_type(ret_type_info);
-                // In a method whose `self` is a pointer, `return self;` returns the
-                // value: codegen emits `return *self;` (see codegen_stmt.c).
-                if (returned && expected && returned->kind == TYPE_POINTER &&
-                    expected->kind != TYPE_POINTER && node->ret.value->kind == NODE_EXPR_VAR &&
-                    strcmp(node->ret.value->var_ref.name, "self") == 0)
-                {
-                    returned = returned->inner;
-                }
-                check_type_compatibility(tc, ret_type_info, returned, node->token, node->ret.value,
-                                         0);
+                settle_returned_self(tc, &node->ret.value, ret_type_info);
+                check_type_compatibility(tc, ret_type_info, node->ret.value->type_info, node->token,
+                                         node->ret.value, 0);
             }
         }
         tc->is_unreachable = 1;
@@ -401,6 +478,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
     }
     case NODE_MATCH:
         check_node(tc, node->match_stmt.expr, depth + 1);
+        check_patterns(tc, node, depth);
         misra_check_match_stmt(tc->pctx, node);
         // Visit each match case
         {
@@ -451,7 +529,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                                 {
                                     bt = type_new_ptr(bt);
                                 }
-                                ZenSymbol *sym = tc_add_symbol(tc, bname, bt, mcase->token, 0);
+                                ZenSymbol *sym =
+                                    tc_declare_local(tc, bname, bt, mcase->token, 0, NULL, 0);
                                 if (sym && !is_ref)
                                 {
                                     // Bound by value, the binding is a copy of the payload: the
@@ -492,7 +571,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 mcase = mcase->next;
             }
 
-            if (!has_default)
+            // A value no arm takes goes past the match: then the code after it is reachable
+            // whatever the arms do. A match on every variant of an enum has none, as one with
+            // `_`.
+            const char *missing =
+                has_default
+                    ? NULL
+                    : match_missing_variant(tc->pctx, node, node->match_stmt.expr->type_info);
+            if (missing)
             {
                 all_unreachable = 0;
                 if (match_initial_state)
@@ -500,16 +586,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     move_state_merge_into(&merged_state, match_initial_state);
                 }
 
-                const char *missing =
-                    match_missing_variant(tc->pctx, node, node->match_stmt.expr->type_info);
-                if (missing && strcmp(missing, "_") == 0 && !tc->pctx->config->misra_mode)
+                if (strcmp(missing, "_") == 0 && !tc->pctx->config->misra_mode)
                 {
                     const char *hints[] = {"Add a default '_' case to handle all possibilities",
                                            NULL};
                     tc_error_with_hints(tc, node->token,
                                         "Match may not be exhaustive (no default case)", hints);
                 }
-                else if (missing && strcmp(missing, "_") != 0)
+                else if (strcmp(missing, "_") != 0)
                 {
                     char msg[MAX_ERROR_MSG_LEN];
                     snprintf(msg, sizeof(msg), "Match is not exhaustive: missing variant '%s'",
@@ -547,7 +631,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
     case NODE_TYPE_ALIAS:
         if (node->kind == NODE_STRUCT)
         {
-            misra_check_reserved_identifier(tc->pctx, node->strct.name, node->token);
+            misra_check_reserved_identifier(tc->pctx, declared_type_c_name(node), node->token);
             misra_check_struct_decl(tc->pctx, node);
             if (node->strct.is_union)
             {
@@ -556,7 +640,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         }
         else if (node->kind == NODE_ENUM)
         {
-            misra_check_reserved_identifier(tc->pctx, node->enm.name, node->token);
+            misra_check_reserved_identifier(tc->pctx, declared_type_c_name(node), node->token);
         }
         else if (node->kind == NODE_TYPE_ALIAS)
         {
@@ -596,32 +680,29 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             // parser/codegen policy ("Pointers should use array indexing by
             // default, not operator overload").
             // A slice is indexed directly, although `Slice<T>` has a `get`.
-            if (t->kind == TYPE_STRUCT && t->name && !is_ptr && !slice_element(t))
+            // The operator overload `get` (index_method, the one rule for it).
+            if (!is_ptr && index_method(tc->pctx, t, "get"))
             {
-                char *mangled_get = mangle_method_symbol(type_def_name(t), NULL, "get");
+                ASTNode *array = node->index.array;
+                ASTNode *idx = node->index.index;
 
-                if (find_func(tc->pctx, mangled_get))
-                {
-                    ASTNode *array = node->index.array;
-                    ASTNode *idx = node->index.index;
+                // The node becomes the call it stands for and keeps `v[i]` as written, for
+                // what shows the program's own form (F7: elaborate without losing it).
+                ASTNode *written = ast_turn_into(node, NODE_EXPR_CALL);
+                node->call.written = written;
 
-                    node->kind = NODE_EXPR_CALL;
-                    memset(&node->call, 0, sizeof(node->call));
+                ASTNode *callee = ast_create(NODE_EXPR_MEMBER);
+                callee->token = node->token;
+                callee->member.target = array;
+                callee->member.field = xstrdup("get");
+                callee->member.is_pointer_access = is_ptr;
 
-                    ASTNode *callee = ast_create(NODE_EXPR_MEMBER);
-                    callee->token = node->token;
-                    callee->member.target = array;
-                    callee->member.field = xstrdup("get");
-                    callee->member.is_pointer_access = is_ptr;
+                node->call.callee = callee;
+                node->call.args = idx;
+                idx->next = written->index.extra_indices; // `v[i, j]` is `get(v, i, j)`
 
-                    node->call.callee = callee;
-                    node->call.args = idx;
-
-                    check_expr_call(tc, node, depth + 1);
-                    zfree(mangled_get);
-                    break;
-                }
-                zfree(mangled_get);
+                check_expr_call(tc, node, depth + 1);
+                break;
             }
             // The overload lookup above looks through a pointer to a struct;
             // the element type comes from the array/pointer type itself.
@@ -702,6 +783,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             }
             Type *tuple = tuple_of(node->member.target->type_info);
             Type *element = tuple ? tuple_element_type(tuple, node->member.field) : NULL;
+            int is_field = element != NULL; // Else, a method.
             if (element)
             {
                 node->type_info = type_clone(element);
@@ -719,12 +801,13 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                         struct_sym->is_dereferenced = 1;
                     }
                 }
-                ASTNode *struct_def = find_struct_def(tc->pctx, type_def_name(target_type));
+                ASTNode *struct_def = named_type_def(tc->pctx, target_type);
                 if (struct_def && struct_def->kind == NODE_ENUM)
                 {
                     // The member of an enum value is its tag, a constant of a C `enum`: an int.
                     if (strcmp(node->member.field, "tag") == 0)
                     {
+                        is_field = 1;
                         node->type_info = type_new(TYPE_C_INT);
                     }
                 }
@@ -737,6 +820,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                             strcmp(field->field.name, node->member.field) == 0)
                         {
                             // Propagate lifetime from struct container to the member access result
+                            is_field = 1;
                             node->type_info = type_clone(field->type_info);
                             // Through a pointer the field is not in the container: it keeps
                             // its own depth (where escape analysis looks is its own question).
@@ -755,28 +839,9 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
 
-            if (!node->type_info)
+            if (!is_field)
             {
-                int is_ptr = 0;
-                char *alloc_name = NULL;
-                char *struct_name =
-                    resolve_struct_name_from_type(tc->pctx, target_type, &is_ptr, &alloc_name);
-
-                if (struct_name)
-                {
-                    char *mangled = mangle_method_symbol(struct_name, NULL, node->member.field);
-
-                    FuncSig *sig = find_func(tc->pctx, mangled);
-                    if (sig)
-                    {
-                        node->type_info = sig->ret_type;
-                    }
-                    zfree(mangled);
-                }
-                if (alloc_name)
-                {
-                    zfree(alloc_name);
-                }
+                resolve_member_method(tc, node, 0);
             }
         }
         if (!node->type_info)
@@ -828,6 +893,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                                     "Assert/expect condition must be a truthy type", hints);
             }
         }
+        // A message that interpolates is code too: its expressions are checked.
+        check_node(tc, node->assert_stmt.message_fstring, depth + 1);
         break;
     case NODE_TEST:
     {
@@ -835,13 +902,20 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         MoveState *prev_move_state = tc->pctx->move_state;
         tc->pctx->move_state = move_state_create(NULL);
 
+        // A test is a C function of its own: its locals get C names in it.
+        CFunctionLocals *prev_c_function = tc_enter_c_function(tc, node);
         check_node(tc, node->test_stmt.body, depth + 1);
+        tc_leave_c_function(tc, prev_c_function);
 
         move_state_free(tc->pctx->move_state);
         tc->pctx->move_state = prev_move_state;
         break;
     }
 
+    case NODE_IMPLICIT_CONVERSION:
+        // The conversion keeps the type it was given; its expression is checked again as written.
+        check_node(tc, node->conversion.expr, depth + 1);
+        break;
     case NODE_EXPR_CAST:
         // Check the expression being cast
         check_node(tc, node->cast.expr, depth + 1);
@@ -1085,8 +1159,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         }
         for (int i = 0; i < node->destruct.count; i++)
         {
-            tc_add_symbol(tc, node->destruct.names[i], destructured_type(tc->pctx, node, i),
-                          node->token, 0);
+            tc_declare_local(tc, node->destruct.names[i], destructured_type(tc->pctx, node, i),
+                             node->token, 0, &node->destruct.init_expr, 1);
         }
         break;
     case NODE_BREAK:
@@ -1238,7 +1312,7 @@ static void infer_node_lifetime(TypeChecker *tc, ASTNode *node)
         return;
     }
 
-    FuncSig *fsig = find_func(tc->pctx, node->func.name);
+    FuncSig *fsig = find_func(tc->pctx, function_c_name(node));
     if (!fsig)
     {
         return;
@@ -1364,8 +1438,6 @@ static void check_program_prepass(TypeChecker *tc, ASTNode *root, int depth)
     RECURSION_EXIT(tc->pctx);
 }
 
-// The instances of generic functions and impls, which are not in the tree. Checking one can
-// instantiate more, so the list is walked until every instance has been checked.
 // The std modules the compiler loaded on its own, which are not in the tree.
 static void check_implicit_std_imports(TypeChecker *tc)
 {
@@ -1375,27 +1447,39 @@ static void check_implicit_std_imports(TypeChecker *tc)
     }
 }
 
+// The instances of generic functions and impls, which are not in the tree. Checking one can
+// instantiate more, which add_instantiated_func puts at the head of the list: what is checked is
+// always the list from `checked` on, and the new ones are those before it.
 static void check_instantiations(TypeChecker *tc)
 {
-    int changed = 1;
-    while (changed)
+    ASTNode *checked = NULL;
+    while (tc->pctx->instantiated_funcs != checked)
     {
-        changed = 0;
-        for (ASTNode *inst = tc->pctx->instantiated_funcs; inst; inst = inst->next)
+        ASTNode *newest = tc->pctx->instantiated_funcs;
+        for (ASTNode *inst = newest; inst != checked; inst = inst->next)
         {
-            if (!inst->is_checked)
-            {
-                check_node(tc, inst, 0);
-                inst->is_checked = 1;
-                changed = 1;
-                // Restart from head to catch newly added instantiations that might be before us
-                break;
-            }
+            check_node(tc, inst, 0);
         }
+        checked = newest;
     }
 }
 
 // ** Entry Point **
+
+int analyze_program(ParserContext *ctx, ASTNode *root)
+{
+    propagate_drop_traits(ctx);
+    if (!validate_types(ctx) || !validate_function_definitions(ctx, root))
+    {
+        return -1;
+    }
+    int result = check_program(ctx, root);
+    if (result == 0 && ctx->config->check_twice)
+    {
+        result = check_program(ctx, root);
+    }
+    return result;
+}
 
 int check_program(ParserContext *ctx, ASTNode *root)
 {
@@ -1411,9 +1495,9 @@ int check_program(ParserContext *ctx, ASTNode *root)
     check_program_prepass(&tc, root, 0);
 
     check_node(&tc, root, 0);
-    root->is_checked = 1;
     check_implicit_std_imports(&tc);
     check_instantiations(&tc);
+    check_uncalled_lambdas(&tc, NULL);
 
     if (ctx->move_state)
     {

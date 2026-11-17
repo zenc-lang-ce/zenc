@@ -1,0 +1,16 @@
+error: `&self` is the address of the pointer `self`
+  --> tests/compiler/diagnostics_output/return_address_of_self_runs.zc:14:16
+   |
+14 |         return &self;
+   |                ^ here
+   |
+   = help: `self` is already a pointer to the receiver: return `self`
+error: `&self` is the address of the pointer `self`
+  --> tests/compiler/diagnostics_output/return_address_of_self_runs.zc:19:16
+   |
+19 |         return &self;
+   |                ^ here
+   |
+   = help: `self` is already a pointer to the receiver: return `self`
+     error: semantic analysis found 2 errors
+[exit 1]

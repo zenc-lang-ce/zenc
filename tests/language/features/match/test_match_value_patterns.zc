@@ -1,0 +1,44 @@
+// language/features/match: test_match_value_patterns
+// A pattern that is a value is an expression: a literal, a negated literal, or a range of them,
+// negative bounds included.
+
+fn sign_class(x: int) -> int {
+    match x {
+        -1 => { return 10; },
+        0 => { return 20; },
+        -5..-2 => { return 30; },
+        1..=9 => { return 40; },
+        _ => { return 50; },
+    }
+}
+
+fn char_class(c: char) -> int {
+    match c {
+        'a'..='z' => { return 1; },
+        'A'..='Z', '0'..='9' => { return 2; },
+        _ => { return 3; },
+    }
+}
+
+fn word_code(w: string) -> int {
+    match w {
+        "one" => { return 1; },
+        "two" => { return 2; },
+        _ => { return 0; },
+    }
+}
+
+test "value patterns, negative ones included" {
+    assert(sign_class(-1) == 10, "-1");
+    assert(sign_class(0) == 20, "0");
+    assert(sign_class(-3) == 30, "-5..-2");
+    assert(sign_class(-2) == 50, "-2 is outside -5..-2");
+    assert(sign_class(9) == 40, "1..=9");
+    assert(sign_class(-7) == 50, "-7");
+    assert(char_class('q') == 1, "q");
+    assert(char_class('Q') == 2, "Q");
+    assert(char_class('5') == 2, "5");
+    assert(char_class('#') == 3, "#");
+    assert(word_code("two") == 2, "two");
+    assert(word_code("six") == 0, "six");
+}

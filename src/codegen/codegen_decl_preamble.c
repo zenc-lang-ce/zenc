@@ -11,6 +11,55 @@
 #include <string.h>
 #include "../platform/misra.h"
 
+// The printf conversion `_z_str(x)` gives a value printed by an f-string, by its C type: the one
+// table, which the preamble writes as a _Generic in C and as overloads in C++. A `bool` prints
+// as `true`/`false` (`%s`, with the text from _z_arg); `char` as a character; `signed char`,
+// an `i8`, and every other integer as a number.
+static const struct
+{
+    const char *c_type;
+    const char *conversion;
+} PRINT_CONVERSIONS[] = {
+    {"char", "%c"},
+    {"signed char", "%d"},
+    {"unsigned char", "%u"},
+    {"short", "%d"},
+    {"unsigned short", "%u"},
+    {"int", "%d"},
+    {"unsigned int", "%u"},
+    {"long", "%ld"},
+    {"unsigned long", "%lu"},
+    {"long long", "%lld"},
+    {"unsigned long long", "%llu"},
+    {"float", "%f"},
+    {"double", "%f"},
+    {"char*", "%s"},
+    {"const char*", "%s"},
+    {"void*", "%p"},
+};
+
+// `#define _z_str(x) _Generic(...)`, ending with the maps `extra_maps` (`_z_128_map`...).
+static void emit_print_conversions_c(ParserContext *ctx, const char *extra_maps)
+{
+    EMIT(ctx, "#define _z_str(x) _Generic((x), _Bool: \"%%s\"");
+    for (size_t i = 0; i < sizeof(PRINT_CONVERSIONS) / sizeof(PRINT_CONVERSIONS[0]); i++)
+    {
+        EMIT(ctx, ", %s: \"%s\"", PRINT_CONVERSIONS[i].c_type, PRINT_CONVERSIONS[i].conversion);
+    }
+    EMIT(ctx, ", default: \"%%s\" %s)\n", extra_maps);
+}
+
+// One `_z_str` overload per C type, for C++.
+static void emit_print_conversions_cpp(ParserContext *ctx)
+{
+    EMIT(ctx, "%s", "inline const char* _z_str(bool) { return \"%s\"; }\n");
+    for (size_t i = 0; i < sizeof(PRINT_CONVERSIONS) / sizeof(PRINT_CONVERSIONS[0]); i++)
+    {
+        EMIT(ctx, "inline const char* _z_str(%s) { return \"%s\"; }\n", PRINT_CONVERSIONS[i].c_type,
+             PRINT_CONVERSIONS[i].conversion);
+    }
+}
+
 static void emit_freestanding_preamble(ParserContext *ctx)
 {
     EMIT(ctx, "%s",
@@ -51,12 +100,7 @@ static void emit_freestanding_preamble(ParserContext *ctx)
     EMIT(ctx, "%s", "#define _z_128_map\n");
     EMIT(ctx, "%s", "#define _z_128_arg_map(x)\n");
     EMIT(ctx, "%s", "#endif\n");
-    EMIT(ctx, "%s",
-         "#define _z_str(x) _Generic((x), _Bool: \"%s\", char: \"%c\", signed char: \"%c\", "
-         "unsigned char: \"%u\", short: \"%d\", unsigned short: \"%u\", int: \"%d\", unsigned int: "
-         "\"%u\", long: \"%ld\", unsigned long: \"%lu\", long long: \"%lld\", unsigned long long: "
-         "\"%llu\", float: \"%f\", double: \"%f\", char*: \"%s\", const char*: \"%s\", void*: "
-         "\"%p\", default: \"%s\" _z_128_map)\n");
+    emit_print_conversions_c(ctx, "_z_128_map");
     EMIT(ctx, "%s",
          "#define _z_safe_bool(x) _Generic((x), _Bool: (x), default: (_Bool)0)\n#define _z_arg(x) "
          "_Generic((x), _Bool: _z_bool_str(_z_safe_bool(x)) _z_128_arg_map(x), default: (x))\n");
@@ -112,7 +156,6 @@ void emit_preamble(ParserContext *ctx)
             // C++ _z_str via overloads
             EMIT(ctx, "%s",
                  "inline const char* _z_bool_str(bool b) { return b ? \"true\" : \"false\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(bool)               { return \"%s\"; }\n");
             EMIT(ctx, "%s",
                  "inline const char* _z_arg(bool b)             { return _z_bool_str(b); }\n");
             EMIT(ctx, "%s", "template<typename T> inline T _z_arg(T x)     { return x; }\n");
@@ -121,22 +164,7 @@ void emit_preamble(ParserContext *ctx)
             EMIT(ctx, "%s",
                  "template<typename T> inline T *_z_rval(const T &x) { return const_cast<T *>(&x); "
                  "}\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(char)               { return \"%c\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(signed char)        { return \"%d\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(unsigned char)      { return \"%u\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(short)               { return \"%d\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(unsigned short)      { return \"%u\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(int)                { return \"%d\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(unsigned int)       { return \"%u\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(long)               { return \"%ld\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(unsigned long)      { return \"%lu\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(long long)          { return \"%lld\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(unsigned long long) { return \"%llu\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(float)              { return \"%f\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(double)             { return \"%f\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(char*)              { return \"%s\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(const char*)        { return \"%s\"; }\n");
-            EMIT(ctx, "%s", "inline const char* _z_str(void*)              { return \"%p\"; }\n");
+            emit_print_conversions_cpp(ctx);
         }
         else
         {
@@ -154,6 +182,7 @@ void emit_preamble(ParserContext *ctx)
                  "static inline const char* _z_bool_str(_Bool b) { return b ? \"true\" : "
                  "\"false\"; }\n");
             EMIT(ctx, "%s", ZC_C_GENERIC_STR);
+            emit_print_conversions_c(ctx, "_z_128_map _z_objc_map");
             EMIT(ctx, "%s", ZC_C_ARG_GENERIC_STR);
         }
 

@@ -1,0 +1,26 @@
+   Compiling tests/compiler/diagnostics_output/err_lambda_body_checked_at_call.zc...
+error: Lambda parameter 'x' has no type
+  --> tests/compiler/diagnostics_output/err_lambda_body_checked_at_call.zc:22:17
+   |
+22 |     let pass = (x) => {
+   |                 ^ here
+   |
+   = help: Write the type of each parameter, as in '(x: int) => x * 2', or give the lambda a function type, as in 'let f: fn(int) -> int = ...'
+error: Type mismatch: expected 'string', but found 'i32'
+  --> tests/compiler/diagnostics_output/err_lambda_body_checked_at_call.zc:23:21
+   |
+23 |         return take(x);
+   |                     ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+error: Lambda parameter 'y' has no type
+  --> tests/compiler/diagnostics_output/err_lambda_body_checked_at_call.zc:26:19
+   |
+26 |     let _never = (y) => {
+   |                   ^ here
+   |
+   = help: Write the type of each parameter, as in '(x: int) => x * 2', or give the lambda a function type, as in 'let f: fn(int) -> int = ...'
+     error: semantic analysis found 3 errors
+       Check failed with 3 errors
+[exit 1]

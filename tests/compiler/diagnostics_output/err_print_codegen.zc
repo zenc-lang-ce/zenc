@@ -1,6 +1,7 @@
 // ARGS: build
-// RFC 0001 errors found while generating code: a string as the arm of a match statement
-// no longer prints. In a match expression a string arm is the value and still compiles.
+// RFC 0001 errors, which the typechecker reports (they were found while generating code): a
+// string as the arm of a match statement no longer prints. In a match expression a string arm is
+// the value and still compiles.
 import "std/io.zc"
 
 fn main() {

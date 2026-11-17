@@ -70,6 +70,8 @@ void handle_va_arg(ParserContext *ctx, ASTNode *node);
 void handle_expr_sizeof(ParserContext *ctx, ASTNode *node);
 void handle_typeof(ParserContext *ctx, ASTNode *node);
 void handle_expr_cast(ParserContext *ctx, ASTNode *node);
+void handle_implicit_conversion(ParserContext *ctx, ASTNode *node);
+void handle_embed(ParserContext *ctx, ASTNode *node);
 void handle_expr_unary(ParserContext *ctx, ASTNode *node);
 void handle_expr_array_literal(ParserContext *ctx, ASTNode *node);
 void handle_expr_tuple_literal(ParserContext *ctx, ASTNode *node);
@@ -90,6 +92,8 @@ void codegen_loop_enter(ParserContext *ctx, const char *label);
 void codegen_loop_body(ParserContext *ctx, ASTNode *body, const char *label, int misra_wrap);
 void codegen_loop_exit(ParserContext *ctx, const char *label);
 void emit_defers_down_to(ParserContext *ctx, int boundary);
+void emit_function_exit_begin(ParserContext *ctx, ASTNode *value);
+void emit_function_exit_end(ParserContext *ctx, ASTNode *value);
 
 // From codegen_stmt_match.c
 

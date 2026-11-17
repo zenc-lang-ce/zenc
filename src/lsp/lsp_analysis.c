@@ -390,13 +390,14 @@ static char *primitive_hover(const char *word)
 {
     const ZenPrimitive *primitive = find_primitive_by_name(word);
     const char *description = primitive ? primitive_description(primitive->kind) : NULL;
-    if (!description)
+    const char *c_name = primitive ? primitive_c_name(primitive->kind, 0) : NULL;
+    if (!description || !c_name)
     {
         return NULL;
     }
-    size_t size = strlen(word) + strlen(description) + strlen(primitive->c_name) + 32;
+    size_t size = strlen(word) + strlen(description) + strlen(c_name) + 32;
     char *hover = xmalloc(size);
-    snprintf(hover, size, "**%s**: %s `%s` in C.", word, description, primitive->c_name);
+    snprintf(hover, size, "**%s**: %s `%s` in C.", word, description, c_name);
     return hover;
 }
 
@@ -743,9 +744,9 @@ static int offered_by_name(Token t, const char *name)
 // an alias); NULL for a node that declares no global name.
 static const char *parsed_name(ASTNode *node)
 {
-    return node->kind == NODE_FUNCTION                               ? node->func.name
-           : node->kind == NODE_STRUCT                               ? node->strct.name
-           : node->kind == NODE_ENUM                                 ? node->enm.name
+    return node->kind == NODE_FUNCTION                               ? function_c_name(node)
+           : node->kind == NODE_STRUCT                               ? declared_type_c_name(node)
+           : node->kind == NODE_ENUM                                 ? declared_type_c_name(node)
            : node->kind == NODE_TRAIT                                ? node->trait.name
            : node->kind == NODE_TYPE_ALIAS                           ? node->type_alias.alias
            : node->kind == NODE_VAR_DECL || node->kind == NODE_CONST ? node->var_decl.name
@@ -1871,8 +1872,8 @@ static void add_scope_completions(cJSON *items, ProjectFile *pf, const char *qua
     // The type of the module under the name the parser gave it (`geo__Point`).
     ASTNode *type = module ? visit_file_declarations(module, is_written_type, (void *)name) : NULL;
     const char *type_name = !type                     ? name
-                            : type->kind == NODE_ENUM ? type->enm.name
-                                                      : type->strct.name;
+                            : type->kind == NODE_ENUM ? declared_type_c_name(type)
+                                                      : declared_type_c_name(type);
     ASTNode *enm = module ? (type && type->kind == NODE_ENUM ? type : NULL)
                           : find_declaration(name, NODE_ENUM);
     for (ASTNode *v = enm ? enm->enm.variants : NULL; v; v = v->next)
@@ -2308,7 +2309,7 @@ static const char *declaration_name(ASTNode *node, LspSymbolKind *kind)
     if (node->kind == NODE_STRUCT)
     {
         *kind = LSP_SYMBOL_STRUCT;
-        return node->strct.name;
+        return node->kind == NODE_STRUCT ? node->strct.name : node->enm.name;
     }
     if (node->kind == NODE_VAR_DECL)
     {
@@ -2323,7 +2324,7 @@ static const char *declaration_name(ASTNode *node, LspSymbolKind *kind)
     if (node->kind == NODE_ENUM)
     {
         *kind = LSP_SYMBOL_ENUM;
-        return node->enm.name;
+        return node->kind == NODE_STRUCT ? node->strct.name : node->enm.name;
     }
     if (node->kind == NODE_FIELD)
     {

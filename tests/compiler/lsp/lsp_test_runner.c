@@ -399,7 +399,7 @@ static void test_hover_parameters(void)
                  "}\\n}\\nfn twice(value: f64) -> f64 { return value * 2.0; }\\nfn run() -> f64 { "
                  "return twice(1.0); }\\nfn other() { let q = 2; let x = 3; }\\nfn lambdas() "
                  "{\\n    let a = fn(q: int) -> int { return q * 2; };\\n    let b = (m: int, n: "
-                 "int) => m + n;\\n    let c = x => x * 2;\\n}\\n\"}}}");
+                 "int) => m + n;\\n    let c: fn(int) -> int = x => x * 2;\\n}\\n\"}}}");
     usleep(100000);
 
     // `self` has the type of its impl, where it is declared and where it is used.
@@ -437,11 +437,15 @@ static void test_hover_parameters(void)
     // `other`. Line 9: fn other() { let q = 2; let x = 3; }
     // Line 11: let a = fn(q: int) -> int { return q * 2; };
     // Line 12: let b = (m: int, n: int) => m + n;
-    // Line 13: let c = x => x * 2;
+    // Line 13: let c: fn(int) -> int = x => x * 2;
     expect_hover_in(uri, 318, 11, 39, "```zc\\nq: i32\\n```");
     expect_hover_in(uri, 319, 12, 32, "```zc\\nm: i32\\n```");
     expect_hover_in(uri, 320, 12, 36, "```zc\\nn: i32\\n```");
-    expect_hover_in(uri, 321, 13, 17, "```zc\\nx: i32\\n```");
+    // From 0.6 an untyped parameter takes its type from its context, which only the
+    // typechecker gives, and the server does not run it yet (stage 8 of the architecture plan):
+    // the hover names the lambda's `x` without a type. It is still not `other`'s `let x`
+    // (`x: i32`).
+    expect_hover_in(uri, 321, 13, 33, "```zc\\nx\\n```");
 
     // `self` is not renamed: with another name the method has no receiver.
     // Line 3:         self.total = self.total + n;

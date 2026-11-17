@@ -15,9 +15,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
 // Method calls parse their arguments inline instead of through parse_call_args,
 // so they need the same signature-driven fix-ups free-function calls get: the
-// check of argument types, default values for the trailing parameters
-// that were not given, and the implicit cast of `&value` to a trait object
-// where the parameter is a trait.
+// check of argument types and default values for the trailing parameters
+// that were not given. (A pointer passed where a trait is expected becomes a
+// trait object in the typechecker.)
 // `head` already includes the receiver when the method takes `self`, so it is
 // aligned with `sig->arg_types`.
 static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode *head, int *count,
@@ -55,40 +55,6 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
         }
     }
 
-    if (sig->arg_types)
-    {
-        ASTNode *prev = NULL;
-        ASTNode *arg = head;
-        int index = 0;
-        while (arg)
-        {
-            ASTNode *next = arg->next;
-            if (index < sig->total_args)
-            {
-                Type *expected = sig->arg_types[index];
-                if (expected && expected->name && is_trait(ctx, type_def_name(expected)))
-                {
-                    ASTNode *cast = transform_to_trait_object(ctx, type_def_name(expected), arg);
-                    if (cast != arg)
-                    {
-                        cast->next = next;
-                        if (prev)
-                        {
-                            prev->next = cast;
-                        }
-                        else
-                        {
-                            head = cast;
-                        }
-                        arg = cast;
-                    }
-                }
-            }
-            prev = arg;
-            arg = next;
-            index++;
-        }
-    }
     return head;
 }
 
@@ -263,7 +229,7 @@ static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, Operator
     }
 
     if (rhs->kind == NODE_EXPR_UNARY && rhs->unary.op == OP_ADDRESS && rhs->unary.operand &&
-        expr_is_rvalue(ctx, rhs->unary.operand))
+        !expr_has_address(ctx, rhs->unary.operand))
     {
         // `&make()`: C cannot take the address of a call result.
         rhs->unary.op = OP_ADDRESS_RVALUE;
@@ -277,7 +243,7 @@ static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, Operator
     }
 
     // Need pointer, have value
-    int is_rvalue = expr_is_rvalue(ctx, rhs);
+    int is_rvalue = !expr_has_address(ctx, rhs);
     ASTNode *addr = ast_create(NODE_EXPR_UNARY);
     addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
     addr->unary.owns_temp = is_rvalue;
@@ -429,7 +395,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                     if (sig->total_args > 0 && sig->arg_types[0]->kind == TYPE_POINTER && !is_ptr)
                     {
-                        int is_rvalue = expr_is_rvalue(ctx, operand);
+                        int is_rvalue = !expr_has_address(ctx, operand);
                         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                         addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
                         addr->unary.operand = operand;
@@ -897,7 +863,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                 if (!is_lhs_ptr)
                                 {
                                     // Function expects ptr, have value -> &obj
-                                    int is_rvalue = expr_is_rvalue(ctx, obj);
+                                    int is_rvalue = !expr_has_address(ctx, obj);
 
                                     ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                                     addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
@@ -1148,187 +1114,11 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 node->index.extra_indices = extra_head;
                 node->index.index_count = 1 + extra_count;
 
-                char *struct_name = NULL;
-                Type *inner_t = lhs->type_info;
-                int is_ptr = 0;
                 // A slice is indexed directly, although `Slice<T>` has a `get`.
                 Type *slice_elem = slice_element(lhs->type_info);
-
-                if (inner_t && !slice_elem)
-                {
-                    if (inner_t->kind == TYPE_STRUCT)
-                    {
-                        struct_name = type_def_name(inner_t);
-                    }
-                    /*
-                    else if (t->kind == TYPE_POINTER && t->inner && t->inner->kind == TYPE_STRUCT)
-                    {
-                        // struct_name = t->inner->name;
-                        // is_ptr = 1;
-                        // DISABLE: Pointers should use array indexing by default, not operator
-                    overload.
-                        // If users want operator overload, they must dereference first (*ptr)[idx]
-                    }
-                    */
-                }
-                char *lhs_type_name = lhs->type_info ? type_mangle_spelling(lhs->type_info) : NULL;
-                if (!struct_name && lhs_type_name && !slice_elem)
-                {
-                    char *s = lhs_type_name;
-                    if (strncmp(s, "struct ", 7) == 0)
-                    {
-                        s += 7;
-                    }
-                    ASTNode *def = find_struct_def(ctx, s);
-                    if (def && def->kind == NODE_STRUCT)
-                    {
-                        struct_name = s;
-                        if (strchr(lhs_type_name, '*'))
-                        {
-                            is_ptr = 1;
-                        }
-                    }
-                    if (!struct_name)
-                    {
-                        def = find_struct_def(ctx, lhs_type_name);
-                        if (def && def->kind == NODE_STRUCT)
-                        {
-                            struct_name = lhs_type_name;
-                            // Just assume val type
-                        }
-                    }
-                }
-
-                if (struct_name)
-                {
-                    char *mangled_get = mangle_method_symbol(struct_name, NULL, "get");
-                    FuncSig *sig = find_func(ctx, mangled_get);
-
-                    // Fallback for Generics (e.g. Vec<T> -> Vec)
-                    int is_generic_template = 0;
-                    if (!sig && strchr(struct_name, '<'))
-                    {
-                        size_t len = strcspn(struct_name, "<");
-                        char *base = xmalloc((size_t)(len + 1));
-                        strncpy(base, struct_name, (size_t)(len));
-                        base[len] = 0;
-
-                        GenericImplTemplate *it = ctx->impl_templates;
-                        while (it)
-                        {
-                            if (strcmp(it->struct_name, base) == 0)
-                            {
-                                ASTNode *m = it->impl_node->impl.methods;
-                                char *mangled_g = mangle_method_symbol(base, NULL, "get");
-
-                                while (m)
-                                {
-                                    if (m->func.name && strcmp(m->func.name, mangled_g) == 0)
-                                    {
-                                        is_generic_template = 1;
-
-                                        // Construct temporary signature for checking
-                                        sig = xmalloc(sizeof(FuncSig));
-                                        memset(sig, 0, sizeof(FuncSig));
-                                        sig->ret_type = m->func.ret_type_info;
-                                        sig->arg_types = m->func.arg_types;
-                                        sig->total_args = m->func.count;
-
-                                        break;
-                                    }
-                                    m = m->next;
-                                }
-                            }
-                            if (is_generic_template)
-                            {
-                                break;
-                            }
-                            it = it->next;
-                        }
-                        zfree(base);
-                    }
-
-                    if (sig)
-                    {
-                        // Rewrite to Call
-                        ASTNode *call = ast_create(NODE_EXPR_CALL);
-                        call->token = t;
-                        ASTNode *callee;
-
-                        if (is_generic_template)
-                        {
-                            // For generics, keep it as a Member access so instantiation
-                            // can re-resolve the correct concrete function name.
-                            callee = ast_create(NODE_EXPR_MEMBER);
-                            callee->member.target = lhs;
-                            callee->member.field = xstrdup("get");
-                            callee->member.is_pointer_access = is_ptr;
-                            // Just a hint, logic below handles adjustments
-                        }
-                        else
-                        {
-                            callee = ast_create(NODE_EXPR_VAR);
-                            callee->var_ref.name = xstrdup(mangled_get);
-                        }
-
-                        callee->token = t;
-                        call->call.callee = callee;
-
-                        ASTNode *self_arg = lhs;
-
-                        // Pointer adjustment logic
-                        if (sig->total_args > 0 && sig->arg_types[0]->kind == TYPE_POINTER &&
-                            !is_ptr)
-                        {
-                            ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                            addr->unary.op =
-                                expr_is_rvalue(ctx, lhs) ? OP_ADDRESS_RVALUE : OP_ADDRESS;
-                            addr->unary.operand = lhs;
-                            if (inner_t)
-                            {
-                                addr->type_info = type_new_ptr(inner_t);
-                            }
-                            self_arg = addr;
-                        }
-                        else if (is_ptr && sig->arg_types[0]->kind != TYPE_POINTER)
-                        {
-                            ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-                            deref->unary.op = OP_DEREF;
-                            deref->unary.operand = lhs;
-                            self_arg = deref;
-                        }
-
-                        // If using MEMBER access, we don't pass self as argument in AST
-                        // because codegen/semant handles "obj.method(args)" by injecting obj.
-                        // BUT here we are manually constructing the call.
-                        // If we use MEMBER, we should NOT put self in args?
-                        // standard parser produces: Call(Member, args). Member has target=obj.
-
-                        if (is_generic_template)
-                        {
-                            // Update target of member to be the adjusted self?
-                            // Member access usually expects the object as 'target'.
-                            // If we adjusted it (e.g. &obj), then target should be &obj.
-                            callee->member.target = self_arg;
-
-                            // And we DO NOT add self to call.args
-                            call->call.args = start;
-                        }
-                        else
-                        {
-                            // For VAR call (direct function call), we MUST pass self as first arg.
-                            self_arg->next = start;
-                            call->call.args = self_arg;
-                        }
-
-                        call->type_info = sig->ret_type;
-
-                        lhs = call;
-                        zfree(mangled_get);
-                        continue;
-                    }
-                    zfree(mangled_get);
-                }
+                // An overloaded index (`get`) stays an INDEX: the typechecker turns it into the
+                // call. The parser needs only its type, for a `let` that takes it.
+                FuncSig *get = index_method(ctx, lhs->type_info, "get");
 
                 // Static Array Bounds Check
                 if (lhs->type_info && lhs->type_info->kind == TYPE_ARRAY &&
@@ -1345,7 +1135,11 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
 
                 // Assign type_info for index access (Fix for nested generics)
-                if (slice_elem)
+                if (get)
+                {
+                    node->type_info = get->ret_type;
+                }
+                else if (slice_elem)
                 {
                     node->type_info = slice_elem;
                 }
@@ -1658,39 +1452,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     s->is_moved = 0;
                 }
             }
-
-            // 4. Trait Object Wrapping for Assignment
-            char *raw_lhs_type = NULL;
-            int allocated_lhs = 0;
-            Type *lhs_t = lhs->type_info;
-            if (!lhs_t && lhs->kind == NODE_EXPR_VAR)
-            {
-                lhs_t = find_symbol_type_info(ctx, lhs->var_ref.name);
-            }
-            if (lhs_t)
-            {
-                raw_lhs_type = type_mangle_spelling(lhs_t);
-                allocated_lhs = 1;
-            }
-
-            if (raw_lhs_type)
-            {
-                char *clean_lhs_type = raw_lhs_type;
-                if (strncmp(clean_lhs_type, "const ", 6) == 0)
-                {
-                    clean_lhs_type += 6;
-                }
-
-                if (is_trait(ctx, clean_lhs_type) && rhs)
-                {
-                    rhs = transform_to_trait_object(ctx, clean_lhs_type, rhs);
-                    bin->binary.right = rhs;
-                }
-                if (allocated_lhs)
-                {
-                    zfree(raw_lhs_type);
-                }
-            }
         }
         else // All other binary ops (including +=, -=, etc. which read LHS first)
         {
@@ -1737,7 +1498,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
             }
 
-            if (lhs->type_info && type_is_unsigned(lhs->type_info))
+            if (lhs->type_info && is_unsigned_type(lhs->type_info))
             {
                 if (rhs->kind == NODE_EXPR_LITERAL && rhs->literal.kind == LITERAL_INT &&
                     rhs->literal.int_val == 0)
@@ -1876,80 +1637,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             bin->binary.right = op_node;
         }
 
-        // Index Set Overload: Call(get, idx) = val  -->  Call(set, idx, val)
-        if (bin->binary.op == OP_ASSIGN && lhs->kind == NODE_EXPR_CALL)
-        {
-            if (lhs->call.callee->kind == NODE_EXPR_VAR)
-            {
-                char *name = lhs->call.callee->var_ref.name;
-                // Check if it ends in "_get"
-                size_t len = strlen(name);
-                if (len > 4 && strcmp(name + len - 4, "_get") == 0)
-                {
-                    char *set_name = xstrdup(name);
-                    set_name[len - 3] = 's'; // Replace 'g' with 's' -> _set
-                    set_name[len - 2] = 'e';
-                    set_name[len - 1] = 't';
-
-                    if (find_func(ctx, set_name))
-                    {
-                        // Create NEW Call Node for Set
-                        ASTNode *set_call = ast_create(NODE_EXPR_CALL);
-                        set_call->token = t;
-                        ASTNode *set_callee = ast_create(NODE_EXPR_VAR);
-                        set_callee->var_ref.name = set_name;
-                        set_call->call.callee = set_callee;
-
-                        // Clone argument list (Shallow copy of arg nodes to preserve chain
-                        // for get)
-                        ASTNode *lhs_args = lhs->call.args;
-                        ASTNode *new_head = NULL;
-                        ASTNode *new_tail = NULL;
-
-                        while (lhs_args)
-                        {
-                            ASTNode *arg_copy = xmalloc(sizeof(ASTNode));
-                            memcpy(arg_copy, lhs_args, sizeof(ASTNode));
-                            arg_copy->next = NULL;
-
-                            if (!new_head)
-                            {
-                                new_head = arg_copy;
-                            }
-                            else
-                            {
-                                new_tail->next = arg_copy;
-                            }
-                            new_tail = arg_copy;
-
-                            lhs_args = lhs_args->next;
-                        }
-
-                        // Append RHS to new args
-                        ASTNode *val_expr = bin->binary.right;
-                        if (new_tail)
-                        {
-                            new_tail->next = val_expr;
-                        }
-                        else
-                        {
-                            new_head = val_expr;
-                        }
-
-                        set_call->call.args = new_head;
-                        set_call->type_info = type_new(TYPE_VOID);
-
-                        lhs = set_call; // Use the new Set call as the result
-                        continue;
-                    }
-                    else
-                    {
-                        zfree(set_name);
-                    }
-                }
-            }
-        }
-
         const char *method = operator_method(bin->binary.op);
 
         if (method && lhs)
@@ -2021,7 +1708,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         if (!is_lhs_ptr)
                         {
                             // Value -> Pointer.
-                            int is_rvalue = expr_is_rvalue(ctx, lhs);
+                            int is_rvalue = !expr_has_address(ctx, lhs);
 
                             ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                             addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
@@ -2101,7 +1788,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
             }
 
-            // Backward Inference for Lambda Params
+#if FF_COMPATIBILITY_0_5
+            // A lambda parameter without a type takes the type of what it is combined with
+            // (`x => x * 2` makes `x` an i32). From 0.6 a parameter without a type needs one
+            // from the lambda's context, and nothing is guessed.
             // LHS is Unknown Var, RHS is Known
             if (lhs->kind == NODE_EXPR_VAR && lhs->type_info &&
                 lhs->type_info->kind == TYPE_UNKNOWN && rhs->type_info &&
@@ -2135,6 +1825,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     rhs->type_info = lhs->type_info;
                 }
             }
+#endif
 
             if (is_comparison_operator(bin->binary.op))
             {
@@ -2266,12 +1957,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             int rhs_is_ptr = (rhs->type_info->kind == TYPE_POINTER ||
                                               rhs->type_info->kind == TYPE_STRING ||
                                               (t2 && strstr(t2, "*") != NULL));
-                            int lhs_is_int =
-                                (is_integer_type(lhs->type_info) || (t1 && str_is_int_type(t1)) ||
-                                 (t1 && str_is_usize_type(t1)) || (t1 && str_is_isize_type(t1)));
-                            int rhs_is_int =
-                                (is_integer_type(rhs->type_info) || (t2 && str_is_int_type(t2)) ||
-                                 (t2 && str_is_usize_type(t2)) || (t2 && str_is_isize_type(t2)));
+                            int lhs_is_int = is_integer_type(lhs->type_info);
+                            int rhs_is_int = is_integer_type(rhs->type_info);
 
                             if ((lhs_is_ptr && rhs_is_int) || (lhs_is_int && rhs_is_ptr))
                             {
@@ -2283,47 +1970,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                     if (!is_ptr_arith && !alias_match)
                     {
-                        // ** Backward Inference for Binary Ops **
-                        // Case 1: LHS is Unknown Var, RHS is Known
-                        if (lhs->kind == NODE_EXPR_VAR && lhs->type_info &&
-                            lhs->type_info->kind == TYPE_UNKNOWN && rhs->type_info &&
-                            rhs->type_info->kind != TYPE_UNKNOWN)
-                        {
-                            // Infer LHS type from RHS
-                            ZenSymbol *sym = find_symbol_entry(ctx, lhs->var_ref.name);
-                            if (sym)
-                            {
-                                // Update ZenSymbol
-                                sym->type_info = rhs->type_info;
-
-                                // Update AST Node
-                                lhs->type_info = rhs->type_info;
-
-                                bin->type_info = rhs->type_info;
-                                goto bin_inference_success;
-                            }
-                        }
-
-                        // Case 2: RHS is Unknown Var, LHS is Known
-                        if (rhs->kind == NODE_EXPR_VAR && rhs->type_info &&
-                            rhs->type_info->kind == TYPE_UNKNOWN && lhs->type_info &&
-                            lhs->type_info->kind != TYPE_UNKNOWN)
-                        {
-                            // Infer RHS type from LHS
-                            ZenSymbol *sym = find_symbol_entry(ctx, rhs->var_ref.name);
-                            if (sym)
-                            {
-                                // Update ZenSymbol
-                                sym->type_info = lhs->type_info;
-
-                                // Update AST Node
-                                rhs->type_info = lhs->type_info;
-
-                                bin->type_info = lhs->type_info;
-                                goto bin_inference_success;
-                            }
-                        }
-
                         // Allow assigning 0 to pointer (NULL)
                         int is_null_assign = 0;
                         if (bin->binary.op == OP_ASSIGN)
@@ -2402,8 +2048,6 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                 zpanic_with_suggestion(op, msg, suggestion);
                             }
                         }
-
-                    bin_inference_success:;
                     }
                 }
             }

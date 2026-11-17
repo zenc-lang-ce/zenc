@@ -85,13 +85,7 @@ int main(int argc, char **argv)
     cfg->input_file = (char *)input;
 
     ParserContext ctx;
-    memset(&ctx, 0, sizeof(ctx));
-    ctx.compiler = &compiler;
-    ctx.config = cfg;
-    ctx.current_filename = cfg->input_file;
-    module_state_init(&ctx.imports);
-    diag_set_parser_ctx(&ctx);
-    token_set_parser_ctx(&ctx);
+    parser_context_init(&ctx, &compiler, cfg->input_file);
 
     char *src = load_file(cfg->input_file, ctx.current_filename, ctx.config);
     if (!src)

@@ -24,7 +24,7 @@ test "test_arrow_member_access" {
 
 test "test_fat_arrow_lambdas" {
     let k = 3;
-    let f = x => x * 2;
+    let f: fn(int) -> int = x => x * 2;
     let g = (a: int, c: int) => a + c;
     let h = [&](n: int) => n + k;
     let t = q: int => q + 1;

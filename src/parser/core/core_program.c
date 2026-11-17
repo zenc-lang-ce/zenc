@@ -301,7 +301,7 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                     s = parse_struct(ctx, l, 0, 1, 1, attrs.link_name, attrs.is_export);
                     if (s && s->kind == NODE_STRUCT)
                     {
-                        register_extern_symbol(ctx, s->strct.name);
+                        register_extern_symbol(ctx, declared_type_c_name(s));
                     }
                 }
                 else if ((peek.kind == TOK_IDENT && peek.len == 5 &&
@@ -312,7 +312,7 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                     s = parse_struct(ctx, l, 1, 1, 1, attrs.link_name, attrs.is_export);
                     if (s && s->kind == NODE_STRUCT)
                     {
-                        register_extern_symbol(ctx, s->strct.name);
+                        register_extern_symbol(ctx, declared_type_c_name(s));
                     }
                 }
                 else if (report_extern_with_kind(l))
@@ -507,14 +507,14 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
             s->func.cuda_host = attrs.cuda_host;
             s->func.attributes = attrs.custom_attributes;
 
-            if (attrs.is_deprecated && s->func.name)
+            if (attrs.is_deprecated && function_c_name(s))
             {
-                register_deprecated_func(ctx, s->func.name, attrs.deprecated_msg);
+                register_deprecated_func(ctx, function_c_name(s), attrs.deprecated_msg);
             }
 
-            if ((attrs.is_required || attrs.is_pure) && s->func.name)
+            if ((attrs.is_required || attrs.is_pure) && function_c_name(s))
             {
-                FuncSig *sig = find_func(ctx, s->func.name);
+                FuncSig *sig = find_func(ctx, function_c_name(s));
                 if (sig)
                 {
                     if (attrs.is_required)
@@ -537,9 +537,9 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
             {
                 s->strct.align = attrs.align;
             }
-            if (attrs.is_deprecated && s->strct.name)
+            if (attrs.is_deprecated && declared_type_c_name(s))
             {
-                register_deprecated_func(ctx, s->strct.name, attrs.deprecated_msg);
+                register_deprecated_func(ctx, declared_type_c_name(s), attrs.deprecated_msg);
             }
             if (attrs.derived_count > 0)
             {
@@ -569,6 +569,10 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                 s->link_name = attrs.link_name;
             }
 
+            for (ASTNode *declared = s; declared; declared = declared->next)
+            {
+                register_declaration(ctx, declared);
+            }
             if (!h)
             {
                 h = s;
@@ -606,6 +610,17 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
         }
     }
     return h;
+}
+
+void parser_context_init(ParserContext *ctx, ZenCompiler *compiler, const char *filename)
+{
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->compiler = compiler;
+    ctx->config = &compiler->config;
+    ctx->current_filename = filename;
+    module_state_init(&ctx->imports);
+    diag_set_parser_ctx(ctx);
+    token_set_parser_ctx(ctx);
 }
 
 ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)

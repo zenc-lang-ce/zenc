@@ -300,18 +300,7 @@ void analyze_lambda_captures(ParserContext *ctx, ASTNode *lambda)
             continue;
         }
 
-        FuncSig *fs = ctx->func_registry;
-        int is_func = 0;
-        while (fs)
-        {
-            if (0 == strcmp(fs->name, var_name))
-            {
-                is_func = 1;
-                break;
-            }
-            fs = fs->next;
-        }
-        if (is_func)
+        if (zmap_get(&ctx->func_registry, var_name))
         {
             continue;
         }

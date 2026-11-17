@@ -70,7 +70,8 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
         }
     }
 
-    // Update parameter types from symbol table (in case inference happened)
+#if FF_COMPATIBILITY_0_5
+    // The body may have given the parameter a type (`x => x * 2`: see parse_expr_prec_impl).
     ZenSymbol *sym = find_symbol_entry(ctx, param_name);
     if (sym && sym->type_info && sym->type_info->kind != TYPE_UNKNOWN)
     {
@@ -85,6 +86,7 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, Token param,
             sym->type_info = t->args[0]; // Bind AST node type implicitly!
         }
     }
+#endif
 
     lambda->lambda.lambda_id = ctx->lambda_counter++;
     lambda->lambda.is_expression = 1;
@@ -168,41 +170,27 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, Token *params, T
 }
 
 // The type of an element of a tuple literal. A struct, enum, alias or tuple is the type the parser
-// gave it, by its Zen C name as in a tuple type (a @link_name only shows in C). A primitive is
-// read from the C type codegen writes for it: an integer literal is an `int` until then, and
-// `(1, 2)` must be the tuple `(int, int)` is, of `int32_t`s.
-static Type *literal_element_type(ParserContext *ctx, ASTNode *element)
+// gave it, by its Zen C name as in a tuple type (a @link_name only shows in C). A primitive is a
+// type of its own with that kind (and `const`), not the element's: an integer literal is an `i32`,
+// and `(1, 2)` must be the tuple `(int, int)` is. An element without a type is an `i32`.
+static Type *literal_element_type(ASTNode *element)
 {
     Type *parsed = element->type_info;
-    if (parsed && (parsed->kind == TYPE_STRUCT || parsed->kind == TYPE_ENUM ||
-                   parsed->kind == TYPE_ALIAS || parsed->kind == TYPE_TUPLE))
-    {
-        return parsed;
-    }
-    char *inferred = infer_type(ctx, element);
-    if (!inferred)
+    if (!parsed || parsed->kind == TYPE_UNKNOWN)
     {
         return type_new(TYPE_I32);
     }
-    char *text = xstrdup(inferred);
-    int pointers = 0;
-    size_t length = strlen(text);
-    while (length > 0 && text[length - 1] == '*')
+    if (parsed->kind == TYPE_STRUCT || parsed->kind == TYPE_ENUM || parsed->kind == TYPE_ALIAS ||
+        parsed->kind == TYPE_TUPLE)
     {
-        length--;
-        pointers++;
+        return parsed;
     }
-    text[length] = 0;
-    TypeKind kind = find_primitive_kind(text);
-    Type *t = kind != TYPE_UNKNOWN ? type_new(kind) : type_from_string_helper(ctx, text);
-    if (!t)
+    if (parsed->inner || parsed->args)
     {
-        t = type_from_name(ctx, text);
+        return type_clone(parsed);
     }
-    while (pointers-- > 0)
-    {
-        t = type_new_ptr(t);
-    }
+    Type *t = type_new(parsed->kind);
+    t->is_const = parsed->is_const;
     return t;
 }
 
@@ -305,7 +293,7 @@ ASTNode *parse_tuple_expression(ParserContext *ctx, Lexer *l, Type *tuple, ASTNo
         int i = 0;
         for (ASTNode *curr = head; curr; curr = curr->next)
         {
-            elements[i++] = literal_element_type(ctx, curr);
+            elements[i++] = literal_element_type(curr);
         }
         n->type_info = type_new_tuple(elements, count);
         register_tuple(ctx, n->type_info);

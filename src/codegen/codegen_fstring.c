@@ -96,7 +96,7 @@ static int is_char_data_len_type(ParserContext *ctx, Type *t, int *is_ptr)
 
     if (base && base->kind == TYPE_STRUCT && base->name)
     {
-        return is_char_data_len_struct(find_struct_def(ctx, type_def_name(base)));
+        return is_char_data_len_struct(named_type_def(ctx, base));
     }
     return 0;
 }

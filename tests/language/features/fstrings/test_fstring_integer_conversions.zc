@@ -1,0 +1,16 @@
+// language/features/fstrings: test_fstring_integer_conversions
+// An f-string prints an `i8` as a number, as every other integer, in C and in C++; a `char` as
+// a character and a `bool` as `true` or `false`.
+
+test "an i8 prints as a number" {
+    let small: i8 = 65;
+    let negative: i8 = -3;
+    let unsigned_small: u8 = 66;
+    let letter: char = 'C';
+    let flag = true;
+    assert(strcmp(f"{small}", "65") == 0, "i8");
+    assert(strcmp(f"{negative}", "-3") == 0, "negative i8");
+    assert(strcmp(f"{unsigned_small}", "66") == 0, "u8");
+    assert(strcmp(f"{letter}", "C") == 0, "char");
+    assert(strcmp(f"{flag}", "true") == 0, "bool");
+}

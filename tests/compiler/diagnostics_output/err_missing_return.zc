@@ -1,0 +1,24 @@
+// ARGS: check
+// A function with a return type must return on every path: an `if` without
+// `else`, a loop a `break` leaves and a `while` whose condition may be false
+// all fall off the end, and a last expression is not a return (the C returns
+// nothing there).
+
+fn missing_if(c: bool) -> int {
+    if c { return 1; }
+}
+
+fn missing_loop() -> int {
+    loop { break; }
+}
+
+fn missing_while() -> int {
+    while true { return 1; }
+}
+
+fn last_expression(x: int) -> int {
+    x * 2
+}
+
+fn main() {
+}

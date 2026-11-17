@@ -1,0 +1,21 @@
+// ARGS: check
+// RFC 0001: a string literal as the arm of a match statement no longer prints, and `zc check`
+// says so, as the build does. An arm that is a match is a statement too. In a match expression
+// the string is the match's value.
+import "std/io.zc"
+
+fn main() {
+    let n = 1;
+    match n {
+        1 => "one",
+        _ => match n {
+            2 => "two",
+            _ => println("other")
+        }
+    }
+    let s = match n {
+        1 => "one",
+        _ => "other"
+    };
+    println(s);
+}

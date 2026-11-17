@@ -1,6 +1,31 @@
 // SPDX-License-Identifier: MIT
 #include "typecheck_internal.h"
 
+// RFC 0001: a string literal as the arm of a match statement no longer prints. For one release
+// it is an error that tells how to print it; afterwards it is an unused expression, which would
+// compile and print nothing. In a match expression the string is the match's value. An arm that
+// is itself a match is a statement too.
+static void report_printing_match_arms(TypeChecker *tc, ASTNode *match)
+{
+    for (ASTNode *c = match->match_stmt.cases; c; c = c->next)
+    {
+        ASTNode *body = c->kind == NODE_MATCH_CASE ? c->match_case.body : NULL;
+        if (!body)
+        {
+            continue;
+        }
+        if (body->kind == NODE_EXPR_LITERAL && body->literal.kind == LITERAL_STRING)
+        {
+            const char *hints[] = {"print it with println(\"...\"), from std/io.zc", NULL};
+            tc_ctrl_flow_error(tc, body->token, "a string on its own no longer prints", hints);
+        }
+        else if (body->kind == NODE_MATCH)
+        {
+            report_printing_match_arms(tc, body);
+        }
+    }
+}
+
 void check_block(TypeChecker *tc, ASTNode *block, int depth)
 {
     tc_enter_scope(tc);
@@ -33,6 +58,11 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
                     tc_error(tc, stmt->token, "MISRA Rule 2.2: expression statement has no effect");
                 }
             }
+        }
+
+        if (stmt->kind == NODE_MATCH)
+        {
+            report_printing_match_arms(tc, stmt);
         }
 
         int old_stmt_ctx = tc->is_stmt_context;
@@ -149,8 +179,13 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
         node->var_decl.type_info = t;
     }
 
+    if (is_discard(node))
+    {
+        return;
+    }
     misra_check_reserved_identifier(tc->pctx, node->var_decl.name, node->token);
-    tc_add_symbol(tc, node->var_decl.name, t, node->token, 0);
+    ASTNode *initializer = node->var_decl.init_expr;
+    tc_declare_local(tc, node->var_decl.name, t, node->token, 0, &initializer, 1);
     ZenSymbol *new_sym = tc_lookup(tc, node->var_decl.name);
     if (new_sym)
     {
@@ -174,206 +209,6 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
     }
 }
 
-static ASTNode *loop_body(ASTNode *loop)
-{
-    switch (loop->kind)
-    {
-    case NODE_LOOP:
-        return loop->loop_stmt.body;
-    case NODE_WHILE:
-        return loop->while_stmt.body;
-    case NODE_FOR:
-        return loop->for_stmt.body;
-    case NODE_FOR_RANGE:
-        return loop->for_range.body;
-    default:
-        return NULL;
-    }
-}
-
-// Returns 1 if `node` contains a `break` that can exit the loop whose label is
-// `loop_label` (NULL = unlabeled). `nested` is 1 while inside a loop nested
-// within the loop we are testing, so unlabeled breaks there do not count.
-static int stmt_has_exit_break(ASTNode *node, const char *loop_label, int nested)
-{
-    if (!node)
-    {
-        return 0;
-    }
-
-    switch (node->kind)
-    {
-    case NODE_BREAK:
-        if (node->break_stmt.target_label)
-        {
-            return loop_label != NULL && strcmp(node->break_stmt.target_label, loop_label) == 0;
-        }
-        return !nested;
-
-    case NODE_BLOCK:
-        for (ASTNode *s = node->block.statements; s; s = s->next)
-        {
-            if (stmt_has_exit_break(s, loop_label, nested))
-            {
-                return 1;
-            }
-        }
-        return 0;
-
-    case NODE_IF:
-        return stmt_has_exit_break(node->if_stmt.then_body, loop_label, nested) ||
-               stmt_has_exit_break(node->if_stmt.else_body, loop_label, nested);
-
-    case NODE_MATCH:
-        for (ASTNode *c = node->match_stmt.cases; c; c = c->next)
-        {
-            if (stmt_has_exit_break(c, loop_label, nested))
-            {
-                return 1;
-            }
-        }
-        return 0;
-
-    case NODE_MATCH_CASE:
-        return stmt_has_exit_break(node->match_case.body, loop_label, nested);
-
-    case NODE_DEFER:
-        return stmt_has_exit_break(node->defer_stmt.stmt, loop_label, nested);
-
-    case NODE_LOOP:
-    case NODE_WHILE:
-    case NODE_FOR:
-    case NODE_FOR_RANGE:
-        // Nested loop: unlabeled breaks here target the nested loop, but a
-        // labeled break naming our loop still exits ours.
-        return stmt_has_exit_break(loop_body(node), loop_label, 1);
-
-    case NODE_RETURN:
-    case NODE_CONTINUE:
-    default:
-        return 0;
-    }
-}
-
-// Returns 1 if `loop` (a NODE_LOOP) contains a `break` that can exit it.
-static int stmt_loop_has_exit_break(ASTNode *loop)
-{
-    return stmt_has_exit_break(loop->loop_stmt.body, loop->loop_stmt.loop_label, 0);
-}
-
-int stmt_always_returns(ASTNode *stmt)
-{
-    if (!stmt)
-    {
-        return 0;
-    }
-
-    switch (stmt->kind)
-    {
-    case NODE_RETURN:
-        return 1;
-
-    case NODE_BLOCK:
-        return block_always_returns(stmt);
-
-    case NODE_IF:
-        // Both branches must return for if to always return
-        if (stmt->if_stmt.then_body && stmt->if_stmt.else_body)
-        {
-            return stmt_always_returns(stmt->if_stmt.then_body) &&
-                   stmt_always_returns(stmt->if_stmt.else_body);
-        }
-        return 0;
-
-    case NODE_MATCH:
-    {
-        if (!stmt->match_stmt.cases)
-        {
-            return 0;
-        }
-
-        int has_default = 0;
-        ASTNode *case_node = stmt->match_stmt.cases;
-        while (case_node)
-        {
-            if (case_node->kind == NODE_MATCH_CASE)
-            {
-                if (!stmt_always_returns(case_node->match_case.body))
-                {
-                    return 0;
-                }
-                if (case_node->match_case.is_default)
-                {
-                    has_default = 1;
-                }
-            }
-            case_node = case_node->next;
-        }
-
-        return has_default;
-    }
-
-    case NODE_LOOP:
-        // An infinite `loop` only leaves via `break` or `return`. With no
-        // exit-break it can never fall through (it returns from within or
-        // diverges), so it satisfies the always-returns requirement. This
-        // mirrors the move analysis, which already treats a break-less
-        // infinite loop as unreachable-after.
-        return !stmt_loop_has_exit_break(stmt);
-
-    default:
-        return 0;
-    }
-}
-
-int block_always_returns(ASTNode *block)
-{
-    if (!block || block->kind != NODE_BLOCK)
-    {
-        return 0;
-    }
-
-    ASTNode *stmt = block->block.statements;
-    if (!stmt)
-    {
-        return 0;
-    }
-
-    // Walk all statements except the last
-    while (stmt->next)
-    {
-        if (stmt_always_returns(stmt))
-        {
-            return 1;
-        }
-        stmt = stmt->next;
-    }
-
-    // The last statement is the implicit return value.
-    // Check if it always returns (RETURN, IF with both branches, MATCH with default),
-    // or if it's an expression (which serves as the function's return value).
-    if (stmt_always_returns(stmt))
-    {
-        return 1;
-    }
-    if (stmt->kind == NODE_BLOCK)
-    {
-        return block_always_returns(stmt);
-    }
-    // Any expression type can serve as an implicit return value
-    if (stmt->kind == NODE_EXPR_BINARY || stmt->kind == NODE_EXPR_UNARY ||
-        stmt->kind == NODE_EXPR_LITERAL || stmt->kind == NODE_EXPR_VAR ||
-        stmt->kind == NODE_EXPR_CALL || stmt->kind == NODE_EXPR_MEMBER ||
-        stmt->kind == NODE_EXPR_INDEX || stmt->kind == NODE_EXPR_CAST ||
-        stmt->kind == NODE_EXPR_SIZEOF || stmt->kind == NODE_EXPR_STRUCT_INIT ||
-        stmt->kind == NODE_EXPR_ARRAY_LITERAL || stmt->kind == NODE_EXPR_TUPLE_LITERAL ||
-        stmt->kind == NODE_EXPR_SLICE || stmt->kind == NODE_TERNARY || stmt->kind == NODE_MATCH)
-    {
-        return 1;
-    }
-    return 0;
-}
-
 void check_function(TypeChecker *tc, ASTNode *node, int depth)
 {
     if (!node)
@@ -391,10 +226,11 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     mark_type_as_used(tc, node->func.ret_type_info);
 
     // Rule Zen 1.4: Reserved identifiers
-    misra_check_reserved_identifier(tc->pctx, node->func.name, node->token);
+    misra_check_reserved_identifier(tc->pctx, function_c_name(node), node->token);
 
     tc->current_func = node;
     tc->returns_from = node;
+    CFunctionLocals *prev_c_function = tc_enter_c_function(tc, node);
     tc_enter_scope(tc);
 
     int prev_unreachable = tc->is_unreachable;
@@ -416,8 +252,8 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
             misra_check_tuple_size(tc->pctx, param_type, node->token);
             misra_check_pointer_nesting(tc->pctx, param_type, node->token);
             misra_check_reserved_identifier(tc->pctx, node->func.param_names[i], node->token);
-            tc_add_symbol(tc, node->func.param_names[i], param_type, node->token,
-                          tc->pctx->config->misra_mode);
+            tc_declare_local(tc, node->func.param_names[i], param_type, node->token,
+                             tc->pctx->config->misra_mode, NULL, 0);
         }
     }
 
@@ -435,22 +271,28 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     check_node(tc, node->func.body, depth + 1);
+    // A lambda never called is checked with what it has, before leaving the function.
+    check_uncalled_lambdas(tc, node);
 
     // Control flow analysis: Check if non-void function always returns
     Type *ret_type = node->func.ret_type_info;
     int is_void = !ret_type || ret_type->kind == TYPE_VOID;
 
     // Special case: 'main' is allowed to fall off the end (C99 implicit return 0)
-    int is_main = node->func.name && strcmp(node->func.name, "main") == 0;
+    int is_main = function_c_name(node) && strcmp(function_c_name(node), "main") == 0;
 
     if (is_main && is_void)
     {
         warn_void_main(node->token);
     }
 
+    // Whether control flow reaches the end of the body (tc->is_unreachable, after checking it):
+    // a function with a value must not fall off it. A last expression is not a return: C
+    // returns nothing there.
+    int end_reached = !tc->is_unreachable;
     if (!is_void && !is_main && node->func.body)
     {
-        if (!block_always_returns(node->func.body))
+        if (end_reached)
         {
             char msg[MAX_SHORT_MSG_LEN];
             snprintf(msg, sizeof(msg), "Function '%s' may not return a value on all code paths",
@@ -510,6 +352,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     tc->is_unreachable = prev_unreachable;
     tc->current_loop = prev_loop;
     tc_exit_scope(tc);
+    tc_leave_c_function(tc, prev_c_function);
     tc->current_func = NULL;
     tc->returns_from = NULL;
 }
@@ -536,6 +379,7 @@ void tc_check_impl(TypeChecker *tc, ASTNode *node, int depth)
 
 void tc_check_impl_trait(TypeChecker *tc, ASTNode *node, int depth)
 {
+    node->impl_trait.trait = find_trait_def(tc->pctx, node->impl_trait.trait_name);
     ASTNode *method = node->impl_trait.methods;
     while (method)
     {
@@ -559,6 +403,27 @@ static const char *loop_label(ASTNode *loop)
     default:
         return NULL;
     }
+}
+
+// The body of a `for` range, in a scope where its variable is declared: in each pass of the loop.
+// The variable has the type of the start, as codegen declares it (ZC_AUTO), and is seen by the
+// body only; the parser reported it if it shadows a name.
+static void check_range_body(TypeChecker *tc, ASTNode *node, int depth)
+{
+    tc_enter_scope(tc);
+    if (node->for_range.var_name)
+    {
+        ASTNode *header[] = {node->for_range.start, node->for_range.end, node->for_range.step};
+        Type *start = node->for_range.start ? node->for_range.start->type_info : NULL;
+        int saved_silent = tc->pctx->silent_warnings;
+        tc->pctx->silent_warnings = 1;
+        tc_declare_local(tc, node->for_range.var_name,
+                         start && start->kind != TYPE_UNKNOWN ? start : type_new(TYPE_I32),
+                         node->for_range.var_token, 0, header, 3);
+        tc->pctx->silent_warnings = saved_silent;
+    }
+    check_node(tc, node->for_range.body, depth + 1);
+    tc_exit_scope(tc);
 }
 
 void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
@@ -697,6 +562,7 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
     case NODE_FOR_RANGE:
         check_node(tc, node->for_range.start, depth + 1);
         check_node(tc, node->for_range.end, depth + 1);
+        check_node(tc, node->for_range.step, depth + 1);
 
         // Loop start conceptually here
         if (loop_start)
@@ -706,7 +572,7 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
         loop_start = tc->pctx->move_state ? move_state_clone(tc->pctx->move_state) : NULL;
         tc->loop_start_state = loop_start;
 
-        check_node(tc, node->for_range.body, depth + 1);
+        check_range_body(tc, node, depth);
         break;
 
     case NODE_LOOP:
@@ -759,7 +625,7 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
             check_node(tc, node->for_stmt.step, depth + 1);
             break;
         case NODE_FOR_RANGE:
-            check_node(tc, node->for_range.body, depth + 1);
+            check_range_body(tc, node, depth);
             break;
         case NODE_LOOP:
             check_node(tc, node->loop_stmt.body, depth + 1);

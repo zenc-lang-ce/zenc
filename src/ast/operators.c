@@ -47,10 +47,10 @@ static const OperatorInfo OPERATORS[] = {
     {OP_BIT_NOT,          "~",      1, OPERATOR_BITWISE,    0,               0, "bitnot", OP_NONE},
     {OP_DEREF,            "*",      1, OPERATOR_OTHER,      0,               0, NULL,     OP_NONE},
     {OP_ADDRESS,          "&",      1, OPERATOR_OTHER,      0,               0, NULL,     OP_NONE},
-    {OP_PRE_INC,          "++",     1, OPERATOR_OTHER,      0,               0, NULL,     OP_NONE},
-    {OP_PRE_DEC,          "--",     1, OPERATOR_OTHER,      0,               0, NULL,     OP_NONE},
-    {OP_POST_INC,         "_post++", 1, OPERATOR_OTHER,     0,               0, NULL,     OP_NONE},
-    {OP_POST_DEC,         "_post--", 1, OPERATOR_OTHER,     0,               0, NULL,     OP_NONE},
+    {OP_PRE_INC,          "++",     1, OPERATOR_INCREMENT,  0,               0, NULL,     OP_NONE},
+    {OP_PRE_DEC,          "--",     1, OPERATOR_INCREMENT,  0,               0, NULL,     OP_NONE},
+    {OP_POST_INC,         "_post++", 1, OPERATOR_INCREMENT, 0,               0, NULL,     OP_NONE},
+    {OP_POST_DEC,         "_post--", 1, OPERATOR_INCREMENT, 0,               0, NULL,     OP_NONE},
     {OP_ADDRESS_RVALUE,   "&_rval", 1, OPERATOR_OTHER,      0,               0, NULL,     OP_NONE},
     {OP_PREFIX_AND_AND,   "&&",     1, OPERATOR_OTHER,      0,               0, NULL,     OP_NONE},
 };
@@ -117,6 +117,11 @@ int is_assignment_operator(OperatorKind kind)
 int is_comparison_operator(OperatorKind kind)
 {
     return kind != OP_NONE && operator_class(kind) == OPERATOR_COMPARISON;
+}
+
+int is_increment_operator(OperatorKind kind)
+{
+    return kind != OP_NONE && operator_class(kind) == OPERATOR_INCREMENT;
 }
 
 const char *operator_method(OperatorKind kind)

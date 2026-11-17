@@ -6,47 +6,120 @@
 // Reports `value.method()` when the struct or enum of `value`, declared in Zen C, has no such
 // method: there is no function for codegen to call. Reported in a build too, which would
 // otherwise fail in the C compiler, on the mangled name.
-static void report_missing_method(TypeChecker *tc, ASTNode *call)
+// Whether a value of type `t` can be called: a function, a pointer to one, or a type the compiler
+// cannot judge (unknown, generic, or a struct or enum that only C declares).
+static int value_is_callable(TypeChecker *tc, Type *t)
 {
-    ASTNode *callee = call->call.callee;
-    ASTNode *target = callee->member.target;
-    // A field found is called through its value (a function pointer or a closure).
-    if (!target || !target->type_info || !callee->type_info ||
-        callee->type_info->kind != TYPE_UNKNOWN)
+    Type *r = resolve_alias(t);
+    if (!r)
+    {
+        return 1;
+    }
+    switch (r->kind)
+    {
+    case TYPE_FUNCTION:
+    case TYPE_UNKNOWN:
+    case TYPE_GENERIC:
+    case TYPE_UNSAFE_ANY:
+        return 1;
+    case TYPE_POINTER:
+    {
+        Type *pointee = resolve_alias(r->inner);
+        return !pointee || pointee->kind == TYPE_FUNCTION || pointee->kind == TYPE_UNKNOWN ||
+               pointee->kind == TYPE_GENERIC;
+    }
+    case TYPE_STRUCT:
+    case TYPE_ENUM:
+        return named_type_def(tc->pctx, r) == NULL;
+    default:
+        return 0;
+    }
+}
+
+// `value.name(...)` that calls nothing: no method of that name (find_method_call_target found
+// none), not a trait's, and no field that holds a function. Codegen would name a method that does
+// not exist. A receiver the compiler cannot judge (unknown, generic, a template, a C struct) is
+// let through, and so is the `len` of an array.
+static void report_call_of_no_method(TypeChecker *tc, ASTNode *callee)
+{
+    if (callee->member.method)
     {
         return;
     }
-    // The receiver's type, as codegen takes it to name the method.
-    Type *owner = target->type_info;
-    if (owner->kind == TYPE_POINTER)
+    Type *receiver = callee->member.target ? callee->member.target->type_info : NULL;
+    if (receiver && receiver->kind == TYPE_POINTER)
     {
-        owner = owner->inner;
+        receiver = receiver->inner;
     }
-    Type *t = get_inner_type(owner);
-    if (!t || (t->kind != TYPE_STRUCT && t->kind != TYPE_ENUM) || !t->name)
+    Type *t = receiver ? get_inner_type(receiver) : NULL;
+    if (!t || t->kind == TYPE_UNKNOWN || t->kind == TYPE_GENERIC ||
+        type_is_generic_dependent(tc->pctx, t))
     {
         return;
     }
-    // A value of a trait calls through its table; a generic one is named for each instance.
-    const char *name = type_def_name(t);
-    ASTNode *def = find_struct_def(tc->pctx, name);
-    if (!def || is_trait(tc->pctx, name) || type_is_generic_dependent(tc->pctx, t) ||
-        (def->kind == NODE_STRUCT && def->strct.is_template) ||
-        (def->kind == NODE_ENUM && def->enm.is_template))
+    if (t->kind == TYPE_ARRAY && strcmp(callee->member.field, "len") == 0)
     {
         return;
     }
-    const char *method_owner = NULL;
-    char *method = NULL;
-    if (find_method_call_target(tc->pctx, type_impl_name(owner), callee->member.field,
-                                &method_owner, &method))
+    if (t->kind == TYPE_STRUCT || t->kind == TYPE_ENUM)
     {
-        zfree(method);
+        // A value of a trait calls through its table; a generic one is named for each instance.
+        const char *name = t->name ? type_def_name(t) : NULL;
+        ASTNode *def = name ? find_struct_def(tc->pctx, name) : NULL;
+        if (!def || is_trait(tc->pctx, name) ||
+            (def->kind == NODE_STRUCT && def->strct.is_template) ||
+            (def->kind == NODE_ENUM && def->enm.is_template))
+        {
+            return;
+        }
+    }
+    Type *field = callee->type_info;
+    int has_field = field && field->kind != TYPE_UNKNOWN;
+    if (has_field && value_is_callable(tc, field))
+    {
         return;
     }
     char *spelled = zen_c_type_spelling(tc->pctx, t);
     char msg[MAX_SHORT_MSG_LEN];
     snprintf(msg, sizeof(msg), "No method '%s' on '%s'", callee->member.field, spelled);
+    zfree(spelled);
+    char hint[MAX_SHORT_MSG_LEN];
+    const char *hints[] = {hint, NULL};
+    if (has_field)
+    {
+        char *field_type = zen_c_type_spelling(tc->pctx, field);
+        snprintf(hint, sizeof(hint), "'%s' is a field of type '%s', which cannot be called",
+                 callee->member.field, field_type);
+        zfree(field_type);
+    }
+    tc_ctrl_flow_error(tc, callee->token, msg, has_field ? hints : NULL);
+}
+
+// A call whose callee is a value (a variable, a field read through an expression, the result of
+// a call) of a type that cannot be called, such as an `i32`: C would reject it.
+static void report_call_of_value(TypeChecker *tc, ASTNode *callee)
+{
+    ZenSymbol *sym = callee->kind == NODE_EXPR_VAR ? callee->var_ref.symbol : NULL;
+    if (sym && (sym->kind == SYM_STRUCT || sym->kind == SYM_ENUM))
+    {
+        return; // `Point()` and `Enum::Variant()` build a value.
+    }
+    Type *t = callee->type_info;
+    if (!t || value_is_callable(tc, t))
+    {
+        return;
+    }
+    char *spelled = zen_c_type_spelling(tc->pctx, t);
+    char msg[MAX_SHORT_MSG_LEN];
+    if (callee->kind == NODE_EXPR_VAR)
+    {
+        snprintf(msg, sizeof(msg), "Cannot call '%s', a value of type '%s'", callee->var_ref.name,
+                 spelled);
+    }
+    else
+    {
+        snprintf(msg, sizeof(msg), "Cannot call a value of type '%s'", spelled);
+    }
     zfree(spelled);
     tc_ctrl_flow_error(tc, callee->token, msg, NULL);
 }
@@ -255,6 +328,15 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     check_node(tc, node->call.callee, depth + 1);
     tc->is_callee = prev_callee;
 
+    // `value.name(...)` where a field is named so too calls the method, as codegen does, unless the
+    // field is a function to call.
+    ASTNode *callee = node->call.callee;
+    if (callee && callee->kind == NODE_EXPR_MEMBER && !callee->member.method &&
+        !(callee->type_info && get_inner_type(callee->type_info)->kind == TYPE_FUNCTION))
+    {
+        resolve_member_method(tc, callee, 1);
+    }
+
     const char *func_name = NULL;
     FuncSig *sig = NULL;
 
@@ -265,6 +347,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
 
         // Look up function signature
         sig = find_func(tc->pctx, func_name);
+        node->call.function = sig;
 
         if (tc->pctx->config->misra_mode)
         {
@@ -278,7 +361,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
 
         if (tc->pctx->config->misra_mode && tc->current_func)
         {
-            if (strcmp(func_name, tc->current_func->func.name) == 0)
+            if (strcmp(func_name, function_c_name(tc->current_func)) == 0)
             {
                 Token t = node->call.callee->token;
                 if (t.line == 0)
@@ -311,7 +394,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
             // Check if it's a built-in macro injected by the compiler
             if (strcmp(func_name, "_z_str") == 0)
             {
-                // _z_str is a generic format macro from ZC_C_GENERIC_STR
+                // _z_str is the preamble's format of a value (PRINT_CONVERSIONS)
                 check_node(tc, node->call.args, depth + 1); // Still check the argument
                 node->type_info = type_new(TYPE_STRING);
                 return;
@@ -352,7 +435,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                     ASTNode *method = trait_def->trait.methods;
                     while (method)
                     {
-                        if (strcmp(method->func.name, node->call.callee->member.field) == 0)
+                        if (strcmp(function_c_name(method), node->call.callee->member.field) == 0)
                         {
                             // Correctly resolve return type for trait method
                             node->type_info = method->func.ret_type_info;
@@ -363,7 +446,11 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
         }
-        report_missing_method(tc, node);
+        report_call_of_no_method(tc, node->call.callee);
+    }
+    if (node->call.callee && node->call.callee->kind != NODE_EXPR_MEMBER && !sig)
+    {
+        report_call_of_value(tc, node->call.callee);
     }
 
     // `a.f(...)` calls a method, which takes `a` as its first argument, unless `f` is a field
@@ -577,6 +664,9 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
         sig_arg_idx++;
     }
     tc->is_forget_receiver = 0;
+
+    // The arguments may have given a lambda the types of its parameters: its body waited for them.
+    check_called_lambdas(tc);
 
     // Propagate return type from function signature
     if (sig && sig->ret_type)

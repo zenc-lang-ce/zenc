@@ -81,7 +81,8 @@ void check_derivable_trait(Token t, const char *name)
 // instance gets (`impl Name { ... }` on a generic left them undefined).
 static char *derive_self_type(ASTNode *strct)
 {
-    const char *name = strct->kind == NODE_ENUM ? strct->enm.name : strct->strct.name;
+    const char *name =
+        strct->kind == NODE_ENUM ? declared_type_c_name(strct) : declared_type_c_name(strct);
     char params[MAX_SHORT_MSG_LEN] = "";
     if (strct->kind == NODE_STRUCT && strct->strct.is_template)
     {
@@ -92,9 +93,14 @@ static char *derive_self_type(ASTNode *strct)
             snprintf(params + used, sizeof(params) - used, "%s%s", i ? ", " : "", *param);
         }
     }
-    else if (strct->kind == NODE_ENUM && strct->enm.is_template && strct->enm.generic_param)
+    else if (strct->kind == NODE_ENUM && strct->enm.is_template)
     {
-        snprintf(params, sizeof(params), "%s", strct->enm.generic_param);
+        char **param = strct->enm.generic_params;
+        for (int i = 0; i < strct->enm.generic_param_count; i++, param++)
+        {
+            size_t used = strlen(params);
+            snprintf(params + used, sizeof(params) - used, "%s%s", i ? ", " : "", *param);
+        }
     }
     if (!params[0])
     {
@@ -147,8 +153,8 @@ static char *variant_value_type(ParserContext *ctx, ASTNode *variant, int index)
 // and `==` would not find the `eq` of a struct `T`. 0 if the body does not fit.
 static int enum_eq_body(ParserContext *ctx, ASTNode *enm, char *body, size_t size)
 {
-    const char *name = enm->enm.name;
-    int is_generic = enm->enm.is_template && enm->enm.generic_param;
+    const char *name = declared_type_c_name(enm);
+    int is_generic = enm->enm.is_template && enm->enm.generic_param_count > 0;
     size_t used = 0;
     if (!append_text(body, size, &used,
                      "if self.tag != other.tag { return false; } match *self { "))
@@ -208,7 +214,7 @@ static int enum_eq_body(ParserContext *ctx, ASTNode *enm, char *body, size_t siz
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count)
 {
     ASTNode *head = NULL, *tail = NULL;
-    char *name = strct->strct.name;
+    char *name = declared_type_c_name(strct);
     char *self_type = derive_self_type(strct);
 
     for (int i = 0; i < count; i++)
@@ -432,16 +438,15 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                     }
 
                     // Map types to appropriate get_* calls
-                    int is_int_type = strcmp(ft, "int") == 0 || strcmp(ft, "int32_t") == 0 ||
-                                      strcmp(ft, "i32") == 0 || strcmp(ft, "i64") == 0 ||
-                                      strcmp(ft, "int64_t") == 0 || strcmp(ft, "u32") == 0 ||
-                                      strcmp(ft, "uint32_t") == 0 || strcmp(ft, "u64") == 0 ||
-                                      strcmp(ft, "uint64_t") == 0 || strcmp(ft, "usize") == 0 ||
-                                      strcmp(ft, "size_t") == 0;
+                    // A number: an integer with a sign (bool and char have their own branch).
+                    int is_int_type =
+                        is_signed_type(f->type_info) || is_unsigned_type(f->type_info);
                     if (is_int_type)
                     {
-                        snprintf(assign, 2048, "let _f_%s = (*j).get_int(\"%s\").unwrap_or(0);\n",
-                                 fn, fn);
+                        // get_int gives an `int`: converted to the field's own width.
+                        snprintf(assign, 2048,
+                                 "let _f_%s = (%s)(*j).get_int(\"%s\").unwrap_or(0);\n", fn,
+                                 type_to_string(f->type_info), fn);
                     }
                     else if (strcmp(ft, "double") == 0)
                     {
@@ -590,12 +595,9 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                         continue;
                     }
 
-                    int is_int_type = strcmp(ft, "int") == 0 || strcmp(ft, "int32_t") == 0 ||
-                                      strcmp(ft, "i32") == 0 || strcmp(ft, "i64") == 0 ||
-                                      strcmp(ft, "int64_t") == 0 || strcmp(ft, "u32") == 0 ||
-                                      strcmp(ft, "uint32_t") == 0 || strcmp(ft, "u64") == 0 ||
-                                      strcmp(ft, "uint64_t") == 0 || strcmp(ft, "usize") == 0 ||
-                                      strcmp(ft, "size_t") == 0;
+                    // A number: an integer with a sign (bool and char have their own branch).
+                    int is_int_type =
+                        is_signed_type(f->type_info) || is_unsigned_type(f->type_info);
                     if (is_int_type)
                     {
                         snprintf(set_call, 2048,

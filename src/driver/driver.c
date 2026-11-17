@@ -118,13 +118,7 @@ static int compile_program(ZenCompiler *compiler)
     compiler->warning_count = 0;
 
     ParserContext ctx;
-    memset(&ctx, 0, sizeof(ctx));
-    ctx.compiler = compiler;
-    ctx.config = &compiler->config;
-    ctx.current_filename = compiler->config.input_file;
-    module_state_init(&ctx.imports);
-    diag_set_parser_ctx(&ctx);
-    token_set_parser_ctx(&ctx);
+    parser_context_init(&ctx, compiler, compiler->config.input_file);
 
     // Set runtime hooks based on configuration
     if (ctx.config->misra_mode)
@@ -266,24 +260,7 @@ static int compile_program(ZenCompiler *compiler)
     // Process @link directives
     // (Handled during parsing phase — NODE_LINK is collected there)
 
-    // Semantic Analysis & Validation
-    if (!compiler->config.mode_doc)
-    {
-        propagate_drop_traits(&ctx);
-        fix_type_refs_has_drop(&ctx);
-
-        if (!validate_types(&ctx))
-        {
-            return 1;
-        }
-
-        if (!validate_function_definitions(&ctx, root))
-        {
-            return 1;
-        }
-    }
-
-    // `zc check` and `zc build` run the same typechecker; in 0.5 a build reports type errors as
+    // `zc check` and `zc build` run the same analysis; in 0.5 a build reports type errors as
     // warnings (check_program).
     int tc_result = 0;
     if (!compiler->config.mode_doc)
@@ -294,8 +271,8 @@ static int compile_program(ZenCompiler *compiler)
                    compiler->config.input_file);
             fflush(stdout);
         }
-        tc_result = check_program(&ctx, root);
-        if (tc_result != 0 && !compiler->config.mode_check)
+        tc_result = analyze_program(&ctx, root);
+        if (tc_result < 0 || (tc_result != 0 && !compiler->config.mode_check))
         {
             return 1;
         }
@@ -384,8 +361,6 @@ static int compile_program(ZenCompiler *compiler)
         return 1;
     }
     emitter_init_file(&ctx.cg.emitter, out_f);
-    // Few structs are registered from here on, so misses are worth caching.
-    struct_miss_cache_enable(&ctx);
     codegen_node(&ctx, root);
     fclose(out_f);
 

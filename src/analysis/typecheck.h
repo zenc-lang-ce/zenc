@@ -19,6 +19,37 @@ typedef struct LoopFrame
     struct LoopFrame *outer; ///< The enclosing loop in the same function.
 } LoopFrame;
 
+/// A lambda whose body waits for its parameters' types: `(x, y) => x + y` with no type to take
+/// them from gets them at its first call, and its body is checked then.
+typedef struct WaitingLambda
+{
+    ASTNode *lambda;
+    Scope *scope;    ///< The lambda's own scope: its parameters and captures.
+    int scope_depth; ///< tc->current_depth inside that scope.
+    int node_depth;  ///< The recursion depth the body is checked at.
+    ASTNode *func;   ///< The function it is written in.
+} WaitingLambda;
+
+/// The C name a local got (tc_declare_local), by where it is declared and its name: a loop's
+/// second pass finds the same one.
+typedef struct LocalCName
+{
+    const char *site; ///< The declaration's token (Token.start).
+    const char *name;
+    const char *c_name;
+    ZenSymbol *symbol; ///< Its symbol in the check under way.
+} LocalCName;
+
+/// The locals of one C function: a function, or a lambda, which is a C function of its own.
+typedef struct CFunctionLocals
+{
+    ASTNode *function;
+    LocalCName *locals;
+    int count;
+    int capacity;
+    struct CFunctionLocals *next;
+} CFunctionLocals;
+
 // Type Checker Context
 // Holds the state during the semantic analysis pass.
 // Unlike the parser, this focuses on semantic validity (types, definitions).
@@ -47,6 +78,10 @@ typedef struct TypeChecker
     const char **escapes_reported; ///< Where an escape was reported (Token.start), so a loop's
                                    ///< second pass does not report it again.
     int escapes_reported_count;
+    WaitingLambda *waiting_lambdas; ///< Lambdas whose body waits for a call (WaitingLambda).
+    int waiting_lambda_count;
+    CFunctionLocals *c_functions; ///< The locals of every C function checked (tc_declare_local).
+    CFunctionLocals *c_function;  ///< Those of the one being checked; NULL at the top level.
 
     // Configuration
     int rechecking; ///< Checking code a second time (a loop's second pass, the expressions of an
@@ -72,6 +107,15 @@ typedef struct TypeChecker
  * @return 0 on success (no errors), non-zero if errors occurred.
  */
 int check_program(ParserContext *ctx, ASTNode *root);
+/**
+ * @brief Everything between parsing a program and generating its code: the Drop traits, the
+ *        validation of its types and function definitions, and the typechecker (twice with
+ *        `--check-twice`). Codegen relies on what the typechecker settles, so every path that
+ *        generates code runs this first.
+ * @return 0 on success; -1 if the types or function definitions are invalid (the typechecker
+ *         did not run); otherwise check_program's result.
+ */
+int analyze_program(ParserContext *ctx, ASTNode *root);
 
 // Error helpers available to move_check.c
 void tc_error(TypeChecker *tc, Token t, const char *msg);
@@ -96,6 +140,18 @@ int tc_file_in_std(TypeChecker *tc, const char *file);
  */
 int tc_storage_depth(TypeChecker *tc, ASTNode *place);
 void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
+
+/**
+ * @brief Reports what 0.6 makes an error: in 0.5 (FF_COMPATIBILITY_0_5) a warning that says
+ *        so, in `zc check` and in a build, since the program was valid; from 0.6 an error.
+ */
+void tc_error_from_0_6(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
+/**
+ * @brief Reports an error that stops `zc build` too, in 0.5 as well: one the compiler cannot
+ *        write C for. `note`, if not NULL, points at another place.
+ */
+void tc_error_stopping_build(TypeChecker *tc, Token t, const char *msg, const char *const *hints,
+                             const DiagnosticNote *note);
 void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
 void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints,
                               const DiagnosticNote *note);

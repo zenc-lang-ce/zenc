@@ -914,7 +914,7 @@ static ASTNode *parse_block_impl(ParserContext *ctx, Lexer *l, int is_value)
                 strcmp(sym->name, "it") != 0 && strcmp(sym->name, "self") != 0)
             {
                 // RAII: Don't warn if type implements Drop (it is used implicitly)
-                int has_drop = sym->type_info && (sym->type_info->traits.has_drop ||
+                int has_drop = sym->type_info && (type_has_drop(ctx, sym->type_info) ||
                                                   type_will_drop(ctx, sym->type_info));
                 if (!has_drop)
                 {

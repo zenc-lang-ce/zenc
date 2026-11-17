@@ -22,15 +22,6 @@ void exit_scope(ParserContext *ctx)
         return;
     }
 
-    ZenSymbol *sym = ctx->current_scope->symbols;
-    while (sym)
-    {
-        if (!sym->is_used && strcmp(sym->name, "self") != 0 && sym->name[0] != '_')
-        {
-        }
-        sym = sym->next;
-    }
-
     ctx->current_scope = ctx->current_scope->parent;
 }
 

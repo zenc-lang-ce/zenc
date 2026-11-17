@@ -54,7 +54,7 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             {
                 EMIT(ctx, "__attribute__((unused)) const ");
             }
-            char *declared = declared_c_type(ctx, node);
+            char *declared = node_c_type(ctx, node);
             if (declared)
             {
                 emit_var_decl_type(ctx, declared, node->var_decl.name);
@@ -64,7 +64,7 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
                 char *inferred = NULL;
                 if (node->var_decl.init_expr)
                 {
-                    inferred = infer_type(ctx, node->var_decl.init_expr);
+                    inferred = node_c_type(ctx, node->var_decl.init_expr);
                 }
 
                 if (inferred && strcmp(inferred, "__auto_type") != 0)
@@ -84,12 +84,14 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             if (node->var_decl.init_expr)
             {
                 EMIT(ctx, " = ");
-                char *tname =
-                    declared ? declared
-                             : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                         : NULL);
-                if (ctx->config->use_cpp && tname &&
-                    (strchr(tname, '*') || is_enum_type_name(ctx, tname)))
+                char *tname = declared ? declared
+                                       : (node->var_decl.init_expr
+                                              ? node_c_type(ctx, node->var_decl.init_expr)
+                                              : NULL);
+                Type *init_type = declared ? node->type_info : node->var_decl.init_expr->type_info;
+                if (ctx->config->use_cpp && tname && init_type &&
+                    (get_inner_type(init_type)->kind == TYPE_POINTER ||
+                     is_enum_type(ctx, init_type)))
                 {
                     EMIT(ctx, "(%s)(", tname);
                     codegen_expression(ctx, node->var_decl.init_expr);
@@ -116,24 +118,14 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             // A global with Drop has a drop flag: assigning to it drops the old value.
             if (node->kind == NODE_VAR_DECL)
             {
-                char *tname =
-                    declared ? declared
-                             : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                         : NULL);
-                if (tname)
+                Type *t = node->type_info            ? node->type_info
+                          : node->var_decl.init_expr ? node->var_decl.init_expr->type_info
+                                                     : NULL;
+                ASTNode *def = named_type_def(ctx, t);
+                if (def && def->type_info && def->type_info->traits.has_drop)
                 {
-                    char *ct = tname;
-                    if (strncmp(ct, "struct ", 7) == 0)
-                    {
-                        ct += 7;
-                    }
-                    ASTNode *def = find_struct_def(ctx, ct);
-                    if (def && def->type_info && def->type_info->traits.has_drop)
-                    {
-                        EMIT(ctx, "int __z_drop_flag_%s = %d;\n", node->var_decl.name,
-                             node->var_decl.init_expr ? 1 : 0);
-                    }
-                    zfree(tname);
+                    EMIT(ctx, "int __z_drop_flag_%s = %d;\n", node->var_decl.name,
+                         node->var_decl.init_expr ? 1 : 0);
                 }
             }
             if (node->cfg_condition)
@@ -192,15 +184,15 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
 
         if (f->kind == NODE_FUNCTION)
         {
-            if (f->func.name && !f->func.body)
+            if (function_c_name(f) && !f->func.body)
             {
-                if (strncmp(f->func.name, "_z_", 3) == 0)
+                if (strncmp(function_c_name(f), "_z_", 3) == 0)
                 {
                     f = f->next;
                     continue;
                 }
                 // The preamble's headers declare it already: another prototype could clash.
-                if (is_preamble_c_function(ctx, f->func.name))
+                if (is_preamble_c_function(ctx, function_c_name(f)))
                 {
                     f = f->next;
                     continue;
@@ -211,12 +203,12 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
             {
                 EMIT(ctx, "#if %s\n", f->cfg_condition);
             }
-            if (f->func.name)
+            if (function_c_name(f))
             {
                 int already_emitted = 0;
                 for (EmittedProto *ep = *emitted; ep; ep = ep->next)
                 {
-                    if (strcmp(ep->name, f->func.name) == 0 &&
+                    if (strcmp(ep->name, function_c_name(f)) == 0 &&
                         ((ep->cfg == NULL && f->cfg_condition == NULL) ||
                          (ep->cfg && f->cfg_condition && strcmp(ep->cfg, f->cfg_condition) == 0)))
                     {
@@ -227,7 +219,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 if (!already_emitted)
                 {
                     EmittedProto *ep = xmalloc(sizeof(EmittedProto));
-                    ep->name = xstrdup(f->func.name);
+                    ep->name = xstrdup(function_c_name(f));
                     ep->cfg = f->cfg_condition ? xstrdup(f->cfg_condition) : NULL;
                     ep->next = *emitted;
                     *emitted = ep;
@@ -261,7 +253,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
             ASTNode *m = f->impl.methods;
             while (m)
             {
-                if (m->func.generic_params)
+                if (m->func.generic_param_count > 0)
                 {
                     m = m->next;
                     continue;
@@ -270,8 +262,8 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 {
                     EMIT(ctx, "#if %s\n", m->cfg_condition);
                 }
-                prototype_span_begin(ctx, m, m->func.name);
-                emit_func_signature(ctx, m, m->func.name);
+                prototype_span_begin(ctx, m, function_c_name(m));
+                emit_func_signature(ctx, m, function_c_name(m));
                 EMIT(ctx, ";\n");
                 prototype_span_end(ctx);
                 if (m->cfg_condition)
@@ -302,7 +294,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
             ASTNode *m = f->impl_trait.methods;
             while (m)
             {
-                if (m->func.generic_params)
+                if (m->func.generic_param_count > 0)
                 {
                     m = m->next;
                     continue;
@@ -375,22 +367,10 @@ void emit_impl_vtables(ParserContext *ctx)
         {
             char *trait = node->impl_trait.trait_name;
 
-            // Filter generic traits (VTables for them are not emitted)
-            int is_generic_trait = 0;
-            StructRef *search = ctx->parsed_globals_list;
-            while (search)
-            {
-                if (search->node && search->node->kind == NODE_TRAIT &&
-                    strcmp(search->node->trait.name, trait) == 0)
-                {
-                    if (search->node->trait.generic_param_count > 0)
-                    {
-                        is_generic_trait = 1;
-                    }
-                    break;
-                }
-                search = search->next;
-            }
+            // Filter generic traits (VTables for them are not emitted): the trait the
+            // typechecker resolved (impl_trait.trait).
+            ASTNode *trait_def = node->impl_trait.trait;
+            int is_generic_trait = trait_def && trait_def->trait.generic_param_count > 0;
             if (is_generic_trait)
             {
                 ref = ref->next;
@@ -447,7 +427,7 @@ void emit_impl_vtables(ParserContext *ctx)
             {
                 const char *method = m->func.method_name;
                 EMIT(ctx, ".%s = (__typeof__(((%s_VTable*)0)->%s))%s", method, trait, method,
-                     m->func.name);
+                     function_c_name(m));
                 if (m->next)
                 {
                     EMIT(ctx, ", ");
@@ -595,16 +575,18 @@ void print_type_defs(ParserContext *ctx, ASTNode *nodes)
                 // For vectors, we emit a custom typedef in emit_struct_defs.
                 // Standard 'typedef struct Name Name' would conflict.
             }
-            else if (local->strct.name && !local->strct.crepr_c_type)
+            else if (declared_type_c_name(local) && !local->strct.crepr_c_type)
             {
-                const char *final_name = local->link_name ? local->link_name : local->strct.name;
+                const char *final_name =
+                    local->link_name ? local->link_name : declared_type_c_name(local);
                 const char *keyword = local->strct.is_union ? "union" : "struct";
                 EMIT(ctx, "typedef %s %s %s;\n", keyword, final_name, final_name);
             }
         }
-        if (local->kind == NODE_ENUM && !local->enm.is_template && local->enm.name)
+        if (local->kind == NODE_ENUM && !local->enm.is_template && declared_type_c_name(local))
         {
-            const char *final_name = local->link_name ? local->link_name : local->enm.name;
+            const char *final_name =
+                local->link_name ? local->link_name : declared_type_c_name(local);
 
             // Only forward-declare as struct if it's an ADT-style enum (has payloads)
             int has_payload = 0;

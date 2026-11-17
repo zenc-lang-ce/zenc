@@ -110,6 +110,11 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
 
     switch (node->kind)
     {
+    case NODE_IMPLICIT_CONVERSION:
+        // The value of the expression converted: whether it fits its new type is the caller's
+        // question (check_integer_conversion).
+        return eval_const_int_expr(node->conversion.expr, ctx, out_val);
+
     case NODE_EXPR_LITERAL:
         if (node->literal.kind == LITERAL_INT)
         {

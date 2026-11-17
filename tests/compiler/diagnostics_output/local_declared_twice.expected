@@ -1,0 +1,29 @@
+error: 'a' is already declared in this block
+  --> tests/compiler/diagnostics_output/local_declared_twice.zc:6:4
+   |
+6  | fn add(a: int, a: int) -> int {
+   |    ^ here
+   |
+   = help: Give it another name, or declare it in a nested block
+error: 'x' is already declared in this block
+  --> tests/compiler/diagnostics_output/local_declared_twice.zc:12:9
+   |
+12 |     let x = "two";
+   |         ^ here
+   |
+note: declared here
+  --> tests/compiler/diagnostics_output/local_declared_twice.zc:11:9
+   |
+11 |     let x = 1;
+   |         ^ here
+   |
+   = help: Give it another name, or declare it in a nested block
+error: 'p' is already declared in this block
+  --> tests/compiler/diagnostics_output/local_declared_twice.zc:13:5
+   |
+13 |     let (p, p) = (1, 2);
+   |     ^ here
+   |
+   = help: Give it another name, or declare it in a nested block
+     error: semantic analysis found 3 errors
+[exit 1]

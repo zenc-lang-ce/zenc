@@ -93,6 +93,13 @@ typedef struct DeclarationAttributes
 DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l);
 
 /**
+ * @brief Starts `ctx` empty for a parse of `filename` (NULL when there is none yet) by
+ *        `compiler`, with its configuration, and registers it as the context diagnostics and
+ *        tokens report to.
+ */
+void parser_context_init(ParserContext *ctx, ZenCompiler *compiler, const char *filename);
+
+/**
  * @brief Parses a program.
  */
 ASTNode *parse_program(ParserContext *ctx, Lexer *l);
@@ -122,7 +129,6 @@ typedef struct FuncSig
     const char *own_name;     ///< The name the program writes, when the C name adds to it:
                               ///< `push` of `Vec__int32_t__push`, `Rect` of `Shape__Rect`.
     int elide_from_idx;       ///< Index of parameter for lifetime elision (-1 if none)
-    struct FuncSig *next;     ///< Next function in registry.
 } FuncSig;
 
 /**
@@ -149,9 +155,10 @@ typedef struct GenericTemplate
  */
 typedef struct GenericFuncTemplate
 {
-    char *name;          ///< Template name.
-    char *generic_param; ///< Generic parameters string (legacy).
-    ASTNode *func_node;  ///< The function AST node.
+    char *name;            ///< Template name.
+    char **generic_params; ///< Its generic parameters: `T`, `U`.
+    int generic_param_count;
+    ASTNode *func_node; ///< The function AST node.
     struct GenericFuncTemplate *next;
 } GenericFuncTemplate;
 
@@ -160,9 +167,10 @@ typedef struct GenericFuncTemplate
  */
 typedef struct GenericImplTemplate
 {
-    char *struct_name;   ///< Target struct name.
-    char *generic_param; ///< Generic parameters.
-    ASTNode *impl_node;  ///< The impl block AST node.
+    char *struct_name;     ///< Target struct name.
+    char **generic_params; ///< Its generic parameters (one: an impl declares one).
+    int generic_param_count;
+    ASTNode *impl_node; ///< The impl block AST node.
     struct GenericImplTemplate *next;
 } GenericImplTemplate;
 
@@ -187,27 +195,6 @@ typedef struct StructRef
     ASTNode *node;
     struct StructRef *next;
 } StructRef;
-
-/**
- * @brief Definition of a struct (lookup cache).
- */
-typedef struct StructDef
-{
-    char *name;
-    ASTNode *node;
-    struct StructDef *next;
-} StructDef;
-
-// Hash table entry for fast struct/enum lookup (used by find_struct_def).
-enum
-{
-    STRUCT_HASH_SIZE = 2048
-};
-typedef struct
-{
-    char name[256]; // empty string = empty slot (avoids dangling stack pointer issues with ASAN)
-    ASTNode *node;
-} StructHashEntry;
 
 /**
  * @brief The tuples the program uses, each once, for the C structs codegen emits.
@@ -260,6 +247,7 @@ typedef struct SelectiveImport
     char *symbol;        ///< Symbol name.
     char *alias;         ///< Local alias.
     char *source_module; ///< Origin module.
+    char *source_path;   ///< The origin module's file, whose declarations it names.
 } SelectiveImport;
 
 /**
@@ -310,8 +298,14 @@ typedef struct ModuleState
         currently_parsing; ///< Set: files whose import is in progress (for cycle detection).
     zmap_PluginMap imported_plugins; ///< Map: alias → ImportedPlugin*.
     zmap_FileSet wildcard_imports;   ///< Set: module base names imported via `as *`.
-    zmap_FileSet module_prefixes;    ///< Map: module file path → its symbol prefix.
-    zmap_FileSet prefix_owners;      ///< Map: symbol prefix → the file path that owns it.
+    /// The same imports by the file that makes them (stage 4, step 5 of the architecture plan):
+    /// `file<US>alias` → Module, `file<US>name` → SelectiveImport, `file<US>module` for `as *`.
+    /// The tables above are of the whole program: an alias one file declares, every file sees.
+    zmap_ModMap file_modules;
+    zmap_SelMap file_selective_imports;
+    zmap_FileSet file_wildcard_imports;
+    zmap_FileSet module_prefixes; ///< Map: module file path → its symbol prefix.
+    zmap_FileSet prefix_owners;   ///< Map: symbol prefix → the file path that owns it.
 } ModuleState;
 
 /* * Initialize all maps in a ModuleState. Call once after zeroing the struct. */
@@ -325,6 +319,9 @@ static inline void module_state_init(ModuleState *ms)
     ms->wildcard_imports = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
     ms->module_prefixes = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
     ms->prefix_owners = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
+    ms->file_modules = zmap_init(ModMap, zmap_hash_cstr, zmap_cmp_cstr);
+    ms->file_selective_imports = zmap_init(SelMap, zmap_hash_cstr, zmap_cmp_cstr);
+    ms->file_wildcard_imports = zmap_init(FileSet, zmap_hash_cstr, zmap_cmp_cstr);
 }
 
 /**
@@ -387,14 +384,14 @@ struct ParserContext
     int recursion_depth;    ///< Guard against stack overflow.
     Scope *global_scope;    ///< Root of the unified symbol table.
     Scope *current_scope;   ///< Current lexical scope for variable lookup.
-    FuncSig *func_registry; ///< Registry of declared function signatures (DEPRECATED: moved to
-                            ///< global_scope).
-    zmap_FuncByName func_registry_by_name; ///< func_registry by name: the one registered last.
+    /// Every function declared, by its C name: the one registered last (find_func).
+    zmap_FuncByName func_registry;
+    /// Top-level declarations by module and written name, `file<US>name` (register_declaration).
+    zmap_DeclByName declarations;
 
     // Lambdas
     LambdaRef *global_lambdas; ///< All lambdas generated during parsing, in creation order.
     int lambda_counter;        ///< Counter for generating unique lambda IDs.
-    int fstring_counter;       ///< Counter for generating unique f-string IDs.
 
 // Generics
 #define MAX_KNOWN_GENERICS 1024
@@ -415,23 +412,24 @@ struct ParserContext
     ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
 
     // Structs/Enums
-    StructRef *parsed_structs_list;                ///< List of all parsed struct nodes.
-    StructHashEntry struct_hash[STRUCT_HASH_SIZE]; ///< Hash table for fast struct/enum lookup.
-    StructRef *parsed_enums_list;                  ///< List of all parsed enum nodes.
-    StructRef *parsed_funcs_list;                  ///< List of all parsed function nodes.
-    StructRef *parsed_impls_list;                  ///< List of all parsed impl blocks.
-    StructRef *parsed_globals_list;                ///< List of all parsed global variables.
-    StructDef *struct_defs;        ///< Registry of struct definitions (map name -> node).
-    EnumVariantReg *enum_variants; ///< Registry of enum variants for global lookup.
-    ImplReg *registered_impls;     ///< Cache of type/trait implementations.
+    StructRef *parsed_structs_list; ///< List of all parsed struct nodes.
+    /// Every struct and enum, templates and instances too, by C name: the one registered last
+    /// (find_struct_def).
+    zmap_DeclByName type_registry;
+    /// The C name of a local that does not keep its own, by where it is declared and its name
+    /// (local_c_name_at): a local that hides another of its C function, or a name its
+    /// initializer reads. The typechecker decides it; codegen writes it.
+    zmap_CNameByDecl local_c_names;
+    StructRef *parsed_enums_list;   ///< List of all parsed enum nodes.
+    StructRef *parsed_funcs_list;   ///< List of all parsed function nodes.
+    StructRef *parsed_impls_list;   ///< List of all parsed impl blocks.
+    StructRef *parsed_globals_list; ///< List of all parsed global variables.
+    EnumVariantReg *enum_variants;  ///< Registry of enum variants for global lookup.
+    ImplReg *registered_impls;      ///< Cache of type/trait implementations.
 
     // The std modules the compiler loads on its own (std/mem.zc for Drop…), as NODE_IMPORTs
     // for the typechecker: they are not in the tree.
     ASTNode *implicit_std_imports;
-
-    // Names find_struct_def did not find, cached during codegen (utils_registry.c).
-    struct StructMissCache *struct_misses;
-    unsigned int struct_registry_gen; ///< Bumped whenever a struct or enum is registered.
 
     // Types
     TupleType *used_tuples;  ///< Cache of generated tuple types.
@@ -446,7 +444,6 @@ struct ParserContext
                                    ///< `impl Vec<T>`), or NULL outside an impl.
     ASTNode *current_impl_methods; ///< Head of method list for current impl block.
     int in_method_with_self;       ///< 1 if parsing body of method with self parameter.
-    int self_is_pointer;           ///< 1 if self is a pointer receiver (self*).
     int in_constant_expression;    ///< 1 while parse_constant_expression reads an expression.
 
     // Deferred function bodies
@@ -478,7 +475,6 @@ struct ParserContext
     zmap_FileSet c_macro_names;    ///< C macro that is only another name -> that name.
     StringList c_system_includes;  ///< The headers of `include <x.h>`, as written.
     int c_system_headers_read;     ///< Those and the preamble's are in the maps above.
-    int is_comptime;               // Flag for comptime execution context
     char **extern_symbols;         ///< Explicitly declared extern symbols.
     int extern_symbol_count;       ///< Count of external symbols.
 
@@ -491,7 +487,6 @@ struct ParserContext
         int is_repl;        ///< 1 if running in REPL mode.
         int in_defer_block; ///< 1 if currently parsing inside a defer block.
 
-        ASTNode *global_user_structs;     ///< List of user defined structs.
         char *current_impl_type;          ///< Type currently being implemented (in impl block).
         int tmp_counter;                  ///< Counter for temporary variables.
         int fstring_counter;              ///< Counter for the buffers of f-string values.
@@ -630,9 +625,15 @@ void register_type_usage(ParserContext *ctx, const char *name, Token t);
 
 /**
  * @brief Whether `name`, read where a type goes, names one: a struct, enum, alias, trait,
- * primitive, extern symbol, selective import or a C type of the whitelist.
+ * primitive, extern symbol, a name `file` imports or a C type of the whitelist.
  */
-int is_known_type_name(ParserContext *ctx, const char *name);
+int is_known_type_name(ParserContext *ctx, const char *file, const char *name);
+
+/**
+ * @brief Whether `file` imports `name`, one by one or with `as *`. In 0.5
+ * (FF_COMPATIBILITY_0_5) any file's import counts.
+ */
+int imports_name(ParserContext *ctx, const char *file, const char *name);
 
 /**
  * @brief Warns that the type `use` names is unknown, with the closest known name as a hint.
@@ -669,7 +670,12 @@ int type_needs_drop(ParserContext *ctx, Type *t);
  *        are parsed (a struct with an `impl Drop` or a field that will be dropped).
  */
 int type_will_drop(ParserContext *ctx, Type *t);
-void fix_type_refs_has_drop(ParserContext *ctx);
+/**
+ * @brief Whether `t` has drop glue: for a struct or enum, what its declaration says (its own
+ * `impl Drop`, or a field or payload that needs dropping); for another type, such as an owning
+ * closure, its own flag.
+ */
+int type_has_drop(ParserContext *ctx, Type *t);
 
 // Token helpers
 
@@ -856,10 +862,8 @@ typedef struct BodyCopy
     struct BodyCopy *next;
 } BodyCopy;
 
-/** @brief `parts` joined by commas: `K,V`. */
-char *join_with_commas(char **parts, int count);
-/** @brief The bindings of `params` (`K,V`) to `args`. */
-Bindings bindings_new(const char *params, Type **args, int count);
+/** @brief The bindings of the `param_count` `params` (`K`, `V`) to the `count` `args`. */
+ZEN_CONST Bindings bindings_new(char **params, int param_count, Type **args, int count);
 /**
  * @brief A copy of `t` for an instance: each parameter becomes the type it is bound to, and the
  * template's name `os` without arguments (`Self`) becomes the instance's `ns`.
@@ -873,7 +877,8 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
 /**
  * @brief Registers a function template.
  */
-void register_func_template(ParserContext *ctx, const char *name, const char *param, ASTNode *node);
+void register_func_template(ParserContext *ctx, const char *name, char **params, int param_count,
+                            ASTNode *node);
 
 /**
  * @brief Finds a function template.
@@ -912,7 +917,7 @@ TypeKind get_primitive_type_kind(const char *name);
 /**
  * @brief Registers an implementation template.
  */
-void register_impl_template(ParserContext *ctx, const char *sname, const char *param,
+void register_impl_template(ParserContext *ctx, const char *sname, char **params, int param_count,
                             ASTNode *node);
 /**
  * @brief Adds a struct to the list.
@@ -1007,6 +1012,38 @@ ASTNode *parse_expect(ParserContext *ctx, Lexer *l);
 ASTNode *parse_plugin(ParserContext *ctx, Lexer *l, Token tk);
 char *token_get_string_content(Token t);
 /**
+ * @brief Enters the top-level declaration `node` in the registry of declarations by module: the
+ *        file that declares it, and the name that file writes for it (stage 4, step 5 of the
+ *        architecture plan). The parser calls it once per declaration it hands to the program.
+ */
+void register_declaration(ParserContext *ctx, ASTNode *node);
+
+/**
+ * @brief The declaration the file `file` makes of the name `name`, as written there; NULL when
+ *        it makes none.
+ */
+ASTNode *find_file_declaration(ParserContext *ctx, const char *file, const char *name);
+
+/**
+ * @brief Records, for the file being parsed, an import of the module at `path` under `alias`;
+ *        `module` is the record of the whole program's table (its base name and kind).
+ */
+void record_file_import(ParserContext *ctx, const char *alias, const char *path, Module *module);
+
+/** @brief Records, for the file being parsed, `symbol` imported one by one (as `alias`). */
+void record_file_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
+                                  const char *source_module, const char *source_path);
+
+/** @brief Records, for the file being parsed, the module at `path` imported with `as *`. */
+void record_file_wildcard_import(ParserContext *ctx, const char *module_base, const char *path);
+
+/**
+ * @brief The declaration (struct or enum node) of the named type `t`, or NULL for any other type.
+ *        The way to go from a type to its declaration: by the type, not by a name built from it.
+ */
+ASTNode *named_type_def(ParserContext *ctx, Type *t);
+
+/**
  * @brief Where the content of the string literal `t` starts in its text: the length of its
  *        opening quotes (`"`, `f"`, `"""`...). *end_offset, if given, gets that of its closing
  * ones.
@@ -1018,6 +1055,12 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name);
  *        count (`array_size`) and element type (`inner`). NULL if `t` is not a vector.
  */
 Type *vector_type_of(ParserContext *ctx, Type *t);
+/**
+ * @brief The method an index on a value of type `t` calls (`method` is "get" for `v[i]`,
+ *        "set" for `v[i] = x`): the operator overload of a struct, not through a pointer and not a
+ *        slice. NULL when there is none. In the body of a generic template, its own method.
+ */
+FuncSig *index_method(ParserContext *ctx, Type *t, const char *method);
 /**
  * @brief The vector type of the struct called `name`; NULL if it is not a `@vector` struct.
  */
@@ -1083,20 +1126,44 @@ Type *match_subject_type(Type *scrutinee);
  *        guard covers nothing.
  */
 const char *match_missing_variant(ParserContext *ctx, ASTNode *match, Type *scrutinee);
-int expr_is_rvalue(ParserContext *ctx, ASTNode *e);
+
+/**
+ * @brief The registered variant the pattern `p` names (its `variant`, which the typechecker
+ *        resolves), or NULL for a pattern that names none: a constant, `_`, a literal.
+ */
+EnumVariantReg *pattern_variant(ParserContext *ctx, MatchPattern *p);
+/**
+ * @brief Whether `e` designates a place whose address C can take: a variable, a field of one
+ *        (or reached through a pointer), an element of an array or through a pointer, `*p`. A
+ *        call, an operation, a literal, an overloaded index (its `get`) and a variant
+ *        constructor are values without one.
+ */
+int expr_has_address(ParserContext *ctx, ASTNode *e);
 TypeAlias *find_type_alias_node(ParserContext *ctx, const char *name);
 char *extract_module_name(const char *path);
 char *module_prefix_for(ParserContext *ctx, const char *path);
-ASTNode *transform_to_trait_object(ParserContext *ctx, const char *target_trait, ASTNode *expr);
 int check_impl(ParserContext *ctx, const char *trait_name, const char *type_name);
 Instantiation *find_instantiation(ParserContext *ctx, const char *name);
 int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b);
-Module *find_module(ParserContext *ctx, const char *alias);
+/**
+ * @brief The module the alias `scope` names in the file being parsed; NULL when none. In 0.5
+ * (FF_COMPATIBILITY_0_5) the program's table: an alias any file imports, the first import of it.
+ * From 0.6 the file's own imports.
+ */
+Module *imported_module(ParserContext *ctx, const char *scope);
 /**
  * @brief How programs write `name`, declared in the module being parsed: `math::Vector` when
  * the module is imported with an alias, `Vector` when its names are imported one by one.
  */
 char *module_written_name(ParserContext *ctx, const char *name);
+
+/**
+ * @brief The C name a module gives its declaration of `name`: the module's prefix and the name
+ * (`prefix__name`); NULL when it keeps the name, in a module parsed without a prefix or for a
+ * name declared extern (C's own). The one rule for the prefix: the parsers of declarations
+ * apply it, and the names of declarations not parsed yet are worked out with it.
+ */
+char *module_prefixed_name(ParserContext *ctx, const char *prefix, const char *name);
 /**
  * @brief The struct or enum a bare type name names in the module being parsed: its C name
  *        when that is not `name` itself, NULL when it is. In a module parsed with a prefix
@@ -1137,9 +1204,14 @@ char *module_function_name(ParserContext *ctx, const char *name);
  */
 char *zen_c_type_spelling(ParserContext *ctx, Type *t);
 SelectiveImport *find_selective_import(ParserContext *ctx, const char *name);
-void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base);
+void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base,
+                                const char *module_path);
 void re_export_propagated(ParserContext *ctx, const char *alias, const char *parent_prefix,
                           const char *base_name);
+/**
+ * @brief The struct or enum declared by `name` (find_struct_def), unless it is a generic
+ * template; NULL when none.
+ */
 ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name);
 Type *find_type_alias(ParserContext *ctx, const char *alias);
 Type *parse_type_base(ParserContext *ctx, Lexer *l);
@@ -1202,7 +1274,7 @@ void register_template(ParserContext *ctx, const char *name, ASTNode *node);
 void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag);
 void register_plugin(ParserContext *ctx, const char *name, const char *alias);
 void register_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
-                               const char *source_module);
+                               const char *source_module, const char *source_path);
 void register_deprecated_func(ParserContext *ctx, const char *name, const char *replacement);
 void try_parse_macro_const(ParserContext *ctx, const char *name);
 void parser_audit_preprocessor(ParserContext *ctx, Token t);
@@ -1255,11 +1327,16 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
 const char *get_closest_type_hint(ParserContext *ctx, const char *name);
 void add_instantiated_func(ParserContext *ctx, ASTNode *fn);
 char *ast_to_string(ASTNode *node);
-void struct_hash_insert(ParserContext *ctx, const char *name, ASTNode *node);
-/** @brief Records that a struct or enum was registered, so cached misses may be stale. */
-void struct_registry_changed(ParserContext *ctx);
-/** @brief Starts caching the names find_struct_def does not find (used by codegen). */
-void struct_miss_cache_enable(ParserContext *ctx);
+/** @brief Registers the struct or enum `node` under its C name `name` (find_struct_def). */
+void register_named_type(ParserContext *ctx, const char *name, ASTNode *node);
+/** @brief Records `c_name` as the C name of the local `name` declared at `site`. */
+void record_local_c_name(ParserContext *ctx, const char *site, const char *name,
+                         const char *c_name);
+/**
+ * @brief The C name the typechecker gave the local `name` declared at `site` (a declaration's
+ *        token start); NULL when it keeps its own name.
+ */
+const char *local_c_name_at(ParserContext *ctx, const char *site, const char *name);
 /** @brief Adds a copy of s to ctx->all_symbols, unless its declaration is already there. */
 void register_in_all_symbols(ParserContext *ctx, ZenSymbol *s);
 

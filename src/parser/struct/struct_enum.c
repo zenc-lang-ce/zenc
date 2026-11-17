@@ -42,12 +42,15 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     // In a module parsed with a prefix (imported with an alias, one by one or as `*`), the enum
     // is named with the prefix. The variants and their constructors are registered below under
     // that name, the one the type and its uses carry.
+    // A generic template keeps its name: each instance gets its own.
+    // `ename` is the C name from here on; the node keeps the one the module writes.
+    char *own_name = ename;
     char *written_name = NULL;
-    if (ctx->imports.current_module_prefix && !gp)
-    { // Don't prefix generic templates
+    char *prefixed_name =
+        !gp ? module_prefixed_name(ctx, ctx->imports.current_module_prefix, ename) : NULL;
+    if (prefixed_name)
+    {
         written_name = module_written_name(ctx, ename);
-        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, ename);
-        zfree(ename);
         ename = prefixed_name;
     }
 
@@ -200,23 +203,30 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
 
     ASTNode *node = ast_create(NODE_ENUM);
     node->token = n;
-    node->enm.name = ename;
+    node->enm.name = own_name;
+    node->enm.module_prefix = ctx->imports.current_module_prefix;
+    node->enm.is_module_prefixed = prefixed_name != NULL;
     node->enm.written_name = written_name;
     node->link_name = definition_link_name(ctx, link_name, ename);
     node->type_info = type_new_enum(ename);
 
     node->enm.variants = h;
-    node->enm.generic_param = gp; // Store generic param
+    if (gp)
+    {
+        node->enm.generic_params = xmalloc(sizeof(char *));
+        node->enm.generic_params[0] = gp;
+        node->enm.generic_param_count = 1;
+    }
     node->enm.is_export = is_export;
 
     if (gp)
     {
         node->enm.is_template = 1;
         ctx->known_generics_count = generics_before;
-        register_template(ctx, node->enm.name, node);
+        register_template(ctx, declared_type_c_name(node), node);
     }
 
-    register_struct_def(ctx, node->enm.name, node);
+    register_struct_def(ctx, declared_type_c_name(node), node);
 
     add_to_enum_list(ctx, node); // Register globally
 

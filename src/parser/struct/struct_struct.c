@@ -279,14 +279,16 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
         }
     }
 
-    // Auto-prefix struct name if in module context
+    // A generic template keeps its name: each instance gets its own.
+    // `name` is the C name from here on; the node keeps the one the module writes.
+    char *own_name = name;
     char *written_name = NULL;
-    if (ctx->imports.current_module_prefix && gp_count == 0 && !is_extern &&
-        !is_extern_symbol(ctx, name))
-    { // Don't prefix generic templates
+    char *prefixed_name = gp_count == 0 && !is_extern
+                              ? module_prefixed_name(ctx, ctx->imports.current_module_prefix, name)
+                              : NULL;
+    if (prefixed_name)
+    {
         written_name = module_written_name(ctx, name);
-        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name);
-        zfree(name);
         name = prefixed_name;
     }
 
@@ -302,7 +304,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             if (existing)
             {
                 zerror_at(name_token, "Redefinition of %s '%s'", is_union ? "union" : "struct",
-                          name);
+                          own_name);
             }
         }
         GenericTemplate *tpl = ctx->templates;
@@ -311,14 +313,15 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             tpl = tpl->next;
         }
         ASTNode *concrete = gp_count > 0 ? find_concrete_struct_def(ctx, name) : NULL;
+        concrete = concrete && concrete->kind == NODE_STRUCT ? concrete : NULL;
         if ((gp_count == 0 && tpl) || concrete)
         {
             ASTNode *other = tpl ? tpl->struct_node : concrete;
             const char *where =
                 (other && other->strct.defined_in_file) ? other->strct.defined_in_file : "?";
             char msg[MAX_SHORT_MSG_LEN];
-            snprintf(msg, sizeof(msg), "Struct '%s' clashes with the %s struct '%s' from %s", name,
-                     gp_count == 0 ? "generic" : "concrete", name, where);
+            snprintf(msg, sizeof(msg), "Struct '%s' clashes with the %s struct '%s' from %s",
+                     own_name, gp_count == 0 ? "generic" : "concrete", own_name, where);
             const char *hints[] = {"A generic and a concrete struct cannot share a name",
                                    "Rename one of them (std types such as Box, Vec, Option, "
                                    "Map or String keep their names)",
@@ -333,7 +336,9 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     add_to_struct_list(ctx, node);
     node->doc_comment = pending_doc; // struct-level /// doc (captured on entry)
 
-    node->strct.name = name;
+    node->strct.name = own_name;
+    node->strct.module_prefix = ctx->imports.current_module_prefix;
+    node->strct.is_module_prefixed = prefixed_name != NULL;
     node->strct.written_name = written_name;
 
     // Initialize Type Info so we can track traits (like Drop)
@@ -366,6 +371,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
         node->strct.is_template = 1;
         ctx->known_generics_count = generics_before;
         register_template(ctx, name, node);
+        register_named_type(ctx, name, node);
     }
 
     // Register definition for 'use' lookups and LSP

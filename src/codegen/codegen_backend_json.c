@@ -239,11 +239,6 @@ static void json_emit_node(ParserContext *ctx, ASTNode *node, int pretty, int de
             emitter_printf(&ctx->cg.emitter, ",\"var\":");
             json_escape(ctx, node->for_range.var_name);
         }
-        if (node->for_range.step)
-        {
-            emitter_printf(&ctx->cg.emitter, ",\"step\":");
-            json_escape(ctx, node->for_range.step);
-        }
         if (node->for_range.is_inclusive)
         {
             emitter_printf(&ctx->cg.emitter, ",\"inclusive\":true");
@@ -386,6 +381,14 @@ static void json_emit_node(ParserContext *ctx, ASTNode *node, int pretty, int de
             emitter_printf(&ctx->cg.emitter, "\"end\":");
             int inf = 1;
             json_emit_node(ctx, node->for_range.end, pretty, child_depth + 1, &inf);
+        }
+        if (node->for_range.step)
+        {
+            json_emit_separator(ctx, pretty, child_depth, &fc);
+            json_emit_maybe_newline(ctx, pretty, child_depth);
+            emitter_printf(&ctx->cg.emitter, "\"step\":");
+            int inf = 1;
+            json_emit_node(ctx, node->for_range.step, pretty, child_depth + 1, &inf);
         }
         break;
     }

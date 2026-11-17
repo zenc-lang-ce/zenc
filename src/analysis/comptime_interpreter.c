@@ -530,7 +530,7 @@ static CValue eval_call(CInterp *ci, ASTNode *node)
     for (StructRef *r = ci->pctx->parsed_funcs_list; r; r = r->next)
     {
         if (r->node && r->node->kind == NODE_FUNCTION && r->node->func.is_comptime &&
-            strcmp(r->node->func.name, name) == 0)
+            strcmp(function_c_name(r->node), name) == 0)
         {
             return call_comptime_fn(ci, r->node, node->call.args);
         }
@@ -749,6 +749,9 @@ static CValue eval_expr(CInterp *ci, ASTNode *node)
     case NODE_EXPR_CAST:
         // Casts are transparent in the comptime value model.
         return eval_expr(ci, node->cast.expr);
+    case NODE_IMPLICIT_CONVERSION:
+        // So are the typechecker's implicit conversions (a @comptime fn is also checked).
+        return eval_expr(ci, node->conversion.expr);
     case NODE_EXPR_MEMBER:
         // Simple member access not supported yet
         zerror_at(node->token, "comptime: member access not supported yet");
