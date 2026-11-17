@@ -104,6 +104,22 @@ char *declared_c_type(ParserContext *ctx, ASTNode *decl);
  */
 int is_fixed_size_array(Type *t);
 /**
+ * @brief Whether `expr` names the variable `name`, in a lambda it holds or an f-string too.
+ */
+int expr_names_var(ASTNode *expr, const char *name);
+/**
+ * @brief Emits `ZC_AUTO _z_init_N = <expr>; ` and returns the temporary's name. A
+ *        `for` header that names the variable it declares reads it from there: C puts a variable
+ *        in scope at the end of its declarator, so in `for (ZC_AUTO i = 0; i < i; i++)` both are
+ *        the new i. The temporary has the C type of the expression, with its integer promotions
+ *        (`i + 10` of a `u8` is an `int`), as the header would compute it.
+ */
+char *emit_init_temp(ParserContext *ctx, ASTNode *expr);
+/**
+ * @brief Emits `temp` if there is one, otherwise `expr`.
+ */
+void emit_expr_or_temp(ParserContext *ctx, ASTNode *expr, const char *temp);
+/**
  * @brief The C initializer that zeroes a value of type `t` (`{0}`, `0`, `0.0`, `false`...), or
  *        NULL for a type it has none for (a pointer, an enum, a closure...).
  */
