@@ -1,16 +1,18 @@
    Compiling tests/compiler/diagnostics_output/return_address_of_self.zc...
-warning: `&self` is the address of the pointer `self` (an error from 0.6)
+error: `&self` is the address of the pointer `self`
   --> tests/compiler/diagnostics_output/return_address_of_self.zc:14:16
    |
 14 |         return &self;
    |                ^ here
    |
-   = note: `self` is already a pointer to the receiver: return `self`
-warning: `&self` is the address of the pointer `self` (an error from 0.6)
+   = help: `self` is already a pointer to the receiver: return `self`
+error: `&self` is the address of the pointer `self`
   --> tests/compiler/diagnostics_output/return_address_of_self.zc:19:16
    |
 19 |         return &self;
    |                ^ here
    |
-   = note: `self` is already a pointer to the receiver: return `self`
-[exit 0]
+   = help: `self` is already a pointer to the receiver: return `self`
+     error: semantic analysis found 2 errors
+       Check failed with 2 errors
+[exit 1]
