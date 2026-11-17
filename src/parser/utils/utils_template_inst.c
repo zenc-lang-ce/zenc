@@ -99,9 +99,11 @@ void instantiate_type(ParserContext *ctx, Type *instance, Token token)
     {
         return;
     }
-    // While declarations are read, the template or an argument may be declared further down.
+    // While declarations are read, the template or an argument may be declared further down,
+    // or the template may wait for a struct it uses.
+    GenericTemplate *tpl = find_generic_template(ctx, instance->name);
     if (!ctx->declarations_read &&
-        (!find_generic_template(ctx, instance->name) ||
+        (!tpl || find_waiting_struct(ctx, tpl->struct_node) ||
          names_undeclared_type(
              ctx, &(Type){.kind = TYPE_TUPLE, .args = instance->args, .count = instance->count})))
     {
@@ -152,13 +154,17 @@ void resolve_pending_instances(ParserContext *ctx)
     ctx->pending_instances_tail = NULL;
     for (; p; p = p->next)
     {
-        Type *instance = p->type;
-        for (int i = 0; i < instance->count; i++)
-        {
-            replace_alias_names(ctx, instance->args[i]);
-        }
-        instantiate_type(ctx, instance, p->token);
+        instantiate_pending_type(ctx, p->type, p->token);
     }
+}
+
+void instantiate_pending_type(ParserContext *ctx, Type *instance, Token token)
+{
+    for (int i = 0; i < instance->count; i++)
+    {
+        replace_alias_names(ctx, instance->args[i]);
+    }
+    instantiate_type(ctx, instance, token);
 }
 
 static void trigger_type_instantiation(ParserContext *ctx, Type *t)

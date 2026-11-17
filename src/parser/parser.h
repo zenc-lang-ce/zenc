@@ -410,8 +410,9 @@ struct ParserContext
     struct PendingInstance *pending_instances;      ///< Instances waiting for the declarations.
     struct PendingInstance *pending_instances_tail; ///< Last of `pending_instances`.
     int declarations_read; ///< Set once every declaration is read: instances are made at once.
-    ASTNode *instantiated_structs; ///< List of AST nodes for instantiated structs.
-    ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
+    struct WaitingStruct *waiting_structs; ///< Structs whose `use` waits for the declarations.
+    ASTNode *instantiated_structs;         ///< List of AST nodes for instantiated structs.
+    ASTNode *instantiated_funcs;           ///< List of AST nodes for instantiated functions.
 
     // Structs/Enums
     StructRef *parsed_structs_list; ///< List of all parsed struct nodes.
@@ -610,6 +611,33 @@ typedef struct PendingInstance
     Token token; ///< Where it was read, for errors.
     struct PendingInstance *next;
 } PendingInstance;
+
+/** @brief A `use` of a struct (`use Header;`), whose fields are copied into the struct that has it.
+ */
+typedef struct StructUse
+{
+    Type *type;     ///< The struct used (`Header`, `Header<int>`).
+    Token token;    ///< Where it was written.
+    ASTNode *after; ///< The struct's own field it follows; NULL before the first.
+    struct StructUse *next;
+} StructUse;
+
+/** @brief A struct that uses a struct not read yet, or not complete yet: its fields, and its
+ *         `@derive`, wait until every declaration is read.
+ */
+typedef struct WaitingStruct
+{
+    ASTNode *strct;        ///< The struct, with only its own fields so far.
+    StructUse *uses;       ///< Its `use`s, in the order written.
+    char **derived_traits; ///< Its `@derive`, which reads the fields.
+    int derived_count;
+    char *module_prefix;  ///< The module it was read in, for the derived code.
+    const char *filename; ///< The file it was read in.
+    Scope *scope;         ///< The scope it was read in.
+    int resolving;        ///< Its uses are being copied: a struct it uses that uses it is an error.
+    int done;
+    struct WaitingStruct *next;
+} WaitingStruct;
 
 typedef struct TypeUsage
 {
@@ -1317,6 +1345,20 @@ void instantiate_type(ParserContext *ctx, Type *instance, Token token);
  *        the type it names.
  */
 void resolve_pending_instances(ParserContext *ctx);
+/**
+ * @brief Instantiates a generic instance read before every declaration was, now that they are:
+ *        an alias argument is replaced by the type it names.
+ */
+void instantiate_pending_type(ParserContext *ctx, Type *instance, Token token);
+/**
+ * @brief The struct `strct` while it waits for a struct it uses, or NULL.
+ */
+WaitingStruct *find_waiting_struct(ParserContext *ctx, ASTNode *strct);
+/**
+ * @brief Copies into each waiting struct the fields of the structs it uses, and derives what it
+ *        derives, once every declaration is read.
+ */
+void resolve_waiting_structs(ParserContext *ctx);
 /**
  * @brief Gives the instances copied before their template's body was read a copy of that body,
  *        and instantiates the generics the copies name.

@@ -1,0 +1,10 @@
+// Helper for test_use_before_declaration_import.zc: a struct that uses and derives from a
+// struct declared after it.
+@derive(Eq)
+struct Square {
+    use Side;
+}
+
+struct Side {
+    len: int;
+}

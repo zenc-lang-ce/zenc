@@ -1,0 +1,15 @@
+// EXPECT: FAIL
+// compiler/diagnostics: two structs that use each other would contain themselves
+
+struct Left {
+    use Right;
+    l: int;
+}
+
+struct Right {
+    use Left;
+    r: int;
+}
+
+fn main() {
+}
