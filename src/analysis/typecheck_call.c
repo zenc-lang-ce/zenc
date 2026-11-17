@@ -36,12 +36,9 @@ static void report_missing_method(TypeChecker *tc, ASTNode *call)
     {
         return;
     }
-    const char *method_owner = NULL;
-    char *method = NULL;
-    if (find_method_call_target(tc->pctx, type_impl_name(owner), callee->member.field,
-                                &method_owner, &method))
+    // Checking the member found the method (find_method_call_target).
+    if (callee->member.method)
     {
-        zfree(method);
         return;
     }
     char *spelled = zen_c_type_spelling(tc->pctx, t);
@@ -254,6 +251,15 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     tc->is_callee = node->call.callee && node->call.callee->kind == NODE_EXPR_VAR;
     check_node(tc, node->call.callee, depth + 1);
     tc->is_callee = prev_callee;
+
+    // `value.name(...)` where a field is named so too calls the method, as codegen does, unless the
+    // field is a function to call.
+    ASTNode *callee = node->call.callee;
+    if (callee && callee->kind == NODE_EXPR_MEMBER && !callee->member.method &&
+        !(callee->type_info && get_inner_type(callee->type_info)->kind == TYPE_FUNCTION))
+    {
+        resolve_member_method(tc, callee, 1);
+    }
 
     const char *func_name = NULL;
     FuncSig *sig = NULL;

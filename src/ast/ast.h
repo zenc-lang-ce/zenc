@@ -507,6 +507,11 @@ struct ASTNode
             ASTNode *target;
             char *field;
             int is_pointer_access;
+            // A method, as the typechecker resolves it (find_method_call_target): its function
+            // and the type that declares it (the receiver's, or a struct it mixes in). NULL for a
+            // field.
+            struct FuncSig *method;
+            const char *method_owner;
         } member;
 
         struct

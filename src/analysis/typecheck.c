@@ -104,6 +104,40 @@ static void check_patterns(TypeChecker *tc, ASTNode *match, int depth)
     }
 }
 
+// The method `member` names, by the rule codegen calls it by (find_method_call_target): the
+// type's own, one of a trait it implements, or one of a struct it mixes in. The member keeps it
+// (member.method). Its type becomes the method's when `replaces_field` (a call of `value.name`
+// where a field has the name too: codegen calls the method, as `opt.is_some()` of Option), or
+// when it has none; a copy of a template comes with its type.
+void resolve_member_method(TypeChecker *tc, ASTNode *member, int replaces_field)
+{
+    Type *receiver = member->member.target ? member->member.target->type_info : NULL;
+    if (!receiver)
+    {
+        return;
+    }
+    const char *base = type_impl_name(receiver->kind == TYPE_POINTER ? receiver->inner : receiver);
+    const char *owner = NULL;
+    char *method = NULL;
+    if (!base || !find_method_call_target(tc->pctx, base, member->member.field, &owner, &method))
+    {
+        return;
+    }
+    char *mangled = mangle_method_symbol(owner, NULL, method);
+    FuncSig *sig = find_func(tc->pctx, mangled);
+    if (sig)
+    {
+        member->member.method = sig;
+        member->member.method_owner = owner;
+        if (!member->type_info || replaces_field)
+        {
+            member->type_info = sig->ret_type;
+        }
+    }
+    zfree(mangled);
+    zfree(method);
+}
+
 // Type of the `index`-th of `count` bindings of a match case, read from the
 // payload of the variant the pattern names. NULL when it cannot be told (not an
 // enum, unknown variant, unresolved generic): the caller keeps UNSAFE_ANY.
@@ -756,6 +790,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             }
             Type *tuple = tuple_of(node->member.target->type_info);
             Type *element = tuple ? tuple_element_type(tuple, node->member.field) : NULL;
+            int is_field = element != NULL; // Else, a method.
             if (element)
             {
                 node->type_info = type_clone(element);
@@ -779,6 +814,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     // The member of an enum value is its tag, a constant of a C `enum`: an int.
                     if (strcmp(node->member.field, "tag") == 0)
                     {
+                        is_field = 1;
                         node->type_info = type_new(TYPE_C_INT);
                     }
                 }
@@ -791,6 +827,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                             strcmp(field->field.name, node->member.field) == 0)
                         {
                             // Propagate lifetime from struct container to the member access result
+                            is_field = 1;
                             node->type_info = type_clone(field->type_info);
                             // Through a pointer the field is not in the container: it keeps
                             // its own depth (where escape analysis looks is its own question).
@@ -809,33 +846,9 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 }
             }
 
-            if (!node->type_info)
+            if (!is_field)
             {
-                int is_ptr = 0;
-                char *alloc_name = NULL;
-                char *struct_name =
-                    resolve_struct_name_from_type(tc->pctx, target_type, &is_ptr, &alloc_name);
-
-                // The method, by the rule codegen calls it by (find_method_call_target): its
-                // own, one of a trait the type implements, or one of a struct it mixes in.
-                const char *owner = NULL;
-                char *method = NULL;
-                if (struct_name && find_method_call_target(tc->pctx, struct_name,
-                                                           node->member.field, &owner, &method))
-                {
-                    char *mangled = mangle_method_symbol(owner, NULL, method);
-                    FuncSig *sig = find_func(tc->pctx, mangled);
-                    if (sig)
-                    {
-                        node->type_info = sig->ret_type;
-                    }
-                    zfree(mangled);
-                    zfree(method);
-                }
-                if (alloc_name)
-                {
-                    zfree(alloc_name);
-                }
+                resolve_member_method(tc, node, 0);
             }
         }
         if (!node->type_info)

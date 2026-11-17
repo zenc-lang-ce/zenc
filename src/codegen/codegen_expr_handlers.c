@@ -823,17 +823,22 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             int is_pointer = target_type->kind == TYPE_POINTER;
             char *base = type_impl_name(is_pointer ? target_type->inner : target_type);
 
-            const char *call_base = base;
-            char *resolved_method = NULL;
-            int need_cast = 0;
-            if (find_method_call_target(ctx, base, method, &call_base, &resolved_method))
+            // The method the typechecker resolved (member.method): its C name, and its owner,
+            // when a mixed-in struct's method takes a pointer to that struct. A trait object has
+            // none: its call goes to the trait's dispatch function, `Trait__method`.
+            FuncSig *resolved = node->call.callee->member.method;
+            const char *call_base = resolved ? node->call.callee->member.method_owner : base;
+            int need_cast = resolved && strcmp(call_base, base) != 0;
+            if (resolved)
             {
-                method = resolved_method;
-                // A mixed-in struct's method takes a pointer to that struct.
-                need_cast = call_base != base;
+                EMIT(ctx, "%s", resolved->link_name ? resolved->link_name : resolved->name);
             }
-
-            emit_mangled_name(ctx, call_base, method);
+            else
+            {
+                char *dispatch = mangle_method_symbol(base, NULL, method);
+                EMIT(ctx, "%s", dispatch);
+                zfree(dispatch);
+            }
             EMIT(ctx, "(");
             if (need_cast)
             {
@@ -873,7 +878,6 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                 arg = arg->next;
             }
             EMIT(ctx, ")");
-            zfree(resolved_method);
             return;
         }
     }
