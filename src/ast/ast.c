@@ -947,6 +947,12 @@ int is_incomplete_type(struct ParserContext *ctx, Type *t)
     return def->strct.is_incomplete;
 }
 
+int is_discard(ASTNode *node)
+{
+    return node && node->kind == NODE_VAR_DECL && node->var_decl.name &&
+           strcmp(node->var_decl.name, "_") == 0;
+}
+
 int is_composite_expression(ASTNode *node)
 {
     if (!node)

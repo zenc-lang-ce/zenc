@@ -546,6 +546,16 @@ void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *c
     zerror_with_hints(t, msg, hints);
 }
 
+void tc_error_stopping_build(TypeChecker *tc, Token t, const char *msg, const char *const *hints,
+                             const DiagnosticNote *note)
+{
+    if (tc->rechecking || tc_in_std(tc, t))
+    {
+        return;
+    }
+    zerror_with_note(t, msg, hints, note);
+}
+
 void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints,
                               const DiagnosticNote *note)
 {

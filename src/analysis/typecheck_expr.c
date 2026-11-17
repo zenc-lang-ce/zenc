@@ -1428,6 +1428,13 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
             }
             node->type_info = fn_type;
         }
+        else if (!sym && !tc->is_callee && strcmp(node->var_ref.name, "_") == 0)
+        {
+            // `let _ = <value>` declares nothing. Called, `_` may be a macro of C (gettext's).
+            const char *hints[] = {"Give the value a name to read it later", NULL};
+            tc_error_stopping_build(tc, node->token,
+                                    "'_' is not a variable: `let _` discards a value", hints, NULL);
+        }
         else
         {
             // A name of C the program uses undeclared (`stdin`, or a function declared by an

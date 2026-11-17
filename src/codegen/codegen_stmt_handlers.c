@@ -572,30 +572,52 @@ static int defer_typed_local_drop(ParserContext *ctx, ASTNode *node, Type *t)
     return 1;
 }
 
+// `let _ = <value>`: the value is evaluated and, if it needs dropping, dropped at once. A value
+// moved out of a variable or a field is marked as moved, as `let x = <value>` does.
+static void emit_discard(ParserContext *ctx, ASTNode *node)
+{
+    ASTNode *init = node->var_decl.init_expr;
+    Type *t = node->type_info ? node->type_info : init->type_info;
+    if (!t || !type_needs_drop(ctx, t))
+    {
+        EMIT(ctx, "(void)(");
+        codegen_expression(ctx, init);
+        EMIT(ctx, ");\n");
+        return;
+    }
+    char name[32];
+    snprintf(name, sizeof(name), "_z_discard_%d", ctx->cg.tmp_counter++);
+    EMIT(ctx, "{ ");
+    emit_var_decl_type(ctx, c_type_spelling(ctx, t), name);
+    if (is_fixed_size_array(t) && init->kind != NODE_EXPR_ARRAY_LITERAL)
+    {
+        EMIT(ctx, "; memcpy(%s, ", name);
+        codegen_expression(ctx, init);
+        EMIT(ctx, ", sizeof(%s)); ", name);
+        if (emit_moved_out(ctx, init))
+        {
+            EMIT(ctx, "; ");
+        }
+    }
+    else
+    {
+        EMIT(ctx, " = ");
+        codegen_expression(ctx, init);
+        EMIT(ctx, "; ");
+        if (emit_move_invalidation(ctx, init))
+        {
+            EMIT(ctx, "; ");
+        }
+    }
+    EMIT(ctx, "%s }\n", drop_value_stmt(t, name, 0));
+}
+
 void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
 {
-
-    if (strcmp(node->var_decl.name, "_") == 0 && node->var_decl.init_expr)
+    if (is_discard(node) && node->var_decl.init_expr)
     {
-        int is_void = 0;
-        if (node->type_info && node->type_info->kind == TYPE_VOID)
-        {
-            is_void = 1;
-        }
-        else if (!node->type_info)
-        {
-            char *ret_type = node_c_type(ctx, node->var_decl.init_expr);
-            if (!ret_type || strcmp(ret_type, "void") == 0)
-            {
-                is_void = 1;
-            }
-        }
-        if (is_void)
-        {
-            codegen_expression(ctx, node->var_decl.init_expr);
-            EMIT(ctx, ";\n");
-            return;
-        }
+        emit_discard(ctx, node);
+        return;
     }
     if (node->var_decl.is_thread_local)
     {

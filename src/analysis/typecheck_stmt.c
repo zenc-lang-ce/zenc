@@ -149,6 +149,10 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
         node->var_decl.type_info = t;
     }
 
+    if (is_discard(node))
+    {
+        return;
+    }
     misra_check_reserved_identifier(tc->pctx, node->var_decl.name, node->token);
     ASTNode *initializer = node->var_decl.init_expr;
     tc_declare_local(tc, node->var_decl.name, t, node->token, 0, &initializer, 1);

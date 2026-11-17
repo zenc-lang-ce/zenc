@@ -139,6 +139,12 @@ void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *
  *        so, in `zc check` and in a build, since the program was valid; from 0.6 an error.
  */
 void tc_error_from_0_6(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
+/**
+ * @brief Reports an error that stops `zc build` too, in 0.5 as well: one the compiler cannot
+ *        write C for. `note`, if not NULL, points at another place.
+ */
+void tc_error_stopping_build(TypeChecker *tc, Token t, const char *msg, const char *const *hints,
+                             const DiagnosticNote *note);
 void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *const *hints);
 void tc_move_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints,
                               const DiagnosticNote *note);
