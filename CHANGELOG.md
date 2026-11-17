@@ -21,6 +21,7 @@ This new release brings breaking changes to the language:
 - Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name: the special message "is a function of std/io.zc, which is not imported" is gone.
 
 ### Fixes
+- A `ref` binding in a `match` on a field of a temporary (`match make().held { Holder::One(ref c) => ... }`) builds: it points into a copy of the field, as for any value without an address. Before, the C took the address of the call's result, which the C compiler rejects (#353).
 - A struct with the name of an enum the program already declares (`enum Shape` and then `struct Shape`) is "Redefinition of struct 'Shape'", as a second struct of that name is. Before, the C compiler stopped on the two types of one name.
 - `zc check` knows the type a method mixed in with `use` returns, and reports a value of the wrong type (`show(t.value())` with a `string` parameter and an `int` method), which reached the C compiler. The typechecker finds a method by the rule codegen calls it by: the type's own, one of a trait it implements, one of a struct it mixes in.
 - A cast to a C type writes that type: `(c_int)x` is `(int)x`, `(c_long)x` is `(long)x` and `(string)x` is `(string)x` in the C. They were written as `(int32_t)`, `(int64_t)` and `(char*)`, which differ from `long` where `long` has 32 bits (Windows).
