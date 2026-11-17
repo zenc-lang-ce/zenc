@@ -223,11 +223,13 @@ static void test_initialize()
         printf("Initialize response: %s\n", resp);
         fail("Init response must give the legend of the semantic tokens");
     }
-    // `.` opens the members of a value and `:` those of a type (`Color::`).
-    if (!strstr(resp, "\"completionProvider\":{\"triggerCharacters\":[\".\",\":\"]}"))
+    // `.` opens the members of a value and `:` those of a type (`Color::`); `/` and `"` the path
+    // of an import (test_import_path_completion).
+    if (!strstr(resp, "\"completionProvider\":{\"triggerCharacters\":[\".\",\":\",\"/\",\"\\\"\"]}"))
     {
         printf("Initialize response: %s\n", resp);
-        fail("Init response must give `.` and `:` as the characters that open the completion");
+        fail("Init response must give `.`, `:`, `/` and `\"` as the characters that open the "
+             "completion");
     }
     printf("PASS: test_initialize\n");
     free(resp);
@@ -2489,6 +2491,57 @@ static void test_module_alias_completion(void)
     printf("PASS: test_module_alias_completion\n");
 }
 
+static void test_import_path_completion(void)
+{
+    printf("Running test_import_path_completion...\n");
+    // In the string of an import, the directories and modules its path can name: next to the
+    // file, in a directory of it, and in the standard library. Not the file itself, and nothing
+    // of this after a `/` that divides.
+    mkdir(C_TEST_DIR, 0755);
+    mkdir(C_TEST_DIR "/imp_sub", 0755);
+    write_file(C_TEST_DIR "/imp_a.zc", "fn a() {}\n");
+    write_file(C_TEST_DIR "/imp_sub/b.zc", "fn b() {}\n");
+    const char *path = C_TEST_DIR "/imp_use.zc";
+    open_document(path, "import \"imp_\n"            // Line 0
+                        "import \"imp_sub/\n"        // Line 1
+                        "import \"std/ve\n"          // Line 2
+                        "import { a } from \"imp_\n" // Line 3
+                        "let x = 1 / 2;\n");         // Line 4
+    usleep(100000);
+    char labels[8192];
+    completion_labels(1720, path, 0, 12, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "imp_a.zc ") || !strstr(labels, "imp_sub/ ") || strstr(labels, "imp_use"))
+    {
+        printf("Completion in `import \"imp_`: %s\n", labels);
+        fail("In an import, the modules and directories next to the file, not the file itself");
+    }
+    completion_labels(1721, path, 1, 16, "/", labels, sizeof(labels));
+    if (strcmp(labels, "b.zc ") != 0)
+    {
+        printf("Completion in `import \"imp_sub/`: %s\n", labels);
+        fail("In an import, the modules of the directory the path names");
+    }
+    completion_labels(1722, path, 2, 14, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "vec.zc "))
+    {
+        printf("Completion in `import \"std/ve`: %s\n", labels);
+        fail("In an import, the modules of the standard library");
+    }
+    completion_labels(1723, path, 3, 22, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "imp_a.zc "))
+    {
+        printf("Completion in `import { a } from \"imp_`: %s\n", labels);
+        fail("In an import one by one, the modules next to the file");
+    }
+    completion_labels(1724, path, 4, 11, "/", labels, sizeof(labels));
+    if (labels[0])
+    {
+        printf("Completion after a division: %s\n", labels);
+        fail("A `/` outside an import offers nothing");
+    }
+    printf("PASS: test_import_path_completion\n");
+}
+
 static void test_trait_value_completion(void)
 {
     printf("Running test_trait_value_completion...\n");
@@ -4606,6 +4659,7 @@ int main()
     test_literal_field_completion();
     test_scope_completion_trigger();
     test_module_alias_completion();
+    test_import_path_completion();
     test_trait_value_completion();
     test_trait_impl_completion();
     test_implement_trait_action();

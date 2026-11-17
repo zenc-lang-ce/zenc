@@ -263,6 +263,21 @@ static char *try_resolve_at(const char *search_dir, const char *fn, CompilerConf
     return NULL;
 }
 
+// z_resolve_path's search: the file `fn` names, in the first directory that has it.
+typedef struct
+{
+    const char *fn;
+    CompilerConfig *cfg;
+    char *resolved;
+} ResolveSearch;
+
+static int resolve_in_dir(const char *dir, void *data)
+{
+    ResolveSearch *search = data;
+    search->resolved = try_resolve_at(dir, search->fn, search->cfg);
+    return search->resolved != NULL;
+}
+
 char *z_resolve_path(const char *fn, const char *relative_to, CompilerConfig *cfg)
 {
     if (!fn)
@@ -294,15 +309,23 @@ char *z_resolve_path(const char *fn, const char *relative_to, CompilerConfig *cf
         return NULL;
     }
 
+    ResolveSearch search = {fn, cfg, NULL};
+    z_import_search_dirs(fn, relative_to, cfg, resolve_in_dir, &search);
+    return search.resolved;
+}
+
+void z_import_search_dirs(const char *fn, const char *relative_to, CompilerConfig *cfg,
+                          int (*visit)(const char *dir, void *data), void *data)
+{
     // If std library location is locked and this is a std import,
     // only search the locked location — skip other paths entirely.
     if (cfg->std_locked && is_std_import(fn))
     {
-        char *resolved = try_resolve_at(cfg->std_root, fn, cfg);
-        return resolved; // try_resolve_at already calls maybe_lock_std_root
+        visit(cfg->std_root, data);
+        return;
     }
 
-    // 2. Relative to current file
+    // 1. Relative to current file
     if (relative_to)
     {
         char *dir = xstrdup(relative_to);
@@ -310,11 +333,11 @@ char *z_resolve_path(const char *fn, const char *relative_to, CompilerConfig *cf
         if (last_slash)
         {
             *last_slash = 0;
-            char *resolved = try_resolve_at(dir, fn, cfg);
+            int found = visit(dir, data);
             zfree(dir);
-            if (resolved)
+            if (found)
             {
-                return resolved;
+                return;
             }
         }
         else
@@ -323,45 +346,33 @@ char *z_resolve_path(const char *fn, const char *relative_to, CompilerConfig *cf
         }
     }
 
-    // 3. Current directory
-    snprintf(path, sizeof(path), ".");
-    char *resolved = try_resolve_at(path, fn, cfg);
-    if (resolved)
+    // 2. Current directory
+    if (visit(".", data))
     {
-        return resolved;
+        return;
     }
 
-    // 4. Include paths (-I)
+    // 3. Include paths (-I)
     for (size_t i = 0; i < cfg->include_paths.length; i++)
     {
-        resolved = try_resolve_at(cfg->include_paths.data[i], fn, cfg);
-        if (resolved)
+        if (visit(cfg->include_paths.data[i], data))
         {
-            return resolved;
+            return;
         }
     }
 
-    // 5. Root path (ZC_ROOT)
+    // 4. Root path (ZC_ROOT): with std/ (for stdlib modules like "slice.zc"), and as it is.
     if (cfg->root_path)
     {
-        // Try with std/ prefix (for stdlib modules like "slice.zc")
         char std_path[MAX_PATH_LEN];
         snprintf(std_path, sizeof(std_path), "%s/std", cfg->root_path);
-        resolved = try_resolve_at(std_path, fn, cfg);
-        if (resolved)
+        if (visit(std_path, data) || visit(cfg->root_path, data))
         {
-            return resolved;
-        }
-
-        // Try as-is relative to root_path
-        resolved = try_resolve_at(cfg->root_path, fn, cfg);
-        if (resolved)
-        {
-            return resolved;
+            return;
         }
     }
 
-    // 6. System paths — only search if std library isn't locked yet.
+    // 5. System paths — only search if std library isn't locked yet.
     if (!cfg->std_locked)
     {
 #ifdef ZEN_SHARE_DIR
@@ -374,24 +385,15 @@ char *z_resolve_path(const char *fn, const char *relative_to, CompilerConfig *cf
 
         for (int i = 0; i < sys_count; i++)
         {
-            resolved = try_resolve_at(system_paths[i], fn, cfg);
-            if (resolved)
-            {
-                return resolved;
-            }
-
-            // Also try with std/ prefix in system paths
+            // As it is, and with std/.
             char sstd[MAX_PATH_LEN];
             snprintf(sstd, sizeof(sstd), "%s/std", system_paths[i]);
-            resolved = try_resolve_at(sstd, fn, cfg);
-            if (resolved)
+            if (visit(system_paths[i], data) || visit(sstd, data))
             {
-                return resolved;
+                return;
             }
         }
     }
-
-    return NULL;
 }
 
 char *load_file(const char *fn, const char *relative_to, CompilerConfig *cfg)
