@@ -1753,12 +1753,12 @@ char *function_c_name(ASTNode *fn)
 
 char *method_c_name(ASTNode *fn)
 {
-    if (!fn || !fn->func.method_name || !fn->func.impl_target)
+    if (!fn || !fn->func.is_method || !fn->func.impl_target)
     {
         return NULL;
     }
     return mangle_method_symbol(type_impl_name(fn->func.impl_target), fn->func.trait_name,
-                                fn->func.method_name);
+                                fn->func.name);
 }
 
 char *declared_type_c_name(ASTNode *decl)

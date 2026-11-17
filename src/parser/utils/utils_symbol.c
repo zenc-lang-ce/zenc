@@ -170,7 +170,7 @@ FuncSig *register_function(ParserContext *ctx, Scope *scope, ASTNode *fn, const 
     FuncSig *sig =
         register_func(ctx, scope, name, fn->func.count, fn->func.default_values, fn->func.arg_types,
                       fn->func.ret_type_info, fn->func.is_varargs, fn->func.pure, fn->link_name,
-                      fn->func.method_name, fn->token, is_export);
+                      fn->func.is_method ? fn->func.name : NULL, fn->token, is_export);
     sig->decl = fn;
     return sig;
 }
@@ -827,8 +827,8 @@ Token template_method_token(ParserContext *ctx, const char *template_name, const
         ASTNode *methods = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
         for (ASTNode *m = methods; m; m = m->next)
         {
-            if (m->kind == NODE_FUNCTION && m->func.method_name &&
-                strcmp(m->func.method_name, method_name) == 0)
+            if (m->kind == NODE_FUNCTION && m->func.is_method &&
+                strcmp(m->func.name, method_name) == 0)
             {
                 return m->token;
             }

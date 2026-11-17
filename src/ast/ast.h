@@ -342,8 +342,7 @@ struct ASTNode
             // (function_c_name), as module_prefixed_name decided when it was declared.
             int is_module_prefixed;
             Type *impl_target;      // Type of the enclosing impl block (NULL for free function)
-            char *method_name;      // Name written in the impl or trait (`get` of `Point__get`);
-                                    // NULL for a free function
+            int is_method;          // Declared in an impl or a trait (`get` of `Point__get`)
             const char *trait_name; // The trait an `impl Trait for T` method implements (`Show`
                                     // of `Point__Show__show`); NULL in an inherent impl
             Type **instance_args;   // An instance of a generic function: the types its generic

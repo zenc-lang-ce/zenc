@@ -963,7 +963,7 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
             {
                 FuncSig *sig = xcalloc(1, sizeof(FuncSig));
                 sig->name = function_c_name(n);
-                sig->own_name = n->func.method_name;
+                sig->own_name = n->func.is_method ? n->func.name : NULL;
                 sig->decl_token = n->token;
                 sig->total_args = n->func.count;
                 sig->default_values = n->func.default_values;

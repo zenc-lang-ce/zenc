@@ -936,7 +936,7 @@ static int add_method_completion(cJSON *items, ASTNode *method, const char *owne
 {
     // The name as written; a method without one (`method_name`) is no method of an impl or a
     // trait.
-    const char *name = method->func.method_name;
+    const char *name = method->func.is_method ? method->func.name : NULL;
     if (!name)
     {
         return 0;
@@ -1708,7 +1708,7 @@ static const char *impl_end(const char *members, const char *path)
 // lsp_function_signature). Returns 0 when it has none.
 static int trait_method_signature(ASTNode *method, char *out, size_t size, const char *path)
 {
-    if (method->kind != NODE_FUNCTION || !method->func.method_name || !method->token.start)
+    if (method->kind != NODE_FUNCTION || !method->func.is_method || !method->token.start)
     {
         return 0;
     }
@@ -1778,7 +1778,7 @@ static int add_trait_member_completions(cJSON *items, CursorPosition position, c
     }
     for (ASTNode *method = trait->trait.methods; method; method = method->next)
     {
-        const char *method_name = method->func.method_name;
+        const char *method_name = method->func.is_method ? method->func.name : NULL;
         char signature[MAX_SHORT_MSG_LEN * 4];
         if (!trait_method_signature(method, signature, sizeof(signature), path) ||
             has_completion(items, method_name) || impl_has_method(members, word, method_name, path))
@@ -2512,12 +2512,12 @@ cJSON *lsp_workspace_symbol(const char *query)
             for (ASTNode *method = methods; method && count < MAX_WORKSPACE_SYMBOLS;
                  method = method->next)
             {
-                if (method->kind != NODE_FUNCTION || !method->func.method_name)
+                if (method->kind != NODE_FUNCTION || !method->func.is_method)
                 {
                     continue;
                 }
                 // The name the impl writes (`area`; its C name is `Rect__area`).
-                const char *short_name = method->func.method_name;
+                const char *short_name = method->func.name;
                 if (matches_query(short_name, query))
                 {
                     add_workspace_symbol(items, short_name, LSP_SYMBOL_METHOD, pf->uri,
@@ -2650,7 +2650,7 @@ static void position_of(const char *source, const char *at, int *line, int *col)
 static int is_function_named(ASTNode *method, const char *owner, void *name)
 {
     (void)owner;
-    return method->func.method_name && strcmp(method->func.method_name, name) == 0;
+    return method->func.is_method && strcmp(method->func.name, name) == 0;
 }
 
 // The function that a call of `pf` calls, `name` written at `name_start` before its `(`: the one
@@ -2953,7 +2953,7 @@ static cJSON *implement_trait_action(const char *uri, const char *source, Token 
     {
         char signature[MAX_SHORT_MSG_LEN * 4];
         if (!trait_method_signature(method, signature, sizeof(signature), path) ||
-            impl_has_method(members, NULL, method->func.method_name, path))
+            impl_has_method(members, NULL, method->func.is_method ? method->func.name : NULL, path))
         {
             continue;
         }

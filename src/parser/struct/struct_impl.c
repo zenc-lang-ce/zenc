@@ -60,7 +60,7 @@ static ASTNode *parse_impl_methods(ParserContext *ctx, Lexer *l, const char *typ
             continue;
         }
         ATTACH_DOC_COMMENT(ctx, f);
-        f->func.method_name = f->func.name;
+        f->func.is_method = 1;
         f->func.trait_name = trait_name;
         (void)type_name; // The owner is the impl's target, which the method keeps (impl_target).
 
