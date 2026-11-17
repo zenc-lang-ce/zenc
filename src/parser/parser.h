@@ -1164,6 +1164,14 @@ Module *imported_module(ParserContext *ctx, const char *scope);
  * the module is imported with an alias, `Vector` when its names are imported one by one.
  */
 char *module_written_name(ParserContext *ctx, const char *name);
+
+/**
+ * @brief The C name a module gives its declaration of `name`: the module's prefix and the name
+ * (`prefix__name`); NULL when it keeps the name, in a module parsed without a prefix or for a
+ * name declared extern (C's own). The one rule for the prefix: the parsers of declarations
+ * apply it, and the names of declarations not parsed yet are worked out with it.
+ */
+char *module_prefixed_name(ParserContext *ctx, const char *prefix, const char *name);
 /**
  * @brief The struct or enum a bare type name names in the module being parsed: its C name
  *        when that is not `name` itself, NULL when it is. In a module parsed with a prefix

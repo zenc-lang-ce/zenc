@@ -860,16 +860,32 @@ static SelectiveImport *imported_by_name(ParserContext *ctx, const char *file, c
 #endif
 }
 
+char *module_prefixed_name(ParserContext *ctx, const char *prefix, const char *name)
+{
+    if (!prefix || is_extern_symbol(ctx, name))
+    {
+        return NULL;
+    }
+    return mangle_module_symbol(prefix, name);
+}
+
+// The C name `name` has in the module `prefix`: the module's prefix and the name, or the name
+// alone when it keeps it (module_prefixed_name).
+static char *module_c_name(ParserContext *ctx, const char *prefix, const char *name)
+{
+    char *prefixed = module_prefixed_name(ctx, prefix, name);
+    return prefixed ? prefixed : xstrdup(name);
+}
+
 // The C name of what `imported` names: its module's declaration of it, or, for one the module
-// does not declare, the module's prefix and the name.
+// does not declare, the name the module would give it.
 static char *imported_c_name(ParserContext *ctx, SelectiveImport *imported)
 {
     ASTNode *decl = imported->source_path
                         ? find_file_declaration(ctx, imported->source_path, imported->symbol)
                         : NULL;
     const char *c_name = decl ? declaration_c_name(decl) : NULL;
-    return c_name ? xstrdup(c_name)
-                  : mangle_module_symbol(imported->source_module, imported->symbol);
+    return c_name ? xstrdup(c_name) : module_c_name(ctx, imported->source_module, imported->symbol);
 }
 
 char *module_written_name(ParserContext *ctx, const char *name)
@@ -942,7 +958,7 @@ char *module_type_name(ParserContext *ctx, const char *name)
         return NULL;
     }
     // Not declared yet anywhere: a type the module declares further down (`next: Node*`).
-    return mangle_module_symbol(ctx->imports.current_module_prefix, name);
+    return module_prefixed_name(ctx, ctx->imports.current_module_prefix, name);
 }
 
 char *type_declaration_name(ParserContext *ctx, const char *name)
@@ -968,11 +984,7 @@ static char *module_member_name(ParserContext *ctx, Module *mod, const char *nam
         register_extern_symbol(ctx, name);
         return xstrdup(name);
     }
-    if (is_extern_symbol(ctx, name))
-    {
-        return xstrdup(name);
-    }
-    return mangle_module_symbol(mod->base_name, name);
+    return module_c_name(ctx, mod->base_name, name);
 }
 
 char *qualified_type_name(ParserContext *ctx, const char *scope, const char *name)
@@ -980,7 +992,7 @@ char *qualified_type_name(ParserContext *ctx, const char *scope, const char *nam
     Module *mod = imported_module(ctx, scope);
     if (!mod)
     {
-        return mangle_module_symbol(scope, name);
+        return module_c_name(ctx, scope, name);
     }
     // The module's own declaration of the name, by the name it writes: its C name. A name it
     // does not declare (a C header's, one declared further down) keeps today's rule.

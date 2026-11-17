@@ -279,13 +279,14 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
         }
     }
 
-    // Auto-prefix struct name if in module context
+    // A generic template keeps its name: each instance gets its own.
     char *written_name = NULL;
-    if (ctx->imports.current_module_prefix && gp_count == 0 && !is_extern &&
-        !is_extern_symbol(ctx, name))
-    { // Don't prefix generic templates
+    char *prefixed_name = gp_count == 0 && !is_extern
+                              ? module_prefixed_name(ctx, ctx->imports.current_module_prefix, name)
+                              : NULL;
+    if (prefixed_name)
+    {
         written_name = module_written_name(ctx, name);
-        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name);
         zfree(name);
         name = prefixed_name;
     }

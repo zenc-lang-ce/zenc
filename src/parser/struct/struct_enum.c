@@ -42,11 +42,13 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     // In a module parsed with a prefix (imported with an alias, one by one or as `*`), the enum
     // is named with the prefix. The variants and their constructors are registered below under
     // that name, the one the type and its uses carry.
+    // A generic template keeps its name: each instance gets its own.
     char *written_name = NULL;
-    if (ctx->imports.current_module_prefix && !gp)
-    { // Don't prefix generic templates
+    char *prefixed_name =
+        !gp ? module_prefixed_name(ctx, ctx->imports.current_module_prefix, ename) : NULL;
+    if (prefixed_name)
+    {
         written_name = module_written_name(ctx, ename);
-        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, ename);
         zfree(ename);
         ename = prefixed_name;
     }
