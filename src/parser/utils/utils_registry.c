@@ -828,33 +828,34 @@ static const char *declaration_c_name(ASTNode *decl)
     }
 }
 
-// The import, one by one or with `as *`, that brings `name` into the file being parsed; NULL when
-// none. In 0.5 (FF_COMPATIBILITY_0_5) the program's table, where `as *` registers each name of
-// the module. From 0.6 the file's own imports, then the modules it imports with `as *`.
-static SelectiveImport *imported_by_name(ParserContext *ctx, const char *name)
+// The import, one by one or with `as *`, that brings `name` into `file`; NULL when none. In 0.5
+// (FF_COMPATIBILITY_0_5) the program's table, where `as *` registers each name of the module.
+// From 0.6 the file's own imports, then the modules it imports with `as *`.
+static SelectiveImport *imported_by_name(ParserContext *ctx, const char *file, const char *name)
 {
 #if FF_COMPATIBILITY_0_5
+    (void)file;
     return find_selective_import(ctx, name);
 #else
-    if (!ctx->current_filename)
+    if (!file)
     {
         return NULL;
     }
-    char *key = file_key(ctx->current_filename, name);
+    char *key = file_key(file, name);
     SelectiveImport **found = zmap_get(&ctx->imports.file_selective_imports, key);
     zfree(key);
     if (found)
     {
         return *found;
     }
-    size_t file_len = strlen(ctx->current_filename);
+    size_t file_len = strlen(file);
     zmap_iter_FileSet it = zmap_iter_init(FileSet, &ctx->imports.file_wildcard_imports);
     const char *wildcard_key;
     const char *path;
     while (zmap_iter_next(&it, &wildcard_key, &path))
     {
-        if (strncmp(wildcard_key, ctx->current_filename, file_len) == 0 &&
-            wildcard_key[file_len] == '\x1f' && find_file_declaration(ctx, path, name))
+        if (strncmp(wildcard_key, file, file_len) == 0 && wildcard_key[file_len] == '\x1f' &&
+            find_file_declaration(ctx, path, name))
         {
             SelectiveImport *imported = xcalloc(1, sizeof(SelectiveImport));
             imported->symbol = xstrdup(name);
@@ -958,7 +959,7 @@ char *type_declaration_name(ParserContext *ctx, const char *name)
     if (!ctx->imports.current_module_prefix)
     {
         // Imported one by one, or with `as *`: the module's declaration of it.
-        SelectiveImport *imported = imported_by_name(ctx, name);
+        SelectiveImport *imported = imported_by_name(ctx, ctx->current_filename, name);
         if (imported)
         {
             return imported_c_name(ctx, imported);
@@ -1037,6 +1038,11 @@ void register_selective_import(ParserContext *ctx, const char *symbol, const cha
     si->source_path = source_path ? xstrdup(source_path) : NULL;
     const char *key = alias ? alias : symbol;
     zmap_put(&ctx->imports.selective_imports, key, si);
+}
+
+int imports_name(ParserContext *ctx, const char *file, const char *name)
+{
+    return imported_by_name(ctx, file, name) != NULL;
 }
 
 SelectiveImport *find_selective_import(ParserContext *ctx, const char *name)

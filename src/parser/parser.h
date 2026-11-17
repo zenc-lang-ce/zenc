@@ -644,9 +644,15 @@ void register_type_usage(ParserContext *ctx, const char *name, Token t);
 
 /**
  * @brief Whether `name`, read where a type goes, names one: a struct, enum, alias, trait,
- * primitive, extern symbol, selective import or a C type of the whitelist.
+ * primitive, extern symbol, a name `file` imports or a C type of the whitelist.
  */
-int is_known_type_name(ParserContext *ctx, const char *name);
+int is_known_type_name(ParserContext *ctx, const char *file, const char *name);
+
+/**
+ * @brief Whether `file` imports `name`, one by one or with `as *`. In 0.5
+ * (FF_COMPATIBILITY_0_5) any file's import counts.
+ */
+int imports_name(ParserContext *ctx, const char *file, const char *name);
 
 /**
  * @brief Warns that the type `use` names is unknown, with the closest known name as a hint.

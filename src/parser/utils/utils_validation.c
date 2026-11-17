@@ -23,10 +23,10 @@ void register_type_usage(ParserContext *ctx, const char *name, Token t)
     ctx->pending_type_validations = u;
 }
 
-int is_known_type_name(ParserContext *ctx, const char *name)
+int is_known_type_name(ParserContext *ctx, const char *file, const char *name)
 {
-    if (find_struct_def(ctx, name) || find_type_alias(ctx, name) ||
-        find_selective_import(ctx, name) || is_extern_symbol(ctx, name) || is_trait(ctx, name) ||
+    if (find_struct_def(ctx, name) || find_type_alias(ctx, name) || imports_name(ctx, file, name) ||
+        is_extern_symbol(ctx, name) || is_trait(ctx, name) ||
         find_primitive_kind(name) != TYPE_UNKNOWN)
     {
         return 1;
@@ -66,7 +66,7 @@ int validate_types(ParserContext *ctx)
     }
     for (TypeUsage *u = ctx->pending_type_validations; u; u = u->next)
     {
-        if (!is_known_type_name(ctx, u->name))
+        if (!is_known_type_name(ctx, u->location.file, u->name))
         {
             warn_unknown_type(ctx, u);
         }
