@@ -1153,7 +1153,12 @@ char *module_prefix_for(ParserContext *ctx, const char *path);
 int check_impl(ParserContext *ctx, const char *trait_name, const char *type_name);
 Instantiation *find_instantiation(ParserContext *ctx, const char *name);
 int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b);
-Module *find_module(ParserContext *ctx, const char *alias);
+/**
+ * @brief The module the alias `scope` names in the file being parsed; NULL when none. In 0.5
+ * (FF_COMPATIBILITY_0_5) the program's table: an alias any file imports, the first import of it.
+ * From 0.6 the file's own imports.
+ */
+Module *imported_module(ParserContext *ctx, const char *scope);
 /**
  * @brief How programs write `name`, declared in the module being parsed: `math::Vector` when
  * the module is imported with an alias, `Vector` when its names are imported one by one.

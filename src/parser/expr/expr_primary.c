@@ -411,7 +411,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 owner_member = owner ? token_strdup(suffix) : NULL;
                 generic_type = NULL;
 
-                if (find_module(ctx, acc))
+                if (imported_module(ctx, acc))
                 {
                     // `m::Point`: the module's type, a member of it follows.
                     char *member = token_strdup(suffix);

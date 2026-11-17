@@ -770,12 +770,6 @@ ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name)
     return NULL;
 }
 
-Module *find_module(ParserContext *ctx, const char *alias)
-{
-    Module **mod_ptr = zmap_get(&ctx->imports.modules, alias);
-    return mod_ptr ? *mod_ptr : NULL;
-}
-
 // The key of `name` in `file`'s part of a registry: the two, joined by the unit separator, which
 // neither a path nor a name has.
 static char *file_key(const char *file, const char *name)
@@ -786,13 +780,11 @@ static char *file_key(const char *file, const char *name)
     return key;
 }
 
-// The module the alias `scope` names in the file being parsed. In 0.5 (FF_COMPATIBILITY_0_5) the
-// program's table: an alias any file imports, the first import of it. From 0.6 the file's own
-// imports.
-static Module *imported_module(ParserContext *ctx, const char *scope)
+Module *imported_module(ParserContext *ctx, const char *scope)
 {
 #if FF_COMPATIBILITY_0_5
-    return find_module(ctx, scope);
+    Module **found = zmap_get(&ctx->imports.modules, scope);
+    return found ? *found : NULL;
 #else
     if (!ctx->current_filename)
     {
