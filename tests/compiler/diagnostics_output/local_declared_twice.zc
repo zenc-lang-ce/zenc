@@ -1,0 +1,19 @@
+// ARGS: run -q
+// A local declared twice in one block stops the build, in Zen C, not in the C compiler; a
+// nested block may hide it.
+import "std/io.zc"
+
+fn add(a: int, a: int) -> int {
+    return a;
+}
+
+fn main() {
+    let x = 1;
+    let x = "two";
+    let (p, p) = (1, 2);
+    {
+        let x = 3;
+        println(f"{x}");
+    }
+    println(f"{x} {p} {add(1, 2)}");
+}

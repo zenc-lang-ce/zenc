@@ -725,9 +725,35 @@ static LocalCName *local_c_name(TypeChecker *tc, CFunctionLocals *f, const char 
     return &f->locals[f->count++];
 }
 
+// A local of the C function being checked declared in the current block under `name`: one more
+// with that name is an error, as in C. A nested block may hide it.
+static ZenSymbol *local_of_this_block(TypeChecker *tc, const char *name)
+{
+    for (ZenSymbol *sym = symbol_lookup_local(tc->pctx->current_scope, name); sym;
+         sym = sym->next_same_name)
+    {
+        if (is_local_of(tc->c_function, sym))
+        {
+            return sym;
+        }
+    }
+    return NULL;
+}
+
 ZenSymbol *tc_declare_local(TypeChecker *tc, const char *name, Type *type, Token t,
                             int is_immutable, ASTNode *const *reads, int read_count)
 {
+    ZenSymbol *earlier = tc->c_function && name ? local_of_this_block(tc, name) : NULL;
+    if (earlier)
+    {
+        char msg[MAX_SHORT_MSG_LEN];
+        snprintf(msg, sizeof(msg), "'%s' is already declared in this block", name);
+        const char *hints[] = {"Give it another name, or declare it in a nested block", NULL};
+        // Parameters and the names of one destructuring share the token of their declaration.
+        DiagnosticNote note = {earlier->decl_token, "declared here"};
+        tc_error_stopping_build(tc, t, msg, hints,
+                                earlier->decl_token.start != t.start ? &note : NULL);
+    }
     LocalCName *local = tc->c_function && name
                             ? local_c_name(tc, tc->c_function, t.start, name, reads, read_count)
                             : NULL;
