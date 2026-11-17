@@ -39,8 +39,7 @@ static void emit_alternative_condition(ParserContext *ctx, MatchPattern *p, int 
         break;
     case PATTERN_NAME:
     {
-        EnumVariantReg *reg = p->name.scope ? find_enum_variant_of(ctx, p->name.scope, p->name.name)
-                                            : find_enum_variant(ctx, p->name.name);
+        EnumVariantReg *reg = pattern_variant(ctx, p);
         if (!reg)
         {
             // A constant, not a variant.

@@ -1,0 +1,43 @@
+// language/features/match: test_match_variant_of_subject
+// A variant written without its enum (`Red`) is the one of the matched value's enum, also when
+// another enum, declared before or after, has a variant of the same name at another position.
+import "std/io.zc"
+
+enum Light { Red, Green }
+enum Fruit { Apple, Orange, Red }
+
+enum Shape { Dot, Circle(int), Square(int) }
+enum Tool { Square(int), Circle(int) }
+
+fn light_code(l: Light) -> int {
+    match l {
+        Red => { return 1; },
+        Green => { return 2; },
+    }
+}
+
+fn fruit_code(f: Fruit) -> int {
+    match f {
+        Apple => { return 1; },
+        Orange => { return 2; },
+        Red => { return 3; },
+    }
+}
+
+fn shape_size(s: Shape) -> int {
+    match s {
+        Dot => { return 0; },
+        Circle(r) => { return r; },
+        Square(side) => { return side * 10; },
+    }
+}
+
+test "a bare variant is the one of the matched value's enum" {
+    assert(light_code(Light::Red) == 1, "Light::Red");
+    assert(light_code(Light::Green) == 2, "Light::Green");
+    assert(fruit_code(Fruit::Red) == 3, "Fruit::Red");
+    assert(fruit_code(Fruit::Apple) == 1, "Fruit::Apple");
+    assert(shape_size(Shape::Circle(4)) == 4, "Shape::Circle");
+    assert(shape_size(Shape::Square(2)) == 20, "Shape::Square");
+    assert(shape_size(Shape::Dot) == 0, "Shape::Dot");
+}

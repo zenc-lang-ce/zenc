@@ -417,6 +417,15 @@ static int match_covers(ASTNode *match, const char *variant)
     return 0;
 }
 
+EnumVariantReg *pattern_variant(ParserContext *ctx, MatchPattern *p)
+{
+    if (p->kind != PATTERN_NAME || !p->variant.member)
+    {
+        return NULL;
+    }
+    return find_enum_variant_of(ctx, type_def_name(p->variant.owner), p->variant.member);
+}
+
 Type *match_subject_type(Type *scrutinee)
 {
     Type *t = get_inner_type(scrutinee);
@@ -480,12 +489,7 @@ const char *match_missing_variant(ParserContext *ctx, ASTNode *match, Type *scru
     {
         for (MatchPattern *p = c->match_case.patterns; p && !enum_name; p = p->next)
         {
-            EnumVariantReg *reg = NULL;
-            if (p->kind == PATTERN_NAME)
-            {
-                reg = p->name.scope ? find_enum_variant_of(ctx, p->name.scope, p->name.name)
-                                    : find_enum_variant(ctx, p->name.name);
-            }
+            EnumVariantReg *reg = pattern_variant(ctx, p);
             enum_name = reg ? reg->enum_name : NULL;
         }
     }

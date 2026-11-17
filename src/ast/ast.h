@@ -262,6 +262,8 @@ typedef struct MatchPattern
     Token name_token;   ///< PATTERN_NAME: where the name is written, for the language server.
     Token scope_token;  ///< PATTERN_NAME: where the last part of its scope is (`Color` of
                         ///< `Color::Red`).
+    TypeMember variant; ///< PATTERN_NAME: the enum variant it names, which the typechecker
+                        ///< resolves (match_pattern_variant); no member for a constant.
     char *literal;      ///< PATTERN_LITERAL: the literal, as written.
     char *range_start;  ///< PATTERN_RANGE: the start, as written.
     char *range_end;    ///< PATTERN_RANGE: the end, as written.

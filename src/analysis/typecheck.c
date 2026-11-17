@@ -60,6 +60,46 @@ static void return_target(ParserContext *ctx, ASTNode *from, const char **name, 
     *type = from->func.ret_type_info;
 }
 
+// The enum variant each name of the match's patterns stands for (MatchPattern.variant): in the
+// enum its scope names (`Light::Red`), else in the matched value's enum (`Red` in a match on a
+// `Light`), else, when that type is not known, the first variant of that name. A name that is
+// none is a constant.
+static void resolve_pattern_variants(ParserContext *ctx, ASTNode *match)
+{
+    Type *subject = match_subject_type(match->match_stmt.expr->type_info);
+    for (ASTNode *c = match->match_stmt.cases; c; c = c->next)
+    {
+        for (MatchPattern *p = c->match_case.patterns; p; p = p->next)
+        {
+            if (p->kind != PATTERN_NAME)
+            {
+                continue;
+            }
+            Type *owner = NULL;
+            EnumVariantReg *reg = NULL;
+            if (p->name.scope)
+            {
+                reg = find_enum_variant_of(ctx, p->name.scope, p->name.name);
+            }
+            else if (subject && subject->kind != TYPE_UNKNOWN &&
+                     (reg = find_enum_variant_of(ctx, type_def_name(subject), p->name.name)))
+            {
+                owner = subject;
+            }
+            else
+            {
+                reg = find_enum_variant(ctx, p->name.name);
+            }
+            if (reg)
+            {
+                p->variant.owner = owner ? owner : type_new_enum(reg->enum_name);
+                p->variant.member = p->name.name;
+                p->variant.token = p->name_token;
+            }
+        }
+    }
+}
+
 // Type of the `index`-th of `count` bindings of a match case, read from the
 // payload of the variant the pattern names. NULL when it cannot be told (not an
 // enum, unknown variant, unresolved generic): the caller keeps UNSAFE_ANY.
@@ -409,6 +449,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
     }
     case NODE_MATCH:
         check_node(tc, node->match_stmt.expr, depth + 1);
+        resolve_pattern_variants(tc->pctx, node);
         misra_check_match_stmt(tc->pctx, node);
         // Visit each match case
         {
