@@ -191,7 +191,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     mark_type_as_used(tc, node->func.ret_type_info);
 
     // Rule Zen 1.4: Reserved identifiers
-    misra_check_reserved_identifier(tc->pctx, node->func.name, node->token);
+    misra_check_reserved_identifier(tc->pctx, function_c_name(node), node->token);
 
     tc->current_func = node;
     tc->returns_from = node;
@@ -243,7 +243,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     int is_void = !ret_type || ret_type->kind == TYPE_VOID;
 
     // Special case: 'main' is allowed to fall off the end (C99 implicit return 0)
-    int is_main = node->func.name && strcmp(node->func.name, "main") == 0;
+    int is_main = function_c_name(node) && strcmp(function_c_name(node), "main") == 0;
 
     if (is_main && is_void)
     {
@@ -260,7 +260,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
         {
             char msg[MAX_SHORT_MSG_LEN];
             snprintf(msg, sizeof(msg), "Function '%s' may not return a value on all code paths",
-                     node->func.name);
+                     function_c_name(node));
 
             const char *hints[] = {"Ensure all execution paths return a value",
                                    "Consider adding a default return at the end of the function",
@@ -307,9 +307,9 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     if (tc->pctx->config->misra_mode && tc->func_return_count > 1)
     {
         char msg[MAX_ERROR_MSG_LEN];
-        snprintf(msg, sizeof(msg),
-                 "MISRA Rule 15.5: function '%s' has %d return points (must have 1)",
-                 node->func.name ? node->func.name : "anonymous", tc->func_return_count);
+        snprintf(
+            msg, sizeof(msg), "MISRA Rule 15.5: function '%s' has %d return points (must have 1)",
+            function_c_name(node) ? function_c_name(node) : "anonymous", tc->func_return_count);
         tc_error(tc, node->token, msg);
     }
 

@@ -744,7 +744,7 @@ static int offered_by_name(Token t, const char *name)
 // an alias); NULL for a node that declares no global name.
 static const char *parsed_name(ASTNode *node)
 {
-    return node->kind == NODE_FUNCTION                               ? node->func.name
+    return node->kind == NODE_FUNCTION                               ? function_c_name(node)
            : node->kind == NODE_STRUCT                               ? node->strct.name
            : node->kind == NODE_ENUM                                 ? node->enm.name
            : node->kind == NODE_TRAIT                                ? node->trait.name
@@ -2304,7 +2304,7 @@ static const char *declaration_name(ASTNode *node, LspSymbolKind *kind)
     if (node->kind == NODE_FUNCTION)
     {
         *kind = LSP_SYMBOL_FUNCTION;
-        return node->func.name;
+        return function_c_name(node);
     }
     if (node->kind == NODE_STRUCT)
     {

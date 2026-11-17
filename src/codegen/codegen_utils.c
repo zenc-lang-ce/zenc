@@ -301,7 +301,7 @@ void emit_rvalue_address(ParserContext *ctx, ASTNode *expr)
 static int may_be_internal(ParserContext *ctx, ASTNode *func, const char *c_function_name)
 {
     return !func->func.is_export && !func->func.is_extern && !func->link_name && !func->func.weak &&
-           strcmp(func->func.name, "main") != 0 &&
+           strcmp(function_c_name(func), "main") != 0 &&
            !c_headers_declare_function(ctx, c_function_name);
 }
 
@@ -309,7 +309,7 @@ static int may_be_internal(ParserContext *ctx, ASTNode *func, const char *c_func
 static const char *func_c_name(ParserContext *ctx, ASTNode *func, const char *name_override)
 {
     return func->link_name ? func->link_name
-                           : c_name(ctx, name_override ? name_override : func->func.name);
+                           : c_name(ctx, name_override ? name_override : function_c_name(func));
 }
 
 // Whether the program reaches `func` only through calls by its name, which the C shows: it is
@@ -380,7 +380,8 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
     }
 
     // Emit MISRA static linkage
-    if (ctx->config->misra_mode && !func->func.is_export && strcmp(func->func.name, "main") != 0)
+    if (ctx->config->misra_mode && !func->func.is_export &&
+        strcmp(function_c_name(func), "main") != 0)
     {
         EMIT(ctx, "static ");
     }

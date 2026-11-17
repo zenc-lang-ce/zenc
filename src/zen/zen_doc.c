@@ -196,13 +196,13 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
         {
             // The title as programs write the name (`geo::helper`), the signature as declared.
             printf("\n## function `%s`\n",
-                   node->func.written_name ? node->func.written_name : node->func.name);
+                   node->func.written_name ? node->func.written_name : function_c_name(node));
             if (node->doc_comment)
             {
                 print_markdown_doc(node->doc_comment);
             }
 
-            print_signature(ctx, node, node->func.name);
+            print_signature(ctx, node, function_c_name(node));
             break;
         }
 

@@ -361,7 +361,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
 
         if (tc->pctx->config->misra_mode && tc->current_func)
         {
-            if (strcmp(func_name, tc->current_func->func.name) == 0)
+            if (strcmp(func_name, function_c_name(tc->current_func)) == 0)
             {
                 Token t = node->call.callee->token;
                 if (t.line == 0)
@@ -435,7 +435,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                     ASTNode *method = trait_def->trait.methods;
                     while (method)
                     {
-                        if (strcmp(method->func.name, node->call.callee->member.field) == 0)
+                        if (strcmp(function_c_name(method), node->call.callee->member.field) == 0)
                         {
                             // Correctly resolve return type for trait method
                             node->type_info = method->func.ret_type_info;
@@ -490,7 +490,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
                 char msg[MAX_SHORT_MSG_LEN];
                 snprintf(msg, sizeof(msg),
                          "Pure function '%s' cannot call non-pure or dynamic function '%s'",
-                         tc->current_func->func.name, func_name ? func_name : "unknown");
+                         function_c_name(tc->current_func), func_name ? func_name : "unknown");
                 const char *hints[] = {
                     "Mark the called function as @pure, or remove @pure from the caller", NULL};
                 tc_error_with_hints(tc, node->call.callee->token, msg, hints);

@@ -215,7 +215,8 @@ ASTNode *find_function_definition(ParserContext *ctx, const char *name)
     StructRef *curr = ctx->parsed_funcs_list;
     while (curr)
     {
-        if (curr->node && curr->node->func.name && strcmp(curr->node->func.name, name) == 0)
+        if (curr->node && function_c_name(curr->node) &&
+            strcmp(function_c_name(curr->node), name) == 0)
         {
             return curr->node;
         }

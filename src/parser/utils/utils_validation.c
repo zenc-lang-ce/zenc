@@ -328,12 +328,12 @@ static int defined_functions_add(DefinedFunctions *set, const char *name)
 static void check_function_definition(ASTNode *f, const char *owner, DefinedFunctions *set,
                                       int *errors)
 {
-    if (f->kind != NODE_FUNCTION || !f->func.body || !f->func.name ||
+    if (f->kind != NODE_FUNCTION || !f->func.body || !function_c_name(f) ||
         f->func.generic_param_count > 0 || f->cfg_condition)
     {
         return;
     }
-    if (defined_functions_add(set, f->func.name))
+    if (defined_functions_add(set, function_c_name(f)))
     {
         return;
     }
@@ -344,7 +344,7 @@ static void check_function_definition(ASTNode *f, const char *owner, DefinedFunc
     }
     else
     {
-        zerror_at(f->token, "Redefinition of function '%s'", f->func.name);
+        zerror_at(f->token, "Redefinition of function '%s'", function_c_name(f));
     }
     (*errors)++;
 }

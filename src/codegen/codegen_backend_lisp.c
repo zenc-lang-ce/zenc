@@ -1155,7 +1155,7 @@ static void lemit_func(ParserContext *ctx, ASTNode *node, int depth, int *first)
     }
     *first = 0;
 
-    const char *raw_n = node->func.name ? node->func.name : "anon";
+    const char *raw_n = function_c_name(node) ? function_c_name(node) : "anon";
     static char fname_buf[LISP_FNAME_BUF];
     // Strip mangled prefix: Vec__int32_t__push -> push, then add _z_ prefix
     const char *last_du = NULL;
@@ -1429,11 +1429,11 @@ static void lemit_root(ParserContext *ctx, ASTNode *root, int depth)
     // User-defined functions from root
     for (ASTNode *c = root->root.children; c; c = c->next)
     {
-        if (c->kind == NODE_FUNCTION && c->func.name && ecount < MAX_EMITTED_NAMES)
+        if (c->kind == NODE_FUNCTION && function_c_name(c) && ecount < MAX_EMITTED_NAMES)
         {
             lemit_func(ctx, c, depth, &first);
-            emitted_names[ecount++] = c->func.name;
-            if (strcmp(c->func.name, "main") == 0)
+            emitted_names[ecount++] = function_c_name(c);
+            if (strcmp(function_c_name(c), "main") == 0)
             {
                 has_main = 1;
             }
@@ -1453,12 +1453,13 @@ static void lemit_root(ParserContext *ctx, ASTNode *root, int depth)
             int inner_first = 1;
             for (ASTNode *ic = c->import_stmt.module_root; ic; ic = ic->next)
             {
-                if (ic->kind == NODE_FUNCTION && ic->func.name && ecount < MAX_EMITTED_NAMES &&
-                    !lisp_func_emitted(ctx, ic->func.name, emitted_names, ecount))
+                if (ic->kind == NODE_FUNCTION && function_c_name(ic) &&
+                    ecount < MAX_EMITTED_NAMES &&
+                    !lisp_func_emitted(ctx, function_c_name(ic), emitted_names, ecount))
                 {
                     lemit_func(ctx, ic, depth, &inner_first);
-                    emitted_names[ecount++] = ic->func.name;
-                    if (strcmp(ic->func.name, "main") == 0)
+                    emitted_names[ecount++] = function_c_name(ic);
+                    if (strcmp(function_c_name(ic), "main") == 0)
                     {
                         has_main = 1;
                     }
@@ -1479,13 +1480,13 @@ static void lemit_root(ParserContext *ctx, ASTNode *root, int depth)
     // Instantiated functions (monomorphized)
     for (ASTNode *f = ctx->instantiated_funcs; f; f = f->next)
     {
-        if (f->kind == NODE_FUNCTION && f->func.name && ecount < MAX_EMITTED_NAMES)
+        if (f->kind == NODE_FUNCTION && function_c_name(f) && ecount < MAX_EMITTED_NAMES)
         {
-            if (!lisp_func_emitted(ctx, f->func.name, emitted_names, ecount))
+            if (!lisp_func_emitted(ctx, function_c_name(f), emitted_names, ecount))
             {
                 lemit_func(ctx, f, depth, &first);
-                emitted_names[ecount++] = f->func.name;
-                if (strcmp(f->func.name, "main") == 0)
+                emitted_names[ecount++] = function_c_name(f);
+                if (strcmp(function_c_name(f), "main") == 0)
                 {
                     has_main = 1;
                 }
@@ -1496,11 +1497,11 @@ static void lemit_root(ParserContext *ctx, ASTNode *root, int depth)
             ASTNode *m = (f->kind == NODE_IMPL) ? f->impl.methods : f->impl_trait.methods;
             while (m)
             {
-                if (m->kind == NODE_FUNCTION && m->func.name && ecount < MAX_EMITTED_NAMES &&
-                    !lisp_func_emitted(ctx, m->func.name, emitted_names, ecount))
+                if (m->kind == NODE_FUNCTION && function_c_name(m) && ecount < MAX_EMITTED_NAMES &&
+                    !lisp_func_emitted(ctx, function_c_name(m), emitted_names, ecount))
                 {
                     lemit_func(ctx, m, depth, &first);
-                    emitted_names[ecount++] = m->func.name;
+                    emitted_names[ecount++] = function_c_name(m);
                 }
                 m = m->next;
             }

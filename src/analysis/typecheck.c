@@ -1317,7 +1317,7 @@ static void infer_node_lifetime(TypeChecker *tc, ASTNode *node)
         return;
     }
 
-    FuncSig *fsig = find_func(tc->pctx, node->func.name);
+    FuncSig *fsig = find_func(tc->pctx, function_c_name(node));
     if (!fsig)
     {
         return;

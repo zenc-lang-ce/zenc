@@ -1720,6 +1720,16 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
     }
 }
 
+char *function_c_name(ASTNode *fn)
+{
+    if (!fn || !fn->func.name)
+    {
+        return NULL;
+    }
+    return fn->func.is_module_prefixed ? mangle_module_symbol(fn->func.module_prefix, fn->func.name)
+                                       : fn->func.name;
+}
+
 Type *get_inner_type(Type *t)
 {
     while (t && t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)

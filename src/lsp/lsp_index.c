@@ -465,7 +465,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
             char hover[MAX_SHORT_MSG_LEN * 4];
             if (!lsp_function_signature(node->token, hover, sizeof(hover)))
             {
-                const char *name = node->func.name ? node->func.name : "unknown";
+                const char *name = function_c_name(node) ? function_c_name(node) : "unknown";
                 const char *ret = node->func.ret_type_info
                                       ? zen_c_type_spelling(ctx, node->func.ret_type_info)
                                       : "void";

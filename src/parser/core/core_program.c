@@ -507,14 +507,14 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
             s->func.cuda_host = attrs.cuda_host;
             s->func.attributes = attrs.custom_attributes;
 
-            if (attrs.is_deprecated && s->func.name)
+            if (attrs.is_deprecated && function_c_name(s))
             {
-                register_deprecated_func(ctx, s->func.name, attrs.deprecated_msg);
+                register_deprecated_func(ctx, function_c_name(s), attrs.deprecated_msg);
             }
 
-            if ((attrs.is_required || attrs.is_pure) && s->func.name)
+            if ((attrs.is_required || attrs.is_pure) && function_c_name(s))
             {
-                FuncSig *sig = find_func(ctx, s->func.name);
+                FuncSig *sig = find_func(ctx, function_c_name(s));
                 if (sig)
                 {
                     if (attrs.is_required)

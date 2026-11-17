@@ -207,9 +207,9 @@ static int cmd_show(ReplState *state, const char *args)
 
     for (ASTNode *n = search; n; n = n->next)
     {
-        if (n->kind == NODE_FUNCTION && 0 == strcmp(n->func.name, name))
+        if (n->kind == NODE_FUNCTION && 0 == strcmp(function_c_name(n), name))
         {
-            printf("  fn %s(", n->func.name);
+            printf("  fn %s(", function_c_name(n));
             for (int i = 0; i < n->func.count; i++)
             {
                 char *t =
@@ -621,7 +621,7 @@ static int cmd_vars_funcs_structs(ReplState *state, const char *args)
         ASTNode *main_func = NULL;
         for (ASTNode *n = search; n; n = n->next)
         {
-            if (n->kind == NODE_FUNCTION && 0 == strcmp(n->func.name, "main"))
+            if (n->kind == NODE_FUNCTION && 0 == strcmp(function_c_name(n), "main"))
             {
                 main_func = n;
                 break;
@@ -773,9 +773,9 @@ static int cmd_vars_funcs_structs(ReplState *state, const char *args)
         int found = 0;
         for (ASTNode *n = search; n; n = n->next)
         {
-            if (n->kind == NODE_FUNCTION && 0 != strcmp(n->func.name, "main"))
+            if (n->kind == NODE_FUNCTION && 0 != strcmp(function_c_name(n), "main"))
             {
-                printf("  fn %s()\n", n->func.name);
+                printf("  fn %s()\n", function_c_name(n));
                 found = 1;
             }
         }

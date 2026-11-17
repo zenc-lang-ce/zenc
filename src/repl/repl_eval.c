@@ -406,7 +406,7 @@ void repl_update_symbols(ReplState *state)
     {
         if (n->kind == NODE_FUNCTION)
         {
-            repl_add_symbol(state, n->func.name);
+            repl_add_symbol(state, function_c_name(n));
         }
         else if (n->kind == NODE_STRUCT)
         {

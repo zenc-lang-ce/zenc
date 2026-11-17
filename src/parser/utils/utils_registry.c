@@ -470,7 +470,7 @@ static const char *declaration_c_name(ASTNode *decl)
     switch (decl->kind)
     {
     case NODE_FUNCTION:
-        return decl->func.name;
+        return function_c_name(decl);
     case NODE_STRUCT:
         return decl->strct.name;
     case NODE_ENUM:

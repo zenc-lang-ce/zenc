@@ -979,7 +979,7 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         ASTNode *chk = merged_funcs;
         while (chk)
         {
-            if (chk->kind == NODE_FUNCTION && strcmp(chk->func.name, "main") == 0)
+            if (chk->kind == NODE_FUNCTION && strcmp(function_c_name(chk), "main") == 0)
             {
                 has_user_main = 1;
                 break;
