@@ -108,9 +108,11 @@ int is_fixed_size_array(Type *t);
  */
 int expr_names_var(ASTNode *expr, const char *name);
 /**
- * @brief Emits `<type> _z_init_N = <expr>; ` and returns the temporary's name. A declaration whose
- *        initializer names the variable it declares reads it from there: C puts a variable in
- *        scope at the end of its declarator, so in `T x = x + 1` the `x` on the right is the new x.
+ * @brief Emits `ZC_AUTO _z_init_N = <expr>; ` and returns the temporary's name. A
+ *        `for` header that names the variable it declares reads it from there: C puts a variable
+ *        in scope at the end of its declarator, so in `for (ZC_AUTO i = 0; i < i; i++)` both are
+ *        the new i. The temporary has the C type of the expression, with its integer promotions
+ *        (`i + 10` of a `u8` is an `int`), as the header would compute it.
  */
 char *emit_init_temp(ParserContext *ctx, ASTNode *expr);
 /**

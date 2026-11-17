@@ -250,11 +250,15 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         // header of `for (T i = <start>; i < <end>; i += <step>)` is the loop variable, not the
         // one it shadows (`for i in 0..i`). A bound or a step that names it is evaluated into a
         // temporary first, in a block around the loop, while `i` still names the shadowed one.
+        // The start is evaluated before the end, as in the loop; an end that names the loop
+        // variable is then evaluated once, not before each check. The step is the text of one
+        // token, or of `-` and one token.
         const char *var = node->for_range.var_name;
         const char *step = node->for_range.step;
-        int start_names_var = expr_names_var(node->for_range.start, var);
+        const char *step_name = (step && step[0] == '-') ? step + 1 : step;
         int end_names_var = expr_names_var(node->for_range.end, var);
-        int step_names_var = step && strcmp(step, var) == 0;
+        int start_names_var = end_names_var || expr_names_var(node->for_range.start, var);
+        int step_names_var = step_name && strcmp(step_name, var) == 0;
         int hoist = start_names_var || end_names_var || step_names_var;
         char *start_temp = NULL;
         char *end_temp = NULL;
@@ -274,10 +278,16 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             }
             if (step_names_var)
             {
-                // The step is the text of one token, not an expression: here, the name.
                 step_temp = xmalloc(32);
                 snprintf(step_temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
-                EMIT(ctx, "__typeof__((%s)) %s = %s; ", step, step_temp, step);
+                if (z_path_match_compiler(ctx->config->cc, "tcc"))
+                {
+                    EMIT(ctx, "__typeof__((%s)) %s = %s; ", step, step_temp, step);
+                }
+                else
+                {
+                    EMIT(ctx, "ZC_AUTO %s = %s; ", step_temp, step);
+                }
             }
         }
 

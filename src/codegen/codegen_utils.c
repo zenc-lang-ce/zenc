@@ -98,8 +98,17 @@ char *emit_init_temp(ParserContext *ctx, ASTNode *expr)
 {
     char *temp = xmalloc(32);
     snprintf(temp, 32, "_z_init_%d", ctx->cg.tmp_counter++);
-    emit_auto_type(ctx, expr, expr->token);
-    EMIT(ctx, " %s = ", temp);
+    if (z_path_match_compiler(ctx->config->cc, "tcc"))
+    {
+        // tcc has no __auto_type: the expression is written twice, once unevaluated.
+        EMIT(ctx, "__typeof__((");
+        codegen_expression(ctx, expr);
+        EMIT(ctx, ")) %s = ", temp);
+    }
+    else
+    {
+        EMIT(ctx, "ZC_AUTO %s = ", temp);
+    }
     codegen_expression(ctx, expr);
     EMIT(ctx, "; ");
     return temp;
