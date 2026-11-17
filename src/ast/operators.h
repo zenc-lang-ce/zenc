@@ -15,6 +15,7 @@
 #ifndef OPERATORS_H
 #define OPERATORS_H
 
+#include "compat/c23_compat.h"
 #include <stddef.h>
 
 typedef enum
@@ -99,7 +100,7 @@ typedef struct
 } OperatorInfo;
 
 /** @brief The entry of `kind` in the table; NULL for OP_NONE. */
-const OperatorInfo *operator_info(OperatorKind kind);
+ZEN_CONST const OperatorInfo *operator_info(OperatorKind kind);
 
 /** @brief The binary operator written `text` (`len` bytes, not necessarily terminated). */
 OperatorKind binary_operator_from_text(const char *text, size_t len);
