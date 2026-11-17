@@ -92,3 +92,99 @@ test "a labeled range that names the loop variable reads the shadowed variable" 
     }
     expect_eq(count, 5, "the outer loop should run 3 times and skip one inner step");
 }
+
+test "a negated step that names the loop variable reads the shadowed variable" {
+    let i = 2;
+    let count = 0;
+    let sum = 0;
+    for i in 9..0 step -i {
+        count = count + 1;
+        sum = sum + i;
+        if count == LIMIT { break; }
+    }
+    expect_eq(count, 5, "9..0 step -i should run 5 times when the shadowed i is 2");
+    expect_eq(sum, 25, "9..0 step -i should visit 9, 7, 5, 3 and 1");
+}
+
+test "a bound that names the loop variable has the type it has without the shadow" {
+    let i: u8 = 250;
+    let shadowed = 0;
+    for i in 0..i + 10 {
+        shadowed = shadowed + 1;
+        if shadowed == 1000 { break; }
+    }
+    let k: u8 = 250;
+    let plain = 0;
+    for j in 0..k + 10 {
+        plain = plain + 1;
+        if plain == 1000 { break; }
+    }
+    expect_eq(plain, 260, "0..k + 10 should run 260 times when k is a u8 of 250");
+    expect_eq(shadowed, plain, "0..i + 10 should run as many times as the same range without the shadow");
+}
+
+let calls = 0;
+
+fn logged(v: int) -> int {
+    calls = calls * 10 + v;
+    return v;
+}
+
+test "bounds that name the loop variable are evaluated start first, the end once" {
+    let n = 3;
+    calls = 0;
+    for m in logged(1)..logged(n) {
+        if m > LIMIT { break; }
+    }
+    expect_eq(calls, 1333, "logged(1)..logged(n) should evaluate the start once, then the end before each of its 3 checks");
+    calls = 0;
+    for n in logged(1)..logged(n) {
+        if n > LIMIT { break; }
+    }
+    expect_eq(calls, 13, "an end that names the loop variable should be evaluated once, after the start");
+}
+
+fn three() -> int {
+    return 3;
+}
+
+test "an end that calls a function named as the loop variable calls the function" {
+    let count = 0;
+    for three in 0..three() {
+        count = count + 1;
+        if count == LIMIT { break; }
+    }
+    expect_eq(count, 3, "0..three() should run 3 times");
+}
+
+test "an end that indexes an array named as the loop variable reads the array" {
+    let i = [1, 2, 4];
+    let count = 0;
+    for i in 0..i[2] {
+        count = count + 1;
+        if count == LIMIT { break; }
+    }
+    expect_eq(count, 4, "0..i[2] should run 4 times when the shadowed i[2] is 4");
+}
+
+enum Boxed {
+    Num(int),
+    Nothing
+}
+
+test "a match binding named as the loop variable in a bound reads the binding" {
+    let i = 10;
+    let o = Boxed::Num(3);
+    let count = 0;
+    for i in 0..match o { Boxed::Num(i) => i, _ => 0 } {
+        count = count + 1;
+        if count == LIMIT { break; }
+    }
+    expect_eq(count, 3, "the binding i of the arm should be 3, not the shadowed 10");
+    count = 0;
+    for i in 0..match o { Boxed::Num(i) => (fn() -> int { return i; })(), _ => 0 } {
+        count = count + 1;
+        if count == LIMIT { break; }
+    }
+    expect_eq(count, 3, "a lambda in the arm should capture the binding i, not the shadowed 10");
+}

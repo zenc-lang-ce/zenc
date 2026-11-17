@@ -56,3 +56,19 @@ test "a labeled loop whose initializer names the loop variable reads the shadowe
     }
     expect_eq(count, 5, "the outer loop should run 3 times and skip one inner step");
 }
+
+enum Boxed {
+    Num(int),
+    Nothing
+}
+
+test "a match binding named as the loop variable in the initializer reads the binding" {
+    let i = 10;
+    let o = Boxed::Num(3);
+    let count = 0;
+    for (let i = match o { Boxed::Num(i) => i, _ => 0 }; i < 6; i = i + 1) {
+        count = count + 1;
+        if count == LIMIT { break; }
+    }
+    expect_eq(count, 3, "the binding i of the arm should be 3, not the shadowed 10");
+}
