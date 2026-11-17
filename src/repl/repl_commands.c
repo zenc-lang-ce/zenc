@@ -224,9 +224,9 @@ static int cmd_show(ReplState *state, const char *args)
             found = 1;
             break;
         }
-        else if (n->kind == NODE_STRUCT && 0 == strcmp(n->strct.name, name))
+        else if (n->kind == NODE_STRUCT && 0 == strcmp(declared_type_c_name(n), name))
         {
-            printf("  struct %s {\n", n->strct.name);
+            printf("  struct %s {\n", declared_type_c_name(n));
             for (ASTNode *field = n->strct.fields; field; field = field->next)
             {
                 if (field->kind == NODE_FIELD)
@@ -792,7 +792,7 @@ static int cmd_vars_funcs_structs(ReplState *state, const char *args)
         {
             if (n->kind == NODE_STRUCT)
             {
-                printf("  struct %s\n", n->strct.name);
+                printf("  struct %s\n", declared_type_c_name(n));
                 found = 1;
             }
         }

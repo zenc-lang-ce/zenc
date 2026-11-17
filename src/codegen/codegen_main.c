@@ -256,11 +256,11 @@ static ASTNode *topo_sort_structs(ASTNode *head)
                 const char *dep_name = NULL;
                 if (nodes[j]->kind == NODE_STRUCT)
                 {
-                    dep_name = nodes[j]->strct.name;
+                    dep_name = declared_type_c_name(nodes[j]);
                 }
                 else if (nodes[j]->kind == NODE_ENUM)
                 {
-                    dep_name = nodes[j]->enm.name;
+                    dep_name = declared_type_c_name(nodes[j]);
                 }
 
                 if (dep_name && node_deps_match(&deps[i], dep_name))
@@ -416,7 +416,7 @@ static void emit_raw_statements_internal(ParserContext *ctx, ASTNode *node,
 // The Zen C name of the struct or enum node `s`.
 static const char *type_node_name(ASTNode *s)
 {
-    return s->kind == NODE_ENUM ? s->enm.name : s->strct.name;
+    return s->kind == NODE_ENUM ? declared_type_c_name(s) : declared_type_c_name(s);
 }
 
 // The name of the struct or enum node `s` in C: its `@link_name`, if it has one.
@@ -759,9 +759,10 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
                 {
                     if (chk->kind == k->kind)
                     {
-                        const char *n1 = (k->kind == NODE_STRUCT) ? k->strct.name : k->enm.name;
-                        const char *n2 =
-                            (chk->kind == NODE_STRUCT) ? chk->strct.name : chk->enm.name;
+                        const char *n1 = (k->kind == NODE_STRUCT) ? declared_type_c_name(k)
+                                                                  : declared_type_c_name(k);
+                        const char *n2 = (chk->kind == NODE_STRUCT) ? declared_type_c_name(chk)
+                                                                    : declared_type_c_name(chk);
                         if (n1 && n2 && strcmp(n1, n2) == 0)
                         {
                             found = 1;

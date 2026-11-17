@@ -497,7 +497,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
         else if (node->kind == NODE_STRUCT)
         {
             char hover[MAX_SHORT_MSG_LEN];
-            const char *name = node->strct.name ? node->strct.name : "unknown";
+            const char *name = declared_type_c_name(node) ? declared_type_c_name(node) : "unknown";
             snprintf(hover, sizeof(hover), "%sstruct %s", node->strct.is_opaque ? "opaque " : "",
                      name);
             lsp_index_add_def(idx, node->token, DECLARATION_STRUCT, hover, node);
@@ -520,7 +520,7 @@ static void lsp_walk_node(ParserContext *ctx, LSPIndex *idx, ASTNode *node, int 
         else if (node->kind == NODE_ENUM)
         {
             char hover[MAX_SHORT_MSG_LEN];
-            const char *name = node->enm.name ? node->enm.name : "unknown";
+            const char *name = declared_type_c_name(node) ? declared_type_c_name(node) : "unknown";
             snprintf(hover, sizeof(hover), "enum %s", name);
             lsp_index_add_def(idx, node->token, DECLARATION_ENUM, hover, node);
 

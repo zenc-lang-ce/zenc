@@ -170,7 +170,8 @@ static int implements_drop(ParserContext *ctx, ASTNode *node)
     {
         return 0;
     }
-    const char *name = node->kind == NODE_STRUCT ? node->strct.name : node->enm.name;
+    const char *name =
+        node->kind == NODE_STRUCT ? declared_type_c_name(node) : declared_type_c_name(node);
     const char *tpl = NULL;
     for (Instantiation *inst = ctx->instantiations; inst && !tpl; inst = inst->next)
     {

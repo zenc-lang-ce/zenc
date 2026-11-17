@@ -26,13 +26,13 @@ void add_to_struct_list(ParserContext *ctx, ASTNode *node)
     r->next = ctx->parsed_structs_list;
     ctx->parsed_structs_list = r;
     // The parser adds a struct before it has a name; it registers the name once it has one.
-    if (node->kind == NODE_STRUCT && node->strct.name)
+    if (node->kind == NODE_STRUCT && declared_type_c_name(node))
     {
-        register_named_type(ctx, node->strct.name, node);
+        register_named_type(ctx, declared_type_c_name(node), node);
     }
-    else if (node->kind == NODE_ENUM && node->enm.name)
+    else if (node->kind == NODE_ENUM && declared_type_c_name(node))
     {
-        register_named_type(ctx, node->enm.name, node);
+        register_named_type(ctx, declared_type_c_name(node), node);
     }
 }
 
@@ -116,9 +116,9 @@ void add_to_enum_list(ParserContext *ctx, ASTNode *node)
     r->node = node;
     r->next = ctx->parsed_enums_list;
     ctx->parsed_enums_list = r;
-    if (node->enm.name)
+    if (declared_type_c_name(node))
     {
-        register_named_type(ctx, node->enm.name, node);
+        register_named_type(ctx, declared_type_c_name(node), node);
     }
 }
 
@@ -472,9 +472,9 @@ static const char *declaration_c_name(ASTNode *decl)
     case NODE_FUNCTION:
         return function_c_name(decl);
     case NODE_STRUCT:
-        return decl->strct.name;
+        return declared_type_c_name(decl);
     case NODE_ENUM:
-        return decl->enm.name;
+        return declared_type_c_name(decl);
     case NODE_TRAIT:
         return decl->trait.name;
     case NODE_TYPE_ALIAS:

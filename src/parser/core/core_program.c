@@ -301,7 +301,7 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                     s = parse_struct(ctx, l, 0, 1, 1, attrs.link_name, attrs.is_export);
                     if (s && s->kind == NODE_STRUCT)
                     {
-                        register_extern_symbol(ctx, s->strct.name);
+                        register_extern_symbol(ctx, declared_type_c_name(s));
                     }
                 }
                 else if ((peek.kind == TOK_IDENT && peek.len == 5 &&
@@ -312,7 +312,7 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                     s = parse_struct(ctx, l, 1, 1, 1, attrs.link_name, attrs.is_export);
                     if (s && s->kind == NODE_STRUCT)
                     {
-                        register_extern_symbol(ctx, s->strct.name);
+                        register_extern_symbol(ctx, declared_type_c_name(s));
                     }
                 }
                 else if (report_extern_with_kind(l))
@@ -537,9 +537,9 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
             {
                 s->strct.align = attrs.align;
             }
-            if (attrs.is_deprecated && s->strct.name)
+            if (attrs.is_deprecated && declared_type_c_name(s))
             {
-                register_deprecated_func(ctx, s->strct.name, attrs.deprecated_msg);
+                register_deprecated_func(ctx, declared_type_c_name(s), attrs.deprecated_msg);
             }
             if (attrs.derived_count > 0)
             {

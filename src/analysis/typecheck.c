@@ -639,7 +639,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
     case NODE_TYPE_ALIAS:
         if (node->kind == NODE_STRUCT)
         {
-            misra_check_reserved_identifier(tc->pctx, node->strct.name, node->token);
+            misra_check_reserved_identifier(tc->pctx, declared_type_c_name(node), node->token);
             misra_check_struct_decl(tc->pctx, node);
             if (node->strct.is_union)
             {
@@ -648,7 +648,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         }
         else if (node->kind == NODE_ENUM)
         {
-            misra_check_reserved_identifier(tc->pctx, node->enm.name, node->token);
+            misra_check_reserved_identifier(tc->pctx, declared_type_c_name(node), node->token);
         }
         else if (node->kind == NODE_TYPE_ALIAS)
         {

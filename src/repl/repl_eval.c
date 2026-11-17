@@ -410,7 +410,7 @@ void repl_update_symbols(ReplState *state)
         }
         else if (n->kind == NODE_STRUCT)
         {
-            repl_add_symbol(state, n->strct.name);
+            repl_add_symbol(state, declared_type_c_name(n));
         }
     }
     zfree(code);

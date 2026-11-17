@@ -208,15 +208,15 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
 
         case NODE_STRUCT:
         {
-            printf("\n## struct `%s`\n",
-                   node->strct.written_name ? node->strct.written_name : node->strct.name);
+            printf("\n## struct `%s`\n", node->strct.written_name ? node->strct.written_name
+                                                                  : declared_type_c_name(node));
             if (node->doc_comment)
             {
                 print_markdown_doc(node->doc_comment);
             }
 
             printf("```zc\nstruct ");
-            print_declared_name(node->token, node->strct.name);
+            print_declared_name(node->token, declared_type_c_name(node));
             printf(" {\n");
             ASTNode *field = node->strct.fields;
             while (field)
@@ -247,14 +247,14 @@ static void generate_docs_internal(struct ParserContext *ctx, ASTNode *node, int
         case NODE_ENUM:
         {
             printf("\n## enum `%s`\n",
-                   node->enm.written_name ? node->enm.written_name : node->enm.name);
+                   node->enm.written_name ? node->enm.written_name : declared_type_c_name(node));
             if (node->doc_comment)
             {
                 print_markdown_doc(node->doc_comment);
             }
 
             printf("```zc\nenum ");
-            print_declared_name(node->token, node->enm.name);
+            print_declared_name(node->token, declared_type_c_name(node));
             printf(" {\n");
             ASTNode *variant = node->enm.variants;
             while (variant)

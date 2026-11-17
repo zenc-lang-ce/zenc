@@ -116,8 +116,8 @@ static void lisp_get_struct_field_info(ParserContext *ctx, const char *type_str,
     StructRef *sr = ctx->parsed_structs_list;
     while (sr)
     {
-        if (sr->node && sr->node->kind == NODE_STRUCT && sr->node->strct.name &&
-            strcmp(sr->node->strct.name, sname) == 0)
+        if (sr->node && sr->node->kind == NODE_STRUCT && declared_type_c_name(sr->node) &&
+            strcmp(declared_type_c_name(sr->node), sname) == 0)
         {
             int idx = 0;
             for (ASTNode *fd = sr->node->strct.fields; fd; fd = fd->next)
@@ -137,7 +137,8 @@ static void lisp_get_struct_field_info(ParserContext *ctx, const char *type_str,
     // Also search instantiated structs
     for (ASTNode *s = ctx->instantiated_structs; s; s = s->next)
     {
-        if (s->kind == NODE_STRUCT && s->strct.name && strcmp(s->strct.name, sname) == 0)
+        if (s->kind == NODE_STRUCT && declared_type_c_name(s) &&
+            strcmp(declared_type_c_name(s), sname) == 0)
         {
             int idx = 0;
             for (ASTNode *fd = s->strct.fields; fd; fd = fd->next)
@@ -1365,7 +1366,7 @@ static void lemit_struct(ParserContext *ctx, ASTNode *node, int depth)
     {
         return;
     }
-    const char *sname = node->strct.name ? node->strct.name : "unnamed";
+    const char *sname = declared_type_c_name(node) ? declared_type_c_name(node) : "unnamed";
     emitter_printf(&ctx->cg.emitter, "\n\n(defstruct %s", sname);
     for (ASTNode *f = node->strct.fields; f; f = f->next)
     {

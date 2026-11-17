@@ -575,16 +575,18 @@ void print_type_defs(ParserContext *ctx, ASTNode *nodes)
                 // For vectors, we emit a custom typedef in emit_struct_defs.
                 // Standard 'typedef struct Name Name' would conflict.
             }
-            else if (local->strct.name && !local->strct.crepr_c_type)
+            else if (declared_type_c_name(local) && !local->strct.crepr_c_type)
             {
-                const char *final_name = local->link_name ? local->link_name : local->strct.name;
+                const char *final_name =
+                    local->link_name ? local->link_name : declared_type_c_name(local);
                 const char *keyword = local->strct.is_union ? "union" : "struct";
                 EMIT(ctx, "typedef %s %s %s;\n", keyword, final_name, final_name);
             }
         }
-        if (local->kind == NODE_ENUM && !local->enm.is_template && local->enm.name)
+        if (local->kind == NODE_ENUM && !local->enm.is_template && declared_type_c_name(local))
         {
-            const char *final_name = local->link_name ? local->link_name : local->enm.name;
+            const char *final_name =
+                local->link_name ? local->link_name : declared_type_c_name(local);
 
             // Only forward-declare as struct if it's an ADT-style enum (has payloads)
             int has_payload = 0;

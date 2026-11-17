@@ -379,7 +379,9 @@ struct ASTNode
         struct
         {
             char *name;
-            char *written_name; // As programs write it, when `name` has a module prefix.
+            char *written_name;     // As programs write it, when `name` has a module prefix.
+            char *module_prefix;    // C prefix of the declaring module (NULL if none)
+            int is_module_prefixed; // As the struct's: see declared_type_c_name.
             ASTNode *variants;
             int is_template;
             char **generic_params; // `T` of `enum Option<T>` (an enum declares one at most).
@@ -581,8 +583,12 @@ struct ASTNode
         struct
         {
             char *name;
-            char *written_name; // As programs write it when `name` has a module prefix:
-                                // `math::Vector` for `_math__Vector`.
+            char *written_name;  // As programs write it when `name` has a module prefix:
+                                 // `math::Vector` for `_math__Vector`.
+            char *module_prefix; // C prefix of the declaring module (NULL if none)
+            // `name` is the name the module writes; its C name has the module's prefix
+            // (declared_type_c_name), as module_prefixed_name decided when it was declared.
+            int is_module_prefixed;
             ASTNode *fields;
             int is_template;
             char **generic_params;   // Array of generic parameter names (for example, ["K", "V"])
@@ -1046,6 +1052,11 @@ Type *get_inner_type(Type *t);
  *        (`geo__helper` for `helper`). A method or an instance has its C name as its name.
  */
 char *function_c_name(struct ASTNode *fn);
+/**
+ * @brief The C name of the struct or enum `decl`: its name, with its module's prefix when it has
+ *        one (`geo__Point` for `Point`). A template or an instance has its C name as its name.
+ */
+char *declared_type_c_name(struct ASTNode *decl);
 /**
  * @brief `expr` dereferenced down to one level of pointer: `pp`, a `P**`, becomes `*pp`, a `P*`.
  * `.` reaches a field or a method through every level of pointer, as the field and method

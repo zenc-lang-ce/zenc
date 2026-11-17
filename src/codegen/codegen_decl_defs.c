@@ -189,7 +189,8 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
 
             if (has_payload)
             {
-                const char *final_name = node->link_name ? node->link_name : node->enm.name;
+                const char *final_name =
+                    node->link_name ? node->link_name : declared_type_c_name(node);
                 if (node->cfg_condition)
                 {
                     EMIT(ctx, "#if %s\n", node->cfg_condition);

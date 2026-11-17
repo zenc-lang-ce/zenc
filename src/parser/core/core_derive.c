@@ -81,7 +81,8 @@ void check_derivable_trait(Token t, const char *name)
 // instance gets (`impl Name { ... }` on a generic left them undefined).
 static char *derive_self_type(ASTNode *strct)
 {
-    const char *name = strct->kind == NODE_ENUM ? strct->enm.name : strct->strct.name;
+    const char *name =
+        strct->kind == NODE_ENUM ? declared_type_c_name(strct) : declared_type_c_name(strct);
     char params[MAX_SHORT_MSG_LEN] = "";
     if (strct->kind == NODE_STRUCT && strct->strct.is_template)
     {
@@ -152,7 +153,7 @@ static char *variant_value_type(ParserContext *ctx, ASTNode *variant, int index)
 // and `==` would not find the `eq` of a struct `T`. 0 if the body does not fit.
 static int enum_eq_body(ParserContext *ctx, ASTNode *enm, char *body, size_t size)
 {
-    const char *name = enm->enm.name;
+    const char *name = declared_type_c_name(enm);
     int is_generic = enm->enm.is_template && enm->enm.generic_param_count > 0;
     size_t used = 0;
     if (!append_text(body, size, &used,
@@ -213,7 +214,7 @@ static int enum_eq_body(ParserContext *ctx, ASTNode *enm, char *body, size_t siz
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count)
 {
     ASTNode *head = NULL, *tail = NULL;
-    char *name = strct->strct.name;
+    char *name = declared_type_c_name(strct);
     char *self_type = derive_self_type(strct);
 
     for (int i = 0; i < count; i++)
