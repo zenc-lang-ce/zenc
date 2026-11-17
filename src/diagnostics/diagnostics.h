@@ -146,7 +146,7 @@ typedef enum
 /**
  * @brief What a consumer says about `transition`: NULL for DIAG_SAME_IN_0_6.
  */
-const char *diag_transition_text(DiagnosticTransition transition);
+ZEN_CONST const char *diag_transition_text(DiagnosticTransition transition);
 
 /**
  * @brief A diagnostic as data: what a consumer receives to present it.

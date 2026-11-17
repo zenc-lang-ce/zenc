@@ -84,7 +84,7 @@ static void diag_print_context(FILE *f, Token t, const char *caret_color)
     fprintf(f, COLOR_BLUE "   |\n" COLOR_RESET);
 }
 
-const char *diag_transition_text(DiagnosticTransition transition)
+ZEN_CONST const char *diag_transition_text(DiagnosticTransition transition)
 {
     switch (transition)
     {
