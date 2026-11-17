@@ -58,16 +58,6 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
     return head;
 }
 
-// The type under an opaque alias (through aliases of aliases); `t` itself otherwise.
-static Type *opaque_alias_base(Type *t)
-{
-    while (t && t->kind == TYPE_ALIAS && t->alias.is_opaque_alias && t->inner)
-    {
-        t = t->inner;
-    }
-    return t;
-}
-
 // Whether a value of type `t` (or what it points to) can be a struct, as far as the
 // parser knows. Unknown, generic and alias types are given the benefit of the doubt.
 static int may_be_struct(Type *t)
@@ -1757,82 +1747,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             if (is_comparison_operator(bin->binary.op))
             {
                 bin->type_info = type_new(TYPE_I32); // bool
-                char *t1 = type_to_string(lhs->type_info);
-                char *t2 = type_to_string(rhs->type_info);
-                // Skip type check if either operand is void* (escape hatch type)
-                // or if either operand is a generic type parameter (T, K, V, etc.)
-                int skip_check = (strcmp(t1, "void*") == 0 || strcmp(t2, "void*") == 0);
-                if (lhs->type_info->kind == TYPE_GENERIC || rhs->type_info->kind == TYPE_GENERIC)
-                {
-                    skip_check = 1;
-                }
-                // Also check if type name is a single uppercase letter (common generic param)
-                if ((strlen(t1) == 1 && isupper(t1[0])) || (strlen(t2) == 1 && isupper(t2[0])))
-                {
-                    skip_check = 1;
-                }
-
-                // Allow comparing pointers/strings with integer literal 0 (NULL)
-                if (!skip_check)
-                {
-                    int lhs_is_ptr =
-                        (lhs->type_info->kind == TYPE_POINTER ||
-                         lhs->type_info->kind == TYPE_STRING || (t1 && strstr(t1, "*")));
-                    int rhs_is_ptr =
-                        (rhs->type_info->kind == TYPE_POINTER ||
-                         rhs->type_info->kind == TYPE_STRING || (t2 && strstr(t2, "*")));
-
-                    if (lhs_is_ptr && rhs->kind == NODE_EXPR_LITERAL && rhs->literal.int_val == 0)
-                    {
-                        skip_check = 1;
-                    }
-                    if (rhs_is_ptr && lhs->kind == NODE_EXPR_LITERAL && lhs->literal.int_val == 0)
-                    {
-                        skip_check = 1;
-                    }
-                }
-
-                int lhs_is_num = is_integer_type(lhs->type_info) || is_float_type(lhs->type_info);
-                int rhs_is_num = is_integer_type(rhs->type_info) || is_float_type(rhs->type_info);
-
-                // In the module that defines it, an opaque alias of a number compares
-                // with numbers.
-                if (!lhs_is_num || !rhs_is_num)
-                {
-                    Type *lhs_base = opaque_alias_base(lhs->type_info);
-                    Type *rhs_base = opaque_alias_base(rhs->type_info);
-                    if ((lhs_base != lhs->type_info || rhs_base != rhs->type_info) &&
-                        check_opaque_alias_compat(ctx, lhs->type_info, rhs->type_info))
-                    {
-                        lhs_is_num = is_integer_type(lhs_base) || is_float_type(lhs_base);
-                        rhs_is_num = is_integer_type(rhs_base) || is_float_type(rhs_base);
-                    }
-                }
-
-                if (!skip_check && !type_eq(lhs->type_info, rhs->type_info) &&
-                    !(lhs_is_num && rhs_is_num))
-                {
-                    char msg[MAX_SHORT_MSG_LEN];
-                    snprintf(msg, sizeof(msg),
-                             "Type mismatch in comparison: cannot compare '%s' and '%s'",
-                             zen_c_type_spelling(ctx, lhs->type_info), /* safe */
-                             zen_c_type_spelling(ctx, rhs->type_info));
-
-                    char suggestion[MAX_SHORT_MSG_LEN];
-                    snprintf(suggestion, sizeof(suggestion),
-                             "Both operands must have compatible types for comparison"); /* safe */
-
-                    if (ctx->config->mode_lsp)
-                    {
-                        zwarn_at(op, "LSP: %s", msg);
-                        // Assume result is int (bool) to continue
-                        bin->type_info = type_new(TYPE_I32);
-                    }
-                    else
-                    {
-                        zpanic_with_suggestion(op, msg, suggestion);
-                    }
-                }
+                // Whether the operands can be compared is the typechecker's (check_expr_binary).
             }
             else
             {
