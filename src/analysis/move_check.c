@@ -219,7 +219,7 @@ int is_type_copy(ParserContext *ctx, Type *t)
     RECURSION_GUARD_TOKEN(ctx, TOKEN_UNKNOWN, 1);
 
     int result = 1;
-    if (t->traits.has_drop)
+    if (type_has_drop(ctx, t))
     {
         result = 0;
     }

@@ -178,15 +178,15 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
 
     curr_func_ret = ret_type_obj;
 
-    // Auto-prefix function name if in module context
-    // Don't prefix generic templates or functions inside impl blocks (already
-    // mangled)
+    // In a module parsed with a prefix, the function gets it. A generic template and a method keep
+    // their names: each instance, and the impl, give theirs.
     char *written_name = NULL;
-    if (ctx->imports.current_module_prefix && gen_count == 0 && !ctx->current_impl_target &&
-        !is_extern && !is_extern_symbol(ctx, name))
+    char *prefixed_name = gen_count == 0 && !ctx->current_impl_target && !is_extern
+                              ? module_prefixed_name(ctx, ctx->imports.current_module_prefix, name)
+                              : NULL;
+    if (prefixed_name)
     {
         written_name = module_written_name(ctx, name);
-        char *prefixed_name = mangle_module_symbol(ctx->imports.current_module_prefix, name);
         zfree(name);
         name = prefixed_name;
     }
@@ -287,6 +287,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         if (!ctx->current_impl_target)
         {
             register_func_template(ctx, name, gen_params, gen_count, node);
+            register_declaration(ctx, node); // A template is not handed to the program.
             return NULL;
         }
     }

@@ -569,6 +569,10 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                 s->link_name = attrs.link_name;
             }
 
+            for (ASTNode *declared = s; declared; declared = declared->next)
+            {
+                register_declaration(ctx, declared);
+            }
             if (!h)
             {
                 h = s;

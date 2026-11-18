@@ -994,7 +994,8 @@ static TypeUsage *unknown_types_of(ProjectFile *pf, ParseMarks before)
     {
         if (use->location.file && strcmp(use->location.file, pf->path) == 0 &&
             !lsp_project_visible_type(pf->path, use->name) &&
-            (!is_known_type_name(g_project->ctx, use->name) || project_declares_type(use->name)))
+            (!is_known_type_name(g_project->ctx, pf->path, use->name) ||
+             project_declares_type(use->name)))
         {
             TypeUsage *copy = xmalloc(sizeof(TypeUsage));
             *copy = *use;

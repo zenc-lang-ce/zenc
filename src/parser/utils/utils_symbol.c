@@ -104,14 +104,12 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
     {
         f = xcalloc(1, sizeof(FuncSig));
         f->name = xstrdup(name);
-        f->next = ctx->func_registry;
-        ctx->func_registry = f;
         // Every ParserContext starts zeroed, wherever it is created: the map starts here.
-        if (!ctx->func_registry_by_name.hash_func)
+        if (!ctx->func_registry.hash_func)
         {
-            ctx->func_registry_by_name = zmap_init(FuncByName, zmap_hash_cstr, zmap_cmp_cstr);
+            ctx->func_registry = zmap_init(FuncByName, zmap_hash_cstr, zmap_cmp_cstr);
         }
-        zmap_put(&ctx->func_registry_by_name, f->name, f);
+        zmap_put(&ctx->func_registry, f->name, f);
     }
 
     f->decl_token = decl_token;

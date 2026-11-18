@@ -539,12 +539,10 @@ static void instantiate_generic(ParserContext *ctx, const char *tpl, Type **args
     ni->struct_node = copy;
     if (copy)
     {
-        // Cache in hash table for fast lookup.
-        struct_hash_insert(ctx, m, copy);
+        register_named_type(ctx, m, copy);
         copy->next = ctx->instantiated_structs;
         ctx->instantiated_structs = copy;
     }
-    struct_registry_changed(ctx);
 
     for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
     {

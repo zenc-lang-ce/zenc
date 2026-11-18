@@ -270,7 +270,6 @@ static int compile_program(ZenCompiler *compiler)
     if (!compiler->config.mode_doc || compiler->config.use_typecheck)
     {
         propagate_drop_traits(&ctx);
-        fix_type_refs_has_drop(&ctx);
 
         if (!validate_types(&ctx))
         {
@@ -388,8 +387,6 @@ static int compile_program(ZenCompiler *compiler)
         return 1;
     }
     emitter_init_file(&ctx.cg.emitter, out_f);
-    // Few structs are registered from here on, so misses are worth caching.
-    struct_miss_cache_enable(&ctx);
     codegen_node(&ctx, root);
     fclose(out_f);
 
