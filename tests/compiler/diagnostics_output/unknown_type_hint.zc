@@ -1,0 +1,9 @@
+// ARGS: check
+// The hint for an unknown type proposes a generic type too, and among names as close as
+// each other the first by name.
+import "std/vec.zc"
+struct Abd { x: int; }
+struct Abc { x: int; }
+fn first(_v: Vex*) {}
+fn second(_a: Abx*) {}
+fn main() {}

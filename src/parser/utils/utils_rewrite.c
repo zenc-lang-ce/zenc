@@ -328,49 +328,37 @@ char *find_similar_symbol(ParserContext *ctx, const char *name)
     return best_match ? xstrdup(best_match) : NULL;
 }
 
+// Keeps `candidate` as the closest name to `name` so far when it is closer than `best` (at
+// `best_dist`), or as close and first by name: the hint does not depend on an order.
+static void consider_hint(const char *name, const char *candidate, const char **best,
+                          int *best_dist)
+{
+    int dist = levenshtein(name, candidate);
+    if (dist < *best_dist || (dist == *best_dist && *best && strcmp(candidate, *best) < 0))
+    {
+        *best_dist = dist;
+        *best = candidate;
+    }
+}
+
 const char *get_closest_type_hint(ParserContext *ctx, const char *name)
 {
     int best_dist = 4;
     const char *best = NULL;
 
-    StructDef *def = ctx->struct_defs;
-    while (def)
+    if (ctx->type_registry.hash_func)
     {
-        int dist = levenshtein(name, def->name);
-        if (dist < best_dist)
+        zmap_iter_DeclByName it = zmap_iter_init(DeclByName, &ctx->type_registry);
+        const char *type_name;
+        ASTNode *def;
+        while (zmap_iter_next(&it, &type_name, &def))
         {
-            best_dist = dist;
-            best = def->name;
+            consider_hint(name, type_name, &best, &best_dist);
         }
-        def = def->next;
     }
-
-    StructRef *er = ctx->parsed_enums_list;
-    while (er)
+    for (TypeAlias *ta = ctx->type_aliases; ta; ta = ta->next)
     {
-        if (er->node && er->node->kind == NODE_ENUM)
-        {
-            int dist = levenshtein(name, er->node->enm.name);
-            if (dist < best_dist)
-            {
-                best_dist = dist;
-                best = er->node->enm.name;
-            }
-        }
-        er = er->next;
+        consider_hint(name, ta->alias, &best, &best_dist);
     }
-
-    TypeAlias *ta = ctx->type_aliases;
-    while (ta)
-    {
-        int dist = levenshtein(name, ta->alias);
-        if (dist < best_dist)
-        {
-            best_dist = dist;
-            best = ta->alias;
-        }
-        ta = ta->next;
-    }
-
     return best;
 }

@@ -224,49 +224,7 @@ void register_tuple(ParserContext *ctx, Type *tuple)
 
 void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
 {
-    if (ctx->config->mode_lsp)
-    {
-        StructDef *existing = NULL;
-        StructDef *curr = ctx->struct_defs;
-        while (curr)
-        {
-            if (curr->name[0] == name[0] && strcmp(curr->name, name) == 0)
-            {
-                existing = curr;
-                break;
-            }
-            curr = curr->next;
-        }
-        if (existing)
-        {
-            existing->node = node;
-        }
-    }
-
-    StructDef *d = NULL;
-    if (ctx->config->mode_lsp)
-    {
-        StructDef *curr = ctx->struct_defs;
-        while (curr)
-        {
-            if (curr->name[0] == name[0] && strcmp(curr->name, name) == 0)
-            {
-                d = curr;
-                break;
-            }
-            curr = curr->next;
-        }
-    }
-
-    if (!d)
-    {
-        d = xmalloc(sizeof(StructDef));
-        d->name = xstrdup(name);
-        d->next = ctx->struct_defs;
-        ctx->struct_defs = d;
-    }
-
-    d->node = node;
+    // The language server parses a file again: its struct takes the place of the old one.
     register_named_type(ctx, name, node);
 
     if (ctx->config->misra_mode)

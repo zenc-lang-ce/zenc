@@ -506,10 +506,10 @@ const char *match_missing_variant(ParserContext *ctx, ASTNode *match, Type *scru
     return NULL;
 }
 
-// The expression has no address of its own (a call result, a literal, an enum
-// variant...). Taking its address for a `self` or `T*` parameter must go
-// through a temporary (`&_rval`), or the C compiler rejects `&(rvalue)`.
-int expr_is_rvalue(ParserContext *ctx, ASTNode *e)
+// Whether `e` designates a place. One without (a call result, a literal, an enum variant...)
+// passed to a `self` or `T*` parameter goes through a temporary (`&_rval`): the C compiler
+// rejects `&(rvalue)`. A `ref` binding of a `match` points into a subject that has one.
+int expr_has_address(ParserContext *ctx, ASTNode *e)
 {
     if (!e)
     {
@@ -517,26 +517,22 @@ int expr_is_rvalue(ParserContext *ctx, ASTNode *e)
     }
     switch (e->kind)
     {
-    case NODE_EXPR_CALL:
-    case NODE_EXPR_BINARY:
-    case NODE_EXPR_STRUCT_INIT:
-    case NODE_EXPR_CAST:
-    case NODE_EXPR_LITERAL:
-    case NODE_MATCH:
-        return 1;
-    case NODE_EXPR_INDEX:
-        // An overloaded index is the result of its `get` call (index_method), a temporary; an
-        // element of an array or through a pointer has an address.
-        return index_method(ctx, e->index.array ? e->index.array->type_info : NULL, "get") != NULL;
+    case NODE_EXPR_VAR:
+        // `Shape::Circle` written without (): the variant constructor's result.
+        return !(e->var_ref.variant.member &&
+                 find_enum_variant_of(ctx, type_def_name(e->var_ref.variant.owner),
+                                      e->var_ref.variant.member));
     case NODE_EXPR_MEMBER:
         // A field of a temporary is a temporary too (`pairs.get(0).id`), unless
         // it is reached through a pointer (`ptr->field` has an address).
-        return !e->member.is_pointer_access && expr_is_rvalue(ctx, e->member.target);
-    case NODE_EXPR_VAR:
-        // `Shape::Circle` written without (): the variant constructor's result.
-        return e->var_ref.variant.member &&
-               find_enum_variant_of(ctx, type_def_name(e->var_ref.variant.owner),
-                                    e->var_ref.variant.member);
+        return e->member.is_pointer_access || expr_has_address(ctx, e->member.target);
+    case NODE_EXPR_INDEX:
+        // An overloaded index is the result of its `get` call (index_method), a temporary; an
+        // element of an array or through a pointer has an address.
+        return index_method(ctx, e->index.array ? e->index.array->type_info : NULL, "get") == NULL;
+    case NODE_EXPR_UNARY:
+        // `*p`: the place p points to.
+        return e->unary.op == OP_DEREF;
     default:
         return 0;
     }

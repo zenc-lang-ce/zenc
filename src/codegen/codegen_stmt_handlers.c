@@ -104,10 +104,8 @@ void handle_node_block(ParserContext *ctx, ASTNode *node)
     int saved = ctx->cg.defer_count;
     EMIT(ctx, "{\n");
     emitter_indent(&ctx->cg.emitter);
-    enter_scope(ctx);
     codegen_walker(ctx, node->block.statements);
     emit_defers_down_to(ctx, saved);
-    exit_scope(ctx);
     ctx->cg.defer_count = saved;
     emitter_dedent(&ctx->cg.emitter);
     EMIT(ctx, "}\n");
@@ -483,19 +481,6 @@ void handle_node_destruct_var(ParserContext *ctx, ASTNode *node)
     }
 }
 
-// Records a local and its type for infer_type. The parser already audited the declaration
-// (shadowing, MISRA names), so this does not go through add_symbol.
-static void add_symbol_local(ParserContext *ctx, const char *name, Type *type_info)
-{
-    ZenSymbol *sym = symbol_add(ctx->current_scope, name, SYM_VARIABLE);
-    if (!sym)
-    {
-        return;
-    }
-    sym->is_local = (ctx->current_scope != ctx->global_scope);
-    sym->type_info = type_info;
-}
-
 // Declares the drop flag of the local `node` and drops it at the end of its scope: a closure
 // frees its context, any other value calls `<glue>__Drop__glue`.
 // Declares the drop flag of the local `node` and defers `stmt`, which drops it if the flag is set.
@@ -697,7 +682,6 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             }
 
             emit_var_decl_type(ctx, tname, node->var_decl.name);
-            add_symbol_local(ctx, node->var_decl.name, node->type_info);
 
             ASTNode *init = node->var_decl.init_expr;
             if (init && (temp || init->kind != NODE_EXPR_ARRAY_LITERAL) &&
@@ -775,7 +759,6 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 }
 
                 emit_var_decl_type(ctx, inferred, node->var_decl.name);
-                add_symbol_local(ctx, node->var_decl.name, NULL);
                 EMIT(ctx, " = ");
                 Type *init_type = node->var_decl.init_expr->type_info;
                 if (ctx->config->use_cpp && inferred && init_type &&
@@ -802,9 +785,6 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
             {
                 emit_auto_type(ctx, node->var_decl.init_expr, node->token);
                 EMIT(ctx, " %s", c_name(ctx, node->var_decl.name));
-
-                add_symbol_local(ctx, node->var_decl.name, NULL);
-
                 EMIT(ctx, " = ");
                 emit_var_init(ctx, node, temp);
                 EMIT(ctx, ";\n");

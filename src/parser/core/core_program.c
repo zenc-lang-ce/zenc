@@ -612,6 +612,17 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
     return h;
 }
 
+void parser_context_init(ParserContext *ctx, ZenCompiler *compiler, const char *filename)
+{
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->compiler = compiler;
+    ctx->config = &compiler->config;
+    ctx->current_filename = filename;
+    module_state_init(&ctx->imports);
+    diag_set_parser_ctx(ctx);
+    token_set_parser_ctx(ctx);
+}
+
 ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
 {
     ctx->parse_depth++;

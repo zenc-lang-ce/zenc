@@ -68,13 +68,7 @@ __attribute__((used)) int LLVMFuzzerTestOneInput(const uint8_t *data, size_t siz
     src[size] = '\0';
 
     ParserContext ctx;
-    memset(&ctx, 0, sizeof(ctx));
-    ctx.compiler = &compiler;
-    ctx.config = &compiler.config;
-    ctx.current_filename = "fuzz_input.zc";
-    module_state_init(&ctx.imports);
-    token_set_parser_ctx(&ctx);
-    diag_set_parser_ctx(&ctx);
+    parser_context_init(&ctx, &compiler, "fuzz_input.zc");
 
     // Reset persistent parser globals that would otherwise dangle into the
     // reset arena between inputs.

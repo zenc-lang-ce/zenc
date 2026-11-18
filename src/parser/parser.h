@@ -93,6 +93,13 @@ typedef struct DeclarationAttributes
 DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l);
 
 /**
+ * @brief Starts `ctx` empty for a parse of `filename` (NULL when there is none yet) by
+ *        `compiler`, with its configuration, and registers it as the context diagnostics and
+ *        tokens report to.
+ */
+void parser_context_init(ParserContext *ctx, ZenCompiler *compiler, const char *filename);
+
+/**
  * @brief Parses a program.
  */
 ASTNode *parse_program(ParserContext *ctx, Lexer *l);
@@ -188,16 +195,6 @@ typedef struct StructRef
     ASTNode *node;
     struct StructRef *next;
 } StructRef;
-
-/**
- * @brief Definition of a struct (lookup cache).
- */
-typedef struct StructDef
-{
-    char *name;
-    ASTNode *node;
-    struct StructDef *next;
-} StructDef;
 
 /**
  * @brief The tuples the program uses, each once, for the C structs codegen emits.
@@ -395,7 +392,6 @@ struct ParserContext
     // Lambdas
     LambdaRef *global_lambdas; ///< All lambdas generated during parsing, in creation order.
     int lambda_counter;        ///< Counter for generating unique lambda IDs.
-    int fstring_counter;       ///< Counter for generating unique f-string IDs.
 
 // Generics
 #define MAX_KNOWN_GENERICS 1024
@@ -424,7 +420,6 @@ struct ParserContext
     StructRef *parsed_funcs_list;   ///< List of all parsed function nodes.
     StructRef *parsed_impls_list;   ///< List of all parsed impl blocks.
     StructRef *parsed_globals_list; ///< List of all parsed global variables.
-    StructDef *struct_defs;         ///< Registry of struct definitions (map name -> node).
     EnumVariantReg *enum_variants;  ///< Registry of enum variants for global lookup.
     ImplReg *registered_impls;      ///< Cache of type/trait implementations.
 
@@ -477,7 +472,6 @@ struct ParserContext
     zmap_FileSet c_macro_names;    ///< C macro that is only another name -> that name.
     StringList c_system_includes;  ///< The headers of `include <x.h>`, as written.
     int c_system_headers_read;     ///< Those and the preamble's are in the maps above.
-    int is_comptime;               // Flag for comptime execution context
     char **extern_symbols;         ///< Explicitly declared extern symbols.
     int extern_symbol_count;       ///< Count of external symbols.
 
@@ -490,7 +484,6 @@ struct ParserContext
         int is_repl;        ///< 1 if running in REPL mode.
         int in_defer_block; ///< 1 if currently parsing inside a defer block.
 
-        ASTNode *global_user_structs;     ///< List of user defined structs.
         char *current_impl_type;          ///< Type currently being implemented (in impl block).
         int tmp_counter;                  ///< Counter for temporary variables.
         int fstring_counter;              ///< Counter for the buffers of f-string values.
@@ -1136,7 +1129,13 @@ const char *match_missing_variant(ParserContext *ctx, ASTNode *match, Type *scru
  *        resolves), or NULL for a pattern that names none: a constant, `_`, a literal.
  */
 EnumVariantReg *pattern_variant(ParserContext *ctx, MatchPattern *p);
-int expr_is_rvalue(ParserContext *ctx, ASTNode *e);
+/**
+ * @brief Whether `e` designates a place whose address C can take: a variable, a field of one
+ *        (or reached through a pointer), an element of an array or through a pointer, `*p`. A
+ *        call, an operation, a literal, an overloaded index (its `get`) and a variant
+ *        constructor are values without one.
+ */
+int expr_has_address(ParserContext *ctx, ASTNode *e);
 TypeAlias *find_type_alias_node(ParserContext *ctx, const char *name);
 char *extract_module_name(const char *path);
 char *module_prefix_for(ParserContext *ctx, const char *path);

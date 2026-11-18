@@ -910,7 +910,7 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
              (type_eq(a_res, e_res->inner) || is_struct_base_match(a_res, e_res->inner)))
     {
         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-        int is_rvalue = expr_is_rvalue(tc->pctx, expr);
+        int is_rvalue = !expr_has_address(tc->pctx, expr);
         addr->unary.op = is_rvalue ? OP_ADDRESS_RVALUE : OP_ADDRESS;
         addr->unary.operand = expr;
         addr->type_info = e_res;
