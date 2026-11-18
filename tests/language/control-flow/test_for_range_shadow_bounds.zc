@@ -130,7 +130,7 @@ fn logged(v: int) -> int {
     return v;
 }
 
-test "bounds that name the loop variable are evaluated start first, the end once" {
+test "bounds that name the loop variable are evaluated as any others" {
     let n = 3;
     calls = 0;
     for m in logged(1)..logged(n) {
@@ -141,7 +141,7 @@ test "bounds that name the loop variable are evaluated start first, the end once
     for n in logged(1)..logged(n) {
         if n > LIMIT { break; }
     }
-    expect_eq(calls, 13, "an end that names the loop variable should be evaluated once, after the start");
+    expect_eq(calls, 1333, "an end that names the loop variable should be evaluated as any other end");
 }
 
 fn three() -> int {

@@ -33,6 +33,19 @@ int writes_with_equals(OperatorKind op);
 void tc_enter_scope(TypeChecker *tc);
 void tc_exit_scope(TypeChecker *tc);
 ZenSymbol *tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int is_immutable);
+/**
+ * @brief Declares the local `name` of the C function being checked, as tc_add_symbol, with a C
+ *        name unique in that function: its own, or `name__N` when another local of the function
+ *        took it, or when it hides a name that one of the `read_count` `reads` (its initializer,
+ *        the start, end and step of its loop) uses.
+ *        A C name that differs from the name is the symbol's link_name.
+ */
+ZenSymbol *tc_declare_local(TypeChecker *tc, const char *name, Type *type, Token t,
+                            int is_immutable, ASTNode *const *reads, int read_count);
+/** @brief Makes `function` the C function whose locals are declared; returns the previous one. */
+CFunctionLocals *tc_enter_c_function(TypeChecker *tc, ASTNode *function);
+/** @brief Goes back to `previous`, which tc_enter_c_function returned. */
+void tc_leave_c_function(TypeChecker *tc, CFunctionLocals *previous);
 ZenSymbol *tc_lookup(TypeChecker *tc, const char *name);
 void mark_type_as_used(TypeChecker *tc, Type *t);
 void check_side_effect_collision(TypeChecker *tc, ASTNode *left, ASTNode *right, Token token);

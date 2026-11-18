@@ -1428,6 +1428,13 @@ void check_expr_var(TypeChecker *tc, ASTNode *node)
             }
             node->type_info = fn_type;
         }
+        else if (!sym && !tc->is_callee && strcmp(node->var_ref.name, "_") == 0)
+        {
+            // `let _ = <value>` declares nothing. Called, `_` may be a macro of C (gettext's).
+            const char *hints[] = {"Give the value a name to read it later", NULL};
+            tc_error_stopping_build(tc, node->token,
+                                    "'_' is not a variable: `let _` discards a value", hints, NULL);
+        }
         else
         {
             // A name of C the program uses undeclared (`stdin`, or a function declared by an
@@ -1746,7 +1753,17 @@ static void check_lambda_body(TypeChecker *tc, ASTNode *node, int depth)
     tc->current_loop = prev_loop;
 }
 
+static void check_expr_lambda_in_its_function(TypeChecker *tc, ASTNode *node, int depth);
+
+// A lambda is a C function of its own: its parameters and locals get C names in it.
 void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
+{
+    CFunctionLocals *prev_c_function = tc_enter_c_function(tc, node);
+    check_expr_lambda_in_its_function(tc, node, depth);
+    tc_leave_c_function(tc, prev_c_function);
+}
+
+static void check_expr_lambda_in_its_function(TypeChecker *tc, ASTNode *node, int depth)
 {
     Type *expected = get_inner_type(node->type_info);
     if (expected && expected->kind == TYPE_FUNCTION && expected->is_raw)
@@ -1805,7 +1822,7 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
                 ptype = node_ti->args[i];
             }
         }
-        tc_add_symbol(tc, pname, ptype, node->token, 0);
+        tc_declare_local(tc, pname, ptype, node->token, 0, NULL, 0);
     }
 
     // Add captured variables to the scope of the lambda. One captured by value is the closure's own
@@ -1821,6 +1838,11 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
 
             // Lookup original symbol to get its type
             ZenSymbol *orig_sym = tc_lookup(tc, var_name);
+            if (orig_sym && orig_sym->link_name)
+            {
+                // The closure copies the variable by its C name, where the lambda is written.
+                record_local_c_name(tc->pctx, node->token.start, var_name, orig_sym->link_name);
+            }
             if (orig_sym)
             {
                 // Shadow the original variable in the lambda scope.
@@ -1881,7 +1903,9 @@ static void check_waiting_lambda(TypeChecker *tc, WaitingLambda w)
     tc->is_forget_receiver = 0;
     tc->is_callee = 0;
 
+    CFunctionLocals *prev_c_function = tc_enter_c_function(tc, w.lambda);
     check_lambda_body(tc, w.lambda, w.node_depth);
+    tc_leave_c_function(tc, prev_c_function);
 
     tc->pctx->current_scope = prev_scope;
     tc->current_depth = prev_depth;

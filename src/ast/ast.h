@@ -1019,6 +1019,11 @@ int float_holds_integer_type(Type *float_type, Type *integer_type);
 int float_holds_integer(Type *float_type, long long value);
 int is_composite_expression(ASTNode *node);
 /**
+ * @brief Whether `node` is `let _ = <value>`, which declares nothing: it evaluates the value and
+ *        drops it at once if it needs dropping.
+ */
+int is_discard(ASTNode *node);
+/**
  * @brief The spelling of a type inside a C name (`Vec__int32_t`, `Tuple__int32_t__bool`):
  * primitives by their C name, structs and enums by the name the program gives them. The names
  * of instances and tuples are built from it.

@@ -416,6 +416,10 @@ struct ParserContext
     /// Every struct and enum, templates and instances too, by C name: the one registered last
     /// (find_struct_def).
     zmap_DeclByName type_registry;
+    /// The C name of a local that does not keep its own, by where it is declared and its name
+    /// (local_c_name_at): a local that hides another of its C function, or a name its
+    /// initializer reads. The typechecker decides it; codegen writes it.
+    zmap_CNameByDecl local_c_names;
     StructRef *parsed_enums_list;   ///< List of all parsed enum nodes.
     StructRef *parsed_funcs_list;   ///< List of all parsed function nodes.
     StructRef *parsed_impls_list;   ///< List of all parsed impl blocks.
@@ -1326,6 +1330,14 @@ void add_instantiated_func(ParserContext *ctx, ASTNode *fn);
 char *ast_to_string(ASTNode *node);
 /** @brief Registers the struct or enum `node` under its C name `name` (find_struct_def). */
 void register_named_type(ParserContext *ctx, const char *name, ASTNode *node);
+/** @brief Records `c_name` as the C name of the local `name` declared at `site`. */
+void record_local_c_name(ParserContext *ctx, const char *site, const char *name,
+                         const char *c_name);
+/**
+ * @brief The C name the typechecker gave the local `name` declared at `site` (a declaration's
+ *        token start); NULL when it keeps its own name.
+ */
+const char *local_c_name_at(ParserContext *ctx, const char *site, const char *name);
 /** @brief Adds a copy of s to ctx->all_symbols, unless its declaration is already there. */
 void register_in_all_symbols(ParserContext *ctx, ZenSymbol *s);
 

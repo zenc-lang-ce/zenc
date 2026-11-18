@@ -130,18 +130,10 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     {
     case NODE_FOR:
     {
-        // The initializer is declared in the `for` header, not by handle_node_var_decl. One that
-        // names the variable it declares (`for (let i = i; ...)`) is evaluated into a temporary
-        // first, in a block around the loop, as the bounds of a range are.
-        ASTNode *init = node->for_stmt.init;
-        char *init_temp = NULL;
+        // The initializer is declared in the `for` header, not by handle_node_var_decl. A loop
+        // variable that hides a name its initializer reads (`for (let i = i; ...)`) has a C name
+        // of its own (tc_declare_local), so the initializer reads the hidden one.
         codegen_loop_enter(ctx, node->for_stmt.loop_label);
-        if (init && init->kind == NODE_VAR_DECL &&
-            expr_names_var(init->var_decl.init_expr, init->var_decl.name))
-        {
-            EMIT(ctx, "{ ");
-            init_temp = emit_init_temp(ctx, init->var_decl.init_expr);
-        }
         EMIT(ctx, "for (");
         if (node->for_stmt.init)
         {
@@ -151,15 +143,16 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 char *declared = node_c_type(ctx, v);
                 if (declared)
                 {
-                    EMIT(ctx, "%s %s = (%s)(", declared, c_name(ctx, v->var_decl.name), declared);
-                    emit_expr_or_temp(ctx, v->var_decl.init_expr, init_temp);
+                    EMIT(ctx, "%s %s = (%s)(", declared,
+                         local_decl_c_name(ctx, v->token, v->var_decl.name), declared);
+                    codegen_expression(ctx, v->var_decl.init_expr);
                     EMIT(ctx, ")");
                 }
                 else
                 {
                     emit_auto_type(ctx, v->var_decl.init_expr, v->token);
-                    EMIT(ctx, " %s = ", c_name(ctx, v->var_decl.name));
-                    emit_expr_or_temp(ctx, v->var_decl.init_expr, init_temp);
+                    EMIT(ctx, " %s = ", local_decl_c_name(ctx, v->token, v->var_decl.name));
+                    codegen_expression(ctx, v->var_decl.init_expr);
                 }
             }
             else
@@ -180,10 +173,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, ") ");
         codegen_loop_body(ctx, node->for_stmt.body, node->for_stmt.loop_label, 1);
         codegen_loop_exit(ctx, node->for_stmt.loop_label);
-        if (init_temp)
-        {
-            EMIT(ctx, "}\n");
-        }
         break;
     }
     case NODE_BREAK:
@@ -246,82 +235,55 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     }
     case NODE_FOR_RANGE:
     {
-        // C puts the loop variable in scope at the end of its declarator, so a name `i` in the
-        // header of `for (T i = <start>; i < <end>; i += <step>)` is the loop variable, not the
-        // one it shadows (`for i in 0..i`). A bound or a step that names it is evaluated into a
-        // temporary first, in a block around the loop, while `i` still names the shadowed one.
-        // The start is evaluated before the end, as in the loop; an end that names the loop
-        // variable is then evaluated once, not before each check. A negated step (`step -1`)
-        // counts down.
-        const char *var = node->for_range.var_name;
+        // A loop variable that hides a name its bounds or step read (`for i in 0..i`) has a C
+        // name of its own (tc_declare_local), so the header reads the hidden one. A negated step
+        // (`step -1`) counts down.
+        const char *var =
+            local_decl_c_name(ctx, node->for_range.var_token, node->for_range.var_name);
         ASTNode *step = node->for_range.step;
         int counts_down = step && step->kind == NODE_EXPR_UNARY && step->unary.op == OP_NEG;
-        int end_names_var = expr_names_var(node->for_range.end, var);
-        int start_names_var = end_names_var || expr_names_var(node->for_range.start, var);
-        int step_names_var = expr_names_var(step, var);
-        int hoist = start_names_var || end_names_var || step_names_var;
-        char *start_temp = NULL;
-        char *end_temp = NULL;
-        char *step_temp = NULL;
 
         codegen_loop_enter(ctx, node->for_range.loop_label);
-        if (hoist)
-        {
-            EMIT(ctx, "{ ");
-            if (start_names_var)
-            {
-                start_temp = emit_init_temp(ctx, node->for_range.start);
-            }
-            if (end_names_var)
-            {
-                end_temp = emit_init_temp(ctx, node->for_range.end);
-            }
-            if (step_names_var)
-            {
-                step_temp = emit_init_temp(ctx, step);
-            }
-        }
-
         EMIT(ctx, "for (");
         if (z_path_match_compiler(ctx->config->cc, "tcc"))
         {
             EMIT(ctx, "__typeof__((");
-            emit_expr_or_temp(ctx, node->for_range.start, start_temp);
-            EMIT(ctx, ")) %s = ", c_name(ctx, node->for_range.var_name));
+            codegen_expression(ctx, node->for_range.start);
+            EMIT(ctx, ")) %s = ", var);
         }
         else
         {
-            EMIT(ctx, "ZC_AUTO %s = ", c_name(ctx, node->for_range.var_name));
+            EMIT(ctx, "ZC_AUTO %s = ", var);
         }
-        emit_expr_or_temp(ctx, node->for_range.start, start_temp);
+        codegen_expression(ctx, node->for_range.start);
         if (counts_down)
         {
             if (node->for_range.is_inclusive)
             {
-                EMIT(ctx, "; %s >= ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s >= ", var);
             }
             else
             {
-                EMIT(ctx, "; %s > ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s > ", var);
             }
         }
         else
         {
             if (node->for_range.is_inclusive)
             {
-                EMIT(ctx, "; %s <= ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s <= ", var);
             }
             else
             {
-                EMIT(ctx, "; %s < ", c_name(ctx, node->for_range.var_name));
+                EMIT(ctx, "; %s < ", var);
             }
         }
-        emit_expr_or_temp(ctx, node->for_range.end, end_temp);
-        EMIT(ctx, "; %s", c_name(ctx, node->for_range.var_name));
+        codegen_expression(ctx, node->for_range.end);
+        EMIT(ctx, "; %s", var);
         if (step)
         {
             EMIT(ctx, " += ");
-            emit_expr_or_temp(ctx, step, step_temp);
+            codegen_expression(ctx, step);
             EMIT(ctx, ") ");
         }
         else
@@ -330,10 +292,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         }
         codegen_loop_body(ctx, node->for_range.body, node->for_range.loop_label, 0);
         codegen_loop_exit(ctx, node->for_range.loop_label);
-        if (hoist)
-        {
-            EMIT(ctx, "}\n");
-        }
         break;
     }
 
@@ -577,7 +535,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             EMIT(ctx, ", 0, sizeof(_z_ret_mv)); ");
             if (strcmp(node->ret.value->var_ref.name, "self") != 0)
             {
-                EMIT(ctx, "__z_drop_flag_%s = 0; ", node->ret.value->var_ref.name);
+                EMIT(ctx, "__z_drop_flag_%s = 0; ", var_ref_flag_name(node->ret.value));
             }
             emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
             EMIT(ctx, "_z_ret_mv; });\n");
