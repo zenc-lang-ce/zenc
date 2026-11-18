@@ -773,9 +773,9 @@ static const char *declared_type_name(ASTNode *node)
     switch (node->kind)
     {
     case NODE_STRUCT:
-        return node->strct.name;
+        return declared_type_c_name(node);
     case NODE_ENUM:
-        return node->enm.name;
+        return declared_type_c_name(node);
     case NODE_TRAIT:
         return node->trait.name;
     case NODE_TYPE_ALIAS:

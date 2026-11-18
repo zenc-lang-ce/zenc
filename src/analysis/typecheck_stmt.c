@@ -191,7 +191,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     mark_type_as_used(tc, node->func.ret_type_info);
 
     // Rule Zen 1.4: Reserved identifiers
-    misra_check_reserved_identifier(tc->pctx, node->func.name, node->token);
+    misra_check_reserved_identifier(tc->pctx, function_c_name(node), node->token);
 
     tc->current_func = node;
     tc->returns_from = node;
@@ -243,7 +243,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     int is_void = !ret_type || ret_type->kind == TYPE_VOID;
 
     // Special case: 'main' is allowed to fall off the end (C99 implicit return 0)
-    int is_main = node->func.name && strcmp(node->func.name, "main") == 0;
+    int is_main = function_c_name(node) && strcmp(function_c_name(node), "main") == 0;
 
     if (is_main && is_void)
     {

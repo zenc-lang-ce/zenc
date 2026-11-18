@@ -530,7 +530,7 @@ static CValue eval_call(CInterp *ci, ASTNode *node)
     for (StructRef *r = ci->pctx->parsed_funcs_list; r; r = r->next)
     {
         if (r->node && r->node->kind == NODE_FUNCTION && r->node->func.is_comptime &&
-            strcmp(r->node->func.name, name) == 0)
+            strcmp(function_c_name(r->node), name) == 0)
         {
             return call_comptime_fn(ci, r->node, node->call.args);
         }

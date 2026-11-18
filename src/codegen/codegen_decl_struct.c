@@ -31,7 +31,7 @@ int enum_has_payload(ASTNode *node)
 // enum constructors, generic instantiations such as Vec<Kind>, aliases...).
 void emit_simple_enum(ParserContext *ctx, ASTNode *node)
 {
-    const char *final_name = node->link_name ? node->link_name : node->enm.name;
+    const char *final_name = node->link_name ? node->link_name : declared_type_c_name(node);
     if (node->cfg_condition)
     {
         EMIT(ctx, "#if %s\n", node->cfg_condition);
@@ -130,7 +130,8 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 {
                     EMIT(ctx, "#if %s\n", node->cfg_condition);
                 }
-                EMIT(ctx, "typedef %s %s;\n\n", node->strct.crepr_c_type, node->strct.name);
+                EMIT(ctx, "typedef %s %s;\n\n", node->strct.crepr_c_type,
+                     declared_type_c_name(node));
                 if (node->cfg_condition)
                 {
                     EMIT(ctx, "#endif\n");
@@ -148,7 +149,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
             {
                 char *inner_c = c_type_spelling(ctx, node->type_info->inner);
                 EMIT(ctx, "typedef ZC_SIMD(%s, %d) %s;\n", inner_c, node->type_info->array_size,
-                     node->strct.name);
+                     declared_type_c_name(node));
                 zfree(inner_c);
                 if (node->cfg_condition)
                 {
@@ -226,9 +227,9 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 EMIT(ctx, "))");
             }
 
-            if (node->strct.name)
+            if (declared_type_c_name(node))
             {
-                EMIT(ctx, " %s", node->link_name ? node->link_name : node->strct.name);
+                EMIT(ctx, " %s", node->link_name ? node->link_name : declared_type_c_name(node));
             }
 
             EMIT(ctx, " {");
@@ -262,7 +263,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 continue;
             }
 
-            const char *final_name = node->link_name ? node->link_name : node->enm.name;
+            const char *final_name = node->link_name ? node->link_name : declared_type_c_name(node);
             if (node->cfg_condition)
             {
                 EMIT(ctx, "#if %s\n", node->cfg_condition);

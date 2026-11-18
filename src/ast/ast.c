@@ -1720,6 +1720,34 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
     }
 }
 
+char *function_c_name(ASTNode *fn)
+{
+    if (!fn || !fn->func.name)
+    {
+        return NULL;
+    }
+    return fn->func.is_module_prefixed ? mangle_module_symbol(fn->func.module_prefix, fn->func.name)
+                                       : fn->func.name;
+}
+
+char *declared_type_c_name(ASTNode *decl)
+{
+    if (!decl || (decl->kind != NODE_STRUCT && decl->kind != NODE_ENUM))
+    {
+        return NULL;
+    }
+    char *name = decl->kind == NODE_STRUCT ? decl->strct.name : decl->enm.name;
+    int prefixed =
+        decl->kind == NODE_STRUCT ? decl->strct.is_module_prefixed : decl->enm.is_module_prefixed;
+    if (!name || !prefixed)
+    {
+        return name;
+    }
+    const char *prefix =
+        decl->kind == NODE_STRUCT ? decl->strct.module_prefix : decl->enm.module_prefix;
+    return mangle_module_symbol(prefix, name);
+}
+
 Type *get_inner_type(Type *t)
 {
     while (t && t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)

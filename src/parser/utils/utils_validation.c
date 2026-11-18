@@ -170,7 +170,8 @@ static int implements_drop(ParserContext *ctx, ASTNode *node)
     {
         return 0;
     }
-    const char *name = node->kind == NODE_STRUCT ? node->strct.name : node->enm.name;
+    const char *name =
+        node->kind == NODE_STRUCT ? declared_type_c_name(node) : declared_type_c_name(node);
     const char *tpl = NULL;
     for (Instantiation *inst = ctx->instantiations; inst && !tpl; inst = inst->next)
     {
@@ -328,12 +329,12 @@ static int defined_functions_add(DefinedFunctions *set, const char *name)
 static void check_function_definition(ASTNode *f, const char *owner, DefinedFunctions *set,
                                       int *errors)
 {
-    if (f->kind != NODE_FUNCTION || !f->func.body || !f->func.name ||
+    if (f->kind != NODE_FUNCTION || !f->func.body || !function_c_name(f) ||
         f->func.generic_param_count > 0 || f->cfg_condition)
     {
         return;
     }
-    if (defined_functions_add(set, f->func.name))
+    if (defined_functions_add(set, function_c_name(f)))
     {
         return;
     }

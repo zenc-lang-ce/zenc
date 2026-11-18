@@ -184,15 +184,15 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
 
         if (f->kind == NODE_FUNCTION)
         {
-            if (f->func.name && !f->func.body)
+            if (function_c_name(f) && !f->func.body)
             {
-                if (strncmp(f->func.name, "_z_", 3) == 0)
+                if (strncmp(function_c_name(f), "_z_", 3) == 0)
                 {
                     f = f->next;
                     continue;
                 }
                 // The preamble's headers declare it already: another prototype could clash.
-                if (is_preamble_c_function(ctx, f->func.name))
+                if (is_preamble_c_function(ctx, function_c_name(f)))
                 {
                     f = f->next;
                     continue;
@@ -203,12 +203,12 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
             {
                 EMIT(ctx, "#if %s\n", f->cfg_condition);
             }
-            if (f->func.name)
+            if (function_c_name(f))
             {
                 int already_emitted = 0;
                 for (EmittedProto *ep = *emitted; ep; ep = ep->next)
                 {
-                    if (strcmp(ep->name, f->func.name) == 0 &&
+                    if (strcmp(ep->name, function_c_name(f)) == 0 &&
                         ((ep->cfg == NULL && f->cfg_condition == NULL) ||
                          (ep->cfg && f->cfg_condition && strcmp(ep->cfg, f->cfg_condition) == 0)))
                     {
@@ -219,7 +219,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 if (!already_emitted)
                 {
                     EmittedProto *ep = xmalloc(sizeof(EmittedProto));
-                    ep->name = xstrdup(f->func.name);
+                    ep->name = xstrdup(function_c_name(f));
                     ep->cfg = f->cfg_condition ? xstrdup(f->cfg_condition) : NULL;
                     ep->next = *emitted;
                     *emitted = ep;
@@ -262,8 +262,8 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
                 {
                     EMIT(ctx, "#if %s\n", m->cfg_condition);
                 }
-                prototype_span_begin(ctx, m, m->func.name);
-                emit_func_signature(ctx, m, m->func.name);
+                prototype_span_begin(ctx, m, function_c_name(m));
+                emit_func_signature(ctx, m, function_c_name(m));
                 EMIT(ctx, ";\n");
                 prototype_span_end(ctx);
                 if (m->cfg_condition)
@@ -427,7 +427,7 @@ void emit_impl_vtables(ParserContext *ctx)
             {
                 const char *method = m->func.method_name;
                 EMIT(ctx, ".%s = (__typeof__(((%s_VTable*)0)->%s))%s", method, trait, method,
-                     m->func.name);
+                     function_c_name(m));
                 if (m->next)
                 {
                     EMIT(ctx, ", ");
@@ -575,16 +575,18 @@ void print_type_defs(ParserContext *ctx, ASTNode *nodes)
                 // For vectors, we emit a custom typedef in emit_struct_defs.
                 // Standard 'typedef struct Name Name' would conflict.
             }
-            else if (local->strct.name && !local->strct.crepr_c_type)
+            else if (declared_type_c_name(local) && !local->strct.crepr_c_type)
             {
-                const char *final_name = local->link_name ? local->link_name : local->strct.name;
+                const char *final_name =
+                    local->link_name ? local->link_name : declared_type_c_name(local);
                 const char *keyword = local->strct.is_union ? "union" : "struct";
                 EMIT(ctx, "typedef %s %s %s;\n", keyword, final_name, final_name);
             }
         }
-        if (local->kind == NODE_ENUM && !local->enm.is_template && local->enm.name)
+        if (local->kind == NODE_ENUM && !local->enm.is_template && declared_type_c_name(local))
         {
-            const char *final_name = local->link_name ? local->link_name : local->enm.name;
+            const char *final_name =
+                local->link_name ? local->link_name : declared_type_c_name(local);
 
             // Only forward-declare as struct if it's an ADT-style enum (has payloads)
             int has_payload = 0;

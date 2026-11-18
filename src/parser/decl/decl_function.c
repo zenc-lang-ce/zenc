@@ -180,21 +180,22 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
 
     // In a module parsed with a prefix, the function gets it. A generic template and a method keep
     // their names: each instance, and the impl, give theirs.
+    // The node keeps the name the module writes (`name`); registries and C use the C name.
     char *written_name = NULL;
+    char *c_name = name;
     char *prefixed_name = gen_count == 0 && !ctx->current_impl_target && !is_extern
                               ? module_prefixed_name(ctx, ctx->imports.current_module_prefix, name)
                               : NULL;
     if (prefixed_name)
     {
         written_name = module_written_name(ctx, name);
-        zfree(name);
-        name = prefixed_name;
+        c_name = prefixed_name;
     }
 
     // Register if concrete (Global functions only)
     if (gen_count == 0 && !ctx->current_impl_target)
     {
-        register_func(ctx, ctx->current_scope->parent, name, count, default_values, arg_types,
+        register_func(ctx, ctx->current_scope->parent, c_name, count, default_values, arg_types,
                       ret_type_obj, is_varargs, 0, link_name, NULL, name_tok, is_export);
         // Note: required is set after return by caller (parser_core.c)
     }
@@ -258,6 +259,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     ASTNode *node = ast_create(NODE_FUNCTION);
     node->token = name_tok; // Save definition location
     node->func.name = name;
+    node->func.is_module_prefixed = prefixed_name != NULL;
     node->func.written_name = written_name;
 
     node->func.arg_types = arg_types;

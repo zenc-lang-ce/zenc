@@ -202,6 +202,39 @@ else
     check "-Werror and --warn-errors make zc's warnings errors" 0
 fi
 
+# A message about a declaration of a module imported with an alias names it as the module writes
+# it (`helper`), not by its C name (`geo_names__helper`).
+mkdir -p "$workdir/written_names"
+cat > "$workdir/written_names/geo_names.zc" <<'ZC'
+fn helper(flag: int) -> int {
+    if flag > 0 {
+        return 1;
+    }
+}
+
+fn ignore(value: int) -> int {
+    return 0;
+}
+
+struct Point {
+    x: int;
+}
+
+struct Point {
+    y: int;
+}
+ZC
+printf 'import "./geo_names.zc" as geo\nfn main() {\n    let _n = geo::helper(2);\n}\n' \
+    > "$workdir/written_names/main.zc"
+out=$("$ZC" check "$workdir/written_names/main.zc" 2>&1)
+if echo "$out" | grep -qF "Function 'helper' may not return" &&
+    echo "$out" | grep -qF "Unused parameter 'value' in function 'ignore'" &&
+    echo "$out" | grep -qF "Redefinition of struct 'Point'" && ! echo "$out" | grep -qF "geo_names__"; then
+    check "messages name a module's declarations as the module writes them" 1
+else
+    check "messages name a module's declarations as the module writes them" 0
+fi
+
 # --- zc-doc ------------------------------------------------------------------
 
 # A declaration of a module is titled as its importer writes it (`geo::Vector`), its code
