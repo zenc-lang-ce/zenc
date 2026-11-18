@@ -60,6 +60,50 @@ static void return_target(ParserContext *ctx, ASTNode *from, const char **name, 
     *type = from->func.ret_type_info;
 }
 
+// The patterns of a match. Each value (`5`, `'a'..='z'`) is checked as an expression. Each name
+// gets the enum variant it stands for (MatchPattern.variant): in the enum its scope names
+// (`Light::Red`), else in the matched value's enum (`Red` in a match on a `Light`), else, when
+// that type is not known, the first variant of that name. A name that is none is a constant.
+static void check_patterns(TypeChecker *tc, ASTNode *match, int depth)
+{
+    ParserContext *ctx = tc->pctx;
+    Type *subject = match_subject_type(match->match_stmt.expr->type_info);
+    for (ASTNode *c = match->match_stmt.cases; c; c = c->next)
+    {
+        for (MatchPattern *p = c->match_case.patterns; p; p = p->next)
+        {
+            check_node(tc, p->value, depth + 1);
+            check_node(tc, p->range_start, depth + 1);
+            check_node(tc, p->range_end, depth + 1);
+            if (p->kind != PATTERN_NAME)
+            {
+                continue;
+            }
+            Type *owner = NULL;
+            EnumVariantReg *reg = NULL;
+            if (p->name.scope)
+            {
+                reg = find_enum_variant_of(ctx, p->name.scope, p->name.name);
+            }
+            else if (subject && subject->kind != TYPE_UNKNOWN &&
+                     (reg = find_enum_variant_of(ctx, type_def_name(subject), p->name.name)))
+            {
+                owner = subject;
+            }
+            else
+            {
+                reg = find_enum_variant(ctx, p->name.name);
+            }
+            if (reg)
+            {
+                p->variant.owner = owner ? owner : type_new_enum(reg->enum_name);
+                p->variant.member = p->name.name;
+                p->variant.token = p->name_token;
+            }
+        }
+    }
+}
+
 // Type of the `index`-th of `count` bindings of a match case, read from the
 // payload of the variant the pattern names. NULL when it cannot be told (not an
 // enum, unknown variant, unresolved generic): the caller keeps UNSAFE_ANY.
@@ -409,6 +453,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
     }
     case NODE_MATCH:
         check_node(tc, node->match_stmt.expr, depth + 1);
+        check_patterns(tc, node, depth);
         misra_check_match_stmt(tc->pctx, node);
         // Visit each match case
         {
@@ -617,12 +662,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
 
                 // The node becomes the call it stands for and keeps `v[i]` as written, for
                 // what shows the program's own form (F7: elaborate without losing it).
-                ASTNode *written = ast_create(NODE_EXPR_INDEX);
-                *written = *node;
-                written->next = NULL;
-
-                node->kind = NODE_EXPR_CALL;
-                memset(&node->call, 0, sizeof(node->call));
+                ASTNode *written = ast_turn_into(node, NODE_EXPR_CALL);
                 node->call.written = written;
 
                 ASTNode *callee = ast_create(NODE_EXPR_MEMBER);
@@ -1383,8 +1423,6 @@ static void check_program_prepass(TypeChecker *tc, ASTNode *root, int depth)
     RECURSION_EXIT(tc->pctx);
 }
 
-// The instances of generic functions and impls, which are not in the tree. Checking one can
-// instantiate more, so the list is walked until every instance has been checked.
 // The std modules the compiler loaded on its own, which are not in the tree.
 static void check_implicit_std_imports(TypeChecker *tc)
 {
@@ -1394,23 +1432,20 @@ static void check_implicit_std_imports(TypeChecker *tc)
     }
 }
 
+// The instances of generic functions and impls, which are not in the tree. Checking one can
+// instantiate more, which add_instantiated_func puts at the head of the list: what is checked is
+// always the list from `checked` on, and the new ones are those before it.
 static void check_instantiations(TypeChecker *tc)
 {
-    int changed = 1;
-    while (changed)
+    ASTNode *checked = NULL;
+    while (tc->pctx->instantiated_funcs != checked)
     {
-        changed = 0;
-        for (ASTNode *inst = tc->pctx->instantiated_funcs; inst; inst = inst->next)
+        ASTNode *newest = tc->pctx->instantiated_funcs;
+        for (ASTNode *inst = newest; inst != checked; inst = inst->next)
         {
-            if (!inst->is_checked)
-            {
-                check_node(tc, inst, 0);
-                inst->is_checked = 1;
-                changed = 1;
-                // Restart from head to catch newly added instantiations that might be before us
-                break;
-            }
+            check_node(tc, inst, 0);
         }
+        checked = newest;
     }
 }
 
@@ -1432,7 +1467,6 @@ int check_program(ParserContext *ctx, ASTNode *root)
     check_program_prepass(&tc, root, 0);
 
     check_node(&tc, root, 0);
-    root->is_checked = 1;
     check_implicit_std_imports(&tc);
     check_instantiations(&tc);
     check_uncalled_lambdas(&tc, NULL);

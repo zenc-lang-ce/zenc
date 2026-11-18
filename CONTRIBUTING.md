@@ -171,7 +171,7 @@ Which checks a change needs, besides its tests (each one is explained below):
 | --- | --- |
 | Anything in `src/` | `make test`, `compare_compilers.sh` and `measure_all.sh` against `main` |
 | Codegen (`src/codegen/`) | also `cpp_cmp.sh` |
-| The typechecker (`src/analysis/`) | also `make test-check-vs-run`, and add the program to `check_clean` |
+| The typechecker (`src/analysis/`) | also `make test-check-vs-run` and `make test-check-twice`, and add the program to `check_clean` |
 | Any C file, before pushing | `validate_gcc14.sh` with the files you changed |
 | Code you believe is dead, before removing it | `trace_all.sh` |
 
@@ -180,7 +180,7 @@ run them from WSL. `validate_gcc14.sh` also needs docker. They write to
 `$ZC_WORK` (default `$TMPDIR/zc-work`, or `/tmp/zc-work`) and delete what
 they generate as they go, keeping only reports and what differs; a full run
 over the suite produces hundreds of MB, so point `ZC_WORK` at a disk with
-room. `check_vs_run.sh` and `tests/scripts/compare_compilers.sh` use a
+room. `check_vs_run.sh`, `check_twice.sh` and `tests/scripts/compare_compilers.sh` use a
 temporary directory instead. Each script's header explains its arguments.
 
 - **Add a test** with every fix: the program that failed, in the folder of
@@ -202,7 +202,10 @@ temporary directory instead. Each script's header explains its arguments.
 - **Typechecker changes:** `make test-check-vs-run` (`scripts/check_vs_run.sh
   -v`) lists the tests that pass with `zc run` but that `zc check` rejects,
   grouped by error. There are none, and the CI fails if one appears: `zc
-  check` and a build follow one semantics.
+  check` and a build follow one semantics. `make test-check-twice`
+  (`scripts/check_twice.sh -v`) checks every test twice and lists those whose
+  tree or C changes: the typechecker must be able to read what it wrote, and
+  keep no state between runs. There are none either, and the CI checks it.
 - **Run the CI's Linux checks before pushing a change in C.** macOS's clang
   misses warnings that fail the CI (`-Wformat-truncation`,
   `-Wsuggest-attribute=const`, `-Wnull-dereference`, the static analyzer).

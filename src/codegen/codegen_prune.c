@@ -207,7 +207,7 @@ static void add_body(BodySet *set, int *cap, ParserContext *ctx, ASTNode *top, A
     body->top = top;
     body->method = method;
     ASTNode *func = method ? method : top;
-    if (func->kind == NODE_FUNCTION && func->func.body && !func->func.generic_params)
+    if (func->kind == NODE_FUNCTION && func->func.body && func->func.generic_param_count == 0)
     {
         body->name = omissible_function_name(ctx, func, NULL);
     }

@@ -114,6 +114,7 @@ ASTChildren ast_children(ASTNode *node)
     case NODE_FOR_RANGE:
         add_child(&c, &node->for_range.start);
         add_child(&c, &node->for_range.end);
+        add_child(&c, &node->for_range.step);
         add_child(&c, &node->for_range.body);
         break;
     case NODE_LOOP:
@@ -235,6 +236,7 @@ ASTChildren ast_children(ASTNode *node)
     case NODE_LINK:
     case NODE_IMPORT:
     case NODE_RAW_STMT:
+    case NODE_EMBED:
     case NODE_PREPROC_DIRECTIVE:
     case NODE_ASM:
     case NODE_PLUGIN:
@@ -308,6 +310,8 @@ const char *ast_kind_name(NodeType kind)
         return "CAST";
     case NODE_IMPLICIT_CONVERSION:
         return "CONVERSION";
+    case NODE_EMBED:
+        return "EMBED";
     case NODE_EXPR_SIZEOF:
         return "SIZEOF";
     case NODE_EXPR_STRUCT_INIT:
@@ -765,59 +769,34 @@ static int is_char_ptr(Type *t)
     return 0;
 }
 
-int is_integer_type(Type *t)
+// The integer facts of `t` (integer_kind): through an alias that is not opaque, and for an
+// integer named as a struct (`int32_t`, `size_t`, `u8`), by its name. NULL for any other type.
+static const IntegerKind *integer_facts(Type *t)
 {
+    while (t && t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)
+    {
+        t = t->inner;
+    }
     if (!t)
     {
-        return 0;
+        return NULL;
     }
-
-    if (t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)
+    if (t->kind == TYPE_STRUCT && t->name)
     {
-        return is_integer_type(t->inner);
+        return integer_kind(find_primitive_kind(t->name));
     }
+    return integer_kind(t->kind);
+}
 
-    int res =
-        (t->kind == TYPE_CHAR || t->kind == TYPE_BOOL || t->kind == TYPE_I8 || t->kind == TYPE_U8 ||
-         t->kind == TYPE_I16 || t->kind == TYPE_U16 || t->kind == TYPE_I32 || t->kind == TYPE_U32 ||
-         t->kind == TYPE_I64 || t->kind == TYPE_U64 || t->kind == TYPE_USIZE ||
-         t->kind == TYPE_ISIZE || t->kind == TYPE_BYTE || t->kind == TYPE_RUNE ||
-         t->kind == TYPE_I128 || t->kind == TYPE_U128 || t->kind == TYPE_BITINT ||
-         t->kind == TYPE_UBITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_UINT ||
-         t->kind == TYPE_C_LONG || t->kind == TYPE_C_ULONG || t->kind == TYPE_C_LONGLONG ||
-         t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_USHORT ||
-         t->kind == TYPE_C_CHAR || t->kind == TYPE_C_UCHAR ||
-         (t->kind == TYPE_STRUCT && t->name &&
-          (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "uint8_t") ||
-           0 == strcmp(t->name, "int16_t") || 0 == strcmp(t->name, "uint16_t") ||
-           0 == strcmp(t->name, "int32_t") || 0 == strcmp(t->name, "uint32_t") ||
-           0 == strcmp(t->name, "int64_t") || 0 == strcmp(t->name, "uint64_t") ||
-           0 == strcmp(t->name, "size_t") || 0 == strcmp(t->name, "ssize_t") ||
-           0 == strcmp(t->name, "ptrdiff_t"))));
-    return res;
+int is_integer_type(Type *t)
+{
+    return integer_facts(t) != NULL;
 }
 
 int is_unsigned_type(Type *t)
 {
-    if (!t)
-    {
-        return 0;
-    }
-
-    if (t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)
-    {
-        return is_unsigned_type(t->inner);
-    }
-
-    int res = (t->kind == TYPE_U8 || t->kind == TYPE_U16 || t->kind == TYPE_U32 ||
-               t->kind == TYPE_U64 || t->kind == TYPE_USIZE || t->kind == TYPE_U128 ||
-               t->kind == TYPE_UBITINT || t->kind == TYPE_C_UINT || t->kind == TYPE_C_ULONG ||
-               t->kind == TYPE_C_ULONGLONG || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_UCHAR ||
-               (t->kind == TYPE_STRUCT && t->name &&
-                (0 == strcmp(t->name, "uint8_t") || 0 == strcmp(t->name, "uint16_t") ||
-                 0 == strcmp(t->name, "uint32_t") || 0 == strcmp(t->name, "uint64_t") ||
-                 0 == strcmp(t->name, "size_t"))));
-    return res;
+    const IntegerKind *facts = integer_facts(t);
+    return facts && facts->sign == INTEGER_UNSIGNED;
 }
 
 // The type an alias stands for, through every alias of an alias.
@@ -856,44 +835,8 @@ Type *type_seen_from(Type *t, const char *file)
 
 int integer_type_width(Type *t)
 {
-    if (!t)
-    {
-        return 0;
-    }
-    switch (t->kind)
-    {
-    case TYPE_I8:
-    case TYPE_U8:
-    case TYPE_BYTE:
-    case TYPE_C_CHAR:
-    case TYPE_C_UCHAR:
-        return 8;
-    case TYPE_I16:
-    case TYPE_U16:
-    case TYPE_C_SHORT:
-    case TYPE_C_USHORT:
-        return 16;
-    case TYPE_I32:
-    case TYPE_U32:
-    case TYPE_RUNE:
-    case TYPE_C_INT:
-    case TYPE_C_UINT:
-        return 32;
-    case TYPE_I64:
-    case TYPE_U64:
-    case TYPE_ISIZE:
-    case TYPE_USIZE:
-    case TYPE_C_LONG:
-    case TYPE_C_ULONG:
-    case TYPE_C_LONGLONG:
-    case TYPE_C_ULONGLONG:
-        return 64;
-    case TYPE_I128:
-    case TYPE_U128:
-        return 128;
-    default:
-        return 0;
-    }
+    const IntegerKind *facts = integer_facts(t);
+    return facts ? facts->width : 0;
 }
 
 // The type C gives an operation on two integers, so the one the generated code computes in:
@@ -933,25 +876,8 @@ Type *integer_operation_type(ASTNode *left, ASTNode *right)
 
 int is_signed_type(Type *t)
 {
-    if (!t)
-    {
-        return 0;
-    }
-
-    if (t->kind == TYPE_ALIAS && !t->alias.is_opaque_alias)
-    {
-        return is_signed_type(t->inner);
-    }
-
-    int res = (t->kind == TYPE_I8 || t->kind == TYPE_I16 || t->kind == TYPE_I32 ||
-               t->kind == TYPE_I64 || t->kind == TYPE_ISIZE || t->kind == TYPE_I128 ||
-               t->kind == TYPE_BITINT || t->kind == TYPE_C_INT || t->kind == TYPE_C_LONG ||
-               t->kind == TYPE_C_LONGLONG || t->kind == TYPE_C_SHORT || t->kind == TYPE_C_CHAR ||
-               (t->kind == TYPE_STRUCT && t->name &&
-                (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "int16_t") ||
-                 0 == strcmp(t->name, "int32_t") || 0 == strcmp(t->name, "int64_t") ||
-                 0 == strcmp(t->name, "ssize_t") || 0 == strcmp(t->name, "ptrdiff_t"))));
-    return res;
+    const IntegerKind *facts = integer_facts(t);
+    return facts && facts->sign == INTEGER_SIGNED;
 }
 
 int is_boolean_type(Type *t)
@@ -1591,10 +1517,15 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
         return xstrdup(t->c_typedef_name);
     }
 
+    // A primitive, by the one table of C names.
+    const char *primitive = primitive_c_name(t->kind, misra_mode);
+    if (primitive)
+    {
+        return xstrdup(primitive);
+    }
+
     switch (t->kind)
     {
-    case TYPE_VOID:
-        return xstrdup("void");
     case TYPE_STRUCT:
     {
         const char *c_name = c_name_of(t, lookup, context);
@@ -1611,66 +1542,6 @@ static char *type_to_c_string_impl(Type *t, int misra_mode, CNameLookup lookup, 
     }
     case TYPE_TUPLE:
         return tuple_struct_name(t);
-    case TYPE_BOOL:
-        return xstrdup("bool");
-    case TYPE_STRING:
-        return xstrdup("string");
-    case TYPE_CHAR:
-        return xstrdup("char");
-    case TYPE_I8:
-        return xstrdup("int8_t");
-    case TYPE_U8:
-        return xstrdup("uint8_t");
-    case TYPE_I16:
-        return xstrdup("int16_t");
-    case TYPE_U16:
-        return xstrdup("uint16_t");
-    case TYPE_I32:
-        return xstrdup("int32_t");
-    case TYPE_U32:
-        return xstrdup("uint32_t");
-    case TYPE_I64:
-        return xstrdup("int64_t");
-    case TYPE_U64:
-        return xstrdup("uint64_t");
-    case TYPE_F32:
-        return xstrdup("float");
-    case TYPE_F64:
-        return xstrdup("double");
-    case TYPE_USIZE:
-        return xstrdup("size_t");
-    case TYPE_ISIZE:
-        return xstrdup("ptrdiff_t");
-    case TYPE_BYTE:
-        return xstrdup("uint8_t");
-    case TYPE_I128:
-        return xstrdup("__int128");
-    case TYPE_U128:
-        return xstrdup("unsigned __int128");
-    case TYPE_RUNE:
-        return xstrdup("int32_t");
-
-    // Portable C Types (Map directly to C types)
-    case TYPE_C_INT:
-        return xstrdup(misra_mode ? "int32_t" : "int");
-    case TYPE_C_UINT:
-        return xstrdup(misra_mode ? "uint32_t" : "unsigned int");
-    case TYPE_C_LONG:
-        return xstrdup(misra_mode ? "int64_t" : "long");
-    case TYPE_C_ULONG:
-        return xstrdup(misra_mode ? "uint64_t" : "unsigned long");
-    case TYPE_C_LONGLONG:
-        return xstrdup(misra_mode ? "int64_t" : "long long");
-    case TYPE_C_ULONGLONG:
-        return xstrdup(misra_mode ? "uint64_t" : "unsigned long long");
-    case TYPE_C_SHORT:
-        return xstrdup(misra_mode ? "int16_t" : "short");
-    case TYPE_C_USHORT:
-        return xstrdup(misra_mode ? "uint16_t" : "unsigned short");
-    case TYPE_C_CHAR:
-        return xstrdup(misra_mode ? "int8_t" : "char");
-    case TYPE_C_UCHAR:
-        return xstrdup(misra_mode ? "uint8_t" : "unsigned char");
 
     case TYPE_BITINT:
     {
@@ -2421,6 +2292,17 @@ Type *pointee_of(Type *t)
         return t->inner;
     }
     return t->kind == TYPE_STRING ? type_new(TYPE_CHAR) : NULL;
+}
+
+ASTNode *ast_turn_into(ASTNode *node, NodeType kind)
+{
+    ASTNode *was = ast_create(node->kind);
+    *was = *node;
+    was->next = NULL;
+
+    node->kind = kind;
+    memset(&node->root, 0, sizeof(ASTNode) - offsetof(ASTNode, root)); // The union, last.
+    return was;
 }
 
 ASTNode *written_expr(ASTNode *node)

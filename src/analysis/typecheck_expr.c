@@ -202,7 +202,7 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
         return;
     }
 
-    if (unop == OP_PRE_INC || unop == OP_PRE_DEC || unop == OP_POST_INC || unop == OP_POST_DEC)
+    if (is_increment_operator(unop))
     {
         misra_check_inc_dec_result_used(tc->pctx, node->token);
         // Track as a write
@@ -311,10 +311,6 @@ static int rewrite_index_set(TypeChecker *tc, ASTNode *node, int depth)
         return 0;
     }
 
-    ASTNode *written = ast_create(NODE_EXPR_BINARY);
-    *written = *node;
-    written->next = NULL;
-
     ASTNode *callee = ast_create(NODE_EXPR_MEMBER);
     callee->token = node->token;
     callee->member.target = index->index.array;
@@ -337,8 +333,7 @@ static int rewrite_index_set(TypeChecker *tc, ASTNode *node, int depth)
     *tail = node->binary.right;
     node->binary.right->next = NULL;
 
-    node->kind = NODE_EXPR_CALL;
-    memset(&node->call, 0, sizeof(node->call));
+    ASTNode *written = ast_turn_into(node, NODE_EXPR_CALL);
     node->call.callee = callee;
     node->call.args = args;
     node->call.written = written;
@@ -926,31 +921,21 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
     }
 }
 
-// Views the array `node` as a slice of type `slice`: the node becomes a cast to the slice, whose
-// operand is the array, so that codegen writes the conversion.
 // Wraps `node` in a conversion to `to`, in place: the node becomes the conversion and what it was
 // moves to its child, so whoever points at it now points at the conversion. The child keeps its
 // type, so checking the tree again gives the same tree.
 static void wrap_in_conversion(ASTNode *node, Type *to)
 {
-    ASTNode *expr = ast_create(node->kind);
-    *expr = *node;
-    expr->next = NULL;
-
-    node->kind = NODE_IMPLICIT_CONVERSION;
-    memset(&node->conversion, 0, sizeof(node->conversion));
+    ASTNode *expr = ast_turn_into(node, NODE_IMPLICIT_CONVERSION);
     node->conversion.expr = expr;
     node->type_info = to;
 }
 
+// Views the array `node` as a slice of type `slice`: the node becomes a cast to the slice, whose
+// operand is the array, so that codegen writes the conversion.
 static void view_array_as_slice(ASTNode *node, Type *slice)
 {
-    ASTNode *array = ast_create(NODE_EXPR_ARRAY_LITERAL);
-    *array = *node;
-    array->next = NULL;
-
-    node->kind = NODE_EXPR_CAST;
-    memset(&node->cast, 0, sizeof(node->cast));
+    ASTNode *array = ast_turn_into(node, NODE_EXPR_CAST);
     node->cast.expr = array;
     node->type_info = slice;
 }
@@ -1297,6 +1282,27 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     if (is_float_type(resolved_target) && is_float_type(resolved_value))
     {
         return 1;
+    }
+
+    // A pointer to a struct that implements the trait, where a trait object (or a pointer to one)
+    // is expected: the object is an implicit conversion of the pointer, whose vtable codegen
+    // writes.
+    Type *trait = resolved_target->kind == TYPE_POINTER && resolved_target->inner
+                      ? get_inner_type(resolved_target->inner)
+                      : resolved_target;
+    if (trait->name && is_trait(tc->pctx, type_def_name(trait)) &&
+        resolved_value->kind == TYPE_POINTER && resolved_value->inner)
+    {
+        Type *pointee = get_inner_type(resolved_value->inner);
+        if (pointee->kind == TYPE_STRUCT && pointee->name &&
+            check_impl(tc->pctx, type_def_name(trait), type_def_name(pointee)))
+        {
+            if (value_node)
+            {
+                wrap_in_conversion(value_node, target);
+            }
+            return 1;
+        }
     }
 
     // Trait object compatibility: Struct -> Trait

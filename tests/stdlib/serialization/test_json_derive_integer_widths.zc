@@ -1,0 +1,36 @@
+// stdlib/serialization: test_json_derive_integer_widths
+// @derive(FromJson, ToJson) reads and writes every integer field as a number, whatever its
+// width or sign: not only `int`, `i64` or `usize`, but also `u8`, `i16`, `u16` and `isize`.
+import "std/json.zc"
+
+@derive(FromJson, ToJson)
+struct Pixel {
+    level: u8;
+    offset: i16;
+    count: u16;
+    delta: isize;
+    total: i64;
+}
+
+test "integer fields of every width go through JSON" {
+    let j = JsonValue::object();
+    j.set("level", JsonValue::number(200.0));
+    j.set("offset", JsonValue::number(-7.0));
+    j.set("count", JsonValue::number(4000.0));
+    j.set("delta", JsonValue::number(-12.0));
+    j.set("total", JsonValue::number(123456.0));
+    let r = Pixel::from_json(&j);
+    assert(r.is_ok(), "from_json");
+    let p = r.unwrap();
+    assert(p.level == 200, "u8");
+    assert(p.offset == -7, "i16");
+    assert(p.count == 4000, "u16");
+    assert(p.delta == -12, "isize");
+    assert(p.total == 123456, "i64");
+
+    let back = p.to_json();
+    let level = back.get_int("level");
+    assert(level.is_some() && level.unwrap() == 200, "to_json u8");
+    let offset = back.get_int("offset");
+    assert(offset.is_some() && offset.unwrap() == -7, "to_json i16");
+}

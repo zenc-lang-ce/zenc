@@ -390,13 +390,14 @@ static char *primitive_hover(const char *word)
 {
     const ZenPrimitive *primitive = find_primitive_by_name(word);
     const char *description = primitive ? primitive_description(primitive->kind) : NULL;
-    if (!description)
+    const char *c_name = primitive ? primitive_c_name(primitive->kind, 0) : NULL;
+    if (!description || !c_name)
     {
         return NULL;
     }
-    size_t size = strlen(word) + strlen(description) + strlen(primitive->c_name) + 32;
+    size_t size = strlen(word) + strlen(description) + strlen(c_name) + 32;
     char *hover = xmalloc(size);
-    snprintf(hover, size, "**%s**: %s `%s` in C.", word, description, primitive->c_name);
+    snprintf(hover, size, "**%s**: %s `%s` in C.", word, description, c_name);
     return hover;
 }
 

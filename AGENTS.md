@@ -55,7 +55,7 @@ Follow "Testing a change" in CONTRIBUTING.md. In short:
    scripts a change needs): `tests/scripts/compare_compilers.sh`, and
    `scripts/measure_all.sh`, whose only differences in the generated C are
    the ones the change intends. If you touched the typechecker,
-   `scripts/check_vs_run.sh` must not go up.
+   `scripts/check_vs_run.sh` and `scripts/check_twice.sh` must stay at 0.
 4. Before pushing C code: `scripts/validate_gcc14.sh` with the files you
    changed, if docker is available. Otherwise say in the PR that the gcc-14
    checks were not run locally.

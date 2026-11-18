@@ -278,7 +278,8 @@ char *instantiate_function(ParserContext *ctx, FunctionInstance instance)
         return mangled;
     }
 
-    Bindings b = bindings_new(tpl->generic_param, instance.args, instance.count);
+    Bindings b =
+        bindings_new(tpl->generic_params, tpl->generic_param_count, instance.args, instance.count);
     ASTNode *new_fn = copy_ast_replacing(ctx, tpl->func_node, &b, NULL, NULL);
     if (!new_fn || new_fn->kind != NODE_FUNCTION)
     {
@@ -288,6 +289,7 @@ char *instantiate_function(ParserContext *ctx, FunctionInstance instance)
     zfree(new_fn->func.name);
     new_fn->func.name = xstrdup(mangled);
     new_fn->func.generic_params = NULL;
+    new_fn->func.generic_param_count = 0;
 
     // The instances the copy's signature names (`-> Triple<X, Y, Z>`).
     trigger_type_instantiation(ctx, new_fn->func.ret_type_info);
@@ -344,7 +346,7 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
     ASTNode *backup_next = it->impl_node->next;
     it->impl_node->next = NULL; // Break link to isolate node
 
-    Bindings b = bindings_new(it->generic_param, args, count);
+    Bindings b = bindings_new(it->generic_params, it->generic_param_count, args, count);
     ASTNode *new_impl =
         copy_ast_replacing(ctx, it->impl_node, &b, it->struct_name, mangled_struct_name);
 
@@ -416,14 +418,14 @@ static void register_enum_constructor(ParserContext *ctx, const char *m, const c
     zfree(mangled_var);
 }
 
-// The parameters a struct or enum template declares, as `K,V`.
-static char *template_params(ASTNode *def)
+// The bindings of the parameters a struct or enum template declares to `args`.
+static Bindings template_bindings(ASTNode *def, Type **args, int count)
 {
     if (def->kind == NODE_ENUM)
     {
-        return def->enm.generic_param;
+        return bindings_new(def->enm.generic_params, def->enm.generic_param_count, args, count);
     }
-    return join_with_commas(def->strct.generic_params, def->strct.generic_param_count);
+    return bindings_new(def->strct.generic_params, def->strct.generic_param_count, args, count);
 }
 
 // Instantiates the template `tpl` with `args`: its struct or enum, the constructors of its
@@ -459,7 +461,7 @@ static void instantiate_generic(ParserContext *ctx, const char *tpl, Type **args
     ni->next = ctx->instantiations;
     ctx->instantiations = ni;
 
-    Bindings b = bindings_new(template_params(t->struct_node), args, count);
+    Bindings b = template_bindings(t->struct_node, args, count);
     ASTNode *copy = NULL;
 
     if (t->struct_node->kind == NODE_STRUCT)

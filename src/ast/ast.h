@@ -132,75 +132,76 @@ typedef struct Type
  */
 typedef enum
 {
-    NODE_ROOT,               ///< Root of the AST.
-    NODE_FUNCTION,           ///< Function definition.
-    NODE_BLOCK,              ///< Code block { ... }.
-    NODE_RETURN,             ///< Return statement.
-    NODE_VAR_DECL,           ///< Variable declaration.
-    NODE_CONST,              ///< Constant definition.
-    NODE_TYPE_ALIAS,         ///< Type alias (typedef).
-    NODE_IF,                 ///< If statement.
-    NODE_WHILE,              ///< While loop.
-    NODE_FOR,                ///< For loop.
-    NODE_FOR_RANGE,          ///< For-range loop (iterator).
-    NODE_LOOP,               ///< Infinite loop.
-    NODE_BREAK,              ///< Break statement.
-    NODE_CONTINUE,           ///< Continue statement.
-    NODE_MATCH,              ///< Match statement.
-    NODE_MATCH_CASE,         ///< Case within match.
-    NODE_EXPR_BINARY,        ///< Binary expression (a + b).
-    NODE_EXPR_UNARY,         ///< Unary expression (!a).
-    NODE_EXPR_LITERAL,       ///< Literal value.
-    NODE_EXPR_VAR,           ///< Variable reference.
-    NODE_EXPR_CALL,          ///< Function call.
-    NODE_EXPR_MEMBER,        ///< Member access (a.b).
-    NODE_EXPR_INDEX,         ///< Array index (a[b]).
-    NODE_EXPR_CAST,          ///< Type cast.
-    NODE_EXPR_SIZEOF,        ///< Sizeof expression.
-    NODE_EXPR_STRUCT_INIT,   ///< Struct initializer.
-    NODE_FIELD_INIT,         ///< Field of a struct initializer (var_decl: name, init_expr).
-    NODE_EXPR_ARRAY_LITERAL, ///< Array literal.
-    NODE_EXPR_TUPLE_LITERAL, ///< Tuple literal.
-    NODE_EXPR_SLICE,         ///< Slice operation.
-    NODE_STRUCT,             ///< Struct definition.
-    NODE_FIELD,              ///< Struct field.
-    NODE_ENUM,               ///< Enum definition.
-    NODE_ENUM_VARIANT,       ///< Enum variant.
-    NODE_TRAIT,              ///< Trait definition.
-    NODE_IMPL,               ///< Impl block.
-    NODE_IMPL_TRAIT,         ///< Trait implementation.
-    NODE_INCLUDE,            ///< Include directive.
-    NODE_LINK,               ///< Link directive (@link("path")).
-    NODE_RAW_STMT,           ///< Raw statement (transpiler bypass).
-    NODE_TEST,               ///< Test block.
-    NODE_ASSERT,             ///< Assert statement.
-    NODE_EXPECT,             ///< Expect statement (non-fatal assert).
-    NODE_DEFER,              ///< Defer statement.
-    NODE_DESTRUCT_VAR,       ///< Destructuring declaration.
-    NODE_TERNARY,            ///< Ternary expression (?:).
-    NODE_ASM,                ///< Assembly block.
-    NODE_LAMBDA,             ///< Lambda function.
-    NODE_PLUGIN,             ///< Plugin invocation.
-    NODE_GOTO,               ///< Goto statement.
-    NODE_LABEL,              ///< Label.
-    NODE_TYPEOF,             ///< Typeof operator.
-    NODE_TRY,                ///< Try statement (error handling).
-    NODE_REFLECTION,         ///< Reflection info.
-    NODE_REPL_PRINT,         ///< Implicit print (REPL).
-    NODE_CUDA_LAUNCH,        ///< CUDA kernel launch (<<<...>>>).
-    NODE_VA_START,           ///< va_start intrinsic.
-    NODE_VA_END,             ///< va_end intrinsic.
-    NODE_VA_COPY,            ///< va_copy intrinsic.
-    NODE_VA_ARG,             ///< va_arg intrinsic.
-    NODE_PREPROC_DIRECTIVE,  ///< C-style preprocessor directive (#define, etc).
-    NODE_IMPORT,             ///< Import statement (recursive).
-    NODE_COMPTIME,           ///< Comptime block (interpreted at compile time).
-    NODE_AST_COMMENT,        ///< Comment node.
-    NODE_EXPR_FSTRING,       ///< Interpolated string f"..." (a list of NODE_FSTRING_PART).
-    NODE_FSTRING_PART,       ///< Piece of an f-string: literal text or a `{expr[:fmt]}`.
-    NODE_ERRONEOUS,          ///< Error sentinel (safe no-op node).
-    NODE_IMPLICIT_CONVERSION ///< The typechecker's conversion of `expr` to the node's type_info,
-                             ///< which C makes implicitly: `expr` keeps the type it has.
+    NODE_ROOT,                ///< Root of the AST.
+    NODE_FUNCTION,            ///< Function definition.
+    NODE_BLOCK,               ///< Code block { ... }.
+    NODE_RETURN,              ///< Return statement.
+    NODE_VAR_DECL,            ///< Variable declaration.
+    NODE_CONST,               ///< Constant definition.
+    NODE_TYPE_ALIAS,          ///< Type alias (typedef).
+    NODE_IF,                  ///< If statement.
+    NODE_WHILE,               ///< While loop.
+    NODE_FOR,                 ///< For loop.
+    NODE_FOR_RANGE,           ///< For-range loop (iterator).
+    NODE_LOOP,                ///< Infinite loop.
+    NODE_BREAK,               ///< Break statement.
+    NODE_CONTINUE,            ///< Continue statement.
+    NODE_MATCH,               ///< Match statement.
+    NODE_MATCH_CASE,          ///< Case within match.
+    NODE_EXPR_BINARY,         ///< Binary expression (a + b).
+    NODE_EXPR_UNARY,          ///< Unary expression (!a).
+    NODE_EXPR_LITERAL,        ///< Literal value.
+    NODE_EXPR_VAR,            ///< Variable reference.
+    NODE_EXPR_CALL,           ///< Function call.
+    NODE_EXPR_MEMBER,         ///< Member access (a.b).
+    NODE_EXPR_INDEX,          ///< Array index (a[b]).
+    NODE_EXPR_CAST,           ///< Type cast.
+    NODE_EXPR_SIZEOF,         ///< Sizeof expression.
+    NODE_EXPR_STRUCT_INIT,    ///< Struct initializer.
+    NODE_FIELD_INIT,          ///< Field of a struct initializer (var_decl: name, init_expr).
+    NODE_EXPR_ARRAY_LITERAL,  ///< Array literal.
+    NODE_EXPR_TUPLE_LITERAL,  ///< Tuple literal.
+    NODE_EXPR_SLICE,          ///< Slice operation.
+    NODE_STRUCT,              ///< Struct definition.
+    NODE_FIELD,               ///< Struct field.
+    NODE_ENUM,                ///< Enum definition.
+    NODE_ENUM_VARIANT,        ///< Enum variant.
+    NODE_TRAIT,               ///< Trait definition.
+    NODE_IMPL,                ///< Impl block.
+    NODE_IMPL_TRAIT,          ///< Trait implementation.
+    NODE_INCLUDE,             ///< Include directive.
+    NODE_LINK,                ///< Link directive (@link("path")).
+    NODE_RAW_STMT,            ///< Raw statement (transpiler bypass).
+    NODE_TEST,                ///< Test block.
+    NODE_ASSERT,              ///< Assert statement.
+    NODE_EXPECT,              ///< Expect statement (non-fatal assert).
+    NODE_DEFER,               ///< Defer statement.
+    NODE_DESTRUCT_VAR,        ///< Destructuring declaration.
+    NODE_TERNARY,             ///< Ternary expression (?:).
+    NODE_ASM,                 ///< Assembly block.
+    NODE_LAMBDA,              ///< Lambda function.
+    NODE_PLUGIN,              ///< Plugin invocation.
+    NODE_GOTO,                ///< Goto statement.
+    NODE_LABEL,               ///< Label.
+    NODE_TYPEOF,              ///< Typeof operator.
+    NODE_TRY,                 ///< Try statement (error handling).
+    NODE_REFLECTION,          ///< Reflection info.
+    NODE_REPL_PRINT,          ///< Implicit print (REPL).
+    NODE_CUDA_LAUNCH,         ///< CUDA kernel launch (<<<...>>>).
+    NODE_VA_START,            ///< va_start intrinsic.
+    NODE_VA_END,              ///< va_end intrinsic.
+    NODE_VA_COPY,             ///< va_copy intrinsic.
+    NODE_VA_ARG,              ///< va_arg intrinsic.
+    NODE_PREPROC_DIRECTIVE,   ///< C-style preprocessor directive (#define, etc).
+    NODE_IMPORT,              ///< Import statement (recursive).
+    NODE_COMPTIME,            ///< Comptime block (interpreted at compile time).
+    NODE_AST_COMMENT,         ///< Comment node.
+    NODE_EXPR_FSTRING,        ///< Interpolated string f"..." (a list of NODE_FSTRING_PART).
+    NODE_FSTRING_PART,        ///< Piece of an f-string: literal text or a `{expr[:fmt]}`.
+    NODE_ERRONEOUS,           ///< Error sentinel (safe no-op node).
+    NODE_IMPLICIT_CONVERSION, ///< The typechecker's conversion of `expr` to the node's type_info,
+                              ///< which C makes implicitly: `expr` keeps the type it has.
+    NODE_EMBED                ///< `embed "file" as T`: the bytes of a file, as a value of T.
 } NodeType;
 
 // ** AST Node Structure **
@@ -257,15 +258,17 @@ typedef enum
 typedef struct MatchPattern
 {
     PatternKind kind;
-    QualifiedName name; ///< PATTERN_NAME: the name; its scope by the name the type is declared
-                        ///< under (`base__Shape` for `m::Shape`, see type_declaration_name).
-    Token name_token;   ///< PATTERN_NAME: where the name is written, for the language server.
-    Token scope_token;  ///< PATTERN_NAME: where the last part of its scope is (`Color` of
-                        ///< `Color::Red`).
-    char *literal;      ///< PATTERN_LITERAL: the literal, as written.
-    char *range_start;  ///< PATTERN_RANGE: the start, as written.
-    char *range_end;    ///< PATTERN_RANGE: the end, as written.
-    int is_inclusive;   ///< PATTERN_RANGE: `..=` rather than `..`.
+    QualifiedName name;   ///< PATTERN_NAME: the name; its scope by the name the type is declared
+                          ///< under (`base__Shape` for `m::Shape`, see type_declaration_name).
+    Token name_token;     ///< PATTERN_NAME: where the name is written, for the language server.
+    Token scope_token;    ///< PATTERN_NAME: where the last part of its scope is (`Color` of
+                          ///< `Color::Red`).
+    TypeMember variant;   ///< PATTERN_NAME: the enum variant it names, which the typechecker
+                          ///< resolves (match_pattern_variant); no member for a constant.
+    ASTNode *value;       ///< PATTERN_LITERAL: the value (`5`, `-1`, `'a'`, `"text"`).
+    ASTNode *range_start; ///< PATTERN_RANGE: the start.
+    ASTNode *range_end;   ///< PATTERN_RANGE: the end.
+    int is_inclusive;     ///< PATTERN_RANGE: `..=` rather than `..`.
     struct MatchPattern *next;
 } MatchPattern;
 
@@ -283,7 +286,6 @@ struct ASTNode
                             // node was defined.
     char *cfg_condition;    // C preprocessor condition from @cfg
     char *link_name;        // Optional override for external C name
-    int is_checked;         // Flag to track semantic analysis (avoid redundant passes).
 
     union
     {
@@ -295,7 +297,8 @@ struct ASTNode
         struct
         {
             char *name;
-            char *generic_params; // <T, U>
+            char **generic_params; // `T`, `U` of `fn f<T, U>`; NULL when not generic.
+            int generic_param_count;
             ASTNode *body;
             Type **arg_types;
             ASTNode **default_values; // Default value of each parameter, NULL where it has none.
@@ -374,7 +377,8 @@ struct ASTNode
             char *written_name; // As programs write it, when `name` has a module prefix.
             ASTNode *variants;
             int is_template;
-            char *generic_param;
+            char **generic_params; // `T` of `enum Option<T>` (an enum declares one at most).
+            int generic_param_count;
             int is_export;
         } enm;
 
@@ -415,7 +419,7 @@ struct ASTNode
             Token var_token; ///< Where the loop variable is written: its declaration.
             ASTNode *start;
             ASTNode *end;
-            char *step;
+            ASTNode *step; ///< `2` or `-1` of `step 2`; NULL without `step` (one at a time).
             int is_inclusive;
             ASTNode *body;
             char *loop_label;
@@ -529,6 +533,17 @@ struct ASTNode
         {
             ASTNode *expr; // Converted to the node's type_info; it keeps its own type.
         } conversion;
+
+        struct
+        {
+            char *path;           ///< The file, as written.
+            unsigned char *bytes; ///< Its contents, read when the program is parsed.
+            size_t len;
+            Type *as_type;   ///< The type written after `as`, or `[char]` without one. The
+                             ///< node's type_info is what the value is: a pointer to the
+                             ///< elements for an array.
+            int in_function; ///< Written in a function body, not in a global's initializer.
+        } embed;
 
         struct
         {
@@ -954,6 +969,14 @@ int is_string_literal(ASTNode *node);
  *        ("is it the literal 0?"); its type is the converted one's.
  */
 ASTNode *written_expr(ASTNode *node);
+
+/**
+ * @brief Turns `node` into an empty node of kind `kind`, in place, and returns what it was, in a
+ *        node of its own (outside any list). Whoever points at `node` then points at the new
+ *        node, which keeps the place in the list, the position and the type: the way to wrap a
+ *        node (the old one becomes a child) or to elaborate it (the old one is kept as written).
+ */
+ASTNode *ast_turn_into(ASTNode *node, NodeType kind);
 
 /**
  * @brief Whether `t` is a pointer: a `T*`, or a `string`, which is a `char*`.

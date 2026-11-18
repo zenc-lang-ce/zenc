@@ -20,6 +20,15 @@ This new release brings breaking changes to the language:
 - Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name: the special message "is a function of std/io.zc, which is not imported" is gone.
 
 ### Fixes
+- A cast to a C type writes that type: `(c_int)x` is `(int)x`, `(c_long)x` is `(long)x` and `(string)x` is `(string)x` in the C. They were written as `(int32_t)`, `(int64_t)` and `(char*)`, which differ from `long` where `long` has 32 bits (Windows).
+- An f-string prints an `i8` as a number in C, as it already did in C++ (`let x: i8 = 65;` printed `A`). The format of each C type comes from one table, which the preamble writes as a `_Generic` in C and as overloads in C++.
+- `@derive(FromJson, ToJson)` reads and writes an integer field of any width as a number: a `u8`, `i16`, `u16` or `isize` field no longer generates calls to a `uint8_t__to_json` that does not exist.
+- An `asm` operand of type `usize`, `isize`, `c_long` or `c_ulong` takes a 64-bit register, as its value needs, and not a 32-bit one.
+- A pointer to a struct becomes a trait object wherever a trait is expected, whatever expression gives it: `area_of(&holder.sq)`, `area_of(&items[1])` and `return sq;` in a function returning a trait no longer fail in the C compiler. Only a variable or the address of one was converted.
+- With `--misra`, an `embed` is no longer reported as a raw C block (MISRA Rule Zen 1.1): the compiler writes its C, the program does not.
+- A `match` pattern can be a negative literal or a range with negative bounds (`-1 =>`, `-5..-2 =>`): a pattern that is a value is read as an expression, which `zc check` checks. Before, `-1 =>` was "Expected => after match pattern".
+- A variant written without its enum in a `match` (`Red =>`) is the one of the matched value's enum. It was the first variant of that name found among all the enums, so when another enum declared a variant with the same name, the arm compared the other enum's tag and was never taken.
+- The step of a range loop (`for i in 0..n step k`) is checked as an expression: `zc check` reports a name it does not know, which only the C compiler did.
 - A returned lambda takes the function's return type (`fn adder(n: int) -> fn(int) -> int { return x => x + n; }`), as one in a `let` with a type or passed as an argument does.
 - A lambda whose parameters have no type (`let add = (x, y) => x + y;`) gets them from its first call, and `zc check` checks its body then, with those types: before, it checked the body with the types unknown, and an error in it (passing `x` where a `string` is expected, when the call gives an `int`) went unreported.
 - An index on a struct with `get`/`set` (the operator overload) is decided in one place, the typechecker, with the rule the parser, the typechecker and the backend each had their own copy of: `v[i, j] = x` passes every index to `set`, a pointer is still indexed directly, and the result of `get` is a temporary a method can be called on (`m[k].unwrap()`).

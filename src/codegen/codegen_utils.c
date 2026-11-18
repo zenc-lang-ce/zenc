@@ -137,7 +137,11 @@ const char *zero_initializer(ParserContext *ctx, Type *t)
     {
         return ctx->config->use_cpp ? "{}" : "{0}";
     }
-    if (is_int_type(k))
+    if (k == TYPE_BOOL)
+    {
+        return "false";
+    }
+    if (integer_kind(k) || k == TYPE_ENUM)
     {
         return "0";
     }
@@ -148,10 +152,6 @@ const char *zero_initializer(ParserContext *ctx, Type *t)
     if (k == TYPE_F64)
     {
         return "0.0";
-    }
-    if (k == TYPE_BOOL)
-    {
-        return "false";
     }
     return NULL;
 }

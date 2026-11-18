@@ -178,11 +178,13 @@ const char *callee_own_name(ParserContext *ctx, ASTNode *callee)
     return callee->var_ref.instance.name;
 }
 
-void register_func_template(ParserContext *ctx, const char *name, const char *param, ASTNode *node)
+void register_func_template(ParserContext *ctx, const char *name, char **params, int param_count,
+                            ASTNode *node)
 {
     GenericFuncTemplate *t = xcalloc(1, sizeof(GenericFuncTemplate));
     t->name = xstrdup(name);
-    t->generic_param = xstrdup(param);
+    t->generic_params = params;
+    t->generic_param_count = param_count;
     t->func_node = node;
     t->next = ctx->func_templates;
     ctx->func_templates = t;
@@ -287,11 +289,13 @@ int type_is_generic_dependent(ParserContext *ctx, Type *t)
     return 0;
 }
 
-void register_impl_template(ParserContext *ctx, const char *sname, const char *param, ASTNode *node)
+void register_impl_template(ParserContext *ctx, const char *sname, char **params, int param_count,
+                            ASTNode *node)
 {
     GenericImplTemplate *t = xmalloc(sizeof(GenericImplTemplate));
     t->struct_name = xstrdup(sname);
-    t->generic_param = xstrdup(param);
+    t->generic_params = params;
+    t->generic_param_count = param_count;
     t->impl_node = node;
     t->next = ctx->impl_templates;
     ctx->impl_templates = t;
@@ -413,6 +417,15 @@ static int match_covers(ASTNode *match, const char *variant)
     return 0;
 }
 
+EnumVariantReg *pattern_variant(ParserContext *ctx, MatchPattern *p)
+{
+    if (p->kind != PATTERN_NAME || !p->variant.member)
+    {
+        return NULL;
+    }
+    return find_enum_variant_of(ctx, type_def_name(p->variant.owner), p->variant.member);
+}
+
 Type *match_subject_type(Type *scrutinee)
 {
     Type *t = get_inner_type(scrutinee);
@@ -476,12 +489,7 @@ const char *match_missing_variant(ParserContext *ctx, ASTNode *match, Type *scru
     {
         for (MatchPattern *p = c->match_case.patterns; p && !enum_name; p = p->next)
         {
-            EnumVariantReg *reg = NULL;
-            if (p->kind == PATTERN_NAME)
-            {
-                reg = p->name.scope ? find_enum_variant_of(ctx, p->name.scope, p->name.name)
-                                    : find_enum_variant(ctx, p->name.name);
-            }
+            EnumVariantReg *reg = pattern_variant(ctx, p);
             enum_name = reg ? reg->enum_name : NULL;
         }
     }
