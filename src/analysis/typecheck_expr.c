@@ -868,6 +868,20 @@ static int is_struct_base_match(Type *base, Type *instantiated)
            strcmp(base->name, instantiated->name) == 0;
 }
 
+// Makes `*expr_ptr` the dereference of what it was, a value of `pointee`.
+static void wrap_in_dereference(ASTNode **expr_ptr, Type *pointee)
+{
+    ASTNode *expr = *expr_ptr;
+    ASTNode *deref = ast_create(NODE_EXPR_UNARY);
+    deref->unary.op = OP_DEREF;
+    deref->unary.operand = expr;
+    deref->type_info = pointee;
+    deref->token = expr->token;
+    deref->next = expr->next;
+    expr->next = NULL;
+    *expr_ptr = deref;
+}
+
 void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_ptr,
                                                Type *expected_type)
 {
@@ -895,14 +909,7 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
         is_type_copy(tc->pctx, a_res->inner))
 
     {
-        ASTNode *deref = ast_create(NODE_EXPR_UNARY);
-        deref->unary.op = OP_DEREF;
-        deref->unary.operand = expr;
-        deref->type_info = a_res->inner;
-        deref->token = expr->token;
-        deref->next = expr->next;
-        expr->next = NULL;
-        *expr_ptr = deref;
+        wrap_in_dereference(expr_ptr, a_res->inner);
     }
     // T (actual) -> T* (expected) => Implicit Address-Of &
     else if (e_res->kind == TYPE_POINTER && e_res->inner &&
@@ -918,6 +925,36 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
         addr->next = expr->next;
         expr->next = NULL;
         *expr_ptr = addr;
+    }
+}
+
+static int is_self(ASTNode *node)
+{
+    return node && node->kind == NODE_EXPR_VAR && strcmp(node->var_ref.name, "self") == 0 &&
+           node->type_info && node->type_info->kind == TYPE_POINTER;
+}
+
+void settle_returned_self(TypeChecker *tc, ASTNode **value, Type *expected_type)
+{
+    ASTNode *v = *value;
+    Type *expected = get_inner_type(expected_type);
+    if (!v || !expected)
+    {
+        return;
+    }
+    if (is_self(v) && expected->kind != TYPE_POINTER)
+    {
+        // The receiver's value, also when its type is not Copy.
+        wrap_in_dereference(value, v->type_info->inner);
+    }
+    else if (v->kind == NODE_EXPR_UNARY && v->unary.op == OP_ADDRESS && is_self(v->unary.operand) &&
+             expected->kind == TYPE_POINTER)
+    {
+        const char *hints[] = {"`self` is already a pointer to the receiver: return `self`", NULL};
+        tc_error_from_0_6(tc, v->token, "`&self` is the address of the pointer `self`", hints);
+        ASTNode *self = v->unary.operand;
+        self->next = v->next;
+        *value = self;
     }
 }
 

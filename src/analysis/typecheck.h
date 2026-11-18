@@ -109,6 +109,15 @@ typedef struct TypeChecker
  * @return 0 on success (no errors), non-zero if errors occurred.
  */
 int check_program(ParserContext *ctx, ASTNode *root);
+/**
+ * @brief Everything between parsing a program and generating its code: the Drop traits, the
+ *        validation of its types and function definitions, and the typechecker (twice with
+ *        `--check-twice`). Codegen relies on what the typechecker settles, so every path that
+ *        generates code runs this first.
+ * @return 0 on success; -1 if the types or function definitions are invalid (the typechecker
+ *         did not run); otherwise check_program's result.
+ */
+int analyze_program(ParserContext *ctx, ASTNode *root);
 
 // Error helpers available to move_check.c
 void tc_error(TypeChecker *tc, Token t, const char *msg);

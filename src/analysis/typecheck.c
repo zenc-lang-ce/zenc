@@ -374,18 +374,9 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             else if (node->ret.value && ret_type_info)
             {
                 apply_implicit_struct_pointer_conversions(tc, &node->ret.value, ret_type_info);
-                Type *returned = node->ret.value->type_info;
-                Type *expected = get_inner_type(ret_type_info);
-                // In a method whose `self` is a pointer, `return self;` returns the
-                // value: codegen emits `return *self;` (see codegen_stmt.c).
-                if (returned && expected && returned->kind == TYPE_POINTER &&
-                    expected->kind != TYPE_POINTER && node->ret.value->kind == NODE_EXPR_VAR &&
-                    strcmp(node->ret.value->var_ref.name, "self") == 0)
-                {
-                    returned = returned->inner;
-                }
-                check_type_compatibility(tc, ret_type_info, returned, node->token, node->ret.value,
-                                         0);
+                settle_returned_self(tc, &node->ret.value, ret_type_info);
+                check_type_compatibility(tc, ret_type_info, node->ret.value->type_info, node->token,
+                                         node->ret.value, 0);
             }
         }
         tc->is_unreachable = 1;
@@ -1474,6 +1465,21 @@ static void check_instantiations(TypeChecker *tc)
 }
 
 // ** Entry Point **
+
+int analyze_program(ParserContext *ctx, ASTNode *root)
+{
+    propagate_drop_traits(ctx);
+    if (!validate_types(ctx) || !validate_function_definitions(ctx, root))
+    {
+        return -1;
+    }
+    int result = check_program(ctx, root);
+    if (result == 0 && ctx->config->check_twice)
+    {
+        result = check_program(ctx, root);
+    }
+    return result;
+}
 
 int check_program(ParserContext *ctx, ASTNode *root)
 {
