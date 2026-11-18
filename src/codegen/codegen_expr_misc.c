@@ -163,12 +163,7 @@ void handle_expr_cast(ParserContext *ctx, ASTNode *node)
     int cast_tag = 0;
     if (src_type && src_type->kind == TYPE_ENUM)
     {
-        const char *clean_name = type_def_name(src_type);
-        if (strncmp(clean_name, "struct ", 7) == 0)
-        {
-            clean_name += 7;
-        }
-        ASTNode *def = find_struct_def(ctx, clean_name);
+        ASTNode *def = named_type_def(ctx, src_type);
         if (def && def->kind == NODE_ENUM)
         {
             ASTNode *v = def->enm.variants;
@@ -214,7 +209,7 @@ void handle_reflection(ParserContext *ctx, ASTNode *node)
             return;
         }
         char *sname = type_def_name(t);
-        ASTNode *def = find_struct_def(ctx, sname);
+        ASTNode *def = named_type_def(ctx, t);
         if (!def)
         {
             EMIT(ctx, "((void*)0)");

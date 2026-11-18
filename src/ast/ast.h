@@ -111,8 +111,10 @@ typedef struct Type
     int array_size;         ///< Size for fixed-size arrays. For TYPE_BITINT, this is the bit width.
     struct
     {
-        int has_drop;     ///< 1 if type implements Drop trait (RAII).
-        int has_iterable; ///< 1 if type implements Iterable trait.
+        int has_drop;      ///< 1 if type implements Drop trait (RAII).
+        int declares_drop; ///< 1 if the type has an `impl Drop` of its own (has_drop is also
+                           ///< set by fields that need dropping): its glue calls its `drop`.
+        int has_iterable;  ///< 1 if type implements Iterable trait.
     } traits;
     union
     {
@@ -500,6 +502,8 @@ struct ASTNode
             // For a call the typechecker made from other syntax (`v[i]` with a `get` method), the
             // expression as the program writes it. Not a child: it shares its parts with the call.
             ASTNode *written;
+            // The function a call of a name (`f(x)`) calls, as the typechecker resolved it.
+            struct FuncSig *function;
         } call;
 
         struct
@@ -507,6 +511,11 @@ struct ASTNode
             ASTNode *target;
             char *field;
             int is_pointer_access;
+            // A method, as the typechecker resolves it (find_method_call_target): its function
+            // and the type that declares it (the receiver's, or a struct it mixes in). NULL for a
+            // field.
+            struct FuncSig *method;
+            const char *method_owner;
         } member;
 
         struct
@@ -620,6 +629,9 @@ struct ASTNode
             Token trait_token;  // Where the trait's name is written (`Show` of `impl Show for`).
             Token target_token; // Where the target's name is written.
             ASTNode *methods;
+            // The trait's declaration, as the typechecker resolves it; NULL for one the program
+            // does not declare.
+            ASTNode *trait;
         } impl_trait;
 
         struct

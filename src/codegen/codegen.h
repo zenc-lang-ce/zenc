@@ -94,10 +94,10 @@ char *c_type_spelling(ParserContext *ctx, Type *t);
 /** @brief A program's identifier as the generated C or C++ names it (c_safe_name). */
 const char *c_name(ParserContext *ctx, const char *name);
 /**
- * @brief The type of a declaration (`let`, `def`) spelled in C, as written or as the parser
- *        inferred it; NULL when the parser left it untyped and codegen has to infer it.
+ * @brief The type of `node` (a declaration or an expression) spelled in C: its type_info, as the
+ *        typechecker leaves it; NULL when it has none.
  */
-char *declared_c_type(ParserContext *ctx, ASTNode *decl);
+char *node_c_type(ParserContext *ctx, ASTNode *node);
 /**
  * @brief Whether `t`, through its aliases, is a fixed-size array (`int[3]`), not a slice. C
  *        cannot initialize or assign such an array from another one: codegen copies its bytes.
@@ -173,7 +173,6 @@ char *value_drop_struct(ParserContext *ctx, ASTNode *value);
  * closure's `drop`, or a loop over the elements of an array (`depth` names its index). */
 char *drop_value_stmt(Type *t, const char *lvalue, int depth);
 /** @brief The struct or enum definition the named type `t` refers to, or NULL. */
-ASTNode *named_type_def(ParserContext *ctx, Type *t);
 /** @brief Name of the drop glue of a value of type `t` that needs dropping: a struct's name, or
  * the C name of a tuple's struct. The glue is `<name>__Drop__glue`. */
 char *drop_glue_name(Type *t);
@@ -186,7 +185,7 @@ int emit_move_invalidation(ParserContext *ctx, ASTNode *node);
 int emit_moved_out(ParserContext *ctx, ASTNode *node);
 void codegen_expression_with_move(ParserContext *ctx, ASTNode *node);
 void emit_mangled_name(ParserContext *ctx, const char *base, const char *method);
-int is_enum_type_name(ParserContext *ctx, const char *name);
+int is_enum_type(ParserContext *ctx, Type *t);
 
 // Declaration emission  (codegen_decl.c).
 /**

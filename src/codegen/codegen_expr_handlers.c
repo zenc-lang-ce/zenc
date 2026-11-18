@@ -323,7 +323,7 @@ static void emit_coalesce(ParserContext *ctx, ASTNode *node)
 // `==` and `!=`: a struct compares through its `eq` (or `neq`), anything else as in C.
 static void emit_equality(ParserContext *ctx, ASTNode *node)
 {
-    char *t1 = infer_type(ctx, node->binary.left);
+    char *t1 = node_c_type(ctx, node->binary.left);
     int is_ptr = 0;
     char *fully_resolved = t1;
     char *mangle_base = t1;
@@ -457,7 +457,7 @@ static void emit_equality(ParserContext *ctx, ASTNode *node)
     }
     else if (t1 && (strcmp(t1, "string") == 0))
     {
-        char *t2 = infer_type(ctx, node->binary.right);
+        char *t2 = node_c_type(ctx, node->binary.right);
         if (t2 && (strcmp(t2, "string") == 0))
         {
             EMIT(ctx, "(strcmp(");
@@ -577,7 +577,7 @@ static void emit_plain_binary(ParserContext *ctx, ASTNode *node)
             {
                 TypeKind k = node->binary.left->type_info->kind;
                 if (k == TYPE_POINTER || k == TYPE_ENUM ||
-                    is_enum_type_name(ctx, type_def_name(node->binary.left->type_info)))
+                    is_enum_type(ctx, node->binary.left->type_info))
                 {
                     should_cast = 1;
                 }
@@ -758,64 +758,6 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             }
         }
 
-        if (target->kind == NODE_EXPR_VAR)
-        {
-            char type_name[MAX_TYPE_NAME_LEN];
-            strncpy(type_name, target->var_ref.name, sizeof(type_name));
-            type_name[sizeof(type_name) - 1] = 0;
-
-            char *mangled_type = type_name;
-
-            ASTNode *def = find_struct_def(ctx, mangled_type);
-            if (def && def->kind == NODE_ENUM)
-            {
-                char *mangled = mangle_method_symbol(mangled_type, NULL, method);
-                FuncSig *sig = find_func(ctx, mangled);
-                if (sig)
-                {
-                    const char *emit_name = (sig->link_name) ? sig->link_name : mangled;
-                    EMIT(ctx, "%s(", emit_name);
-                    ASTNode *arg = node->call.args;
-                    int arg_idx = 0;
-                    while (arg)
-                    {
-                        if (arg_idx > 0)
-                        {
-                            EMIT(ctx, ", ");
-                        }
-
-                        Type *param_t =
-                            (arg_idx < sig->total_args) ? sig->arg_types[arg_idx] : NULL;
-
-                        if (param_t && param_t->kind == TYPE_TUPLE && sig->total_args == 1 &&
-                            node->call.count > 1)
-                        {
-                            EMIT(ctx, "(%s){", c_type_spelling(ctx, param_t));
-                            int first = 1;
-                            while (arg)
-                            {
-                                if (!first)
-                                {
-                                    EMIT(ctx, ", ");
-                                }
-                                first = 0;
-                                codegen_expression(ctx, arg);
-                                arg = arg->next;
-                            }
-                            EMIT(ctx, "}");
-                            break;
-                        }
-
-                        codegen_expression(ctx, arg);
-                        arg = arg->next;
-                        arg_idx++;
-                    }
-                    EMIT(ctx, ")");
-                    return;
-                }
-            }
-        }
-
         // The method's owner is the target's type, or the type it points to.
         Type *target_type = target->type_info;
         if (target_type && target_type->kind != TYPE_UNKNOWN)
@@ -823,17 +765,22 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
             int is_pointer = target_type->kind == TYPE_POINTER;
             char *base = type_impl_name(is_pointer ? target_type->inner : target_type);
 
-            const char *call_base = base;
-            char *resolved_method = NULL;
-            int need_cast = 0;
-            if (find_method_call_target(ctx, base, method, &call_base, &resolved_method))
+            // The method the typechecker resolved (member.method): its C name, and its owner,
+            // when a mixed-in struct's method takes a pointer to that struct. A trait object has
+            // none: its call goes to the trait's dispatch function, `Trait__method`.
+            FuncSig *resolved = node->call.callee->member.method;
+            const char *call_base = resolved ? node->call.callee->member.method_owner : base;
+            int need_cast = resolved && strcmp(call_base, base) != 0;
+            if (resolved)
             {
-                method = resolved_method;
-                // A mixed-in struct's method takes a pointer to that struct.
-                need_cast = call_base != base;
+                EMIT(ctx, "%s", resolved->link_name ? resolved->link_name : resolved->name);
             }
-
-            emit_mangled_name(ctx, call_base, method);
+            else
+            {
+                char *dispatch = mangle_method_symbol(base, NULL, method);
+                EMIT(ctx, "%s", dispatch);
+                zfree(dispatch);
+            }
             EMIT(ctx, "(");
             if (need_cast)
             {
@@ -873,7 +820,6 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node)
                 arg = arg->next;
             }
             EMIT(ctx, ")");
-            zfree(resolved_method);
             return;
         }
     }
@@ -882,7 +828,9 @@ skip_method_mangling:
 
     if (node->call.callee->kind == NODE_EXPR_VAR)
     {
-        ASTNode *def = find_struct_def(ctx, node->call.callee->var_ref.name);
+        // `Point()`: the name of a struct, which the typechecker resolved (var_ref.symbol).
+        ZenSymbol *sym = node->call.callee->var_ref.symbol;
+        ASTNode *def = sym && sym->kind == SYM_STRUCT ? sym->data.node : NULL;
         if (def && def->kind == NODE_STRUCT)
         {
             EMIT(ctx, "(struct %s){0}", node->call.callee->var_ref.name);
@@ -979,11 +927,8 @@ skip_callee_gen:
     }
     else
     {
-        FuncSig *sig = NULL;
-        if (node->call.callee->kind == NODE_EXPR_VAR)
-        {
-            sig = find_func(ctx, node->call.callee->var_ref.name);
-        }
+        // The function the typechecker resolved (call.function), for its parameter types.
+        FuncSig *sig = node->call.function;
 
         ASTNode *arg = node->call.args;
         int arg_idx = 0;

@@ -54,7 +54,7 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             {
                 EMIT(ctx, "__attribute__((unused)) const ");
             }
-            char *declared = declared_c_type(ctx, node);
+            char *declared = node_c_type(ctx, node);
             if (declared)
             {
                 emit_var_decl_type(ctx, declared, node->var_decl.name);
@@ -64,7 +64,7 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
                 char *inferred = NULL;
                 if (node->var_decl.init_expr)
                 {
-                    inferred = infer_type(ctx, node->var_decl.init_expr);
+                    inferred = node_c_type(ctx, node->var_decl.init_expr);
                 }
 
                 if (inferred && strcmp(inferred, "__auto_type") != 0)
@@ -84,12 +84,14 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             if (node->var_decl.init_expr)
             {
                 EMIT(ctx, " = ");
-                char *tname =
-                    declared ? declared
-                             : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                         : NULL);
-                if (ctx->config->use_cpp && tname &&
-                    (strchr(tname, '*') || is_enum_type_name(ctx, tname)))
+                char *tname = declared ? declared
+                                       : (node->var_decl.init_expr
+                                              ? node_c_type(ctx, node->var_decl.init_expr)
+                                              : NULL);
+                Type *init_type = declared ? node->type_info : node->var_decl.init_expr->type_info;
+                if (ctx->config->use_cpp && tname && init_type &&
+                    (get_inner_type(init_type)->kind == TYPE_POINTER ||
+                     is_enum_type(ctx, init_type)))
                 {
                     EMIT(ctx, "(%s)(", tname);
                     codegen_expression(ctx, node->var_decl.init_expr);
@@ -116,24 +118,14 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             // A global with Drop has a drop flag: assigning to it drops the old value.
             if (node->kind == NODE_VAR_DECL)
             {
-                char *tname =
-                    declared ? declared
-                             : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                         : NULL);
-                if (tname)
+                Type *t = node->type_info            ? node->type_info
+                          : node->var_decl.init_expr ? node->var_decl.init_expr->type_info
+                                                     : NULL;
+                ASTNode *def = named_type_def(ctx, t);
+                if (def && def->type_info && def->type_info->traits.has_drop)
                 {
-                    char *ct = tname;
-                    if (strncmp(ct, "struct ", 7) == 0)
-                    {
-                        ct += 7;
-                    }
-                    ASTNode *def = find_struct_def(ctx, ct);
-                    if (def && def->type_info && def->type_info->traits.has_drop)
-                    {
-                        EMIT(ctx, "int __z_drop_flag_%s = %d;\n", node->var_decl.name,
-                             node->var_decl.init_expr ? 1 : 0);
-                    }
-                    zfree(tname);
+                    EMIT(ctx, "int __z_drop_flag_%s = %d;\n", node->var_decl.name,
+                         node->var_decl.init_expr ? 1 : 0);
                 }
             }
             if (node->cfg_condition)
@@ -375,22 +367,10 @@ void emit_impl_vtables(ParserContext *ctx)
         {
             char *trait = node->impl_trait.trait_name;
 
-            // Filter generic traits (VTables for them are not emitted)
-            int is_generic_trait = 0;
-            StructRef *search = ctx->parsed_globals_list;
-            while (search)
-            {
-                if (search->node && search->node->kind == NODE_TRAIT &&
-                    strcmp(search->node->trait.name, trait) == 0)
-                {
-                    if (search->node->trait.generic_param_count > 0)
-                    {
-                        is_generic_trait = 1;
-                    }
-                    break;
-                }
-                search = search->next;
-            }
+            // Filter generic traits (VTables for them are not emitted): the trait the
+            // typechecker resolved (impl_trait.trait).
+            ASTNode *trait_def = node->impl_trait.trait;
+            int is_generic_trait = trait_def && trait_def->trait.generic_param_count > 0;
             if (is_generic_trait)
             {
                 ref = ref->next;

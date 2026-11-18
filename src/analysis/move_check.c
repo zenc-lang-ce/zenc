@@ -267,7 +267,7 @@ int is_type_copy(ParserContext *ctx, Type *t)
             }
             else if (t->name)
             {
-                ASTNode *def = find_struct_def(ctx, type_def_name(t));
+                ASTNode *def = named_type_def(ctx, t);
                 if (def && def->type_info && def->type_info->traits.has_drop)
                 {
                     result = 0;

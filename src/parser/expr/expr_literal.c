@@ -1245,7 +1245,7 @@ static int type_names_variable(ParserContext *ctx, Type *ty)
         return 0;
     }
     return base->kind == TYPE_STRUCT && base->name && !is_primitive_type_name(base->name) &&
-           !find_struct_def(ctx, type_def_name(base)) && !find_type_alias_node(ctx, base->name) &&
+           !named_type_def(ctx, base) && !find_type_alias_node(ctx, base->name) &&
            find_symbol_entry(ctx, base->name);
 }
 

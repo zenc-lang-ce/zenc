@@ -148,7 +148,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             if (node->for_stmt.init->kind == NODE_VAR_DECL)
             {
                 ASTNode *v = node->for_stmt.init;
-                char *declared = declared_c_type(ctx, v);
+                char *declared = node_c_type(ctx, v);
                 if (declared)
                 {
                     EMIT(ctx, "%s %s = (%s)(", declared, c_name(ctx, v->var_decl.name), declared);
@@ -692,18 +692,14 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     case NODE_EXPR_MEMBER:
     {
         codegen_expression(ctx, node->member.target);
-        char *lt = infer_type(ctx, node->member.target);
-        if (lt && (lt[strlen(lt) - 1] == '*' || strstr(lt, "*")))
+        Type *target_type = node->member.target->type_info;
+        if (target_type && get_inner_type(target_type)->kind == TYPE_POINTER)
         {
             EMIT(ctx, "->%s", c_name(ctx, node->member.field));
         }
         else
         {
             EMIT(ctx, ".%s", c_name(ctx, node->member.field));
-        }
-        if (lt)
-        {
-            zfree(lt);
         }
         break;
     }

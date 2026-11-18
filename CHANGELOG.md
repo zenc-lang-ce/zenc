@@ -20,6 +20,7 @@ This new release brings breaking changes to the language:
 - Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name: the special message "is a function of std/io.zc, which is not imported" is gone.
 
 ### Fixes
+- `zc check` knows the type a method mixed in with `use` returns, and reports a value of the wrong type (`show(t.value())` with a `string` parameter and an `int` method), which reached the C compiler. The typechecker finds a method by the rule codegen calls it by: the type's own, one of a trait it implements, one of a struct it mixes in.
 - A cast to a C type writes that type: `(c_int)x` is `(int)x`, `(c_long)x` is `(long)x` and `(string)x` is `(string)x` in the C. They were written as `(int32_t)`, `(int64_t)` and `(char*)`, which differ from `long` where `long` has 32 bits (Windows).
 - An f-string prints an `i8` as a number in C, as it already did in C++ (`let x: i8 = 65;` printed `A`). The format of each C type comes from one table, which the preamble writes as a `_Generic` in C and as overloads in C++.
 - `@derive(FromJson, ToJson)` reads and writes an integer field of any width as a number: a `u8`, `i16`, `u16` or `isize` field no longer generates calls to a `uint8_t__to_json` that does not exist.

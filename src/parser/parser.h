@@ -1008,6 +1008,12 @@ ASTNode *parse_expect(ParserContext *ctx, Lexer *l);
 ASTNode *parse_plugin(ParserContext *ctx, Lexer *l, Token tk);
 char *token_get_string_content(Token t);
 /**
+ * @brief The declaration (struct or enum node) of the named type `t`, or NULL for any other type.
+ *        The way to go from a type to its declaration: by the type, not by a name built from it.
+ */
+ASTNode *named_type_def(ParserContext *ctx, Type *t);
+
+/**
  * @brief Where the content of the string literal `t` starts in its text: the length of its
  *        opening quotes (`"`, `f"`, `"""`...). *end_offset, if given, gets that of its closing
  * ones.
