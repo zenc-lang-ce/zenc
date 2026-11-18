@@ -1,0 +1,26 @@
+// ARGS: check
+// A call of something that cannot be called is an error of zc, not of the C compiler: a field
+// that is not a function (with the method missing), a variable, a global or the result of a call.
+import "std/vec.zc"
+
+struct Counter {
+    len: int;
+}
+
+let LIMIT: int = 3;
+
+fn number() -> int {
+    return 3;
+}
+
+fn main() {
+    let b = Counter { len: 3 };
+    let _a = b.len();
+    let v = Vec<int>::new();
+    let _b = v.len();
+    let x = 3;
+    let _c = x();
+    let _d = LIMIT();
+    let _e = number()();
+    v.free();
+}
