@@ -1,4 +1,4 @@
-// control-flow: the early return of `?` leaves the function as a `return` does: the pending
+// language/control-flow: the early return of `?` leaves the function as a `return` does: the pending
 // defers run, the drops of the locals and parameters among them.
 
 import "std/result.zc"
@@ -57,9 +57,9 @@ fn with_defer_and_local(ok: bool) -> Result<int> {
 }
 
 fn in_inner_block(ok: bool) -> Option<int> {
-    defer trail = trail + 100;
+    defer trail = trail * 10 + 2;
     {
-        defer trail = trail + 1000;
+        defer trail = trail * 10 + 1;
         let v = opt_of(ok)?;
         return Option<int>::Some(v);
     }
@@ -94,18 +94,18 @@ fn other_result_type(ok: bool) -> Result<int> {
 
 test "a defer and the drop of a local run when ? returns early" {
     trail = 0;
-    assert(with_defer_and_local(false).is_err(), "the error is returned");
-    assert(trail == 11, "the defer and the drop ran once each");
+    assert(with_defer_and_local(false).is_err(), "? should return the error when it fails");
+    assert(trail == 11, "the defer and the drop should run once each when ? returns early");
     trail = 0;
     let r = with_defer_and_local(true);
-    assert(r.is_ok() && r.val == 12, "the value goes on");
-    assert(trail == 11, "on success they run once, at the end");
+    assert(r.is_ok() && r.val == 12, "? should give the value when it succeeds");
+    assert(trail == 11, "the defer and the drop should run once each when ? succeeds");
 }
 
 test "the defers of the enclosing blocks run, innermost first" {
     trail = 0;
-    assert(in_inner_block(false).is_none(), "None is returned");
-    assert(trail == 1100, "the defers of both blocks ran");
+    assert(in_inner_block(false).is_none(), "? should return None when it fails");
+    assert(trail == 12, "the inner block's defer should run before the function's");
 }
 
 test "the drop of a parameter runs when ? returns early" {
@@ -115,30 +115,30 @@ test "the drop of a parameter runs when ? returns early" {
         Outcome::Ok(_v) => { err = -1; },
         Outcome::Err(e) => { err = e; },
     }
-    assert(err == 9, "the error is returned");
-    assert(trail == 20, "the parameter was dropped");
+    assert(err == 9, "? should return the enum's error when it fails");
+    assert(trail == 20, "the parameter should be dropped when ? returns early");
 }
 
 test "? inside an expression" {
     trail = 0;
-    assert(inside_expression(false).is_err(), "the error is returned");
-    assert(trail == 7, "the defer ran");
+    assert(inside_expression(false).is_err(), "? should return the error when it fails");
+    assert(trail == 7, "the defer should run when ? returns early from an expression");
     trail = 0;
-    assert(inside_expression(true).val == 3, "the value goes on");
-    assert(trail == 7, "the defer ran once");
+    assert(inside_expression(true).val == 3, "? should give the value when it succeeds");
+    assert(trail == 7, "the defer should run once when ? succeeds");
 }
 
 test "? inside a loop runs the loop body's defers and the function's" {
     trail = 0;
-    assert(inside_loop(false).is_err(), "the error is returned");
-    assert(trail == 21, "the first iteration's defer, the second's, and the function's");
+    assert(inside_loop(false).is_err(), "? should return the error when it fails");
+    assert(trail == 21, "two iterations' defers and the function's should run when ? fails");
     trail = 0;
-    assert(inside_loop(true).val == 6, "the value goes on");
-    assert(trail == 31, "three iterations' defers and the function's");
+    assert(inside_loop(true).val == 6, "? should give the value when it succeeds");
+    assert(trail == 31, "three iterations' defers and the function's should run");
 }
 
 test "? on a Result of another type" {
     trail = 0;
-    assert(other_result_type(false).is_err(), "the error is returned");
-    assert(trail == 5, "the defer ran");
+    assert(other_result_type(false).is_err(), "? should return the error when it fails");
+    assert(trail == 5, "the defer should run when ? returns another type's error");
 }
