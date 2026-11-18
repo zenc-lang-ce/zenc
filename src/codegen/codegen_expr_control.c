@@ -188,29 +188,44 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, " _try = ");
     codegen_expression(ctx, node->try_stmt.expr);
 
+    // On failure, `?` leaves the function as a `return` does: its defers run first.
+    EMIT(ctx, "; ");
     if (is_option)
     {
         if (is_enum)
         {
             char *none = mangle_variant_symbol(ret_name, "None");
-            EMIT(ctx, "; if (_try.tag == %s_Tag) return (%s()); _try.data.Some; })", none, none);
+            EMIT(ctx, "if (_try.tag == %s_Tag) { ", none);
+            emit_function_exit_begin(ctx, node->try_stmt.expr);
+            EMIT(ctx, "%s()", none);
+            emit_function_exit_end(ctx, node->try_stmt.expr);
+            EMIT(ctx, "} _try.data.Some; })");
         }
         else
         {
-            EMIT(ctx, "; if (!_try.is_some) return %s(); _try.val; })",
-                 mangle_method_symbol(ret_name, NULL, "None"));
+            EMIT(ctx, "if (!_try.is_some) { ");
+            emit_function_exit_begin(ctx, node->try_stmt.expr);
+            EMIT(ctx, "%s()", mangle_method_symbol(ret_name, NULL, "None"));
+            emit_function_exit_end(ctx, node->try_stmt.expr);
+            EMIT(ctx, "} _try.val; })");
         }
     }
     else if (is_enum)
     {
         char *err = mangle_variant_symbol(ret_name, "Err");
-        EMIT(ctx, "; if (_try.tag == %s_Tag) return (%s(_try.data.Err)); _try.data.Ok; })", err,
-             err);
+        EMIT(ctx, "if (_try.tag == %s_Tag) { ", err);
+        emit_function_exit_begin(ctx, node->try_stmt.expr);
+        EMIT(ctx, "%s(_try.data.Err)", err);
+        emit_function_exit_end(ctx, node->try_stmt.expr);
+        EMIT(ctx, "} _try.data.Ok; })");
     }
     else
     {
-        EMIT(ctx, "; if (!_try.is_ok) return %s(_try.err); _try.val; })",
-             mangle_method_symbol(ret_name, NULL, "Err"));
+        EMIT(ctx, "if (!_try.is_ok) { ");
+        emit_function_exit_begin(ctx, node->try_stmt.expr);
+        EMIT(ctx, "%s(_try.err)", mangle_method_symbol(ret_name, NULL, "Err"));
+        emit_function_exit_end(ctx, node->try_stmt.expr);
+        EMIT(ctx, "} _try.val; })");
     }
 }
 

@@ -83,6 +83,77 @@ void emit_defers_down_to(ParserContext *ctx, int boundary)
     }
 }
 
+// Leaving the current function, by a `return` or by the early return of `?`, runs its pending
+// defers (the drops of its locals and parameters among them) and, under MISRA, goes through its
+// single exit. emit_function_exit_begin starts it, the caller emits the returned value (none
+// for a `return;`), and emit_function_exit_end finishes it; `value` is the returned expression,
+// or NULL, in both calls. With defers pending, the value is kept in `_z_ret` while they run.
+void emit_function_exit_begin(ParserContext *ctx, ASTNode *value)
+{
+    int has_defers = ctx->cg.defer_count > ctx->cg.func_defer_boundary;
+    Type *ret = ctx->cg.current_func_ret_type_info;
+    if (!value)
+    {
+        if (!has_defers && !ctx->config->misra_mode)
+        {
+            EMIT(ctx, "return ");
+        }
+        return;
+    }
+    if (has_defers)
+    {
+        EMIT(ctx, "{ ");
+        emitter_indent(&ctx->cg.emitter);
+        if (ret && ret->kind != TYPE_VOID)
+        {
+            char *tstr = c_type_spelling(ctx, ret);
+            EMIT(ctx, "%s", tstr);
+            zfree(tstr);
+        }
+        else
+        {
+            emit_auto_type(ctx, value, value->token);
+        }
+        EMIT(ctx, " _z_ret = ");
+    }
+    else if (!ctx->config->misra_mode)
+    {
+        EMIT(ctx, "return ");
+    }
+    else if (ret && ret->kind != TYPE_VOID)
+    {
+        EMIT(ctx, "_misra_ret = ");
+    }
+}
+
+void emit_function_exit_end(ParserContext *ctx, ASTNode *value)
+{
+    if (ctx->cg.defer_count <= ctx->cg.func_defer_boundary)
+    {
+        EMIT(ctx, ";\n");
+        if (ctx->config->misra_mode)
+        {
+            EMIT(ctx, "goto _misra_end_of_func;\n");
+        }
+        return;
+    }
+    if (value)
+    {
+        EMIT(ctx, "; ");
+    }
+    emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
+    if (value)
+    {
+        emitter_dedent(&ctx->cg.emitter);
+        EMIT(ctx, ctx->config->misra_mode ? "_misra_ret = _z_ret; goto _misra_end_of_func; }\n"
+                                          : "return _z_ret; }\n");
+    }
+    else
+    {
+        EMIT(ctx, ctx->config->misra_mode ? "goto _misra_end_of_func;\n" : "return;\n");
+    }
+}
+
 // Name of the struct with Drop that a call statement produces and discards, or NULL.
 static char *discarded_drop_type(ParserContext *ctx, ASTNode *node)
 {
@@ -535,7 +606,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     }
     case NODE_RETURN:
     {
-        int has_defers = (ctx->cg.defer_count > ctx->cg.func_defer_boundary);
         int handled = 0;
 
         if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR &&
@@ -591,101 +661,27 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
 
         if (!handled)
         {
-            if (has_defers && node->ret.value)
+            ASTNode *value = node->ret.value;
+            emit_function_exit_begin(ctx, value);
+            if (value && value->kind == NODE_EXPR_VAR && ctx->self_is_pointer &&
+                strcmp(value->var_ref.name, "self") == 0)
             {
-                EMIT(ctx, "{ ");
-                emitter_indent(&ctx->cg.emitter);
-                Type *ret = ctx->cg.current_func_ret_type_info;
-                if (ret && ret->kind != TYPE_VOID)
-                {
-                    char *tstr = c_type_spelling(ctx, ret);
-                    EMIT(ctx, "%s", tstr);
-                    zfree(tstr);
-                }
-                else
-                {
-                    emit_auto_type(ctx, node->ret.value, node->token);
-                }
-                EMIT(ctx, " _z_ret = ");
-                if (node->ret.value->kind == NODE_EXPR_VAR && ctx->self_is_pointer &&
-                    strcmp(node->ret.value->var_ref.name, "self") == 0)
-                {
-                    EMIT(ctx, "*");
-                }
-                codegen_expression(ctx, node->ret.value);
-                EMIT(ctx, "; ");
-                emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
-                if (ctx->config->misra_mode)
-                {
-                    emitter_dedent(&ctx->cg.emitter);
-                    EMIT(ctx, "_misra_ret = _z_ret; goto _misra_end_of_func; }\n");
-                }
-                else
-                {
-                    emitter_dedent(&ctx->cg.emitter);
-                    EMIT(ctx, "return _z_ret; }\n");
-                }
+                // return self; -> return *self; (if returns by value)
+                EMIT(ctx, "*");
+                codegen_expression(ctx, value);
             }
-            else if (has_defers)
+            else if (value && value->kind == NODE_EXPR_UNARY && value->unary.op == OP_ADDRESS &&
+                     value->unary.operand->kind == NODE_EXPR_VAR &&
+                     strcmp(value->unary.operand->var_ref.name, "self") == 0)
             {
-                emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
-                if (ctx->config->misra_mode)
-                {
-                    EMIT(ctx, "goto _misra_end_of_func;\n");
-                }
-                else
-                {
-                    EMIT(ctx, "return;\n");
-                }
+                // return &self; -> return self; (since self is already a pointer in C)
+                codegen_expression(ctx, value->unary.operand);
             }
-            else
+            else if (value)
             {
-                if (ctx->config->misra_mode)
-                {
-                    Type *ret = ctx->cg.current_func_ret_type_info;
-                    if (ret && ret->kind != TYPE_VOID)
-                    {
-                        EMIT(ctx, "_misra_ret = ");
-                    }
-                    else
-                    {
-                    }
-                }
-                else
-                {
-                    EMIT(ctx, "return ");
-                }
-
-                if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR &&
-                    ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-                {
-                    // return self; -> return *self; (if returns by value)
-                    EMIT(ctx, "*");
-                }
-                else if (node->ret.value && node->ret.value->kind == NODE_EXPR_UNARY &&
-                         node->ret.value->unary.op == OP_ADDRESS &&
-                         node->ret.value->unary.operand->kind == NODE_EXPR_VAR &&
-                         strcmp(node->ret.value->unary.operand->var_ref.name, "self") == 0)
-                {
-                    // return &self; -> return self; (since self is already a pointer in C)
-                    codegen_expression(ctx, node->ret.value->unary.operand);
-                    EMIT(ctx, ";\n");
-                    if (ctx->config->misra_mode)
-                    {
-                        EMIT(ctx, "goto _misra_end_of_func;\n");
-                    }
-                    break;
-                }
-                if (node->ret.value)
-                {
-                    codegen_expression(ctx, node->ret.value);
-                }
-                EMIT(ctx, ";\n");
-                if (ctx->config->misra_mode)
-                {
-                    EMIT(ctx, "goto _misra_end_of_func;\n");
-                }
+                codegen_expression(ctx, value);
             }
+            emit_function_exit_end(ctx, value);
         }
         break;
     }

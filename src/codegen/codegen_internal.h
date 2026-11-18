@@ -92,6 +92,8 @@ void codegen_loop_enter(ParserContext *ctx, const char *label);
 void codegen_loop_body(ParserContext *ctx, ASTNode *body, const char *label, int misra_wrap);
 void codegen_loop_exit(ParserContext *ctx, const char *label);
 void emit_defers_down_to(ParserContext *ctx, int boundary);
+void emit_function_exit_begin(ParserContext *ctx, ASTNode *value);
+void emit_function_exit_end(ParserContext *ctx, ASTNode *value);
 
 // From codegen_stmt_match.c
 
