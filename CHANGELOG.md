@@ -6,7 +6,7 @@ The most significant changes of each release. Every change is listed in the [ful
 Mainly a bug-fix release, with some improvements and new features.
 
 ### Changes
-- `zc build` and `zc run` run the same typechecker as `zc check`. What only `zc check` reported (a type mismatch, an undefined name, a pointer that escapes its scope, a `match` that is not exhaustive...) is a warning in a build, marked "an error from 0.6", and an error with `--misra`; the backend no longer reports those warnings a second time.
+- `zc build` and `zc run` run the same typechecker as `zc check`. What only `zc check` reported (a type mismatch, an undefined name, a pointer that escapes its scope, a `match` that is not exhaustive...) is a warning in a build, marked "an error from 0.6", and an error with `--misra`; the backend no longer reports those warnings a second time, and `zc check` reports a string literal as the arm of a `match` statement ("a string on its own no longer prints"), which only the build did.
 - Unreachable code is a warning (`-Wno-logic` turns it off), not a `zc check` error, and an error under `--misra` (Rule 2.1). It is also found after an `if`/`else` or a `match` whose branches all return and after a `loop` without a `break`; code after a label is reachable.
 - A lambda parameter without a type where nothing at the lambda gives it one (`let add = (x, y) => x + y;`) is a warning. It will be an an error from 0.6.
 - Calling `print`, `println`, `eprint` or `eprintln` without importing `std/io.zc` is an undefined function, as for any other name.

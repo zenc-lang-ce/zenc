@@ -1,6 +1,31 @@
 // SPDX-License-Identifier: MIT
 #include "typecheck_internal.h"
 
+// RFC 0001: a string literal as the arm of a match statement no longer prints. For one release
+// it is an error that tells how to print it; afterwards it is an unused expression, which would
+// compile and print nothing. In a match expression the string is the match's value. An arm that
+// is itself a match is a statement too.
+static void report_printing_match_arms(TypeChecker *tc, ASTNode *match)
+{
+    for (ASTNode *c = match->match_stmt.cases; c; c = c->next)
+    {
+        ASTNode *body = c->kind == NODE_MATCH_CASE ? c->match_case.body : NULL;
+        if (!body)
+        {
+            continue;
+        }
+        if (body->kind == NODE_EXPR_LITERAL && body->literal.kind == LITERAL_STRING)
+        {
+            const char *hints[] = {"print it with println(\"...\"), from std/io.zc", NULL};
+            tc_ctrl_flow_error(tc, body->token, "a string on its own no longer prints", hints);
+        }
+        else if (body->kind == NODE_MATCH)
+        {
+            report_printing_match_arms(tc, body);
+        }
+    }
+}
+
 void check_block(TypeChecker *tc, ASTNode *block, int depth)
 {
     tc_enter_scope(tc);
@@ -33,6 +58,11 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
                     tc_error(tc, stmt->token, "MISRA Rule 2.2: expression statement has no effect");
                 }
             }
+        }
+
+        if (stmt->kind == NODE_MATCH)
+        {
+            report_printing_match_arms(tc, stmt);
         }
 
         int old_stmt_ctx = tc->is_stmt_context;
