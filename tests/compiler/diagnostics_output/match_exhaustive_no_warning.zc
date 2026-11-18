@@ -11,7 +11,6 @@ fn warm(c: Color) -> int {
         Red || Green => { return 1; },
         Color::Blue => { return 0; },
     }
-    return 0;
 }
 
 fn unwrap_or_zero(o: Option<int>) -> int {
@@ -20,7 +19,6 @@ fn unwrap_or_zero(o: Option<int>) -> int {
         Option::Some(v) => { return 0; },
         Option::None => { return 0; },
     }
-    return 0;
 }
 
 fn main() {

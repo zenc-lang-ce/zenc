@@ -453,6 +453,49 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
     register_in_all_symbols(ctx, sym);
 }
 
+FuncSig *index_method(ParserContext *ctx, Type *t, const char *method)
+{
+    t = resolve_alias(t);
+    if (!t || t->kind != TYPE_STRUCT || !t->name || slice_element(t))
+    {
+        return NULL;
+    }
+    const char *name = type_def_name(t);
+    char *mangled = mangle_method_symbol(name, NULL, method);
+    FuncSig *sig = find_func(ctx, mangled);
+    if (sig || !strchr(name, '<'))
+    {
+        return sig;
+    }
+
+    // While the body of a generic template is parsed (`Vec<T>`), its own method, with the
+    // template's types.
+    size_t len = strcspn(name, "<");
+    char *base = xmalloc(len + 1);
+    memcpy(base, name, len);
+    base[len] = 0;
+    char *template_name = mangle_method_symbol(base, NULL, method);
+    for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
+    {
+        if (strcmp(it->struct_name, base) != 0)
+        {
+            continue;
+        }
+        for (ASTNode *m = it->impl_node->impl.methods; m; m = m->next)
+        {
+            if (m->func.name && strcmp(m->func.name, template_name) == 0)
+            {
+                sig = xcalloc(1, sizeof(FuncSig));
+                sig->ret_type = m->func.ret_type_info;
+                sig->arg_types = m->func.arg_types;
+                sig->total_args = m->func.count;
+                return sig;
+            }
+        }
+    }
+    return NULL;
+}
+
 Type *vector_type_named(ParserContext *ctx, const char *name)
 {
     ASTNode *def = name ? find_struct_def(ctx, name) : NULL;

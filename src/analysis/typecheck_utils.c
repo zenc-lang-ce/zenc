@@ -514,6 +514,29 @@ void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *
     zerror_with_hints(t, msg, hints);
 }
 
+void tc_error_from_0_6(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
+{
+#if FF_COMPATIBILITY_0_5
+    if (tc->rechecking || tc_in_std(tc, t))
+    {
+        return;
+    }
+    char text[MAX_ERROR_MSG_LEN];
+    snprintf(text, sizeof(text), "%s (an error from 0.6)", msg);
+    if (hints && hints[0])
+    {
+        zwarn_with_suggestion(t, text, hints[0]);
+    }
+    else
+    {
+        zwarn_at(t, "%s", text);
+    }
+    tc->warning_count++;
+#else
+    tc_error_with_hints(tc, t, msg, hints);
+#endif
+}
+
 void tc_ctrl_flow_error(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
 {
     // Control flow errors (missing return, unreachable code, etc.)

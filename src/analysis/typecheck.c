@@ -259,6 +259,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             // rules (notably Rule 17.7, unused return value) to calls inside it.
             int old_stmt_ctx = tc->is_stmt_context;
             tc->is_stmt_context = 0;
+            if (tc->returns_from)
+            {
+                // A returned lambda takes the return type (`return x => x + n;`).
+                const char *ret_name = NULL;
+                Type *ret_type = NULL;
+                return_target(tc->pctx, tc->returns_from, &ret_name, &ret_type);
+                adopt_context_type(node->ret.value, ret_type);
+            }
             check_node(tc, node->ret.value, depth + 1);
             tc->is_stmt_context = old_stmt_ctx;
             // Only this move rule applies to a returned value for now: what returning an index
@@ -492,7 +500,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 mcase = mcase->next;
             }
 
-            if (!has_default)
+            // A value no arm takes goes past the match: then the code after it is reachable
+            // whatever the arms do. A match on every variant of an enum has none, as one with
+            // `_`.
+            const char *missing =
+                has_default
+                    ? NULL
+                    : match_missing_variant(tc->pctx, node, node->match_stmt.expr->type_info);
+            if (missing)
             {
                 all_unreachable = 0;
                 if (match_initial_state)
@@ -500,16 +515,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     move_state_merge_into(&merged_state, match_initial_state);
                 }
 
-                const char *missing =
-                    match_missing_variant(tc->pctx, node, node->match_stmt.expr->type_info);
-                if (missing && strcmp(missing, "_") == 0 && !tc->pctx->config->misra_mode)
+                if (strcmp(missing, "_") == 0 && !tc->pctx->config->misra_mode)
                 {
                     const char *hints[] = {"Add a default '_' case to handle all possibilities",
                                            NULL};
                     tc_error_with_hints(tc, node->token,
                                         "Match may not be exhaustive (no default case)", hints);
                 }
-                else if (missing && strcmp(missing, "_") != 0)
+                else if (strcmp(missing, "_") != 0)
                 {
                     char msg[MAX_ERROR_MSG_LEN];
                     snprintf(msg, sizeof(msg), "Match is not exhaustive: missing variant '%s'",
@@ -596,32 +609,34 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             // parser/codegen policy ("Pointers should use array indexing by
             // default, not operator overload").
             // A slice is indexed directly, although `Slice<T>` has a `get`.
-            if (t->kind == TYPE_STRUCT && t->name && !is_ptr && !slice_element(t))
+            // The operator overload `get` (index_method, the one rule for it).
+            if (!is_ptr && index_method(tc->pctx, t, "get"))
             {
-                char *mangled_get = mangle_method_symbol(type_def_name(t), NULL, "get");
+                ASTNode *array = node->index.array;
+                ASTNode *idx = node->index.index;
 
-                if (find_func(tc->pctx, mangled_get))
-                {
-                    ASTNode *array = node->index.array;
-                    ASTNode *idx = node->index.index;
+                // The node becomes the call it stands for and keeps `v[i]` as written, for
+                // what shows the program's own form (F7: elaborate without losing it).
+                ASTNode *written = ast_create(NODE_EXPR_INDEX);
+                *written = *node;
+                written->next = NULL;
 
-                    node->kind = NODE_EXPR_CALL;
-                    memset(&node->call, 0, sizeof(node->call));
+                node->kind = NODE_EXPR_CALL;
+                memset(&node->call, 0, sizeof(node->call));
+                node->call.written = written;
 
-                    ASTNode *callee = ast_create(NODE_EXPR_MEMBER);
-                    callee->token = node->token;
-                    callee->member.target = array;
-                    callee->member.field = xstrdup("get");
-                    callee->member.is_pointer_access = is_ptr;
+                ASTNode *callee = ast_create(NODE_EXPR_MEMBER);
+                callee->token = node->token;
+                callee->member.target = array;
+                callee->member.field = xstrdup("get");
+                callee->member.is_pointer_access = is_ptr;
 
-                    node->call.callee = callee;
-                    node->call.args = idx;
+                node->call.callee = callee;
+                node->call.args = idx;
+                idx->next = written->index.extra_indices; // `v[i, j]` is `get(v, i, j)`
 
-                    check_expr_call(tc, node, depth + 1);
-                    zfree(mangled_get);
-                    break;
-                }
-                zfree(mangled_get);
+                check_expr_call(tc, node, depth + 1);
+                break;
             }
             // The overload lookup above looks through a pointer to a struct;
             // the element type comes from the array/pointer type itself.
@@ -842,6 +857,10 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         break;
     }
 
+    case NODE_IMPLICIT_CONVERSION:
+        // The conversion keeps the type it was given; its expression is checked again as written.
+        check_node(tc, node->conversion.expr, depth + 1);
+        break;
     case NODE_EXPR_CAST:
         // Check the expression being cast
         check_node(tc, node->cast.expr, depth + 1);
@@ -1416,6 +1435,7 @@ int check_program(ParserContext *ctx, ASTNode *root)
     root->is_checked = 1;
     check_implicit_std_imports(&tc);
     check_instantiations(&tc);
+    check_uncalled_lambdas(&tc, NULL);
 
     if (ctx->move_state)
     {

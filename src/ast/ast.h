@@ -198,7 +198,9 @@ typedef enum
     NODE_AST_COMMENT,        ///< Comment node.
     NODE_EXPR_FSTRING,       ///< Interpolated string f"..." (a list of NODE_FSTRING_PART).
     NODE_FSTRING_PART,       ///< Piece of an f-string: literal text or a `{expr[:fmt]}`.
-    NODE_ERRONEOUS           ///< Error sentinel (safe no-op node).
+    NODE_ERRONEOUS,          ///< Error sentinel (safe no-op node).
+    NODE_IMPLICIT_CONVERSION ///< The typechecker's conversion of `expr` to the node's type_info,
+                             ///< which C makes implicitly: `expr` keeps the type it has.
 } NodeType;
 
 // ** AST Node Structure **
@@ -491,6 +493,9 @@ struct ASTNode
             // Where a path writes the function, its last segment (`of` of `Id::of(1)`): the
             // node's token is where the path starts. TOKEN_UNKNOWN for a plain name.
             Token member_token;
+            // For a call the typechecker made from other syntax (`v[i]` with a `get` method), the
+            // expression as the program writes it. Not a child: it shares its parts with the call.
+            ASTNode *written;
         } call;
 
         struct
@@ -519,6 +524,11 @@ struct ASTNode
         {
             ASTNode *expr; // The target type is the node's type_info.
         } cast;
+
+        struct
+        {
+            ASTNode *expr; // Converted to the node's type_info; it keeps its own type.
+        } conversion;
 
         struct
         {
@@ -932,6 +942,18 @@ int float_significand_bits(Type *t);
  *        it is, any other with its escapes (`\n`, `\x41`...) decoded.
  */
 char *string_literal_text(ASTNode *literal);
+
+/**
+ * @brief Whether `node` is a string literal, plain or raw.
+ */
+int is_string_literal(ASTNode *node);
+
+/**
+ * @brief The expression as the program writes it: `node` without the implicit conversions the
+ *        typechecker wrapped it in (NODE_IMPLICIT_CONVERSION). For questions about its form
+ *        ("is it the literal 0?"); its type is the converted one's.
+ */
+ASTNode *written_expr(ASTNode *node);
 
 /**
  * @brief Whether `t` is a pointer: a `T*`, or a `string`, which is a `char*`.

@@ -462,6 +462,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         new_node->call.args = copy_ast_replacing(ctx, n->call.args, b, os, ns);
         new_node->call.arg_names = n->call.arg_names; // Share pointer (shallow copy)
         new_node->call.count = n->call.count;
+        new_node->call.written = NULL; // The instance's own check resolves it again.
         break;
     case NODE_EXPR_VAR:
     {
@@ -516,6 +517,9 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const Bindings *b, c
         break;
     case NODE_EXPR_CAST:
         new_node->cast.expr = copy_ast_replacing(ctx, n->cast.expr, b, os, ns);
+        break;
+    case NODE_IMPLICIT_CONVERSION:
+        new_node->conversion.expr = copy_ast_replacing(ctx, n->conversion.expr, b, os, ns);
         break;
     case NODE_EXPR_STRUCT_INIT:
     {

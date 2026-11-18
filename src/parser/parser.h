@@ -1019,6 +1019,12 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name);
  */
 Type *vector_type_of(ParserContext *ctx, Type *t);
 /**
+ * @brief The method an index on a value of type `t` calls (`method` is "get" for `v[i]`,
+ *        "set" for `v[i] = x`): the operator overload of a struct, not through a pointer and not a
+ *        slice. NULL when there is none. In the body of a generic template, its own method.
+ */
+FuncSig *index_method(ParserContext *ctx, Type *t, const char *method);
+/**
  * @brief The vector type of the struct called `name`; NULL if it is not a `@vector` struct.
  */
 Type *vector_type_named(ParserContext *ctx, const char *name);

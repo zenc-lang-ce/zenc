@@ -87,12 +87,6 @@ static Type *decayed_pointer(Type *t)
     return NULL;
 }
 
-static int is_string_literal(ASTNode *node)
-{
-    return node->kind == NODE_EXPR_LITERAL &&
-           (node->literal.kind == LITERAL_STRING || node->literal.kind == LITERAL_RAW_STRING);
-}
-
 // An array of bytes C lets a string literal initialize: of char, signed or unsigned.
 static int is_byte_array(Type *t)
 {
@@ -305,11 +299,64 @@ static ASTNode *written_variable(ASTNode *place)
     return place && place->kind == NODE_EXPR_VAR ? place : NULL;
 }
 
+// `v[i] = x` on a struct with a `set` method (index_method) is the call `v.set(i, x)`, the
+// operator overload: the node becomes the call, which keeps the assignment as written. 0 when the
+// assignment is not one.
+static int rewrite_index_set(TypeChecker *tc, ASTNode *node, int depth)
+{
+    ASTNode *index = node->binary.left;
+    check_node(tc, index->index.array, depth + 1);
+    if (!index_method(tc->pctx, index->index.array->type_info, "set"))
+    {
+        return 0;
+    }
+
+    ASTNode *written = ast_create(NODE_EXPR_BINARY);
+    *written = *node;
+    written->next = NULL;
+
+    ASTNode *callee = ast_create(NODE_EXPR_MEMBER);
+    callee->token = node->token;
+    callee->member.target = index->index.array;
+    callee->member.field = xstrdup("set");
+
+    // Arguments: the index, the extra ones (`v[i, j] = x`), then the value. The index nodes are
+    // copied into the list: `v[i] += x` is `v[i] = v[i] + x`, whose right side shares them and
+    // chains them into its own call to `get`.
+    ASTNode *args = NULL;
+    ASTNode **tail = &args;
+    ASTNode *first_extra = index->index.extra_indices;
+    for (ASTNode *i = index->index.index; i; i = (i == index->index.index) ? first_extra : i->next)
+    {
+        ASTNode *copy = ast_create(i->kind);
+        *copy = *i;
+        copy->next = NULL;
+        *tail = copy;
+        tail = &copy->next;
+    }
+    *tail = node->binary.right;
+    node->binary.right->next = NULL;
+
+    node->kind = NODE_EXPR_CALL;
+    memset(&node->call, 0, sizeof(node->call));
+    node->call.callee = callee;
+    node->call.args = args;
+    node->call.written = written;
+    check_expr_call(tc, node, depth + 1);
+    return 1;
+}
+
 void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
 {
     OperatorKind binop = node->binary.op;
     const char *op = operator_spelling(binop);
     OperatorClass op_class = operator_class(binop);
+
+    if (binop == OP_ASSIGN && node->binary.left->kind == NODE_EXPR_INDEX &&
+        rewrite_index_set(tc, node, depth))
+    {
+        return;
+    }
 
     if (is_assignment_operator(binop))
     {
@@ -881,6 +928,21 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
 
 // Views the array `node` as a slice of type `slice`: the node becomes a cast to the slice, whose
 // operand is the array, so that codegen writes the conversion.
+// Wraps `node` in a conversion to `to`, in place: the node becomes the conversion and what it was
+// moves to its child, so whoever points at it now points at the conversion. The child keeps its
+// type, so checking the tree again gives the same tree.
+static void wrap_in_conversion(ASTNode *node, Type *to)
+{
+    ASTNode *expr = ast_create(node->kind);
+    *expr = *node;
+    expr->next = NULL;
+
+    node->kind = NODE_IMPLICIT_CONVERSION;
+    memset(&node->conversion, 0, sizeof(node->conversion));
+    node->conversion.expr = expr;
+    node->type_info = to;
+}
+
 static void view_array_as_slice(ASTNode *node, Type *slice)
 {
     ASTNode *array = ast_create(NODE_EXPR_ARRAY_LITERAL);
@@ -959,6 +1021,14 @@ static int check_array_as_slice(TypeChecker *tc, Type *target, Type *value, Toke
         {
             return 0;
         }
+        // Its elements took the slice's element type: so does the literal, an array of it.
+        if (value_node->array_literal.elements)
+        {
+            Type *array = type_new(TYPE_ARRAY);
+            array->inner = slice_elem;
+            array->array_size = resolve_alias(value)->array_size;
+            value_node->type_info = array;
+        }
     }
     else if (!check_type_compatibility(tc, slice_elem, resolve_alias(value)->inner, t, NULL,
                                        is_call_arg))
@@ -970,30 +1040,6 @@ static int check_array_as_slice(TypeChecker *tc, Type *target, Type *value, Toke
         view_array_as_slice(value_node, target);
     }
     return 1;
-}
-
-// Warns when an integer of type `value`, the expression `value_node`, may not be held exactly by
-// the float type `target`, so large values are rounded, as an integer narrowing changes them. A
-// constant is judged by its value, as for integer targets.
-static void warn_inexact_integer_to_float(TypeChecker *tc, Type *target, Type *value,
-                                          ASTNode *value_node, Token t)
-{
-    long long constant;
-    int exact = (value_node && eval_const_int_expr(value_node, tc->pctx, &constant))
-                    ? float_holds_integer(target, constant)
-                    : float_holds_integer_type(target, value);
-    if (exact)
-    {
-        return;
-    }
-    char *t_str = zen_c_type_spelling(tc->pctx, target);
-    char *v_str = zen_c_type_spelling(tc->pctx, value);
-    char msg[MAX_SHORT_MSG_LEN];
-    snprintf(msg, sizeof(msg), "Implicit conversion from '%s' to '%s' rounds values above 2^%d",
-             v_str, t_str, float_significand_bits(target));
-    tc_warning(tc, t, msg);
-    zfree(t_str);
-    zfree(v_str);
 }
 
 // Whether the integer constant `value` keeps its value in the integer type `t`.
@@ -1012,6 +1058,58 @@ static int integer_constant_fits(long long value, Type *t)
         return value >= -limit && value < limit;
     }
     return value >= 0 && value < (1LL << width);
+}
+
+// An integer `value` converted to the integer or float type `target`: it keeps its value when
+// the target holds it, as a constant (by its value) or for every value of its type. When it may
+// not, a warning says how it changes; MISRA reports Rule 10.3 instead.
+static void check_integer_conversion(TypeChecker *tc, Type *target, Type *value,
+                                     ASTNode *value_node, Token t)
+{
+    if (tc->pctx->config->misra_mode)
+    {
+        misra_check_implicit_conversion(tc->pctx, target, value, value_node, t);
+        return;
+    }
+    Type *to = resolve_alias(target);
+    int to_float = is_float_type(to);
+    int target_width = integer_type_width(to);
+    int value_width = integer_type_width(resolve_alias(value));
+    long long constant;
+    int is_constant = value_node && eval_const_int_expr(value_node, tc->pctx, &constant);
+    int keeps =
+        to_float
+            ? (is_constant ? float_holds_integer(target, constant)
+                           : float_holds_integer_type(target, value))
+            : (is_constant ? integer_constant_fits(constant, to)
+                           : !(target_width > 0 && value_width > 0 && target_width < value_width));
+    if (keeps)
+    {
+        return;
+    }
+
+    char *t_str = zen_c_type_spelling(tc->pctx, target);
+    char *v_str = zen_c_type_spelling(tc->pctx, value);
+    char msg[MAX_SHORT_MSG_LEN];
+    if (to_float)
+    {
+        snprintf(msg, sizeof(msg), "Implicit conversion from '%s' to '%s' rounds values above 2^%d",
+                 v_str, t_str, float_significand_bits(target));
+    }
+    else if (is_constant)
+    {
+        snprintf(msg, sizeof(msg), "Integer constant %lld does not fit in '%s' (%d-bit)", constant,
+                 t_str, target_width);
+    }
+    else
+    {
+        snprintf(msg, sizeof(msg),
+                 "Implicit narrowing conversion from '%s' (%d-bit) to '%s' (%d-bit)", v_str,
+                 value_width, t_str, target_width);
+    }
+    tc_warning(tc, t, msg);
+    zfree(t_str);
+    zfree(v_str);
 }
 
 int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t,
@@ -1036,7 +1134,13 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         {
             misra_check_constant_wrap(tc, value_node, target);
         }
-        value_node->type_info = target;
+        // Only when its representation changes: an `i32` constant where an `i32` (or an alias of
+        // one) is expected is not converted.
+        if (!value_node->type_info ||
+            resolve_alias(value_node->type_info)->kind != resolve_alias(target)->kind)
+        {
+            wrap_in_conversion(value_node, target);
+        }
         value = target;
         resolved_value = resolved_target;
     }
@@ -1065,49 +1169,14 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         }
     }
 
-    // Resolution of Integer compatibility (Rule 10.3)
-    // This MUST happen before type_eq fast-path because type_eq is lax for integers.
-    if (is_integer_type(resolved_target) && is_integer_type(resolved_value))
+    // An integer converts to an integer or a float without a cast, as in C (a float to an integer
+    // does not: it drops the fraction, so it needs one). Before the type_eq fast path, which is
+    // lax for integers.
+    if (is_integer_type(resolved_value) &&
+        (is_integer_type(resolved_target) || is_float_type(resolved_target)))
     {
-        int target_width = integer_type_width(resolved_target);
-        int value_width = integer_type_width(resolved_value);
-        long long constant;
-
-        if (tc->pctx->config->misra_mode)
-        {
-            misra_check_implicit_conversion(tc->pctx, target, value, value_node, t);
-        }
-        else if (value_node && eval_const_int_expr(value_node, tc->pctx, &constant))
-        {
-            // A constant converts without loss when its value fits, whatever the
-            // type of the expression; one that does not fit changes its value.
-            if (!integer_constant_fits(constant, resolved_target))
-            {
-                char *t_str = zen_c_type_spelling(tc->pctx, target);
-                char msg[MAX_SHORT_MSG_LEN];
-                snprintf(msg, sizeof(msg), "Integer constant %lld does not fit in '%s' (%d-bit)",
-                         constant, t_str, target_width);
-                tc_warning(tc, t, msg);
-                zfree(t_str);
-            }
-        }
-        else
-        {
-            // Warn on narrowing conversions in non-MISRA mode
-            if (target_width > 0 && value_width > 0 && target_width < value_width)
-            {
-                char *t_str = zen_c_type_spelling(tc->pctx, target);
-                char *v_str = zen_c_type_spelling(tc->pctx, value);
-                char msg[MAX_SHORT_MSG_LEN];
-                snprintf(msg, sizeof(msg),
-                         "Implicit narrowing conversion from '%s' (%d-bit) to '%s' (%d-bit)", v_str,
-                         value_width, t_str, target_width);
-                tc_warning(tc, t, msg);
-                zfree(t_str);
-                zfree(v_str);
-            }
-        }
-        return 1; // All integer pairs compatible (modulo MISRA/Warning checks above)
+        check_integer_conversion(tc, target, value, value_node, t);
+        return 1;
     }
 
     if (!is_call_arg && resolved_target->kind == TYPE_POINTER &&
@@ -1227,21 +1296,6 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     // Float compatibility
     if (is_float_type(resolved_target) && is_float_type(resolved_value))
     {
-        return 1;
-    }
-
-    // An integer converts to a float, as in C. A float to an integer does not: it drops the
-    // fraction, so it needs a cast.
-    if (is_float_type(resolved_target) && is_integer_type(resolved_value))
-    {
-        if (tc->pctx->config->misra_mode)
-        {
-            misra_check_implicit_conversion(tc->pctx, target, value, value_node, t);
-        }
-        else
-        {
-            warn_inexact_integer_to_float(tc, target, value, value_node, t);
-        }
         return 1;
     }
 
@@ -1602,6 +1656,90 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
     RECURSION_EXIT(tc->pctx);
 }
 
+// Whether every parameter of the lambda has a type: written, or taken from the function type the
+// lambda is given or called with.
+static int lambda_parameters_known(ASTNode *node)
+{
+    Type *t = get_inner_type(node->type_info);
+    for (int i = 0; i < node->lambda.count; i++)
+    {
+        if (!t || t->kind != TYPE_FUNCTION || !t->args || i >= t->count || !t->args[i] ||
+            get_inner_type(t->args[i])->kind == TYPE_UNKNOWN)
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int lambda_is_waiting(TypeChecker *tc, ASTNode *node)
+{
+    for (int i = 0; i < tc->waiting_lambda_count; i++)
+    {
+        if (tc->waiting_lambdas[i].lambda == node)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// A lambda whose parameters take their types from its first call (`let add = (x, y) => x + y;`):
+// from 0.6 a parameter needs a type where nothing at the lambda gives it one.
+static void report_untyped_lambda_parameter(TypeChecker *tc, ASTNode *node)
+{
+    Type *t = get_inner_type(node->type_info);
+    int i = 0;
+    while (i < node->lambda.count - 1 && t && t->kind == TYPE_FUNCTION && t->args && i < t->count &&
+           t->args[i] && get_inner_type(t->args[i])->kind != TYPE_UNKNOWN)
+    {
+        i++;
+    }
+    const char *name = node->lambda.param_names[i];
+    Token where = node->lambda.param_tokens ? node->lambda.param_tokens[i] : node->token;
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "Lambda parameter '%s' has no type", name);
+    const char *hints[] = {"Write the type of each parameter, as in '(x: int) => x * 2', or give "
+                           "the lambda a function type, as in 'let f: fn(int) -> int = ...'",
+                           NULL};
+    tc_error_from_0_6(tc, where, msg, hints);
+}
+
+// Checks a lambda's body, in the scope that holds its parameters and captures.
+static void check_lambda_body(TypeChecker *tc, ASTNode *node, int depth)
+{
+    MoveState *prev_move_state = tc->pctx->move_state;
+    tc->pctx->move_state = move_state_create(NULL);
+
+    int prev_unreachable = tc->is_unreachable;
+    tc->is_unreachable = 0;
+    LoopFrame *prev_loop = tc->current_loop; // A `break` cannot leave the lambda.
+    tc->current_loop = NULL;
+
+    // A `return` in the body is the lambda's, not the enclosing function's.
+    ASTNode *prev_returns_from = tc->returns_from;
+    tc->returns_from = node;
+
+    if (node->lambda.body)
+    {
+        if (node->lambda.body->kind == NODE_BLOCK)
+        {
+            check_block(tc, node->lambda.body, depth + 1);
+        }
+        else
+        {
+            check_node(tc, node->lambda.body, depth + 1);
+        }
+    }
+
+    move_state_free(tc->pctx->move_state);
+    tc->pctx->move_state = prev_move_state;
+
+    tc->returns_from = prev_returns_from;
+    tc->is_unreachable = prev_unreachable;
+    tc->current_loop = prev_loop;
+}
+
 void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
 {
     Type *expected = get_inner_type(node->type_info);
@@ -1686,37 +1824,101 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
         tc->pctx->silent_warnings = saved_silent;
     }
 
-    MoveState *prev_move_state = tc->pctx->move_state;
-    tc->pctx->move_state = move_state_create(NULL);
-
-    int prev_unreachable = tc->is_unreachable;
-    tc->is_unreachable = 0;
-    LoopFrame *prev_loop = tc->current_loop; // A `break` cannot leave the lambda.
-    tc->current_loop = NULL;
-
-    // A `return` in the body is the lambda's, not the enclosing function's.
-    ASTNode *prev_returns_from = tc->returns_from;
-    tc->returns_from = node;
-
-    if (node->lambda.body)
+    // Without types for its parameters (`let add = (x, y) => x + y;`), the body waits for the
+    // first call, which gives them: checked now, it would read `x + y` with unknown types. A
+    // loop's second pass finds the lambda waiting already.
+    if (!lambda_parameters_known(node))
     {
-        if (node->lambda.body->kind == NODE_BLOCK)
+        if (!lambda_is_waiting(tc, node))
         {
-            check_block(tc, node->lambda.body, depth + 1);
+            report_untyped_lambda_parameter(tc, node);
+            WaitingLambda w = {node, tc->pctx->current_scope, tc->current_depth, depth,
+                               tc->current_func};
+            tc->waiting_lambdas =
+                xrealloc(tc->waiting_lambdas,
+                         (size_t)(tc->waiting_lambda_count + 1) * sizeof(WaitingLambda));
+            tc->waiting_lambdas[tc->waiting_lambda_count++] = w;
         }
-        else
-        {
-            check_node(tc, node->lambda.body, depth + 1);
-        }
+        tc_exit_scope(tc);
+        return;
     }
 
-    move_state_free(tc->pctx->move_state);
-    tc->pctx->move_state = prev_move_state;
-
-    tc->returns_from = prev_returns_from;
-    tc->is_unreachable = prev_unreachable;
-    tc->current_loop = prev_loop;
+    check_lambda_body(tc, node, depth);
     tc_exit_scope(tc);
+}
+
+// Checks the body of a lambda whose waiting has ended, in the lambda's own scope (its parameters
+// and captures), wherever the checker is: the body sees the globals, but not what the enclosing
+// scopes declared after the lambda.
+static void check_waiting_lambda(TypeChecker *tc, WaitingLambda w)
+{
+    Scope *prev_scope = tc->pctx->current_scope;
+    int prev_depth = tc->current_depth;
+    ASTNode *prev_func = tc->current_func;
+    int prev_rechecking = tc->rechecking;
+    int prev_pass2 = tc->in_loop_pass2;
+    int prev_assign_lhs = tc->is_assign_lhs;
+    int prev_stmt = tc->is_stmt_context;
+    int prev_forget = tc->is_forget_receiver;
+    int prev_callee = tc->is_callee;
+
+    // Every local of an enclosing scope the body names is a capture (the parser lists them), so
+    // the lambda's scope needs only the globals behind it.
+    w.scope->parent = tc->pctx->global_scope;
+    tc->pctx->current_scope = w.scope;
+    tc->current_depth = w.scope_depth;
+    tc->current_func = w.func;
+    tc->rechecking = 0; // The body's first check, even if the call is in a loop's second pass.
+    tc->in_loop_pass2 = 0;
+    tc->is_assign_lhs = 0;
+    tc->is_stmt_context = 0;
+    tc->is_forget_receiver = 0;
+    tc->is_callee = 0;
+
+    check_lambda_body(tc, w.lambda, w.node_depth);
+
+    tc->pctx->current_scope = prev_scope;
+    tc->current_depth = prev_depth;
+    tc->current_func = prev_func;
+    tc->rechecking = prev_rechecking;
+    tc->in_loop_pass2 = prev_pass2;
+    tc->is_assign_lhs = prev_assign_lhs;
+    tc->is_stmt_context = prev_stmt;
+    tc->is_forget_receiver = prev_forget;
+    tc->is_callee = prev_callee;
+}
+
+// Checks the waiting lambdas that a call has given their parameters (`called`), or else those
+// written in `func` (all of them if NULL). Checking a body can add or end other waits (a lambda
+// in it, a call in it), so the search starts again after each one.
+static void check_waiting_lambdas(TypeChecker *tc, int called, ASTNode *func)
+{
+    int i = 0;
+    while (i < tc->waiting_lambda_count)
+    {
+        WaitingLambda w = tc->waiting_lambdas[i];
+        int ready = called ? lambda_parameters_known(w.lambda) : (!func || w.func == func);
+        if (!ready)
+        {
+            i++;
+            continue;
+        }
+        tc->waiting_lambda_count--;
+        memmove(&tc->waiting_lambdas[i], &tc->waiting_lambdas[i + 1],
+                (size_t)(tc->waiting_lambda_count - i) * sizeof(WaitingLambda));
+        check_waiting_lambda(tc, w);
+        i = 0;
+    }
+}
+
+void check_called_lambdas(TypeChecker *tc)
+{
+    check_waiting_lambdas(tc, 1, NULL);
+}
+
+void check_uncalled_lambdas(TypeChecker *tc, ASTNode *func)
+{
+    check_waiting_lambdas(tc, 0, func);
 }
 
 // INFERENCE & ENTRY POINTS

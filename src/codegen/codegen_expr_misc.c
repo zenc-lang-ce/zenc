@@ -65,6 +65,13 @@ static void emit_array_as_slice(ParserContext *ctx, ASTNode *node)
     }
 }
 
+// The typechecker's implicit conversion: C converts the value itself, so the expression is
+// emitted as written.
+void handle_implicit_conversion(ParserContext *ctx, ASTNode *node)
+{
+    codegen_expression(ctx, node->conversion.expr);
+}
+
 void handle_expr_cast(ParserContext *ctx, ASTNode *node)
 {
     Type *from = node->cast.expr->type_info;

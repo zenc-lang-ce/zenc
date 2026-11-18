@@ -292,6 +292,12 @@ int main(int argc, char **argv)
             cfg->mode_check = 1;
             cfg->use_typecheck = 1;
         }
+        else if (strcmp(arg, "--check-twice") == 0)
+        {
+            // For scripts/check_twice.sh: the analysis must leave a tree it can check again
+            // and get the same result (stage 2 of the architecture plan).
+            cfg->check_twice = 1;
+        }
         else if (strcmp(arg, "--no-check") == 0)
         {
             cfg->mode_check = 0;

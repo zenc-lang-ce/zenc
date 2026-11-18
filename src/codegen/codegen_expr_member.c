@@ -116,66 +116,27 @@ void handle_expr_index(ParserContext *ctx, ASTNode *node)
     }
     else
     {
-        char *base_type = infer_type(ctx, node->index.array);
-        char *struct_name = NULL;
-        char *method_name = NULL;
-
-        if (base_type && !strchr(base_type, '*'))
+        // An overloaded index (`get`) reaches the codegen as the call the typechecker made of it:
+        // what is left is an array, a pointer or a vector.
+        int fixed_size = -1;
+        if (node->index.array->type_info && (node->index.array->type_info->kind == TYPE_ARRAY ||
+                                             node->index.array->type_info->kind == TYPE_VECTOR))
         {
-            const char *clean = str_strip_struct_prefix(base_type);
-            method_name = mangle_method_symbol(clean, NULL, "get");
-            if (find_func(ctx, method_name))
-            {
-                struct_name = xstrdup(clean);
-            }
+            fixed_size = node->index.array->type_info->array_size;
         }
 
-        if (struct_name)
+        codegen_expression(ctx, node->index.array);
+        EMIT(ctx, "[");
+        if (fixed_size > 0)
         {
-            FuncSig *sig = find_func(ctx, method_name);
-            int needs_addr =
-                (sig && sig->total_args > 0 && sig->arg_types[0]->kind == TYPE_POINTER);
-
-            EMIT(ctx, "%s(", method_name);
-            if (needs_addr)
-            {
-                EMIT(ctx, "&");
-            }
-            codegen_expression(ctx, node->index.array);
-            EMIT(ctx, ", ");
-            codegen_expression(ctx, node->index.index);
-            ASTNode *extra = node->index.extra_indices;
-            while (extra)
-            {
-                EMIT(ctx, ", ");
-                codegen_expression(ctx, extra);
-                extra = extra->next;
-            }
-            EMIT(ctx, ")");
-            zfree(struct_name);
+            EMIT(ctx, "_z_check_bounds(");
         }
-        else
+        codegen_expression(ctx, node->index.index);
+        if (fixed_size > 0)
         {
-            int fixed_size = -1;
-            if (node->index.array->type_info && (node->index.array->type_info->kind == TYPE_ARRAY ||
-                                                 node->index.array->type_info->kind == TYPE_VECTOR))
-            {
-                fixed_size = node->index.array->type_info->array_size;
-            }
-
-            codegen_expression(ctx, node->index.array);
-            EMIT(ctx, "[");
-            if (fixed_size > 0)
-            {
-                EMIT(ctx, "_z_check_bounds(");
-            }
-            codegen_expression(ctx, node->index.index);
-            if (fixed_size > 0)
-            {
-                EMIT(ctx, ", %d)", fixed_size);
-            }
-            EMIT(ctx, "]");
+            EMIT(ctx, ", %d)", fixed_size);
         }
+        EMIT(ctx, "]");
     }
 }
 
