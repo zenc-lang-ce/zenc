@@ -12,3 +12,43 @@ test "noreturn_compiles" {
     // The @noreturn attribute should not prevent compilation
     expect_eq(1, 1, "noreturn compiles");
 }
+
+// A call that never returns ends the flow: a function with a value needs no `return` after it.
+@noreturn
+fn fail(message: string) {
+    panic(message);
+}
+
+fn checked_half(n: int) -> int {
+    if n % 2 == 0 {
+        return n / 2;
+    }
+    panic("odd numbers have no whole half");
+}
+
+fn checked_third(n: int) -> int {
+    if n % 3 == 0 {
+        return n / 3;
+    }
+    fail("not a multiple of 3");
+}
+
+fn digit_name(digit: int) -> string {
+    match digit {
+        0 => { return "zero"; },
+        1 => { return "one"; },
+        _ => panic("only 0 and 1 have names here"),
+    }
+}
+
+test "a function with a value can end in panic" {
+    expect_eq(checked_half(8), 4, "checked_half(8) should return 4 when the number is even");
+}
+
+test "a function with a value can end in a call to a @noreturn function" {
+    expect_eq(checked_third(9), 3, "checked_third(9) should return 3 when the number is a multiple of 3");
+}
+
+test "a match arm can end in panic" {
+    expect(strcmp(digit_name(1), "one") == 0, "digit_name(1) should return \"one\" when an arm returns it");
+}

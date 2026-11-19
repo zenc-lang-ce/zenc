@@ -384,10 +384,12 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
             }
 
             // panic() is the compiler's own: codegen calls __zenc_panic, which does not return.
+            // So the flow ends here, as after a function marked @noreturn.
             if (strcmp(func_name, "panic") == 0)
             {
                 check_node(tc, node->call.args, depth + 1);
                 node->type_info = type_new(TYPE_VOID);
+                tc->is_unreachable = 1;
                 return;
             }
 
@@ -750,6 +752,13 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     check_all_args_side_effects(tc, receiver, node->call.args, node->token);
 
     check_format_string(tc, node);
+
+    // A function marked @noreturn ends the flow here, as `return` does: the code after the call
+    // is unreachable, and a function with a value needs no `return` after it.
+    if (sig && sig->decl && sig->decl->func.noreturn)
+    {
+        tc->is_unreachable = 1;
+    }
 
     // Evaluation order check: function call arguments should not have conflicting side effects
     if (tc->pctx->config->misra_mode)
