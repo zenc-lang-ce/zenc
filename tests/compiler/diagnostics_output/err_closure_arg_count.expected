@@ -13,4 +13,5 @@ error: Too many arguments: 'l' expects 1, got 2
    |     ^ here
    |
    = help: Remove extra arguments or check if you meant to call a different function
+     error: semantic analysis found 2 errors
 [exit 1]

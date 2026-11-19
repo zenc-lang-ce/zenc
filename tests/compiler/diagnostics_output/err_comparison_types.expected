@@ -6,4 +6,5 @@ error: Type mismatch in comparison: cannot compare 'string' and 'i32'
    |                  ^ here
    |
    = help: Both operands must have compatible types for comparison
+     error: semantic analysis found 1 error
 [exit 1]

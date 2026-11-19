@@ -29,4 +29,5 @@ error: No method 'gone' on 'Frame'
 78 |     let _e = make().gone();
    |                     ^ here
    |
+     error: semantic analysis found 5 errors
 [exit 1]

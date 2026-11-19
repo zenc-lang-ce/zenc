@@ -3676,8 +3676,8 @@ static void test_diagnostics()
 }
 
 // The server runs the typechecker on a document, as `zc build` does after parsing it: its
-// errors and its warnings (type errors in 0.5) show in the editor, only the document's, and an
-// edit replaces them.
+// errors show in the editor (type errors among them, as they stop a 0.6 build), only the
+// document's, and an edit replaces them.
 static void test_typechecker_diagnostics(void)
 {
     printf("Running test_typechecker_diagnostics...\n");
@@ -3692,7 +3692,8 @@ static void test_typechecker_diagnostics(void)
                         "}\n");
     char *msg = wait_for_diagnostics("/typechecked.zc");
     if (!msg || !strstr(msg, "'n2' is already declared in this block") ||
-        !strstr(msg, "\"severity\":1") || !strstr(msg, "an error from 0.6"))
+        !strstr(msg, "\"severity\":1") ||
+        !strstr(msg, "Type mismatch: expected 'i32', but found 'string'"))
     {
         printf("FAIL: test_typechecker_diagnostics: %s\n", msg ? msg : "(no diagnostics)");
         exit(1);
@@ -3701,7 +3702,7 @@ static void test_typechecker_diagnostics(void)
 
     change_document(path, 2, "fn twice(n: int) -> int {\n    let n2 = n * 2;\n    return n2;\n}\n");
     msg = wait_for_diagnostics("/typechecked.zc");
-    if (!msg || strstr(msg, "already declared") || strstr(msg, "error from 0.6"))
+    if (!msg || strstr(msg, "already declared") || strstr(msg, "Type mismatch"))
     {
         printf("FAIL: test_typechecker_diagnostics after the fix: %s\n",
                msg ? msg : "(no diagnostics)");

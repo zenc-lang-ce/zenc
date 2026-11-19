@@ -9,6 +9,7 @@ This new release brings breaking changes to the language:
 - A slice no longer has a `cap` field: it is `{ data, len }`. Code that reads `.cap`, or that builds a slice in C with three fields, must change.
 - Returning an array literal as a slice (`fn f() -> [float] { return [1.0, 2.0]; }`) is an error, as it already is for a local array: its elements live on the function's stack. Return a fixed-size array (`float[2]`) or a `Vec<T>`. Before, the literal was copied to the heap and never freed.
 - `Enum_Variant` and `Enum_Variant_Tag` (`Result_Ok`, `Result_Ok_Tag`) no longer stand for `Enum::Variant` and its tag: write `Result::Ok`.
+- `zc build` and `zc run` stop on the errors of the typechecker, as `zc check` does: a type mismatch, an undefined name, a pointer that escapes its scope, a `match` that is not exhaustive... In 0.5.2 they were warnings marked "an error from 0.6".
 - A lambda parameter needs a type where nothing at the lambda gives it one: `let add = (x, y) => x + y;` is an error. Write the types (`(x: int, y: int) => x + y`) or give the lambda a function type (`let add: fn(int, int) -> int = (x, y) => x + y;`); a lambda passed as an argument or returned takes the type of the parameter or of the return. The type is no longer guessed from the body: `x => x * 2` made `x` an `i32`, and `doubler(2.5)` returned 4.
 
 ## 0.5.2 (WIP)

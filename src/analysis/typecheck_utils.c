@@ -406,30 +406,9 @@ int tc_storage_depth(TypeChecker *tc, ASTNode *place)
     }
 }
 
-// A type error stops `zc check`; in `zc build` (0.5) it is a warning that says so.
-static int type_error_as_warning(TypeChecker *tc, Token t, const char *msg, const char *hint)
-{
-    if (!tc->type_errors_as_warnings)
-    {
-        return 0;
-    }
-    char text[MAX_ERROR_MSG_LEN];
-    snprintf(text, sizeof(text), "%s (an error from 0.6; `zc check` reports it now)", msg);
-    if (hint)
-    {
-        zwarn_with_suggestion(t, text, hint);
-    }
-    else
-    {
-        zwarn_at(t, "%s", text);
-    }
-    tc->warning_count++;
-    return 1;
-}
-
 void tc_error(TypeChecker *tc, Token t, const char *msg)
 {
-    if (tc->rechecking || tc_in_std(tc, t) || type_error_as_warning(tc, t, msg, NULL))
+    if (tc->rechecking || tc_in_std(tc, t))
     {
         return;
     }
@@ -504,8 +483,7 @@ void tc_unreachable_code(TypeChecker *tc, Token t)
 
 void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
 {
-    if (tc->rechecking || tc_in_std(tc, t) ||
-        type_error_as_warning(tc, t, msg, hints ? hints[0] : NULL))
+    if (tc->rechecking || tc_in_std(tc, t))
     {
         return;
     }

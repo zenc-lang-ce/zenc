@@ -852,8 +852,14 @@ static int cmd_type(ReplState *state, const char *args)
             int found = 0;
             while (fgets(buf, sizeof(buf), p))
             {
-                char *start = (char *)strstr(buf, "from type ");
+                // The typechecker names the type ("expected '__REVEAL_TYPE__', but found 'i32'")
+                // and, from 0.6, stops the build there; the C compiler's message is the fallback.
+                char *start = (char *)strstr(buf, "but found ");
                 char quote = 0;
+                if (!start)
+                {
+                    start = strstr(buf, "from type ");
+                }
                 if (!start)
                 {
                     start = strstr(buf, "incompatible type ");

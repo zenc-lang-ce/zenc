@@ -263,7 +263,7 @@ static int compile_program(ZenCompiler *compiler)
     // `zc check` and `zc build` run the same analysis; in 0.5 a build reports type errors as
     // warnings (check_program).
     int tc_result = 0;
-    if (!compiler->config.mode_doc || compiler->config.use_typecheck)
+    if (!compiler->config.mode_doc)
     {
         if (compiler->config.verbose)
         {

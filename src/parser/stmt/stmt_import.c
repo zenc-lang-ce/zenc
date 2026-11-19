@@ -31,6 +31,9 @@ static void scan_c_header_contents(ParserContext *ctx, const char *path, int dep
     CHeaderFile *header = resolved ? c_headers_get(resolved) : NULL;
     if (!header || !header->text)
     {
+        // A header that cannot be read declares names the compiler cannot know, as one included
+        // with `include <...>`: the names of C it brings are accepted undeclared.
+        ctx->has_external_includes = 1;
         return;
     }
 

@@ -20,4 +20,5 @@ error: '?.' on a pointer to a pointer is not supported
    |                  ^ here
    |
    = help: Dereference it first: `(*p)?.field` tests the pointer `p` points to
+     error: semantic analysis found 3 errors
 [exit 1]

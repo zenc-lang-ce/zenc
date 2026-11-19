@@ -13,11 +13,5 @@ error: a string on its own no longer prints
    |              ^ here
    |
    = help: print it with println("..."), from std/io.zc
-warning: Undefined function 'println' (an error from 0.6; `zc check` reports it now)
-  --> tests/compiler/diagnostics_output/err_print_codegen.zc:14:5
-   |
-14 |     println(name);
-   |     ^ here
-   |
-   = note: Check if the function is defined or imported
+     error: semantic analysis found 2 errors
 [exit 1]

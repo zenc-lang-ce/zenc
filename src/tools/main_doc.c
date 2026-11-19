@@ -41,7 +41,6 @@ int main(int argc, char **argv)
     cfg->keep_comments = 1;
     cfg->recursive_doc = 1;
     cfg->mode_check = 0; // Documentation does not require typechecking
-    cfg->use_typecheck = 0;
 
     const char *input = NULL;
     for (int i = 1; i < argc; i++)

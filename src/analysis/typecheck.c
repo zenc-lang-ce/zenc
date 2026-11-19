@@ -1479,8 +1479,6 @@ int check_program(ParserContext *ctx, ASTNode *root)
 {
     TypeChecker tc = {0};
     tc.pctx = ctx;
-    // `zc build` reports type errors as warnings in 0.5, except under --misra (use_typecheck).
-    tc.type_errors_as_warnings = !ctx->config->mode_check && !ctx->config->use_typecheck;
     ctx->current_scope = ctx->global_scope;
 
     if (!ctx->move_state)
@@ -1501,9 +1499,7 @@ int check_program(ParserContext *ctx, ASTNode *root)
         ctx->move_state = NULL;
     }
 
-    // The whole-program MISRA audits ran in `zc check` only; in 0.5 `zc build` keeps not running
-    // them.
-    if (tc.pctx->config->misra_mode && !tc.type_errors_as_warnings)
+    if (tc.pctx->config->misra_mode)
     {
         misra_audit_unused_symbols(tc.pctx);
         misra_audit_block_scope(tc.pctx);
@@ -1512,10 +1508,6 @@ int check_program(ParserContext *ctx, ASTNode *root)
 
     if (ctx->compiler->error_count > 0)
     {
-        if (tc.type_errors_as_warnings)
-        {
-            return 1; // A build reports its errors as it always did, without this summary.
-        }
         fprintf(stderr,
                 COLOR_BOLD COLOR_RED "     error" COLOR_RESET
                                      ": semantic analysis found %d error%s\n",

@@ -5,4 +5,5 @@ error: '_' is not a variable: `let _` discards a value
    |             ^ here
    |
    = help: Give the value a name to read it later
+     error: semantic analysis found 1 error
 [exit 1]

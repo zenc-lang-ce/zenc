@@ -25,4 +25,5 @@ error: 'p' is already declared in this block
    |     ^ here
    |
    = help: Give it another name, or declare it in a nested block
+     error: semantic analysis found 3 errors
 [exit 1]

@@ -27,4 +27,5 @@ error: '!"..."' no longer prints to stderr
    |      ^ here
    |
    = help: print it with eprint("..."), from std/io.zc
+     error: semantic analysis found 4 errors
 [exit 1]

@@ -5,10 +5,11 @@ error: 'guard' was removed; use 'if !<condition> { ... }'
 3  |     guard 1 > 2 else {
    |     ^ here
    |
-warning: Return without value in function returning 'c_int' (an error from 0.6; `zc check` reports it now)
+error: Return without value in function returning 'c_int'
   --> tests/compiler/diagnostics_output/err_guard_removed.zc:4:9
    |
 4  |         return;
    |         ^ here
    |
+     error: semantic analysis found 2 errors
 [exit 1]
