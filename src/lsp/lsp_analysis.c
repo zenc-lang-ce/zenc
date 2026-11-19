@@ -84,15 +84,11 @@ void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d)
     }
     char hints[MAX_PATH_LEN];
     str_join(hints, sizeof(hints), d->hints, "\n");
-    char msg[MAX_ERROR_MSG_LEN + sizeof(hints) + 32]; // message, hints and the text around
-    if (hints[0])
-    {
-        snprintf(msg, sizeof(msg), "%s (Suggestion: %s)", d->message, hints);
-    }
-    else
-    {
-        snprintf(msg, sizeof(msg), "%s", d->message);
-    }
+    const char *transition = diag_transition_text(d->transition);
+    // The message, its hints, what 0.6 changes and the text around them.
+    char msg[MAX_ERROR_MSG_LEN + sizeof(hints) + 128];
+    snprintf(msg, sizeof(msg), "%s%s%s%s%s%s", d->message, hints[0] ? " (Suggestion: " : "", hints,
+             hints[0] ? ")" : "", transition ? "\n" : "", transition ? transition : "");
     diagnostic_list_add(data, d->token, d->is_error ? LSP_SEVERITY_ERROR : LSP_SEVERITY_WARNING,
                         msg, d->id);
 }

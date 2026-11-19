@@ -407,22 +407,14 @@ int tc_storage_depth(TypeChecker *tc, ASTNode *place)
 }
 
 // A type error stops `zc check`; in `zc build` (0.5) it is a warning that says so.
-static int type_error_as_warning(TypeChecker *tc, Token t, const char *msg, const char *hint)
+static int type_error_as_warning(TypeChecker *tc, Token t, const char *msg,
+                                 const char *const *hints)
 {
     if (!tc->type_errors_as_warnings)
     {
         return 0;
     }
-    char text[MAX_ERROR_MSG_LEN];
-    snprintf(text, sizeof(text), "%s (an error from 0.6; `zc check` reports it now)", msg);
-    if (hint)
-    {
-        zwarn_with_suggestion(t, text, hint);
-    }
-    else
-    {
-        zwarn_at(t, "%s", text);
-    }
+    zwarn_until_0_6(t, DIAG_CHECK_ERROR_FROM_0_6, msg, hints);
     tc->warning_count++;
     return 1;
 }
@@ -504,8 +496,7 @@ void tc_unreachable_code(TypeChecker *tc, Token t)
 
 void tc_error_with_hints(TypeChecker *tc, Token t, const char *msg, const char *const *hints)
 {
-    if (tc->rechecking || tc_in_std(tc, t) ||
-        type_error_as_warning(tc, t, msg, hints ? hints[0] : NULL))
+    if (tc->rechecking || tc_in_std(tc, t) || type_error_as_warning(tc, t, msg, hints))
     {
         return;
     }
@@ -519,16 +510,7 @@ void tc_error_from_0_6(TypeChecker *tc, Token t, const char *msg, const char *co
     {
         return;
     }
-    char text[MAX_ERROR_MSG_LEN];
-    snprintf(text, sizeof(text), "%s (an error from 0.6)", msg);
-    if (hints && hints[0])
-    {
-        zwarn_with_suggestion(t, text, hints[0]);
-    }
-    else
-    {
-        zwarn_at(t, "%s", text);
-    }
+    zwarn_until_0_6(t, DIAG_ERROR_FROM_0_6, msg, hints);
     tc->warning_count++;
 #else
     tc_error_with_hints(tc, t, msg, hints);

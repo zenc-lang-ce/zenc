@@ -71,7 +71,7 @@ UTEST(diag_render_text, error_with_position_and_hints)
     t.col = 9;
     t.file = "demo.zc";
     const char *hints[] = {"first hint", "second hint", NULL};
-    ZenDiagnostic d = {1, 1, DIAG_NONE, t, "Something went wrong", hints, NULL};
+    ZenDiagnostic d = {1, 1, DIAG_NONE, t, "Something went wrong", hints, NULL, DIAG_SAME_IN_0_6};
 
     char out[1024];
     render_text(&d, out, sizeof(out));
@@ -103,7 +103,8 @@ UTEST(diag_render_text, error_with_a_note)
     moved.file = "other.zc";
     const char *hints[] = {"a hint", NULL};
     DiagnosticNote note = {moved, "'v' was moved here"};
-    ZenDiagnostic d = {1, 0, DIAG_NONE, use, "Use of moved value 'v'", hints, &note};
+    ZenDiagnostic d = {1,     0,     DIAG_NONE,       use, "Use of moved value 'v'",
+                       hints, &note, DIAG_SAME_IN_0_6};
 
     char out[1024];
     render_text(&d, out, sizeof(out));
@@ -129,7 +130,7 @@ UTEST(diag_render_text, warning_without_position)
     Token t = {0};
     t.file = "demo.zc";
     const char *hints[] = {"a note", NULL};
-    ZenDiagnostic d = {0, 0, DIAG_NONE, t, "Something looks odd", hints, NULL};
+    ZenDiagnostic d = {0, 0, DIAG_NONE, t, "Something looks odd", hints, NULL, DIAG_SAME_IN_0_6};
 
     char out[1024];
     render_text(&d, out, sizeof(out));
@@ -137,6 +138,23 @@ UTEST(diag_render_text, warning_without_position)
     ASSERT_STREQ("warning: Something looks odd\n"
                  "  --> demo.zc\n"
                  "   = note: a note\n",
+                 out);
+}
+
+UTEST(diag_render_text, warning_that_0_6_makes_an_error)
+{
+    Token t = {0};
+    t.file = "demo.zc";
+    const char *hints[] = {"a hint", NULL};
+    ZenDiagnostic d = {0, 0, DIAG_NONE, t, "Type mismatch", hints, NULL, DIAG_CHECK_ERROR_FROM_0_6};
+
+    char out[1024];
+    render_text(&d, out, sizeof(out));
+
+    ASSERT_STREQ("warning: Type mismatch\n"
+                 "  --> demo.zc\n"
+                 "   = note: a hint\n"
+                 "   = note: `zc check` rejects this; `zc build` will too from 0.6\n",
                  out);
 }
 
@@ -185,7 +203,7 @@ UTEST(diag_render_json, error_with_hints)
     t.col = 9;
     t.file = "demo.zc";
     const char *hints[] = {"first hint", "second hint", NULL};
-    ZenDiagnostic d = {1, 1, DIAG_NONE, t, "Something went wrong", hints, NULL};
+    ZenDiagnostic d = {1, 1, DIAG_NONE, t, "Something went wrong", hints, NULL, DIAG_SAME_IN_0_6};
 
     char out[1024];
     render_json(&d, out, sizeof(out));
@@ -206,7 +224,8 @@ UTEST(diag_render_json, error_with_a_note)
     moved.line = 1;
     moved.file = "other.zc";
     DiagnosticNote note = {moved, "'v' was moved here"};
-    ZenDiagnostic d = {1, 0, DIAG_NONE, use, "Use of moved value 'v'", NULL, &note};
+    ZenDiagnostic d = {1,    0,     DIAG_NONE,       use, "Use of moved value 'v'",
+                       NULL, &note, DIAG_SAME_IN_0_6};
 
     char out[1024];
     render_json(&d, out, sizeof(out));
@@ -224,7 +243,8 @@ UTEST(diag_render_json, warning_with_a_code)
     t.line = 4;
     t.col = 1;
     t.file = "demo.zc";
-    ZenDiagnostic d = {0, 0, DIAG_UNUSED_VAR, t, "Unused variable 'x'", NULL, NULL};
+    ZenDiagnostic d = {0,    0,    DIAG_UNUSED_VAR, t, "Unused variable 'x'",
+                       NULL, NULL, DIAG_SAME_IN_0_6};
 
     char out[1024];
     render_json(&d, out, sizeof(out));
@@ -235,6 +255,24 @@ UTEST(diag_render_json, warning_with_a_code)
              "\"message\":\"Unused variable 'x'\",\"code\":%d}\n",
              (int)DIAG_UNUSED_VAR);
     ASSERT_STREQ(expected, out);
+}
+
+UTEST(diag_render_json, warning_that_0_6_makes_an_error)
+{
+    Token t = {0};
+    t.line = 4;
+    t.col = 1;
+    t.file = "demo.zc";
+    ZenDiagnostic d = {0,    0,    DIAG_NONE,          t, "Lambda parameter 'x' has no type",
+                       NULL, NULL, DIAG_ERROR_FROM_0_6};
+
+    char out[1024];
+    render_json(&d, out, sizeof(out));
+
+    ASSERT_STREQ("{\"file\":\"demo.zc\",\"line\":4,\"col\":1,\"level\":\"warning\","
+                 "\"message\":\"Lambda parameter 'x' has no type\","
+                 "\"error_from\":\"0.6\",\"check_rejects\":false}\n",
+                 out);
 }
 
 UTEST(diag_consumer, fatal_error_does_not_exit_in_fault_tolerant_mode)

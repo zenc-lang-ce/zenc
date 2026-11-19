@@ -134,18 +134,41 @@ typedef struct DiagnosticNote
 } DiagnosticNote;
 
 /**
+ * @brief How a diagnostic changes from 0.5 to 0.6, for a warning that 0.6 makes an error.
+ */
+typedef enum
+{
+    DIAG_SAME_IN_0_6 = 0,      ///< Reported the same way in 0.6.
+    DIAG_ERROR_FROM_0_6,       ///< A warning in 0.5, `zc check` included; an error from 0.6.
+    DIAG_CHECK_ERROR_FROM_0_6, ///< A type error: `zc check` rejects it; a build warns until 0.6.
+} DiagnosticTransition;
+
+/**
+ * @brief What a consumer says about `transition`: NULL for DIAG_SAME_IN_0_6.
+ */
+const char *diag_transition_text(DiagnosticTransition transition);
+
+/**
  * @brief A diagnostic as data: what a consumer receives to present it.
  */
 typedef struct ZenDiagnostic
 {
-    int is_error;               ///< 1 for an error, 0 for a warning.
-    int fatal;                  ///< 1 if the error stops the compilation (zpanic_*).
-    int id;                     ///< DiagnosticID, or DIAG_NONE.
-    Token token;                ///< Where it happened (TOKEN_UNKNOWN if nowhere).
-    const char *message;        ///< The formatted message.
-    const char *const *hints;   ///< NULL, or a NULL-terminated array of hints.
-    const DiagnosticNote *note; ///< NULL, or another place the diagnostic refers to.
+    int is_error;                    ///< 1 for an error, 0 for a warning.
+    int fatal;                       ///< 1 if the error stops the compilation (zpanic_*).
+    int id;                          ///< DiagnosticID, or DIAG_NONE.
+    Token token;                     ///< Where it happened (TOKEN_UNKNOWN if nowhere).
+    const char *message;             ///< The formatted message.
+    const char *const *hints;        ///< NULL, or a NULL-terminated array of hints.
+    const DiagnosticNote *note;      ///< NULL, or another place the diagnostic refers to.
+    DiagnosticTransition transition; ///< Whether 0.6 makes this warning an error.
 } ZenDiagnostic;
+
+/**
+ * @brief A warning that 0.6 makes an error, with hints (NULL, or a NULL-terminated array).
+ *        The message is the one of the error; `transition` says when it becomes one.
+ */
+void zwarn_until_0_6(Token t, DiagnosticTransition transition, const char *msg,
+                     const char *const *hints);
 
 /**
  * @brief Non-fatal error with hints (NULL, or a NULL-terminated array) and a note that
