@@ -87,7 +87,7 @@ UTEST(type_registry, finds_a_generic_template)
     ASSERT_TRUE(pair->strct.is_template);
 }
 
-static void register_function(ParserContext *ctx, Scope *scope, const char *name, int count)
+static void register_signature(ParserContext *ctx, Scope *scope, const char *name, int count)
 {
     register_func(ctx, scope, name, count, NULL, NULL, NULL, 0, 0, NULL, NULL, TOKEN_UNKNOWN, 0);
 }
@@ -96,7 +96,7 @@ UTEST(find_func, finds_a_registered_function)
 {
     parse_source("");
     ParserContext *ctx = parse_source_context();
-    register_function(ctx, NULL, "alpha", 2);
+    register_signature(ctx, NULL, "alpha", 2);
     FuncSig *sig = find_func(ctx, "alpha");
     ASSERT_TRUE(sig != NULL);
     ASSERT_EQ(sig->total_args, 2);
@@ -110,9 +110,9 @@ UTEST(find_func, finds_a_function_of_another_scope_in_the_registry)
     parse_source("");
     ParserContext *ctx = parse_source_context();
     Scope *other = symbol_scope_create(NULL, NULL);
-    register_function(ctx, other, "beta", 3);
+    register_signature(ctx, other, "beta", 3);
     ASSERT_EQ(find_func(ctx, "beta")->total_args, 3);
-    register_function(ctx, other, "beta", 4);
+    register_signature(ctx, other, "beta", 4);
     ASSERT_EQ(find_func(ctx, "beta")->total_args, 4);
 }
 
@@ -132,7 +132,7 @@ UTEST(find_func, a_miss_takes_constant_time)
     for (int i = 0; i < FUNCTION_COUNT; i++)
     {
         snprintf(name, sizeof(name), "fn_%d", i);
-        register_function(ctx, other, name, 0);
+        register_signature(ctx, other, name, 0);
     }
     int found = 0;
     clock_t start = clock();

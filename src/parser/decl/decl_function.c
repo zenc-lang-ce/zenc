@@ -192,14 +192,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         c_name = prefixed_name;
     }
 
-    // Register if concrete (Global functions only)
-    if (gen_count == 0 && !ctx->current_impl_target)
-    {
-        register_func(ctx, ctx->current_scope->parent, c_name, count, default_values, arg_types,
-                      ret_type_obj, is_varargs, 0, link_name, NULL, name_tok, is_export);
-        // Note: required is set after return by caller (parser_core.c)
-    }
-
     // Bodies are parsed once all declarations are known. A generic template's body (which
     // includes the methods of an impl on a generic type written without `<T>`) is parsed
     // before the concrete ones, with its generic parameters known again.
@@ -275,6 +267,13 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     node->func.module_prefix = ctx->imports.current_module_prefix;
     node->func.impl_target = ctx->current_impl_target;
     node->func.filename = ctx->current_filename;
+
+    // A concrete function outside an impl is registered under its C name (`required` and
+    // `pure` are set by the caller once it returns).
+    if (gen_count == 0 && !ctx->current_impl_target)
+    {
+        register_function(ctx, ctx->current_scope, node, c_name, is_export);
+    }
 
     if (pending)
     {

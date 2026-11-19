@@ -425,7 +425,7 @@ void emit_impl_vtables(ParserContext *ctx)
             ASTNode *m = node->impl_trait.methods;
             while (m)
             {
-                const char *method = m->func.method_name;
+                const char *method = m->func.is_method ? m->func.name : NULL;
                 EMIT(ctx, ".%s = (__typeof__(((%s_VTable*)0)->%s))%s", method, trait, method,
                      function_c_name(m));
                 if (m->next)

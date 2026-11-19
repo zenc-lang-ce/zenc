@@ -1148,7 +1148,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 
             if (has_named && arg_names)
             {
-                ASTNode *def = find_function_definition(ctx, sig->name);
+                ASTNode *def = sig->decl;
                 if (def)
                 {
                     validate_named_arguments(t, sig->name, arg_names, args_provided, def);

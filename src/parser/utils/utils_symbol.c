@@ -94,10 +94,10 @@ void init_builtins(void)
     init = 1;
 }
 
-void register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
-                   ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
-                   int is_pure, const char *link_name, const char *own_name, Token decl_token,
-                   int is_export)
+FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
+                       ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
+                       int is_pure, const char *link_name, const char *own_name, Token decl_token,
+                       int is_export)
 {
     FuncSig *f = NULL;
     if (ctx->config->mode_lsp || ctx->config->misra_mode)
@@ -161,6 +161,18 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
     ft->is_raw = 1;
     ft->traits.has_drop = 0;
     sym->type_info = ft;
+    return f;
+}
+
+FuncSig *register_function(ParserContext *ctx, Scope *scope, ASTNode *fn, const char *name,
+                           int is_export)
+{
+    FuncSig *sig =
+        register_func(ctx, scope, name, fn->func.count, fn->func.default_values, fn->func.arg_types,
+                      fn->func.ret_type_info, fn->func.is_varargs, fn->func.pure, fn->link_name,
+                      fn->func.is_method ? fn->func.name : NULL, fn->token, is_export);
+    sig->decl = fn;
+    return sig;
 }
 
 const char *callee_own_name(ParserContext *ctx, ASTNode *callee)
@@ -815,8 +827,8 @@ Token template_method_token(ParserContext *ctx, const char *template_name, const
         ASTNode *methods = impl->kind == NODE_IMPL ? impl->impl.methods : impl->impl_trait.methods;
         for (ASTNode *m = methods; m; m = m->next)
         {
-            if (m->kind == NODE_FUNCTION && m->func.method_name &&
-                strcmp(m->func.method_name, method_name) == 0)
+            if (m->kind == NODE_FUNCTION && m->func.is_method &&
+                strcmp(m->func.name, method_name) == 0)
             {
                 return m->token;
             }

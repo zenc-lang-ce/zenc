@@ -48,7 +48,6 @@ ASTNode *parse_intrinsic(ParserContext *ctx, Lexer *l);
 ASTNode *parse_sizeof_expr(ParserContext *ctx, Lexer *l, Token sizeof_tk);
 ASTNode *parse_typeof_expr(ParserContext *ctx, Lexer *l);
 
-ASTNode *find_function_definition(ParserContext *ctx, const char *name);
 /** @brief Whether a slice's `..` (or `..<`) comes next, inside `[...]`. */
 int slice_follows(Lexer *l);
 /**

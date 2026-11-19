@@ -339,9 +339,9 @@ static void check_function_definition(ASTNode *f, const char *owner, DefinedFunc
         return;
     }
 
-    if (owner && f->func.method_name)
+    if (owner && f->func.is_method)
     {
-        zerror_at(f->token, "Redefinition of method '%s::%s'", owner, f->func.method_name);
+        zerror_at(f->token, "Redefinition of method '%s::%s'", owner, f->func.name);
     }
     else
     {
