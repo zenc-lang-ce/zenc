@@ -1,5 +1,6 @@
-// language/control-flow: the early return of `?` leaves the function as a `return` does: the pending
-// defers run, the drops of the locals and parameters among them.
+// language/control-flow: the early return of `?` leaves the function as a `return` does: the
+// pending defers run, the drops of the locals and parameters among them. The variable that a
+// `let` declares is not one of them while `?` computes its value.
 
 import "std/result.zc"
 import "std/option.zc"
@@ -92,6 +93,39 @@ fn other_result_type(ok: bool) -> Result<int> {
     return Result<int>::Ok((int)strlen(s));
 }
 
+fn guard_of(ok: bool) -> Result<Guard> {
+    if ok {
+        return Result<Guard>::Ok(Guard { id: 7 });
+    }
+    return Result<Guard>::Err("no guard");
+}
+
+struct Holder {
+    inner: Guard;
+    n: int;
+}
+
+fn let_inferred(ok: bool) -> Result<int> {
+    let g = guard_of(ok)?;
+    return Result<int>::Ok(g.id);
+}
+
+fn let_typed(ok: bool) -> Result<int> {
+    let g: Guard = guard_of(ok)?;
+    return Result<int>::Ok(g.id);
+}
+
+fn let_struct_literal(ok: bool) -> Result<int> {
+    let h = Holder { inner: guard_of(ok)?, n: 1 };
+    return Result<int>::Ok(h.n);
+}
+
+fn let_after_another(ok: bool) -> Result<int> {
+    let first = Guard { id: 100 };
+    let second = guard_of(ok)?;
+    return Result<int>::Ok(first.id + second.id);
+}
+
 test "a defer and the drop of a local run when ? returns early" {
     trail = 0;
     assert(with_defer_and_local(false).is_err(), "? should return the error when it fails");
@@ -141,4 +175,28 @@ test "? on a Result of another type" {
     trail = 0;
     assert(other_result_type(false).is_err(), "? should return the error when it fails");
     assert(trail == 5, "the defer should run when ? returns another type's error");
+}
+
+test "the variable a let declares is not dropped when ? in its value returns early" {
+    trail = 0;
+    assert(let_inferred(false).is_err(), "? should return the error when it fails");
+    assert(trail == 0, "the variable without a value should not be dropped");
+    trail = 0;
+    assert(let_typed(false).is_err(), "? should return the error when it fails");
+    assert(trail == 0, "a variable with a written type should not be dropped either");
+    trail = 0;
+    assert(let_struct_literal(false).is_err(), "? should return the error when it fails");
+    assert(trail == 0, "a struct whose field ? computes should not be dropped");
+    trail = 0;
+    assert(let_after_another(false).is_err(), "? should return the error when it fails");
+    assert(trail == 100, "only the variable that holds a value should be dropped");
+}
+
+test "the variable a let declares is dropped once when ? succeeds" {
+    trail = 0;
+    assert(let_inferred(true).val == 7, "? should give the value when it succeeds");
+    assert(trail == 7, "the variable should be dropped once at the end");
+    trail = 0;
+    assert(let_after_another(true).val == 107, "? should give the value when it succeeds");
+    assert(trail == 107, "both variables should be dropped once");
 }
