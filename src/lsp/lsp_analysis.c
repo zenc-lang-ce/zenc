@@ -32,6 +32,7 @@ typedef struct
 {
     Diagnostic *head;
     Diagnostic *tail;
+    const char *only_file; ///< When set, a diagnostic placed in another file is left out.
 } DiagnosticList;
 
 typedef enum
@@ -73,6 +74,11 @@ static void diagnostic_list_add(void *data, Token t, int severity, const char *m
 void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d)
 {
     if (!data)
+    {
+        return;
+    }
+    const char *only_file = ((DiagnosticList *)data)->only_file;
+    if (only_file && d->token.file && strcmp(d->token.file, only_file) != 0)
     {
         return;
     }
@@ -129,6 +135,11 @@ static void lsp_check_file(const char *uri, const char *json_src)
     if (pf)
     {
         warn_unknown_types(pf);
+        // The typechecker, as a build runs it: it may walk instances and code of other files,
+        // whose diagnostics are not this document's.
+        diagnostics.only_file = pf->path;
+        lsp_project_check_file(uri);
+        diagnostics.only_file = NULL;
     }
 
     // Restore
