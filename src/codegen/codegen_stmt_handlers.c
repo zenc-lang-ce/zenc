@@ -673,9 +673,8 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, ";\n");
             }
 
-            // The drop is registered once the variable holds its value: an exit inside the
-            // initializer (the early return of `?`) runs the pending drops, and must not
-            // drop the variable it was computing.
+            // After the initializer: an exit inside it (`?`) runs the pending drops, which must
+            // not include this variable yet.
             if (!defer_typed_local_drop(ctx, node, node->type_info))
             {
                 ASTNode *def = named_type_def(ctx, node->type_info);
@@ -729,7 +728,6 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                     EMIT(ctx, ";\n");
                 }
 
-                // Registered after the initializer, as above.
                 if (!defer_typed_local_drop(ctx, node, node->var_decl.init_expr->type_info))
                 {
                     ASTNode *def = named_type_def(ctx, node->var_decl.init_expr->type_info);

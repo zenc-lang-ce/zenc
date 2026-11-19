@@ -83,12 +83,9 @@ void emit_defers_down_to(ParserContext *ctx, int boundary)
     }
 }
 
-// Leaving the current function, by a `return` or by the early return of `?`, runs its pending
-// defers (the drops of its locals and parameters among them) and, under MISRA, goes through its
-// single exit. emit_function_exit_begin starts it, the caller emits the returned value (none
-// for a `return;`), and emit_function_exit_end finishes it. `value` is NULL when nothing is
-// returned, the same in both calls; otherwise it is the expression that `_z_ret`, which keeps
-// the value while the defers run, takes its type from when the function's type is not known.
+// Leaves the current function, by `return` or by `?`: runs the pending defers and, under MISRA,
+// goes through the single exit. The caller emits the returned value between the two calls and
+// passes both the same `value`, NULL for a `return;`.
 void emit_function_exit_begin(ParserContext *ctx, ASTNode *value)
 {
     int has_defers = ctx->cg.defer_count > ctx->cg.func_defer_boundary;

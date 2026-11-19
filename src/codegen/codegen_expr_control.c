@@ -188,8 +188,6 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, " _try = ");
     codegen_expression(ctx, node->try_stmt.expr);
 
-    // An enum is tested on its tag, a struct on its flag; the failure is returned through the
-    // constructor of the function's return type, and the success value is the expression's.
     const char *failure;
     const char *failure_arg;
     const char *success;
@@ -217,7 +215,6 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
     {
         EMIT(ctx, "; if (!_try.%s) { ", flag);
     }
-    // On failure, `?` leaves the function as a `return` does: its defers run first.
     emit_function_exit_begin(ctx, node->try_stmt.expr);
     EMIT(ctx, "%s(%s)", failure, failure_arg);
     emit_function_exit_end(ctx, node->try_stmt.expr);
