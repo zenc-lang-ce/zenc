@@ -260,23 +260,7 @@ static int compile_program(ZenCompiler *compiler)
     // Process @link directives
     // (Handled during parsing phase — NODE_LINK is collected there)
 
-    // Semantic Analysis & Validation
-    if (!compiler->config.mode_doc || compiler->config.use_typecheck)
-    {
-        propagate_drop_traits(&ctx);
-
-        if (!validate_types(&ctx))
-        {
-            return 1;
-        }
-
-        if (!validate_function_definitions(&ctx, root))
-        {
-            return 1;
-        }
-    }
-
-    // `zc check` and `zc build` run the same typechecker; in 0.5 a build reports type errors as
+    // `zc check` and `zc build` run the same analysis; in 0.5 a build reports type errors as
     // warnings (check_program).
     int tc_result = 0;
     if (!compiler->config.mode_doc || compiler->config.use_typecheck)
@@ -287,12 +271,8 @@ static int compile_program(ZenCompiler *compiler)
                    compiler->config.input_file);
             fflush(stdout);
         }
-        tc_result = check_program(&ctx, root);
-        if (tc_result == 0 && compiler->config.check_twice)
-        {
-            tc_result = check_program(&ctx, root);
-        }
-        if (tc_result != 0 && !compiler->config.mode_check)
+        tc_result = analyze_program(&ctx, root);
+        if (tc_result < 0 || (tc_result != 0 && !compiler->config.mode_check))
         {
             return 1;
         }

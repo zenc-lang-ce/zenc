@@ -257,7 +257,7 @@ static void emit_array_assignment(ParserContext *ctx, ASTNode *left, ASTNode *ri
         }
     }
 
-    const char *flag_name = (drops && left->kind == NODE_EXPR_VAR) ? left->var_ref.name : NULL;
+    const char *flag_name = (drops && left->kind == NODE_EXPR_VAR) ? var_ref_flag_name(left) : NULL;
     if (flag_name)
     {
         EMIT(ctx, "if (__z_drop_flag_%s) { %s } ", flag_name,
@@ -458,9 +458,9 @@ static void emit_plain_binary(ParserContext *ctx, ASTNode *node)
         codegen_expression(ctx, node->binary.left);
         EMIT(ctx, "); ");
 
-        EMIT(ctx, "if (__z_drop_flag_%s) %s ", node->binary.left->var_ref.name, drop_old);
+        EMIT(ctx, "if (__z_drop_flag_%s) %s ", var_ref_flag_name(node->binary.left), drop_old);
         EMIT(ctx, "*_z_dest = _z_tmp; ");
-        EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
+        EMIT(ctx, "__z_drop_flag_%s = 1; ", var_ref_flag_name(node->binary.left));
 
         EMIT(ctx, "*_z_dest; })");
     }

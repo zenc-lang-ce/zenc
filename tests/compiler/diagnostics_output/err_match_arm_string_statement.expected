@@ -1,0 +1,18 @@
+   Compiling tests/compiler/diagnostics_output/err_match_arm_string_statement.zc...
+error: a string on its own no longer prints
+  --> tests/compiler/diagnostics_output/err_match_arm_string_statement.zc:10:14
+   |
+10 |         1 => "one",
+   |              ^ here
+   |
+   = help: print it with println("..."), from std/io.zc
+error: a string on its own no longer prints
+  --> tests/compiler/diagnostics_output/err_match_arm_string_statement.zc:12:18
+   |
+12 |             2 => "two",
+   |                  ^ here
+   |
+   = help: print it with println("..."), from std/io.zc
+     error: semantic analysis found 2 errors
+       Check failed with 2 errors
+[exit 1]

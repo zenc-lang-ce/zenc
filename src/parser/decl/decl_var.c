@@ -381,8 +381,11 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         return NULL;
     }
 
-    // Register in symbol table with actual token
-    add_symbol_with_token(ctx, name, type_obj, name_tok, is_export);
+    // Register in symbol table with actual token. `let _ = <value>` declares nothing.
+    if (strcmp(name, "_") != 0)
+    {
+        add_symbol_with_token(ctx, name, type_obj, name_tok, is_export);
+    }
 
     if (init && type_obj)
     {

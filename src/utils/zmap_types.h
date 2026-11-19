@@ -54,7 +54,8 @@ struct ASTNode;
     X(const struct ZenSymbol *, struct ZenSymbol *, DeclSet)                                       \
     X(const char *, struct ZenSymbol *, SymbolByName)                                              \
     X(const char *, struct FuncSig *, FuncByName)                                                  \
-    X(const char *, struct ASTNode *, DeclByName)
+    X(const char *, struct ASTNode *, DeclByName)                                                  \
+    X(const char *, const char *, CNameByDecl)
 
 #include "zmap.h"
 

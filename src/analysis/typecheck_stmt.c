@@ -1,6 +1,31 @@
 // SPDX-License-Identifier: MIT
 #include "typecheck_internal.h"
 
+// RFC 0001: a string literal as the arm of a match statement no longer prints. For one release
+// it is an error that tells how to print it; afterwards it is an unused expression, which would
+// compile and print nothing. In a match expression the string is the match's value. An arm that
+// is itself a match is a statement too.
+static void report_printing_match_arms(TypeChecker *tc, ASTNode *match)
+{
+    for (ASTNode *c = match->match_stmt.cases; c; c = c->next)
+    {
+        ASTNode *body = c->kind == NODE_MATCH_CASE ? c->match_case.body : NULL;
+        if (!body)
+        {
+            continue;
+        }
+        if (body->kind == NODE_EXPR_LITERAL && body->literal.kind == LITERAL_STRING)
+        {
+            const char *hints[] = {"print it with println(\"...\"), from std/io.zc", NULL};
+            tc_ctrl_flow_error(tc, body->token, "a string on its own no longer prints", hints);
+        }
+        else if (body->kind == NODE_MATCH)
+        {
+            report_printing_match_arms(tc, body);
+        }
+    }
+}
+
 void check_block(TypeChecker *tc, ASTNode *block, int depth)
 {
     tc_enter_scope(tc);
@@ -33,6 +58,11 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
                     tc_error(tc, stmt->token, "MISRA Rule 2.2: expression statement has no effect");
                 }
             }
+        }
+
+        if (stmt->kind == NODE_MATCH)
+        {
+            report_printing_match_arms(tc, stmt);
         }
 
         int old_stmt_ctx = tc->is_stmt_context;
@@ -149,8 +179,13 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
         node->var_decl.type_info = t;
     }
 
+    if (is_discard(node))
+    {
+        return;
+    }
     misra_check_reserved_identifier(tc->pctx, node->var_decl.name, node->token);
-    tc_add_symbol(tc, node->var_decl.name, t, node->token, 0);
+    ASTNode *initializer = node->var_decl.init_expr;
+    tc_declare_local(tc, node->var_decl.name, t, node->token, 0, &initializer, 1);
     ZenSymbol *new_sym = tc_lookup(tc, node->var_decl.name);
     if (new_sym)
     {
@@ -195,6 +230,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
 
     tc->current_func = node;
     tc->returns_from = node;
+    CFunctionLocals *prev_c_function = tc_enter_c_function(tc, node);
     tc_enter_scope(tc);
 
     int prev_unreachable = tc->is_unreachable;
@@ -216,8 +252,8 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
             misra_check_tuple_size(tc->pctx, param_type, node->token);
             misra_check_pointer_nesting(tc->pctx, param_type, node->token);
             misra_check_reserved_identifier(tc->pctx, node->func.param_names[i], node->token);
-            tc_add_symbol(tc, node->func.param_names[i], param_type, node->token,
-                          tc->pctx->config->misra_mode);
+            tc_declare_local(tc, node->func.param_names[i], param_type, node->token,
+                             tc->pctx->config->misra_mode, NULL, 0);
         }
     }
 
@@ -316,6 +352,7 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
     tc->is_unreachable = prev_unreachable;
     tc->current_loop = prev_loop;
     tc_exit_scope(tc);
+    tc_leave_c_function(tc, prev_c_function);
     tc->current_func = NULL;
     tc->returns_from = NULL;
 }
@@ -366,6 +403,27 @@ static const char *loop_label(ASTNode *loop)
     default:
         return NULL;
     }
+}
+
+// The body of a `for` range, in a scope where its variable is declared: in each pass of the loop.
+// The variable has the type of the start, as codegen declares it (ZC_AUTO), and is seen by the
+// body only; the parser reported it if it shadows a name.
+static void check_range_body(TypeChecker *tc, ASTNode *node, int depth)
+{
+    tc_enter_scope(tc);
+    if (node->for_range.var_name)
+    {
+        ASTNode *header[] = {node->for_range.start, node->for_range.end, node->for_range.step};
+        Type *start = node->for_range.start ? node->for_range.start->type_info : NULL;
+        int saved_silent = tc->pctx->silent_warnings;
+        tc->pctx->silent_warnings = 1;
+        tc_declare_local(tc, node->for_range.var_name,
+                         start && start->kind != TYPE_UNKNOWN ? start : type_new(TYPE_I32),
+                         node->for_range.var_token, 0, header, 3);
+        tc->pctx->silent_warnings = saved_silent;
+    }
+    check_node(tc, node->for_range.body, depth + 1);
+    tc_exit_scope(tc);
 }
 
 void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
@@ -514,7 +572,7 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
         loop_start = tc->pctx->move_state ? move_state_clone(tc->pctx->move_state) : NULL;
         tc->loop_start_state = loop_start;
 
-        check_node(tc, node->for_range.body, depth + 1);
+        check_range_body(tc, node, depth);
         break;
 
     case NODE_LOOP:
@@ -567,7 +625,7 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
             check_node(tc, node->for_stmt.step, depth + 1);
             break;
         case NODE_FOR_RANGE:
-            check_node(tc, node->for_range.body, depth + 1);
+            check_range_body(tc, node, depth);
             break;
         case NODE_LOOP:
             check_node(tc, node->loop_stmt.body, depth + 1);

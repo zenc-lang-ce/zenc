@@ -1,0 +1,62 @@
+// language/features/variables: `let _ = <value>` declares nothing. It evaluates the value and, if
+// the value needs dropping, drops it at once; a block may discard as many values as it needs.
+
+let drops = 0;
+
+struct Resource {
+    id: int;
+}
+
+impl Drop for Resource {
+    fn drop(self) {
+        drops = drops * 10 + self.id;
+    }
+}
+
+fn make(id: int) -> Resource {
+    return Resource { id: id };
+}
+
+let calls = 0;
+
+fn count() -> int {
+    calls = calls + 1;
+    return calls;
+}
+
+test "two_discards_in_one_block" {
+    calls = 0;
+    let _ = count();
+    let _ = count();
+    assert(calls == 2, "each discarded value is evaluated once");
+}
+
+test "a_discarded_value_is_dropped_at_once" {
+    drops = 0;
+    let _kept = make(1);
+    let _ = make(2);
+    assert(drops == 2, "the discarded value is dropped before the next statement");
+    let _ = make(3);
+    assert(drops == 23, "and so is the next one");
+}
+
+test "a_discarded_variable_is_moved_and_dropped_once" {
+    drops = 0;
+    {
+        let r = make(4);
+        let _ = r;
+        assert(drops == 4, "the variable's value is dropped when discarded");
+    }
+    assert(drops == 4, "and not again at the end of its block");
+}
+
+test "a_discarded_array_and_tuple_are_dropped_once" {
+    drops = 0;
+    {
+        let rs: [Resource; 2] = [make(5), make(6)];
+        let _ = rs;
+        let t = (make(7), 8);
+        let _ = t;
+    }
+    assert(drops == 567, "each element is dropped once, when discarded");
+}

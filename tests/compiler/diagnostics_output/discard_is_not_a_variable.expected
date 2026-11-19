@@ -1,0 +1,8 @@
+error: '_' is not a variable: `let _` discards a value
+  --> tests/compiler/diagnostics_output/discard_is_not_a_variable.zc:6:13
+   |
+6  |     let y = _;
+   |             ^ here
+   |
+   = help: Give the value a name to read it later
+[exit 1]
