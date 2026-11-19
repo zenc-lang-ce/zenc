@@ -188,30 +188,37 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, " _try = ");
     codegen_expression(ctx, node->try_stmt.expr);
 
+    const char *failure;
+    const char *failure_arg;
+    const char *success;
+    const char *flag = is_option ? "is_some" : "is_ok";
     if (is_option)
     {
-        if (is_enum)
-        {
-            char *none = mangle_variant_symbol(ret_name, "None");
-            EMIT(ctx, "; if (_try.tag == %s_Tag) return (%s()); _try.data.Some; })", none, none);
-        }
-        else
-        {
-            EMIT(ctx, "; if (!_try.is_some) return %s(); _try.val; })",
-                 mangle_method_symbol(ret_name, NULL, "None"));
-        }
-    }
-    else if (is_enum)
-    {
-        char *err = mangle_variant_symbol(ret_name, "Err");
-        EMIT(ctx, "; if (_try.tag == %s_Tag) return (%s(_try.data.Err)); _try.data.Ok; })", err,
-             err);
+        failure = is_enum ? mangle_variant_symbol(ret_name, "None")
+                          : mangle_method_symbol(ret_name, NULL, "None");
+        failure_arg = "";
+        success = is_enum ? "_try.data.Some" : "_try.val";
     }
     else
     {
-        EMIT(ctx, "; if (!_try.is_ok) return %s(_try.err); _try.val; })",
-             mangle_method_symbol(ret_name, NULL, "Err"));
+        failure = is_enum ? mangle_variant_symbol(ret_name, "Err")
+                          : mangle_method_symbol(ret_name, NULL, "Err");
+        failure_arg = is_enum ? "_try.data.Err" : "_try.err";
+        success = is_enum ? "_try.data.Ok" : "_try.val";
     }
+
+    if (is_enum)
+    {
+        EMIT(ctx, "; if (_try.tag == %s_Tag) { ", failure);
+    }
+    else
+    {
+        EMIT(ctx, "; if (!_try.%s) { ", flag);
+    }
+    emit_function_exit_begin(ctx, node->try_stmt.expr);
+    EMIT(ctx, "%s(%s)", failure, failure_arg);
+    emit_function_exit_end(ctx, node->try_stmt.expr);
+    EMIT(ctx, "} %s; })", success);
 }
 
 void handle_plugin(ParserContext *ctx, ASTNode *node)

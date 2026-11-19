@@ -83,6 +83,75 @@ void emit_defers_down_to(ParserContext *ctx, int boundary)
     }
 }
 
+// Leaves the current function, by `return` or by `?`: runs the pending defers and, under MISRA,
+// goes through the single exit. The caller emits the returned value between the two calls and
+// passes both the same `value`, NULL for a `return;`.
+void emit_function_exit_begin(ParserContext *ctx, ASTNode *value)
+{
+    int has_defers = ctx->cg.defer_count > ctx->cg.func_defer_boundary;
+    Type *ret = ctx->cg.current_func_ret_type_info;
+    if (!value)
+    {
+        if (!has_defers && !ctx->config->misra_mode)
+        {
+            EMIT(ctx, "return ");
+        }
+        return;
+    }
+    if (has_defers)
+    {
+        EMIT(ctx, "{ ");
+        emitter_indent(&ctx->cg.emitter);
+        if (ret && ret->kind != TYPE_VOID)
+        {
+            char *tstr = c_type_spelling(ctx, ret);
+            EMIT(ctx, "%s", tstr);
+            zfree(tstr);
+        }
+        else
+        {
+            emit_auto_type(ctx, value, value->token);
+        }
+        EMIT(ctx, " _z_ret = ");
+    }
+    else if (!ctx->config->misra_mode)
+    {
+        EMIT(ctx, "return ");
+    }
+    else if (ret && ret->kind != TYPE_VOID)
+    {
+        EMIT(ctx, "_misra_ret = ");
+    }
+}
+
+void emit_function_exit_end(ParserContext *ctx, ASTNode *value)
+{
+    if (ctx->cg.defer_count <= ctx->cg.func_defer_boundary)
+    {
+        EMIT(ctx, ";\n");
+        if (ctx->config->misra_mode)
+        {
+            EMIT(ctx, "goto _misra_end_of_func;\n");
+        }
+        return;
+    }
+    if (value)
+    {
+        EMIT(ctx, "; ");
+    }
+    emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
+    if (value)
+    {
+        emitter_dedent(&ctx->cg.emitter);
+        EMIT(ctx, ctx->config->misra_mode ? "_misra_ret = _z_ret; goto _misra_end_of_func; }\n"
+                                          : "return _z_ret; }\n");
+    }
+    else
+    {
+        EMIT(ctx, ctx->config->misra_mode ? "goto _misra_end_of_func;\n" : "return;\n");
+    }
+}
+
 // Name of the struct with Drop that a call statement produces and discards, or NULL.
 static char *discarded_drop_type(ParserContext *ctx, ASTNode *node)
 {
@@ -493,7 +562,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     }
     case NODE_RETURN:
     {
-        int has_defers = (ctx->cg.defer_count > ctx->cg.func_defer_boundary);
         int handled = 0;
 
         if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR &&
@@ -538,76 +606,13 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
 
         if (!handled)
         {
-            if (has_defers && node->ret.value)
+            ASTNode *value = node->ret.value;
+            emit_function_exit_begin(ctx, value);
+            if (value)
             {
-                EMIT(ctx, "{ ");
-                emitter_indent(&ctx->cg.emitter);
-                Type *ret = ctx->cg.current_func_ret_type_info;
-                if (ret && ret->kind != TYPE_VOID)
-                {
-                    char *tstr = c_type_spelling(ctx, ret);
-                    EMIT(ctx, "%s", tstr);
-                    zfree(tstr);
-                }
-                else
-                {
-                    emit_auto_type(ctx, node->ret.value, node->token);
-                }
-                EMIT(ctx, " _z_ret = ");
-                codegen_expression(ctx, node->ret.value);
-                EMIT(ctx, "; ");
-                emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
-                if (ctx->config->misra_mode)
-                {
-                    emitter_dedent(&ctx->cg.emitter);
-                    EMIT(ctx, "_misra_ret = _z_ret; goto _misra_end_of_func; }\n");
-                }
-                else
-                {
-                    emitter_dedent(&ctx->cg.emitter);
-                    EMIT(ctx, "return _z_ret; }\n");
-                }
+                codegen_expression(ctx, value);
             }
-            else if (has_defers)
-            {
-                emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
-                if (ctx->config->misra_mode)
-                {
-                    EMIT(ctx, "goto _misra_end_of_func;\n");
-                }
-                else
-                {
-                    EMIT(ctx, "return;\n");
-                }
-            }
-            else
-            {
-                if (ctx->config->misra_mode)
-                {
-                    Type *ret = ctx->cg.current_func_ret_type_info;
-                    if (ret && ret->kind != TYPE_VOID)
-                    {
-                        EMIT(ctx, "_misra_ret = ");
-                    }
-                    else
-                    {
-                    }
-                }
-                else
-                {
-                    EMIT(ctx, "return ");
-                }
-
-                if (node->ret.value)
-                {
-                    codegen_expression(ctx, node->ret.value);
-                }
-                EMIT(ctx, ";\n");
-                if (ctx->config->misra_mode)
-                {
-                    EMIT(ctx, "goto _misra_end_of_func;\n");
-                }
-            }
+            emit_function_exit_end(ctx, value);
         }
         break;
     }

@@ -628,15 +628,6 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 clean_type += 7;
             }
 
-            if (!defer_typed_local_drop(ctx, node, node->type_info))
-            {
-                ASTNode *def = named_type_def(ctx, node->type_info);
-                if (def && def->type_info && def->type_info->traits.has_drop)
-                {
-                    defer_local_drop(ctx, node, clean_type);
-                }
-            }
-
             emit_var_decl_type(ctx, tname, var_decl_name(ctx, node));
 
             ASTNode *init = node->var_decl.init_expr;
@@ -682,6 +673,17 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, ";\n");
             }
 
+            // After the initializer: an exit inside it (`?`) runs the pending drops, which must
+            // not include this variable yet.
+            if (!defer_typed_local_drop(ctx, node, node->type_info))
+            {
+                ASTNode *def = named_type_def(ctx, node->type_info);
+                if (def && def->type_info && def->type_info->traits.has_drop)
+                {
+                    defer_local_drop(ctx, node, clean_type);
+                }
+            }
+
             if (node->type_info)
             {
                 zfree(tname);
@@ -701,15 +703,6 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 if (strncmp(clean_type, "struct ", 7) == 0)
                 {
                     clean_type += 7;
-                }
-
-                if (!defer_typed_local_drop(ctx, node, node->var_decl.init_expr->type_info))
-                {
-                    ASTNode *def = named_type_def(ctx, node->var_decl.init_expr->type_info);
-                    if (def && def->type_info && def->type_info->traits.has_drop)
-                    {
-                        defer_local_drop(ctx, node, clean_type);
-                    }
                 }
 
                 emit_var_decl_type(ctx, inferred, var_decl_name(ctx, node));
@@ -733,6 +726,15 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                     emit_move_invalidation(ctx, node->var_decl.init_expr))
                 {
                     EMIT(ctx, ";\n");
+                }
+
+                if (!defer_typed_local_drop(ctx, node, node->var_decl.init_expr->type_info))
+                {
+                    ASTNode *def = named_type_def(ctx, node->var_decl.init_expr->type_info);
+                    if (def && def->type_info && def->type_info->traits.has_drop)
+                    {
+                        defer_local_drop(ctx, node, clean_type);
+                    }
                 }
             }
             else

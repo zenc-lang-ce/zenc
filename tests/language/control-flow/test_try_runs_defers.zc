@@ -1,0 +1,202 @@
+// language/control-flow: the early return of `?` leaves the function as a `return` does: the
+// pending defers run, the drops of the locals and parameters among them. The variable that a
+// `let` declares is not one of them while `?` computes its value.
+
+import "std/result.zc"
+import "std/option.zc"
+
+let trail = 0;
+
+struct Guard {
+    id: int;
+}
+
+impl Drop for Guard {
+    fn drop(self) {
+        trail = trail + self.id;
+    }
+}
+
+enum Outcome {
+    Ok(int),
+    Err(int),
+}
+
+fn res_of(ok: bool) -> Result<int> {
+    if ok {
+        return Result<int>::Ok(2);
+    }
+    return Result<int>::Err("fail");
+}
+
+fn text_of(ok: bool) -> Result<string> {
+    if ok {
+        return Result<string>::Ok("abc");
+    }
+    return Result<string>::Err("no text");
+}
+
+fn opt_of(ok: bool) -> Option<int> {
+    if ok {
+        return Option<int>::Some(3);
+    }
+    return Option<int>::None();
+}
+
+fn outcome_of(ok: bool) -> Outcome {
+    if ok {
+        return Outcome::Ok(4);
+    }
+    return Outcome::Err(9);
+}
+
+fn with_defer_and_local(ok: bool) -> Result<int> {
+    defer trail = trail + 1;
+    let g = Guard { id: 10 };
+    let v = res_of(ok)?;
+    return Result<int>::Ok(v + g.id);
+}
+
+fn in_inner_block(ok: bool) -> Option<int> {
+    defer trail = trail * 10 + 2;
+    {
+        defer trail = trail * 10 + 1;
+        let v = opt_of(ok)?;
+        return Option<int>::Some(v);
+    }
+}
+
+fn with_drop_parameter(g: Guard, ok: bool) -> Outcome {
+    let v = outcome_of(ok)?;
+    return Outcome::Ok(v + g.id);
+}
+
+fn inside_expression(ok: bool) -> Result<int> {
+    defer trail = trail + 7;
+    return Result<int>::Ok(res_of(ok)? + 1);
+}
+
+fn inside_loop(ok: bool) -> Result<int> {
+    defer trail = trail + 1;
+    let total = 0;
+    for i in 0..3 {
+        defer trail = trail + 10;
+        let fine = ok || i < 1;
+        total = total + res_of(fine)?;
+    }
+    return Result<int>::Ok(total);
+}
+
+fn other_result_type(ok: bool) -> Result<int> {
+    defer trail = trail + 5;
+    let s = text_of(ok)?;
+    return Result<int>::Ok((int)strlen(s));
+}
+
+fn guard_of(ok: bool) -> Result<Guard> {
+    if ok {
+        return Result<Guard>::Ok(Guard { id: 7 });
+    }
+    return Result<Guard>::Err("no guard");
+}
+
+struct Holder {
+    inner: Guard;
+    n: int;
+}
+
+fn let_inferred(ok: bool) -> Result<int> {
+    let g = guard_of(ok)?;
+    return Result<int>::Ok(g.id);
+}
+
+fn let_typed(ok: bool) -> Result<int> {
+    let g: Guard = guard_of(ok)?;
+    return Result<int>::Ok(g.id);
+}
+
+fn let_struct_literal(ok: bool) -> Result<int> {
+    let h = Holder { inner: guard_of(ok)?, n: 1 };
+    return Result<int>::Ok(h.n);
+}
+
+fn let_after_another(ok: bool) -> Result<int> {
+    let first = Guard { id: 100 };
+    let second = guard_of(ok)?;
+    return Result<int>::Ok(first.id + second.id);
+}
+
+test "a defer and the drop of a local run when ? returns early" {
+    trail = 0;
+    assert(with_defer_and_local(false).is_err(), "? should return the error when it fails");
+    assert(trail == 11, "the defer and the drop should run once each when ? returns early");
+    trail = 0;
+    let r = with_defer_and_local(true);
+    assert(r.is_ok() && r.val == 12, "? should give the value when it succeeds");
+    assert(trail == 11, "the defer and the drop should run once each when ? succeeds");
+}
+
+test "the defers of the enclosing blocks run, innermost first" {
+    trail = 0;
+    assert(in_inner_block(false).is_none(), "? should return None when it fails");
+    assert(trail == 12, "the inner block's defer should run before the function's");
+}
+
+test "the drop of a parameter runs when ? returns early" {
+    trail = 0;
+    let err = 0;
+    match with_drop_parameter(Guard { id: 20 }, false) {
+        Outcome::Ok(_v) => { err = -1; },
+        Outcome::Err(e) => { err = e; },
+    }
+    assert(err == 9, "? should return the enum's error when it fails");
+    assert(trail == 20, "the parameter should be dropped when ? returns early");
+}
+
+test "? inside an expression" {
+    trail = 0;
+    assert(inside_expression(false).is_err(), "? should return the error when it fails");
+    assert(trail == 7, "the defer should run when ? returns early from an expression");
+    trail = 0;
+    assert(inside_expression(true).val == 3, "? should give the value when it succeeds");
+    assert(trail == 7, "the defer should run once when ? succeeds");
+}
+
+test "? inside a loop runs the loop body's defers and the function's" {
+    trail = 0;
+    assert(inside_loop(false).is_err(), "? should return the error when it fails");
+    assert(trail == 21, "two iterations' defers and the function's should run when ? fails");
+    trail = 0;
+    assert(inside_loop(true).val == 6, "? should give the value when it succeeds");
+    assert(trail == 31, "three iterations' defers and the function's should run");
+}
+
+test "? on a Result of another type" {
+    trail = 0;
+    assert(other_result_type(false).is_err(), "? should return the error when it fails");
+    assert(trail == 5, "the defer should run when ? returns another type's error");
+}
+
+test "the variable a let declares is not dropped when ? in its value returns early" {
+    trail = 0;
+    assert(let_inferred(false).is_err(), "? should return the error when it fails");
+    assert(trail == 0, "the variable without a value should not be dropped");
+    trail = 0;
+    assert(let_typed(false).is_err(), "? should return the error when it fails");
+    assert(trail == 0, "a variable with a written type should not be dropped either");
+    trail = 0;
+    assert(let_struct_literal(false).is_err(), "? should return the error when it fails");
+    assert(trail == 0, "a struct whose field ? computes should not be dropped");
+    trail = 0;
+    assert(let_after_another(false).is_err(), "? should return the error when it fails");
+    assert(trail == 100, "only the variable that holds a value should be dropped");
+}
+
+test "the variable a let declares is dropped once when ? succeeds" {
+    trail = 0;
+    assert(let_inferred(true).val == 7, "? should give the value when it succeeds");
+    assert(trail == 7, "the variable should be dropped once at the end");
+    trail = 0;
+    assert(let_after_another(true).val == 107, "? should give the value when it succeeds");
+    assert(trail == 107, "both variables should be dropped once");
+}
