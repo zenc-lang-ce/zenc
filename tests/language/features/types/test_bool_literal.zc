@@ -1,0 +1,33 @@
+// language/features/types: `true` and `false` are literals of type `bool`. A variable or a tuple
+// element that takes its type from one is a `bool` the program may change, not a `const bool`.
+
+test "a_variable_from_a_bool_literal_can_change" {
+    let n = 3;
+    let ok = n > 2 ? true : false;
+    ok = false;
+    assert(!ok, "the variable should take the new value");
+    let flag = true;
+    flag = !flag;
+    assert(flag == false, "a bool literal compares as a bool");
+}
+
+test "a_tuple_with_a_bool_literal" {
+    let t = (1, true);
+    t.1 = false;
+    assert(t.0 == 1 && !t.1, "the tuple's bool should change");
+}
+
+test "bool_literals_in_conditions_and_constants" {
+    let count = 0;
+    while true {
+        count = count + 1;
+        if count == 3 {
+            break;
+        }
+    }
+    for (;;) {
+        count = count + 1;
+        break;
+    }
+    assert(count == 4, "the loops run until their break");
+}

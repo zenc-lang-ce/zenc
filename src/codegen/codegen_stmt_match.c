@@ -104,11 +104,9 @@ static int case_is_wildcard(ASTNode *c)
 void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
 {
     int id = ctx->cg.tmp_counter++;
-    int is_self = (node->match_stmt.expr->kind == NODE_EXPR_VAR &&
-                   strcmp(node->match_stmt.expr->var_ref.name, "self") == 0);
 
     char *ret_type = node_c_type(ctx, node);
-    int is_expr = (use_result && ret_type && strcmp(ret_type, "void") != 0);
+    int is_expr = use_result && ret_type && node->type_info->kind != TYPE_VOID;
 
     if (is_expr)
     {
@@ -156,14 +154,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
 
     emit_source_mapping(ctx, node); // Step through match statements elegantly
 
-    if (is_self)
-    {
-        emit_auto_type(ctx, node->match_stmt.expr, node->token);
-        EMIT(ctx, " _m_%d = ", id);
-        codegen_expression(ctx, node->match_stmt.expr);
-        EMIT(ctx, "; ");
-    }
-    else if (has_ref_binding && !subject_is_ptr && is_lvalue_opt)
+    if (has_ref_binding && !subject_is_ptr && is_lvalue_opt)
     {
         // Take address for ref bindings
         EMIT(ctx, "ZC_AUTO_INIT(_m_%d, &", id);

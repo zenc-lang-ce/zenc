@@ -273,6 +273,10 @@ static void json_emit_node(ParserContext *ctx, ASTNode *node, int pretty, int de
         case LITERAL_CHAR:
             emitter_printf(&ctx->cg.emitter, ",\"value\":\"%c\"", (char)node->literal.int_val);
             break;
+        case LITERAL_BOOL:
+            emitter_printf(&ctx->cg.emitter, ",\"value\":%s",
+                           node->literal.int_val ? "true" : "false");
+            break;
         default:
             break;
         }

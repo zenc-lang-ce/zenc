@@ -336,31 +336,6 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
             }
 
             ASTNode *arg = parse_expression(ctx, l);
-            check_move_usage(ctx, arg, arg ? arg->token : t1);
-
-            if (arg && arg->kind == NODE_EXPR_VAR)
-            {
-                Type *inner_t =
-                    arg->type_info ? arg->type_info : find_symbol_type_info(ctx, arg->var_ref.name);
-                if (!inner_t)
-                {
-                    ZenSymbol *s = find_symbol_entry(ctx, arg->var_ref.name);
-                    if (s)
-                    {
-                        inner_t = s->type_info;
-                    }
-                }
-
-                if (!is_type_copy(ctx, inner_t))
-                {
-                    ZenSymbol *s = find_symbol_entry(ctx, arg->var_ref.name);
-                    if (s)
-                    {
-                        s->is_moved = 1;
-                    }
-                }
-            }
-
             if (sig && sig->arg_types && res.count < sig->total_args && arg && !res.has_named)
             {
                 check_argument_type(ctx, sig->arg_types[res.count], arg);
@@ -439,20 +414,6 @@ void validate_named_arguments(Token call_token, const char *func_name, char **ar
 }
 
 // Helper to check if a type is a struct type
-
-void check_move_usage(ParserContext *ctx, ASTNode *node, Token t)
-{
-    (void)t;
-    (void)ctx;
-    if (!node)
-    {
-        return;
-    }
-    if (node->kind == NODE_EXPR_VAR)
-    {
-        // Move check placeholder: find_symbol_entry(ctx, node->var_ref.name);
-    }
-}
 
 // The sscanf conversion that writes a value of type `t`: its length modifier
 // must match the size of the variable, or the value overwrites what follows it.

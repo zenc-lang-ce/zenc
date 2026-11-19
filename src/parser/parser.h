@@ -752,6 +752,11 @@ void exit_scope(ParserContext *ctx);
  * @brief Adds a symbol to the current scope.
  */
 void add_symbol(ParserContext *ctx, const char *n, Type *type_info, int is_export);
+/**
+ * @brief Creates the global scope if there is none yet, and makes it the current one when there
+ *        is no current scope: whatever registers a symbol first finds it there.
+ */
+void ensure_global_scope(ParserContext *ctx);
 
 /**
  * @brief Adds a symbol with definition token location.

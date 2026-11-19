@@ -238,6 +238,10 @@ static CValue eval_literal(CInterp *ci, ASTNode *node)
         v.kind = VAL_INT;
         v.as.i = (int64_t)node->literal.int_val;
         break;
+    case LITERAL_BOOL:
+        v.kind = VAL_BOOL;
+        v.as.b = node->literal.int_val != 0;
+        break;
     default:
         v = val_null;
         break;
@@ -261,16 +265,6 @@ static CValue eval_var(CInterp *ci, ASTNode *node)
     if (strcmp(name, "__COMPTIME_FILE__") == 0)
     {
         return val_string(ci->source_file ? ci->source_file : "");
-    }
-    if (strcmp(name, "true") == 0)
-    {
-        CValue v = {VAL_BOOL, {.b = 1}};
-        return v;
-    }
-    if (strcmp(name, "false") == 0)
-    {
-        CValue v = {VAL_BOOL, {.b = 0}};
-        return v;
     }
 
     CValue *found = scope_find(ci->scope, name);

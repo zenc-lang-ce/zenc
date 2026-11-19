@@ -184,6 +184,9 @@ static void lemit_expr(ParserContext *ctx, ASTNode *node, int depth)
         case LITERAL_CHAR:
             emitter_printf(&ctx->cg.emitter, "#\\%c", (char)node->literal.int_val);
             break;
+        case LITERAL_BOOL:
+            emitter_printf(&ctx->cg.emitter, "%s", node->literal.int_val ? "t" : "nil");
+            break;
         default:
             break;
         }
@@ -192,13 +195,8 @@ static void lemit_expr(ParserContext *ctx, ASTNode *node, int depth)
     case NODE_EXPR_VAR:
         if (node->var_ref.name)
         {
-            if (strcmp(node->var_ref.name, "true") == 0)
-            {
-                emitter_printf(&ctx->cg.emitter, "t");
-            }
-            else if (strcmp(node->var_ref.name, "false") == 0 ||
-                     strcmp(node->var_ref.name, "NULL") == 0 ||
-                     strcmp(node->var_ref.name, "nullptr") == 0)
+            if (strcmp(node->var_ref.name, "NULL") == 0 ||
+                strcmp(node->var_ref.name, "nullptr") == 0)
             {
                 emitter_printf(&ctx->cg.emitter, "nil");
             }

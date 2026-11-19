@@ -1530,6 +1530,9 @@ void check_expr_literal(TypeChecker *tc, ASTNode *node)
     case LITERAL_CHAR:
         node->type_info = type_new(TYPE_CHAR);
         break;
+    case LITERAL_BOOL:
+        node->type_info = type_new(TYPE_BOOL);
+        break;
     default:
         break;
     }

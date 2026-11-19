@@ -120,6 +120,9 @@ static void emit_label(ParserContext *ctx, ASTNode *node)
         case LITERAL_CHAR:
             emitter_printf(&ctx->cg.emitter, " '%c'", (char)node->literal.int_val);
             break;
+        case LITERAL_BOOL:
+            emitter_printf(&ctx->cg.emitter, " %s", node->literal.int_val ? "true" : "false");
+            break;
         default:
             break;
         }

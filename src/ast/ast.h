@@ -31,11 +31,12 @@ typedef struct ASTNode ASTNode;
  */
 typedef enum
 {
-    LITERAL_INT = 0,       ///< Integer literal.
-    LITERAL_FLOAT = 1,     ///< Floating point literal.
-    LITERAL_STRING = 2,    ///< String literal.
-    LITERAL_CHAR = 3,      ///< Character literal.
-    LITERAL_RAW_STRING = 4 ///< Raw string literal.
+    LITERAL_INT = 0,        ///< Integer literal.
+    LITERAL_FLOAT = 1,      ///< Floating point literal.
+    LITERAL_STRING = 2,     ///< String literal.
+    LITERAL_CHAR = 3,       ///< Character literal.
+    LITERAL_RAW_STRING = 4, ///< Raw string literal.
+    LITERAL_BOOL = 5        ///< `true` or `false`; int_val is 1 or 0.
 } LiteralKind;
 
 /**
@@ -723,7 +724,7 @@ struct ASTNode
             int is_volatile;
             int register_size; // The register size to use of 32/64/128 bits
             char **outputs;
-            char **output_modes;
+            int *output_is_inout; // `inout(x)`: read and written (`+r`); `out(x)`: written (`=r`).
             char **inputs;
             char **clobbers;
             int output_count;

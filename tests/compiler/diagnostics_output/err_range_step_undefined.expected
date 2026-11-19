@@ -5,7 +5,6 @@ error: Undefined variable 'stride'
 6  |     for i in 0..10 step stride {
    |                         ^ here
    |
-   = help: Did you mean 'true'?
      error: semantic analysis found 1 error
        Check failed with 1 errors
 [exit 1]

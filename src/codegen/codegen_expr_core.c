@@ -78,6 +78,10 @@ static void codegen_literal_expr(ParserContext *ctx, ASTNode *node)
         }
         EMIT(ctx, "%s", buf);
     }
+    else if (node->literal.kind == LITERAL_BOOL)
+    {
+        EMIT(ctx, "%s", node->literal.int_val ? "true" : "false");
+    }
     else // LITERAL_INT
     {
         if (node->literal.int_val > 9223372036854775807ULL)
@@ -157,11 +161,6 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
     {
         // A variant of an enum with @link_name: C names it after the enum's C name.
         EMIT(ctx, "%s", mangle_variant_symbol(enum_c_name, variant->member));
-    }
-    else if (strcmp(name, "self") == 0 && node->type_info && node->type_info->kind == TYPE_STRUCT)
-    {
-        EMIT(ctx, "(*self)");
-        return;
     }
 #if FF_COMPATIBILITY_0_5
     else if (emit_legacy_variant_name(ctx, name))

@@ -22,7 +22,6 @@ int token_is_field_name(Token t);
  * tuple types.
  */
 int tokens_could_be_generic_args(Lexer *l);
-void check_move_usage(ParserContext *ctx, ASTNode *node, Token t);
 CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig);
 /**
  * Rejects an argument whose type cannot stand for the parameter's, where the C

@@ -116,7 +116,7 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
         return eval_const_int_expr(node->conversion.expr, ctx, out_val);
 
     case NODE_EXPR_LITERAL:
-        if (node->literal.kind == LITERAL_INT)
+        if (node->literal.kind == LITERAL_INT || node->literal.kind == LITERAL_BOOL)
         {
             *out_val = (long long int)(node->literal.int_val);
             return 1;
@@ -125,17 +125,6 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
 
     case NODE_EXPR_VAR:
     {
-        if (strcmp(node->var_ref.name, "true") == 0)
-        {
-            *out_val = 1;
-            return 1;
-        }
-        if (strcmp(node->var_ref.name, "false") == 0)
-        {
-            *out_val = 0;
-            return 1;
-        }
-
         ZenSymbol *sym = find_symbol_entry(ctx, node->var_ref.name);
         if (sym)
         {

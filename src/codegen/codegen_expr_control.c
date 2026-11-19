@@ -143,22 +143,16 @@ void handle_try_expr(ParserContext *ctx, ASTNode *node)
     Type *expr_type = node->try_stmt.expr->type_info;
     // The enclosing function's return type, named: an Option or Result instance is a struct
     // named after its arguments (Result__int32_t).
-    char *func_ret_name = ctx->cg.current_func_ret_type_info
-                              ? type_mangle_spelling(ctx->cg.current_func_ret_type_info)
-                              : NULL;
+    Type *func_ret = ctx->cg.current_func_ret_type_info;
+    char *func_ret_name = has_c_spelling(func_ret) ? type_mangle_spelling(func_ret) : NULL;
 
-    if (expr_type && expr_type->name)
+    if (expr_type && expr_type->name && has_c_spelling(expr_type))
     {
         type_name = type_def_name(expr_type);
     }
     else if (func_ret_name)
     {
         type_name = func_ret_name;
-    }
-
-    if (strcmp(type_name, "__auto_type") == 0 || strcmp(type_name, "unknown") == 0)
-    {
-        type_name = "Result";
     }
 
     const char *search_name = str_strip_struct_prefix(type_name);

@@ -64,7 +64,13 @@ void handle_embed(ParserContext *ctx, ASTNode *node)
         }
         else
         {
-            if (strcmp(ts, "string") == 0 || strcmp(ts, "char*") == 0)
+            // A string, or a `char*`, is the bytes as a string literal.
+            int is_text =
+                !target_type->is_const &&
+                (target_type->kind == TYPE_STRING ||
+                 (target_type->kind == TYPE_POINTER && target_type->inner &&
+                  target_type->inner->kind == TYPE_CHAR && !target_type->inner->is_const));
+            if (is_text)
             {
                 snprintf(o, oc, "(char*)\"");
             }
