@@ -2,6 +2,7 @@
  * @test MISRA Rule 19.1: Overlapping Storage
  * Requirement: An object shall not be assigned or copied to an overlapping object.
  */
+// EXPECT: MISRA Rule 19.1
 
 struct Point {
     x: i32;

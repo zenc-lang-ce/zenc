@@ -1,3 +1,4 @@
+// EXPECT: PASS
 import "std/vec.zc"
 import "std/string.zc"
 import "std/map.zc"
