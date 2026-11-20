@@ -1,0 +1,47 @@
+// language/features/enums: equality for an enum with many payload variants
+
+@derive(Eq)
+enum Reading {
+    SensorReading00(int),
+    SensorReading01(int),
+    SensorReading02(int),
+    SensorReading03(int),
+    SensorReading04(int),
+    SensorReading05(int),
+    SensorReading06(int),
+    SensorReading07(int),
+    SensorReading08(int),
+    SensorReading09(int),
+    SensorReading10(int),
+    SensorReading11(int),
+    SensorReading12(int),
+    SensorReading13(int),
+    SensorReading14(int),
+    SensorReading15(int),
+    SensorReading16(int),
+    SensorReading17(int),
+    SensorReading18(int),
+    SensorReading19(int),
+    SensorReading20(int),
+    SensorReading21(int),
+    SensorReading22(int),
+    SensorReading23(int),
+    SensorReading24(int),
+    SensorReading25(int),
+    SensorReading26(int),
+    SensorReading27(int),
+    SensorReading28(int),
+    SensorReading29(int),
+    SensorReading30(int),
+    SensorReading31(int),
+    SensorReading32(int),
+    SensorReading33(int),
+    SensorReading34(int),
+    SensorReading35(int),
+}
+
+test "equality compares late payloads and variant tags" {
+    assert(Reading::SensorReading35(5) == Reading::SensorReading35(5), "same payload");
+    assert(Reading::SensorReading35(5) != Reading::SensorReading35(6), "different payload");
+    assert(Reading::SensorReading35(5) != Reading::SensorReading34(5), "different variant");
+}
