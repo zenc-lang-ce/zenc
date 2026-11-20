@@ -57,7 +57,7 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             char *declared = node_c_type(ctx, node);
             if (declared)
             {
-                emit_var_decl_type(ctx, declared, node->var_decl.name);
+                emit_var_decl_type(ctx, node->type_info, node->var_decl.name);
             }
             else
             {
@@ -69,12 +69,13 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
 
                 if (inferred)
                 {
-                    emit_var_decl_type(ctx, inferred, node->var_decl.name);
+                    emit_var_decl_type(ctx, node->var_decl.init_expr->type_info,
+                                       node->var_decl.name);
                 }
                 else
                 {
-                    emit_auto_type(ctx, node->var_decl.init_expr, node->token);
-                    EMIT(ctx, " %s", c_name(ctx, node->var_decl.name));
+                    emit_auto_declaration(ctx, node->var_decl.init_expr,
+                                          c_name(ctx, node->var_decl.name));
                 }
                 if (inferred)
                 {
