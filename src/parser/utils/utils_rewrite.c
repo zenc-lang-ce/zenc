@@ -6,7 +6,6 @@
 #include "constants.h"
 #include "ast/primitives.h"
 #include "analysis/const_fold.h"
-#include "expr/expr_internal.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -91,58 +90,6 @@ static void check_default_names_no_parameter(ASTNode *def, const char *param, ch
                 break;
             }
         }
-    }
-}
-
-// Moves `l` past the default value it is on, up to the `,` or `)` that ends it, as
-// parse_expression would read it: a `<` opens generic arguments when parse_expression takes it so
-// (tokens_could_be_generic_args). Returns 0 when the parameter list ends first.
-static int skip_default_value(Lexer *l)
-{
-    int depth = 0;
-    while (1)
-    {
-        Token tk = lexer_peek(l);
-        switch (tk.kind)
-        {
-        case TOK_EOF:
-            return 0;
-        case TOK_LPAREN:
-        case TOK_LBRACKET:
-        case TOK_LBRACE:
-            depth++;
-            break;
-        case TOK_RPAREN:
-        case TOK_RBRACKET:
-        case TOK_RBRACE:
-            if (depth == 0)
-            {
-                return tk.kind == TOK_RPAREN;
-            }
-            depth--;
-            break;
-        case TOK_COMMA:
-            if (depth == 0)
-            {
-                return 1;
-            }
-            break;
-        case TOK_LANGLE:
-            if (tokens_could_be_generic_args(l))
-            {
-                lexer_next(l); // the `<`
-                for (int angles = 1; angles > 0;)
-                {
-                    Token arg = lexer_next(l);
-                    angles += arg.kind == TOK_LANGLE ? 1 : arg.kind == TOK_RANGLE ? -1 : 0;
-                }
-                continue;
-            }
-            break;
-        default:
-            break;
-        }
-        lexer_next(l);
     }
 }
 
@@ -393,7 +340,7 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                         d->start = *l;
                         d->next = deferred;
                         deferred = d;
-                        if (!skip_default_value(l))
+                        if (!skip_expression(l) || lexer_peek(l).kind == TOK_SEMICOLON)
                         {
                             zpanic_at(lexer_peek(l), "Expected ')' after args");
                             return 0;

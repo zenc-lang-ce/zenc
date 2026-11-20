@@ -1,0 +1,29 @@
+// language/features/variables: test_global_values_declared_later
+// The value of a global can name what is declared further down: a generic struct, a `def`, an
+// array whose elements are `def`s, also when one `let` declares several globals, and in a module
+// imported with an alias.
+import "_global_values_later_mod.zc" as later;
+
+let CORNER: Pair<int, int> = Pair<int, int> { a: 1, b: 2 };
+let NEXT: int = LIMIT + 1;
+let TABLE: int[3] = [LIMIT, LIMIT * 2, LIMIT * 3];
+let FIRST = Pair<int, int> { a: LIMIT, b: 0 }, LAST: int = LIMIT * 10;
+
+struct Pair<A, B> {
+    a: A;
+    b: B;
+}
+
+def LIMIT = 4;
+
+test "a global's value names what is declared further down" {
+    expect_eq(CORNER.a + CORNER.b, 3, "a generic struct");
+    expect_eq(NEXT, 5, "a def");
+    expect_eq(TABLE[2], 12, "an array of defs");
+    expect_eq(FIRST.a, 4, "the first of several globals");
+    expect_eq(LAST, 40, "the second of several globals");
+}
+
+test "in a module imported with an alias" {
+    expect_eq(later::ORIGIN.a + later::ORIGIN.b, 15, "a generic struct and a def of the module");
+}

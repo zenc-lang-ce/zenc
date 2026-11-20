@@ -12,28 +12,6 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
-// An interpolated string runs at run time, so it cannot initialize a global:
-// the C would put a statement expression (`({ ... })`) at file scope. Only that
-// is rejected: `embed "file" as string` is a raw statement too, but a constant.
-static void check_global_initializers(ASTNode *decls)
-{
-    for (ASTNode *d = decls; d; d = d->next)
-    {
-        if (d->kind != NODE_VAR_DECL)
-        {
-            continue;
-        }
-        ASTNode *init = d->var_decl.init_expr;
-        if (init && init->kind == NODE_EXPR_FSTRING)
-        {
-            zerror_at(init->token,
-                      "A global cannot be initialized with an interpolated string (it is built "
-                      "at run time); move it into a function, or write literal braces as "
-                      "'{{' and '}}'");
-        }
-    }
-}
-
 // The attributes of a top-level `let` go to every variable it declares
 // (`static let a = 1, b = 2;`), not only to the first one.
 static void apply_global_attributes(ASTNode *decls, int is_static,
@@ -389,7 +367,6 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                 if (next.kind == TOK_IDENT && next.len == 3 && strncmp(next.start, "let", 3) == 0)
                 {
                     s = parse_var_decl(ctx, l, attrs.is_export);
-                    check_global_initializers(s);
                     apply_global_attributes(s, 1, &attrs);
                 }
                 else
@@ -401,7 +378,6 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
             else if (t.len == 3 && strncmp(t.start, "let", 3) == 0)
             {
                 s = parse_var_decl(ctx, l, attrs.is_export);
-                check_global_initializers(s);
                 apply_global_attributes(s, 0, &attrs);
             }
             else if (t.len == 6 && strncmp(t.start, "extern", 6) == 0)
@@ -727,6 +703,7 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
     if (ctx->parse_depth == 0)
     {
         ctx->declarations_read = 1;
+        parse_pending_global_values(ctx);
         resolve_pending_constants(ctx);
         resolve_pending_type_names(ctx);
         resolve_waiting_structs(ctx);
@@ -760,6 +737,7 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
     ctx->waiting_structs = NULL;
     ctx->pending_type_names = NULL;
     ctx->pending_constants = NULL;
+    ctx->pending_global_values = NULL;
     ctx->pending_declarations = NULL;
     ctx->pending_declarations_tail = NULL;
     ctx->impl_slot = NULL;

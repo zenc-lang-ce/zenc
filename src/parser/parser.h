@@ -365,6 +365,22 @@ typedef struct PendingBody
  *        so it is parsed once every declaration is read, before the bodies, whose calls copy it
  *        (parse_pending_default_values).
  */
+/**
+ * @brief A global's value read while the declarations are: it may name one declared further down,
+ *        so it is read once every declaration is, first in the round
+ *        (parse_pending_global_values).
+ */
+typedef struct PendingGlobalValue
+{
+    ASTNode *node;            ///< The global (NODE_VAR_DECL), whose value is still missing.
+    char *type;               ///< Its type as written (type_mangle_spelling), or NULL.
+    Lexer start;              ///< Lexer positioned at the value, after the `=`.
+    char *module_prefix;      ///< The module it was read in.
+    const char *filename;     ///< The file it was read in.
+    struct ZenSymbol *symbol; ///< The global's symbol, which takes the value's type.
+    struct PendingGlobalValue *next;
+} PendingGlobalValue;
+
 typedef struct PendingDefaultValue
 {
     ASTNode **values;           ///< The parameters' default values; this one goes at `index`.
@@ -475,6 +491,7 @@ struct ParserContext
     int in_constant_expression;    ///< 1 while parse_constant_expression reads an expression.
 
     // Deferred function bodies
+    PendingGlobalValue *pending_global_values;   ///< Globals' values waiting, in reverse.
     PendingDefaultValue *pending_default_values; ///< Default values waiting, in the order read.
     PendingDefaultValue *pending_default_values_tail; ///< Last of `pending_default_values`.
     PendingBody *pending_bodies;                      ///< First body waiting to be parsed (FIFO).
@@ -1168,6 +1185,22 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
 void push_pending_body(ParserContext *ctx, PendingBody *pending);
 void check_unused_parameters(ParserContext *ctx, Scope *scope, const char *func_name);
 void parse_pending_bodies(ParserContext *ctx);
+/**
+ * @brief Makes the value of the global `node`, at `start`, wait for the declarations.
+ */
+void wait_for_global_value(ParserContext *ctx, ASTNode *node, char *type, Lexer start);
+/**
+ * @brief Reads the values of the globals read while the declarations were (PendingGlobalValue), in
+ *        the order written, each in its module.
+ */
+void parse_pending_global_values(ParserContext *ctx);
+/**
+ * @brief Moves `l` past the expression it is on, as parse_expression would read it, without
+ *        reading it: up to the `,`, `;` or `)` that ends it. A `<` opens generic arguments where
+ *        parse_expression takes it so (tokens_could_be_generic_args). 0 when the expression runs
+ *        into the end of the file or a `]` or `}` it did not open.
+ */
+int skip_expression(Lexer *l);
 /**
  * @brief Parses the default values read while the declarations were (PendingDefaultValue), in the
  *        order read, each where its function is.
