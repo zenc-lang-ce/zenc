@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795161352981,
+  "lastUpdate": 1795161979503,
   "repoUrl": "https://github.com/zenc-lang-ce/zenc",
   "entries": {
     "Zen Compiler Benchmarks": [
@@ -35166,6 +35166,145 @@ window.BENCHMARK_DATA = {
           {
             "name": "Compile (test_vec_ops)",
             "value": 113,
+            "unit": "ms"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "1103977+pherrymason@users.noreply.github.com",
+            "name": "Raul",
+            "username": "pherrymason"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "289bbb460d91618766367ecc02ee7eace5f5216c",
+          "message": "Merge pull request #399 from zenc-lang-ce/fix/warning-note-until-0-6\n\ndiagnostics: a warning that 0.6 makes an error says so in a note",
+          "timestamp": "2026-11-20T09:04:40+01:00",
+          "tree_id": "f987c0844b9abcb8d7bda9a820cab1c148619f52",
+          "url": "https://github.com/zenc-lang-ce/zenc/commit/289bbb460d91618766367ecc02ee7eace5f5216c"
+        },
+        "date": 1795161979273,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Compiler (Full Suite Transpilation)",
+            "value": 12246,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_bigint_factorial)",
+            "value": 1,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_bigint_factorial)",
+            "value": 168,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_comptime)",
+            "value": 0,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_comptime)",
+            "value": 55,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_fib_recursive)",
+            "value": 37,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_fib_recursive)",
+            "value": 60,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_hashmap)",
+            "value": 82,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_hashmap)",
+            "value": 85,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_hello)",
+            "value": 0,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_hello)",
+            "value": 55,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_json_parse)",
+            "value": 166,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_json_parse)",
+            "value": 389,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_mandelbrot)",
+            "value": 17,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_mandelbrot)",
+            "value": 52,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_sha256)",
+            "value": 67,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_sha256)",
+            "value": 355,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_sort_large)",
+            "value": 34,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_sort_large)",
+            "value": 77,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_string_concat)",
+            "value": 0,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_string_concat)",
+            "value": 260,
+            "unit": "ms"
+          },
+          {
+            "name": "Runtime (test_vec_ops)",
+            "value": 8,
+            "unit": "ms"
+          },
+          {
+            "name": "Compile (test_vec_ops)",
+            "value": 103,
             "unit": "ms"
           }
         ]
