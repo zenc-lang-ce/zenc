@@ -410,9 +410,13 @@ struct ParserContext
     struct PendingInstance *pending_instances;      ///< Instances waiting for the declarations.
     struct PendingInstance *pending_instances_tail; ///< Last of `pending_instances`.
     int declarations_read; ///< Set once every declaration is read: instances are made at once.
-    struct WaitingStruct *waiting_structs; ///< Structs whose `use` waits for the declarations.
-    ASTNode *instantiated_structs;         ///< List of AST nodes for instantiated structs.
-    ASTNode *instantiated_funcs;           ///< List of AST nodes for instantiated functions.
+    struct WaitingStruct *waiting_structs;    ///< Structs whose `use` waits for the declarations.
+    struct FileDependency *file_dependencies; ///< Which file imports which (file_sees).
+    struct PendingDeclaration *pending_declarations;      ///< Impls and derives, in the order read.
+    struct PendingDeclaration *pending_declarations_tail; ///< Last of `pending_declarations`.
+    ASTNode *impl_slot; ///< The node an impl read now fills (parse_pending_declarations).
+    ASTNode *instantiated_structs; ///< List of AST nodes for instantiated structs.
+    ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
 
     // Structs/Enums
     StructRef *parsed_structs_list; ///< List of all parsed struct nodes.
@@ -622,22 +626,43 @@ typedef struct StructUse
     struct StructUse *next;
 } StructUse;
 
-/** @brief A struct that uses a struct not read yet, or not complete yet: its fields, and its
- *         `@derive`, wait until every declaration is read.
+/** @brief A struct that uses a struct not read yet, or not complete yet: its fields wait until
+ *         every declaration is read.
  */
 typedef struct WaitingStruct
 {
-    ASTNode *strct;        ///< The struct, with only its own fields so far.
-    StructUse *uses;       ///< Its `use`s, in the order written.
-    char **derived_traits; ///< Its `@derive`, which reads the fields.
-    int derived_count;
-    char *module_prefix;  ///< The module it was read in, for the derived code.
-    const char *filename; ///< The file it was read in.
-    Scope *scope;         ///< The scope it was read in.
-    int resolving;        ///< Its uses are being copied: a struct it uses that uses it is an error.
+    ASTNode *strct;  ///< The struct, with only its own fields so far.
+    StructUse *uses; ///< Its `use`s, in the order written.
+    int resolving;   ///< Its uses are being copied: a struct it uses that uses it is an error.
     int done;
     struct WaitingStruct *next;
 } WaitingStruct;
+
+/** @brief One import: the file `importer` imports the module `imported` (file_sees). */
+typedef struct FileDependency
+{
+    const char *importer;
+    const char *imported;
+    struct FileDependency *next;
+} FileDependency;
+
+/** @brief An `impl` or a `@derive` read with the declarations, done once every declaration is
+ *         read, in the order written: what an impl means depends on the type it is for, which
+ *         may be declared further down, and a derive reads the impls of the fields' types.
+ */
+typedef struct PendingDeclaration
+{
+    ASTNode *impl;         ///< The impl's node, filled when it is read; NULL for an `impl Box<T>`.
+    int is_impl;           ///< An impl (`start`), else a derive (`derived`).
+    Lexer start;           ///< At the impl's `impl`.
+    ASTNode *derived;      ///< The struct or enum that derives.
+    char **derived_traits; ///< What it derives.
+    int derived_count;
+    char *module_prefix;  ///< The module it was read in.
+    const char *filename; ///< The file it was read in.
+    Scope *scope;         ///< The scope it was read in.
+    struct PendingDeclaration *next;
+} PendingDeclaration;
 
 typedef struct TypeUsage
 {
@@ -1266,6 +1291,15 @@ ASTNode *find_trait_def(ParserContext *ctx, const char *name);
 int is_trait(ParserContext *ctx, const char *name);
 int is_extern_symbol(ParserContext *ctx, const char *name);
 int is_file_imported(ParserContext *ctx, const char *path);
+/**
+ * @brief Records that the file `importer` imports the module `imported`.
+ */
+void record_file_dependency(ParserContext *ctx, const char *importer, const char *imported);
+/**
+ * @brief Whether the file `from` sees the declarations of the file `to`: it is that file, or
+ *        imports it, directly or through the modules it imports.
+ */
+int file_sees(ParserContext *ctx, const char *from, const char *to);
 void mark_file_imported(ParserContext *ctx, const char *path);
 /**
  * @brief Whether the headers of the C preamble declare `name` (strstr, fputs, va_end...): it
@@ -1355,10 +1389,23 @@ void instantiate_pending_type(ParserContext *ctx, Type *instance, Token token);
  */
 WaitingStruct *find_waiting_struct(ParserContext *ctx, ASTNode *strct);
 /**
- * @brief Copies into each waiting struct the fields of the structs it uses, and derives what it
- *        derives, once every declaration is read.
+ * @brief Copies into each waiting struct the fields of the structs it uses, once every
+ *        declaration is read.
  */
 void resolve_waiting_structs(ParserContext *ctx);
+/**
+ * @brief Appends `pending` to the impls and derives that wait for the declarations.
+ */
+void push_pending_declaration(ParserContext *ctx, PendingDeclaration *pending);
+/**
+ * @brief Reads the impls and makes the derives that waited for the declarations, in the order
+ *        written, each in the module it was read in.
+ */
+void parse_pending_declarations(ParserContext *ctx);
+/**
+ * @brief Whether the struct or enum `type_name` derives `trait` with a derive not made yet.
+ */
+int derives_pending(ParserContext *ctx, const char *type_name, const char *trait);
 /**
  * @brief Gives the instances copied before their template's body was read a copy of that body,
  *        and instantiates the generics the copies name.

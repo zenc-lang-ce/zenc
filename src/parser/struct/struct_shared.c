@@ -21,6 +21,7 @@ void load_std_module(ParserContext *ctx, const char *path)
     {
         return; // Could not find the module
     }
+    record_file_dependency(ctx, ctx->current_filename, resolved);
     // Check if already imported or currently being parsed
     if (is_file_imported(ctx, resolved))
     {

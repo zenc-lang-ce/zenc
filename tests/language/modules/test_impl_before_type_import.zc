@@ -1,0 +1,12 @@
+// language/modules: test_impl_before_type_import
+// In a module imported with an alias, an impl written before the type it is for names the
+// module's type, generic or not, as one written after it does.
+import "./test_modules/_impl_before_type.zc" as shapes;
+
+test "impls before their types in an imported module" {
+    let c = shapes::Cell<int> { v: 3 };
+    let p = shapes::Plain { v: 4 };
+    expect_eq(c.measure(), 5, "Cell<int> has measure");
+    expect_eq(c.twice(), 6, "Cell<int> has twice");
+    expect_eq(p.measure(), 5, "Plain has measure");
+}
