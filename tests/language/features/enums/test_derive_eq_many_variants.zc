@@ -41,7 +41,7 @@ enum Reading {
 }
 
 test "equality compares late payloads and variant tags" {
-    assert(Reading::SensorReading35(5) == Reading::SensorReading35(5), "same payload");
-    assert(Reading::SensorReading35(5) != Reading::SensorReading35(6), "different payload");
-    assert(Reading::SensorReading35(5) != Reading::SensorReading34(5), "different variant");
+    assert(Reading::SensorReading35(5) == Reading::SensorReading35(5), "identical payloads should compare equal");
+    assert(Reading::SensorReading35(5) != Reading::SensorReading35(6), "different payloads should compare unequal");
+    assert(Reading::SensorReading35(5) != Reading::SensorReading34(5), "different variants should compare unequal");
 }

@@ -8,7 +8,7 @@ struct Calibration {
 test "derived equality compares a field with a long name" {
     let a = Calibration { temperature_calibration_offset_for_the_replacement_sensor_installed_in_the_secondary_cooling_loop_during_the_initial_inspection: 2 };
     let b = Calibration { temperature_calibration_offset_for_the_replacement_sensor_installed_in_the_secondary_cooling_loop_during_the_initial_inspection: 2 };
-    assert(a == b, "matching field values compare equal");
+    assert(a == b, "matching field values should compare equal");
     b.temperature_calibration_offset_for_the_replacement_sensor_installed_in_the_secondary_cooling_loop_during_the_initial_inspection = 3;
-    assert(a != b, "different field values compare unequal");
+    assert(a != b, "different field values should compare unequal");
 }

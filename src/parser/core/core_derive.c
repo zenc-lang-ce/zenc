@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
-#include "parser.h"
-#include "constants.h"
-#include "ast/ast.h"
-#include "analysis/move_check.h"
-#include "plugins/plugin_manager.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "analysis/const_fold.h"
+#include "analysis/move_check.h"
+#include "ast/ast.h"
+#include "ast/primitives.h"
+#include "constants.h"
+#include "parser.h"
+#include "plugins/plugin_manager.h"
 #include "utils/emitter.h"
 #include "utils/utils.h"
-#include "ast/primitives.h"
 
 // 1 if `type_name` has a `clone` method: a concrete one (`String__clone`) or one
 // from a generic impl whose instance this is (`Vec__int32_t` from `impl Vec<T>`).

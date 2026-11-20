@@ -27,6 +27,6 @@ test "from_json reads the last string vector" {
     input.set("group14", values);
 
     let groups = Groups::from_json(&input).unwrap();
-    assert(groups.group14.length() == 1, "last vector has one string");
-    assert(strcmp(groups.group14.get_ref(0).c_str(), "last") == 0, "last string was read");
+    assert(groups.group14.length() == 1, "the last vector should have one string");
+    assert(strcmp(groups.group14.get_ref(0).c_str(), "last") == 0, "the last vector should contain the decoded string");
 }

@@ -101,21 +101,21 @@ test "large records keep both ends through JSON and equality" {
     input.set("additional_sensor_value_89", JsonValue::number(71.0));
 
     let a = SensorReadings::from_json(&input).unwrap();
-    assert(a.additional_sensor_value_00 == 3, "first field was read");
-    assert(a.additional_sensor_value_89 == 71, "last field was read");
+    assert(a.additional_sensor_value_00 == 3, "first JSON field should decode to 3");
+    assert(a.additional_sensor_value_89 == 71, "last JSON field should decode to 71");
 
     let output = a.to_json();
-    assert(output.get_int("additional_sensor_value_00").unwrap() == 3, "first field was written");
-    assert(output.get_int("additional_sensor_value_89").unwrap() == 71, "last field was written");
+    assert(output.get_int("additional_sensor_value_00").unwrap() == 3, "first field should serialize to 3");
+    assert(output.get_int("additional_sensor_value_89").unwrap() == 71, "last field should serialize to 71");
 
     let b = SensorReadings::from_json(&output).unwrap();
-    assert(a == b, "round-trip records match");
+    assert(a == b, "records should compare equal after a JSON round trip");
     b.additional_sensor_value_89 = 72;
-    assert(a != b, "equality compares the last field");
+    assert(a != b, "records should compare unequal when the last field differs");
 }
 
 test "cloning a large record preserves the last field" {
     let original = SensorReadings { additional_sensor_value_89: 29 };
     let copy = original.clone();
-    assert(copy.additional_sensor_value_89 == 29, "last field was cloned");
+    assert(copy.additional_sensor_value_89 == 29, "the clone should keep the last field");
 }
