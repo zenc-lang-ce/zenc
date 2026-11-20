@@ -10,6 +10,8 @@
 #include "platform/misra.h"
 #include <ctype.h>
 #include <string.h>
+#include "analysis/drop_traits.h"
+#include "analysis/declaration_checks.h"
 
 // External helpers from parser
 

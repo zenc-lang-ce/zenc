@@ -14,6 +14,7 @@
 #include "../zen/zen_facts.h"
 #include "zprep_plugin.h"
 #include "analysis/move_check.h"
+#include "analysis/drop_traits.h"
 
 // A bare string statement prints even without its `;` when the next token
 // starts on a later line and cannot continue the expression (`;` is optional).
