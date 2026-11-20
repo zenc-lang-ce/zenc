@@ -363,6 +363,27 @@ typedef struct PendingBody
 } PendingBody;
 
 /**
+ * @brief A default value read while the declarations are: it may name one declared further down,
+ *        so it is parsed once every declaration is read, before the bodies, whose calls copy it
+ *        (parse_pending_default_values).
+ */
+typedef struct PendingDefaultValue
+{
+    ASTNode **values;           ///< The parameters' default values; this one goes at `index`.
+    int index;                  ///< Its parameter.
+    char **param_names;         ///< The names of the parameters, which it cannot use.
+    int param_count;            ///< How many parameters.
+    Lexer start;                ///< Lexer positioned at the value, after the `=`.
+    Scope *scope;               ///< The scope of the signature.
+    char *module_prefix;        ///< The module it was read in.
+    const char *filename;       ///< The file it was read in.
+    Type *impl_target;          ///< The type of the impl the function is in, or NULL.
+    GenericParameter *generics; ///< The generic parameters in scope at the signature (`T`).
+    int generic_count;
+    struct PendingDefaultValue *next;
+} PendingDefaultValue;
+
+/**
  * @brief Where the prototype of a function a whole program may leave out (see
  *        prototype_span_begin) is in the C file being written: bytes [start, end).
  */
@@ -455,8 +476,10 @@ struct ParserContext
     int in_constant_expression;    ///< 1 while parse_constant_expression reads an expression.
 
     // Deferred function bodies
-    PendingBody *pending_bodies;               ///< First body waiting to be parsed (FIFO).
-    PendingBody *pending_bodies_tail;          ///< Last one, to append in O(1).
+    PendingDefaultValue *pending_default_values; ///< Default values waiting, in the order read.
+    PendingDefaultValue *pending_default_values_tail; ///< Last of `pending_default_values`.
+    PendingBody *pending_bodies;                      ///< First body waiting to be parsed (FIFO).
+    PendingBody *pending_bodies_tail;                 ///< Last one, to append in O(1).
     PendingBody *pending_template_bodies;      ///< Bodies of generic templates, parsed first.
     PendingBody *pending_template_bodies_tail; ///< Last of `pending_template_bodies`.
     struct BodyCopy *body_copies; ///< Instances made before their template's body was read.
@@ -1129,6 +1152,11 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
 void push_pending_body(ParserContext *ctx, PendingBody *pending);
 void check_unused_parameters(ParserContext *ctx, Scope *scope, const char *func_name);
 void parse_pending_bodies(ParserContext *ctx);
+/**
+ * @brief Parses the default values read while the declarations were (PendingDefaultValue), in the
+ *        order read, each where its function is.
+ */
+void parse_pending_default_values(ParserContext *ctx);
 ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_packed, int align,
                       const char *link_name, int is_export);
 ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_export);

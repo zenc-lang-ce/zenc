@@ -747,6 +747,7 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
         resolve_waiting_structs(ctx);
         parse_pending_declarations(ctx);
         resolve_pending_instances(ctx);
+        parse_pending_default_values(ctx);
         parse_pending_bodies(ctx);
         ctx->declarations_read = 0;
     }
@@ -778,6 +779,8 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
     ctx->impl_slot = NULL;
     ctx->pending_template_bodies = NULL;
     ctx->pending_template_bodies_tail = NULL;
+    ctx->pending_default_values = NULL;
+    ctx->pending_default_values_tail = NULL;
     ctx->body_copies = NULL;
 
     ASTNode *r = ast_create(NODE_ROOT);

@@ -6,6 +6,7 @@
 #include "constants.h"
 #include "ast/primitives.h"
 #include "analysis/const_fold.h"
+#include "expr/expr_internal.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -93,6 +94,132 @@ static void check_default_names_no_parameter(ASTNode *def, const char *param, ch
     }
 }
 
+// Moves `l` past the default value it is on, up to the `,` or `)` that ends it, as
+// parse_expression would read it: a `<` opens generic arguments when parse_expression takes it so
+// (tokens_could_be_generic_args). Returns 0 when the parameter list ends first.
+static int skip_default_value(Lexer *l)
+{
+    int depth = 0;
+    while (1)
+    {
+        Token tk = lexer_peek(l);
+        switch (tk.kind)
+        {
+        case TOK_EOF:
+            return 0;
+        case TOK_LPAREN:
+        case TOK_LBRACKET:
+        case TOK_LBRACE:
+            depth++;
+            break;
+        case TOK_RPAREN:
+        case TOK_RBRACKET:
+        case TOK_RBRACE:
+            if (depth == 0)
+            {
+                return tk.kind == TOK_RPAREN;
+            }
+            depth--;
+            break;
+        case TOK_COMMA:
+            if (depth == 0)
+            {
+                return 1;
+            }
+            break;
+        case TOK_LANGLE:
+            if (tokens_could_be_generic_args(l))
+            {
+                lexer_next(l); // the `<`
+                for (int angles = 1; angles > 0;)
+                {
+                    Token arg = lexer_next(l);
+                    angles += arg.kind == TOK_LANGLE ? 1 : arg.kind == TOK_RANGLE ? -1 : 0;
+                }
+                continue;
+            }
+            break;
+        default:
+            break;
+        }
+        lexer_next(l);
+    }
+}
+
+// A default value, read once every declaration is (parse_pending_default_values).
+static void defer_default_value(ParserContext *ctx, ASTNode **values, int index, char **names,
+                                int count, Lexer start)
+{
+    PendingDefaultValue *p = xcalloc(1, sizeof(PendingDefaultValue));
+    p->values = values;
+    p->index = index;
+    p->param_names = names;
+    p->param_count = count;
+    p->start = start;
+    p->scope = ctx->current_scope;
+    p->module_prefix = ctx->imports.current_module_prefix;
+    p->filename = ctx->current_filename;
+    p->impl_target = ctx->current_impl_target;
+    p->generic_count = ctx->known_generics_count;
+    p->generics = xmalloc(sizeof(GenericParameter) * (size_t)(ctx->known_generics_count + 1));
+    memcpy(p->generics, ctx->known_generics,
+           sizeof(GenericParameter) * (size_t)ctx->known_generics_count);
+    if (ctx->pending_default_values_tail)
+    {
+        ctx->pending_default_values_tail->next = p;
+    }
+    else
+    {
+        ctx->pending_default_values = p;
+    }
+    ctx->pending_default_values_tail = p;
+}
+
+void parse_pending_default_values(ParserContext *ctx)
+{
+    Scope *saved_scope = ctx->current_scope;
+    char *saved_prefix = ctx->imports.current_module_prefix;
+    const char *saved_filename = ctx->current_filename;
+    Type *saved_impl = ctx->current_impl_target;
+    int saved_generic_count = ctx->known_generics_count;
+    GenericParameter *saved_generics =
+        xmalloc(sizeof(GenericParameter) * (size_t)(saved_generic_count + 1));
+    memcpy(saved_generics, ctx->known_generics,
+           sizeof(GenericParameter) * (size_t)saved_generic_count);
+
+    PendingDefaultValue *p = ctx->pending_default_values;
+    ctx->pending_default_values = NULL;
+    ctx->pending_default_values_tail = NULL;
+    for (; p; p = p->next)
+    {
+        ctx->current_scope = p->scope;
+        ctx->imports.current_module_prefix = p->module_prefix;
+        ctx->current_filename = p->filename;
+        ctx->current_impl_target = p->impl_target;
+        memcpy(ctx->known_generics, p->generics,
+               sizeof(GenericParameter) * (size_t)p->generic_count);
+        ctx->known_generics_count = p->generic_count;
+        Lexer l = p->start;
+        ASTNode *value = parse_expression(ctx, &l);
+        Token after = lexer_peek(&l);
+        if (value && after.kind != TOK_COMMA && after.kind != TOK_RPAREN)
+        {
+            zpanic_at(after, "Expected ',' or ')' after the default value");
+        }
+        p->values[p->index] = value;
+        check_default_names_no_parameter(value, p->param_names[p->index], p->param_names,
+                                         p->param_count);
+    }
+
+    ctx->current_scope = saved_scope;
+    ctx->imports.current_module_prefix = saved_prefix;
+    ctx->current_filename = saved_filename;
+    ctx->current_impl_target = saved_impl;
+    memcpy(ctx->known_generics, saved_generics,
+           sizeof(GenericParameter) * (size_t)saved_generic_count);
+    ctx->known_generics_count = saved_generic_count;
+}
+
 int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_values_out,
                            int *count_out, Type ***types_out, char ***names_out, Token **tokens_out,
                            int *is_varargs_out, char ***ctype_overrides_out)
@@ -107,6 +234,14 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
     int count = 0;
     int max_args = 16;
     ASTNode **default_values = xcalloc((size_t)(max_args), sizeof(ASTNode *));
+    // The default values left for later (defer_default_value), once the arrays are final.
+    typedef struct DeferredDefault
+    {
+        int index;
+        Lexer start;
+        struct DeferredDefault *next;
+    } DeferredDefault;
+    DeferredDefault *deferred = NULL;
     Type **types = xcalloc((size_t)(max_args), sizeof(Type *));
     char **names = xcalloc((size_t)(max_args), sizeof(char *));
     Token *tokens = xcalloc((size_t)(max_args), sizeof(Token));
@@ -246,7 +381,24 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
                 {
                     lexer_next(l); // consume =
 
-                    default_values[count - 1] = parse_expression(ctx, l);
+                    if (ctx->declarations_read)
+                    {
+                        default_values[count - 1] = parse_expression(ctx, l);
+                    }
+                    else
+                    {
+                        // It may name a declaration further down: read once all are.
+                        DeferredDefault *d = xcalloc(1, sizeof(DeferredDefault));
+                        d->index = count - 1;
+                        d->start = *l;
+                        d->next = deferred;
+                        deferred = d;
+                        if (!skip_default_value(l))
+                        {
+                            zpanic_at(lexer_peek(l), "Expected ')' after args");
+                            return 0;
+                        }
+                    }
                 }
             }
             if (lexer_peek(l).kind == TOK_COMMA)
@@ -278,6 +430,19 @@ int parse_and_convert_args(ParserContext *ctx, Lexer *l, ASTNode ***default_valu
     for (int i = 0; i < count; i++)
     {
         check_default_names_no_parameter(default_values[i], names[i], names, count);
+    }
+    // In the order written: `deferred` lists them the other way round.
+    DeferredDefault *in_order = NULL;
+    while (deferred)
+    {
+        DeferredDefault *next = deferred->next;
+        deferred->next = in_order;
+        in_order = deferred;
+        deferred = next;
+    }
+    for (DeferredDefault *d = in_order; d; d = d->next)
+    {
+        defer_default_value(ctx, default_values, d->index, names, count, d->start);
     }
 
     *default_values_out = default_values;
