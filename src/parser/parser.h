@@ -410,8 +410,9 @@ struct ParserContext
     struct PendingInstance *pending_instances;      ///< Instances waiting for the declarations.
     struct PendingInstance *pending_instances_tail; ///< Last of `pending_instances`.
     int declarations_read; ///< Set once every declaration is read: instances are made at once.
-    struct WaitingStruct *waiting_structs;    ///< Structs whose `use` waits for the declarations.
-    struct FileDependency *file_dependencies; ///< Which file imports which (file_sees).
+    struct WaitingStruct *waiting_structs;      ///< Structs whose `use` waits for the declarations.
+    struct PendingTypeName *pending_type_names; ///< Type names read before their declaration.
+    struct FileDependency *file_dependencies;   ///< Which file imports which (file_sees).
     struct PendingDeclaration *pending_declarations;      ///< Impls and derives, in the order read.
     struct PendingDeclaration *pending_declarations_tail; ///< Last of `pending_declarations`.
     ASTNode *impl_slot; ///< The node an impl read now fills (parse_pending_declarations).
@@ -637,6 +638,27 @@ typedef struct WaitingStruct
     int done;
     struct WaitingStruct *next;
 } WaitingStruct;
+
+/** @brief A type name read with the declarations before anything declared it: the type keeps
+ *         the name as written until every declaration is read, and is then resolved in place
+ *         (resolve_pending_type_names): an alias, a template, or a type of its module.
+ */
+typedef struct PendingTypeName
+{
+    Type *type;           ///< The type, shared by whatever names it.
+    char *name;           ///< The name as written; the member of `scope` for `scope::name`.
+    char *scope;          ///< `m` of `m::Name`, a module imported further down; else NULL.
+    Token token;          ///< Where it is written.
+    char *module_prefix;  ///< The module it was read in.
+    const char *filename; ///< The file it was read in.
+    enum
+    {
+        PENDING_TYPE_WAITING,
+        PENDING_TYPE_RESOLVING,
+        PENDING_TYPE_DONE
+    } state;
+    struct PendingTypeName *next;
+} PendingTypeName;
 
 /** @brief One import: the file `importer` imports the module `imported` (file_sees). */
 typedef struct FileDependency
@@ -1351,6 +1373,20 @@ WaitingStruct *find_waiting_struct(ParserContext *ctx, ASTNode *strct);
  *        declaration is read.
  */
 void resolve_waiting_structs(ParserContext *ctx);
+/**
+ * @brief Whether a type `name` written in the current file names something declared already: a
+ *        struct, an enum, a template, an alias, a trait, an imported or C type.
+ */
+int type_name_declared(ParserContext *ctx, const char *name);
+/**
+ * @brief Resolves, in place, the type names read before their declaration, each in its module,
+ *        once every declaration is read.
+ */
+void resolve_pending_type_names(ParserContext *ctx);
+/**
+ * @brief Whether `t` holds a type name that waits for its declaration.
+ */
+int type_names_pending(ParserContext *ctx, Type *t);
 /**
  * @brief Appends `pending` to the impls and derives that wait for the declarations.
  */

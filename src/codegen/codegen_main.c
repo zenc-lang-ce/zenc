@@ -794,9 +794,22 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         }
 
         // The structs of the tuples the program uses take part in the ordering: a tuple holding a
-        // struct by value must come after it, and an enum carrying a tuple after the tuple.
+        // struct by value must come after it, and an enum carrying a tuple after the tuple. Two
+        // tuples registered apart may be one now (`(Num, int)` read before `alias Num = int`).
+        zvec_Text emitted_tuples = {0};
         for (TupleType *tup = ctx->used_tuples; tup; tup = tup->next)
         {
+            char *name = type_mangle_spelling(tup->type);
+            int seen = 0;
+            for (size_t i = 0; i < emitted_tuples.length && !seen; i++)
+            {
+                seen = strcmp(emitted_tuples.data[i], name) == 0;
+            }
+            if (seen)
+            {
+                continue;
+            }
+            zvec_push_Text(&emitted_tuples, name);
             ASTNode *def = tuple_struct(tup->type);
             if (!merged)
             {
