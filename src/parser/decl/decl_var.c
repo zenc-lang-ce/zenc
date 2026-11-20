@@ -459,7 +459,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
     // Global detection: Either no scope (yet) OR root scope (no parent)
     if (!ctx->current_scope || !ctx->current_scope->parent)
     {
-        add_to_global_list(ctx, n);
+        collect_declaration(ctx, n);
     }
 
     // Check for 'defer' (Value-Returning Defer): `let x = v defer f(it);`.
@@ -581,7 +581,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
 
             if (!ctx->current_scope || !ctx->current_scope->parent)
             {
-                add_to_global_list(ctx, next_node);
+                collect_declaration(ctx, next_node);
             }
 
             prev->next = next_node;

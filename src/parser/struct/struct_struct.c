@@ -494,7 +494,6 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     ASTNode *node = ast_create(NODE_STRUCT);
     node->token = name_token;
     node->link_name = definition_link_name(ctx, link_name, name);
-    add_to_struct_list(ctx, node);
     node->doc_comment = pending_doc; // struct-level /// doc (captured on entry)
 
     node->strct.name = own_name;
@@ -529,8 +528,6 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     {
         node->strct.is_template = 1;
         ctx->known_generics_count = generics_before;
-        register_template(ctx, name, node);
-        register_named_type(ctx, name, node);
     }
 
     if (uses)
@@ -538,12 +535,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
         copy_or_wait_for_uses(ctx, node, uses);
     }
 
-    // Register definition for 'use' lookups and LSP
-    if (gp_count == 0)
-    {
-        register_struct_def(ctx, name, node);
-    }
-
+    collect_declaration(ctx, node);
     return node;
 }
 

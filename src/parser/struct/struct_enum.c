@@ -223,12 +223,8 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     {
         node->enm.is_template = 1;
         ctx->known_generics_count = generics_before;
-        register_template(ctx, declared_type_c_name(node), node);
     }
 
-    register_struct_def(ctx, declared_type_c_name(node), node);
-
-    add_to_enum_list(ctx, node); // Register globally
-
+    collect_declaration(ctx, node);
     return node;
 }
