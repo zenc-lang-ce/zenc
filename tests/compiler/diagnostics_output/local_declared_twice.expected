@@ -1,8 +1,14 @@
 error: 'a' is already declared in this block
-  --> tests/compiler/diagnostics_output/local_declared_twice.zc:6:4
+  --> tests/compiler/diagnostics_output/local_declared_twice.zc:6:16
    |
 6  | fn add(a: int, a: int) -> int {
-   |    ^ here
+   |                ^ here
+   |
+note: declared here
+  --> tests/compiler/diagnostics_output/local_declared_twice.zc:6:8
+   |
+6  | fn add(a: int, a: int) -> int {
+   |        ^ here
    |
    = help: Give it another name, or declare it in a nested block
 error: 'x' is already declared in this block

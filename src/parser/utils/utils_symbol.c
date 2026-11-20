@@ -31,7 +31,9 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, Type *type_info, T
 {
     ensure_global_scope(ctx);
 
-    if (strcmp(n, "it") != 0 && strcmp(n, "self") != 0)
+    // A local is audited once, where the typechecker declares it (tc_add_symbol) with every
+    // declaration known; the parser declares it too, to read the code that follows.
+    if (ctx->current_scope == ctx->global_scope)
     {
         audit_section_5(ctx, ctx->current_scope, n, NULL, tok);
     }

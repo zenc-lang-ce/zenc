@@ -1,0 +1,28 @@
+// ARGS: check
+// A name that hides another is reported once, where it is declared: a parameter at the
+// parameter, also when what it hides is declared further down; a local of a loop once for both
+// passes of the loop; a `def` in a block as a `let`; a global `let` hidden once.
+let limit: int = 5;
+
+def SIZE = 4;
+
+fn twice(level: int) -> int {
+    return level * 2;
+}
+
+fn sum() -> int {
+    let total = 0;
+    for i in 0..3 {
+        let limit = i;
+        total = total + limit;
+    }
+    def SIZE = 8;
+    return total + SIZE;
+}
+
+enum level { low, high }
+
+fn main() {
+    let result = twice(1) + sum();
+    printf("%d\n", result);
+}

@@ -1,0 +1,23 @@
+   Compiling tests/compiler/diagnostics_output/shadowing_reported_once.zc...
+warning: Variable 'level' shadows a previous declaration
+  --> tests/compiler/diagnostics_output/shadowing_reported_once.zc:9:10
+   |
+9  | fn twice(level: int) -> int {
+   |          ^ here
+   |
+   = note: This can lead to confusion
+warning: Variable 'limit' shadows a previous declaration
+  --> tests/compiler/diagnostics_output/shadowing_reported_once.zc:16:13
+   |
+16 |         let limit = i;
+   |             ^ here
+   |
+   = note: This can lead to confusion
+warning: Variable 'SIZE' shadows a previous declaration
+  --> tests/compiler/diagnostics_output/shadowing_reported_once.zc:19:9
+   |
+19 |     def SIZE = 8;
+   |         ^ here
+   |
+   = note: This can lead to confusion
+[exit 0]
