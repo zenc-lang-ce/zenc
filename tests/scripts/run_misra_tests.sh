@@ -31,8 +31,7 @@ for test_file in "$TEST_DIR"/*.zc; do
     
     # Extract expected rules
     expected_rules=$(grep "// EXPECT: " "$test_file" | grep -v "PASS" | sed -E 's|.*// EXPECT: (.*)|\1|')
-    expect_pass=$(grep -c "// EXPECT: PASS" "$test_file")
-    
+
     # Run compiler with --misra
     output=$($ZC build "$test_file" --misra -o "$OUT_DIR/out" 2>&1)
     exit_code=$?
@@ -42,8 +41,10 @@ for test_file in "$TEST_DIR"/*.zc; do
     
     file_failed=0
     missing_rules=""
-    
-    if [ "$expect_pass" -gt 0 ]; then
+    error_msg=""
+
+    # A file that names no rule must build, whether it says "// EXPECT: PASS" or nothing.
+    if [ -z "$expected_rules" ]; then
         if [ $exit_code -ne 0 ]; then
             file_failed=1
             error_msg="Expected PASS, but compiler returned error $exit_code"
@@ -61,12 +62,6 @@ for test_file in "$TEST_DIR"/*.zc; do
                     ;;
             esac
         done <<< "$expected_rules"
-        
-        if [ -z "$expected_rules" ] && [ $exit_code -ne 0 ]; then
-             # No expected rules, but it failed - maybe it's just a general MISRA failure?
-             # For now, we prefer explicit expectations.
-             echo -n "(No expectations found) "
-        fi
     fi
     
     if [ $file_failed -eq 0 ]; then
