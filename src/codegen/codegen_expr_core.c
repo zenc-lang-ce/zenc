@@ -176,13 +176,29 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, "%s", sym && sym->link_name ? sym->link_name : c_name(ctx, name));
     }
 
-    // A variant without a payload is a call to its constructor, unless the parent
+    // A variant of a plain enum is its constant, valid anywhere C wants one (a global's value, a
+    // `case`). One of an enum with payloads is a call to its constructor, unless the parent
     // NODE_EXPR_CALL adds the ().
-    if (!g_emitting_callee && variant->member &&
-        find_enum_variant_of(ctx, type_def_name(variant->owner), variant->member))
+    if (is_plain_enum_variant(ctx, node))
+    {
+        EMIT(ctx, "_Tag");
+    }
+    else if (!g_emitting_callee && variant->member &&
+             find_enum_variant_of(ctx, type_def_name(variant->owner), variant->member))
     {
         EMIT(ctx, "()");
     }
+}
+
+int is_plain_enum_variant(ParserContext *ctx, ASTNode *node)
+{
+    if (node->kind != NODE_EXPR_VAR || !node->var_ref.variant.member)
+    {
+        return 0;
+    }
+    const char *enum_name = type_def_name(node->var_ref.variant.owner);
+    return find_enum_variant_of(ctx, enum_name, node->var_ref.variant.member) &&
+           is_simple_enum(ctx, enum_name);
 }
 
 // Emit lambda expression
