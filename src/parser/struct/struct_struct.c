@@ -143,7 +143,7 @@ static void resolve_waiting_struct(ParserContext *ctx, WaitingStruct *waiting)
         }
         if (tpl)
         {
-            instantiate_pending_type(ctx, use->type, use->token);
+            instantiate_type(ctx, use->type, use->token);
         }
         ASTNode *def = used_struct_def(ctx, use->type);
         used = def ? find_waiting_struct(ctx, def) : NULL;

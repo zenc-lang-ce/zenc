@@ -1350,20 +1350,14 @@ char *instantiate_function(ParserContext *ctx, FunctionInstance instance);
 GenericTemplate *find_generic_template(ParserContext *ctx, const char *name);
 /**
  * @brief Instantiates the generic a type names (`Vec<int>`), unless its arguments still name a
- * generic parameter.
+ * generic parameter. While declarations are read, it waits for them (resolve_pending_instances).
  */
 void instantiate_type(ParserContext *ctx, Type *instance, Token token);
 /**
- * @brief Instantiates the generic instances that declarations named before their template or an
- *        argument was declared, once every declaration is read; an alias argument is replaced by
- *        the type it names.
+ * @brief Instantiates the generic instances named while declarations were read, once every one
+ *        is.
  */
 void resolve_pending_instances(ParserContext *ctx);
-/**
- * @brief Instantiates a generic instance read before every declaration was, now that they are:
- *        an alias argument is replaced by the type it names.
- */
-void instantiate_pending_type(ParserContext *ctx, Type *instance, Token token);
 /**
  * @brief The struct `strct` while it waits for a struct it uses, or NULL.
  */

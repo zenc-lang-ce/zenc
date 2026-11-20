@@ -1,0 +1,40 @@
+// language/traits: test_derive_clone_trait_impl
+// `@derive(Clone)` clones a field whose type implements `clone` through `impl Clone for X`, for a
+// concrete type and for a generic one, as it does for one from `impl X`.
+
+struct Inner {
+    n: int;
+}
+
+impl Clone for Inner {
+    fn clone(self) -> Inner {
+        return Inner { n: self.n + 100 };
+    }
+}
+
+static let caja_clones = 0;
+
+struct Caja<T> {
+    v: T;
+}
+
+impl Clone for Caja<T> {
+    fn clone(self) -> Caja<T> {
+        caja_clones = caja_clones + 1;
+        return Caja<T> { v: self.v };
+    }
+}
+
+@derive(Clone)
+struct Holder {
+    inner: Inner;
+    caja: Caja<int>;
+}
+
+test "derive calls clone from a Clone impl" {
+    let h = Holder { inner: Inner { n: 1 }, caja: Caja<int> { v: 2 } };
+    let c = h.clone();
+    expect_eq(c.inner.n, 101, "Inner's Clone impl is called");
+    expect_eq(c.caja.v, 2, "Caja<int> keeps its value");
+    expect_eq(caja_clones, 1, "Caja<int>'s Clone impl is called");
+}
