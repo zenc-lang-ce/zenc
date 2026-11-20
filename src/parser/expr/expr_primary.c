@@ -273,6 +273,17 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
         node = parse_match_after_keyword(ctx, l, t);
     }
 
+    // `true` and `false` are literals (reserved words): nothing to look up.
+    else if (t.kind == TOK_IDENT && (is_token(t, "true") || is_token(t, "false")) &&
+             lexer_peek(l).kind != TOK_DCOLON)
+    {
+        node = ast_create(NODE_EXPR_LITERAL);
+        node->token = t;
+        node->literal.kind = LITERAL_BOOL;
+        node->literal.int_val = is_token(t, "true") ? 1ULL : 0ULL;
+        node->type_info = type_new(TYPE_BOOL);
+    }
+
     else if (t.kind == TOK_IDENT)
     {
         if (t.len == 2 && strncmp(t.start, "fn", 2) == 0 &&
@@ -1337,15 +1348,6 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     node->literal.int_val = (unsigned long long)value;
                 }
                 // No need for resolution
-            }
-            else if (!variant.member && !owner && (is_token(t, "true") || is_token(t, "false")) &&
-                     strlen(acc) == t.len)
-            {
-                node = ast_create(NODE_EXPR_LITERAL);
-                node->token = t;
-                node->literal.kind = LITERAL_BOOL;
-                node->literal.int_val = is_token(t, "true") ? 1ULL : 0ULL;
-                node->type_info = type_new(TYPE_BOOL);
             }
             else
             {
