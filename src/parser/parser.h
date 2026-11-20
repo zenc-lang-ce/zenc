@@ -123,8 +123,6 @@ typedef struct FuncSig
     Type **arg_types;         ///< Argument types.
     Type *ret_type;           ///< Return type.
     int is_varargs;           ///< 1 if variadic.
-    int required;             ///< 1 if return value must be used.
-    int is_pure;              ///< 1 if marked @pure.
     char *link_name;          ///< Overriding C identifier (from @link_name).
     const char *own_name;     ///< The name the program writes, when the C name adds to it:
                               ///< `push` of `Vec__int32_t__push`, `Rect` of `Shape__Rect`.
@@ -876,7 +874,7 @@ const char *normalize_type_name(const char *name);
  */
 FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
                        ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
-                       int is_pure, const char *link_name, const char *own_name, Token decl_token,
+                       const char *link_name, const char *own_name, Token decl_token,
                        int is_export);
 
 /**

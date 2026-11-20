@@ -483,7 +483,7 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     // Enforce @pure constraint
     if (tc->current_func && tc->current_func->func.pure)
     {
-        if (!sig || !sig->is_pure)
+        if (!sig || !sig->decl || !sig->decl->func.pure)
         {
             // Allow _z_str? Wait, _z_str is a compiler macro, it's not strictly "pure", but it's
             // safe.
