@@ -469,12 +469,10 @@ static const char *var_decl_name(ParserContext *ctx, ASTNode *node)
     return local_decl_flag_name(ctx, node->token, node->var_decl.name);
 }
 
-// Declares the drop flag of the local `node` and drops it at the end of its scope: a closure
-// frees its context, any other value calls `<glue>__Drop__glue`.
 // Declares the drop flag of the local `node` and defers `stmt`, which drops it if the flag is set.
 static void push_local_drop(ParserContext *ctx, ASTNode *node, char *stmt)
 {
-    EMIT(ctx, "int __z_drop_flag_%s = 1; ", var_decl_name(ctx, node));
+    EMIT(ctx, "int __z_drop_flag_%s = 1;\n", var_decl_name(ctx, node));
     ASTNode *defer_node = xmalloc(sizeof(ASTNode));
     defer_node->kind = NODE_RAW_STMT;
     defer_node->token = node->token;
