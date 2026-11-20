@@ -1,0 +1,32 @@
+// stdlib/serialization: derive generates a full JSON method for each string vector
+import "std/json.zc"
+
+@derive(FromJson)
+struct Groups {
+    group00: Vec<String>;
+    group01: Vec<String>;
+    group02: Vec<String>;
+    group03: Vec<String>;
+    group04: Vec<String>;
+    group05: Vec<String>;
+    group06: Vec<String>;
+    group07: Vec<String>;
+    group08: Vec<String>;
+    group09: Vec<String>;
+    group10: Vec<String>;
+    group11: Vec<String>;
+    group12: Vec<String>;
+    group13: Vec<String>;
+    group14: Vec<String>;
+}
+
+test "from_json reads the last string vector" {
+    let values = JsonValue::array();
+    values.push(JsonValue::string("last"));
+    let input = JsonValue::object();
+    input.set("group14", values);
+
+    let groups = Groups::from_json(&input).unwrap();
+    assert(groups.group14.length() == 1, "the last vector should have one string");
+    assert(strcmp(groups.group14.get_ref(0).c_str(), "last") == 0, "the last vector should contain the decoded string");
+}
