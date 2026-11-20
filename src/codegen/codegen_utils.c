@@ -331,6 +331,12 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
         return;
     }
 
+    // In the prototype as in the definition: a call before the definition must know it too.
+    if (func->func.noreturn)
+    {
+        EMIT(ctx, "__attribute__((noreturn)) ");
+    }
+
     // Emit MISRA static linkage
     if (ctx->config->misra_mode && !func->func.is_export &&
         strcmp(function_c_name(func), "main") != 0)

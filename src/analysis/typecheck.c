@@ -865,9 +865,14 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         }
         break;
     case NODE_DEFER:
-        // Check the deferred statement
+    {
+        // The deferred statement runs when the scope ends, not here: a `panic` in it does not
+        // make the code after the `defer` unreachable.
+        int prev_unreachable = tc->is_unreachable;
         check_node(tc, node->defer_stmt.stmt, depth + 1);
+        tc->is_unreachable = prev_unreachable;
         break;
+    }
     case NODE_EXPECT:
     case NODE_ASSERT:
         misra_check_assertion(tc->pctx, node->token);
