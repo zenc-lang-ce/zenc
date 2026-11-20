@@ -1,0 +1,44 @@
+// language/features/constants: test_constants_declared_later
+// An array size and the value of a `def` can name a constant declared further down: a `def` or
+// a global `let`, through another `def` or an alias, also in a module imported with an alias.
+import "_constants_later_mod.zc" as later;
+
+struct Buffer {
+    data: int[SIZE];
+    pairs: [int; TWICE];
+    row: Row;
+    extra: int[COUNT];
+}
+
+alias Row = int[SIZE];
+
+def TWICE = SIZE * 2;
+
+def FIRST = SECOND + 1;
+def SECOND = THIRD * 2;
+def THIRD = 3;
+
+def SIZE = 4;
+
+let COUNT = 5;
+
+test "an array size names a constant declared further down" {
+    let b = Buffer {};
+    expect_eq(sizeof(b.data) / sizeof(int), (usize)4, "a def");
+    expect_eq(sizeof(b.pairs) / sizeof(int), (usize)8, "a def that names a def further down");
+    expect_eq(sizeof(b.row) / sizeof(int), (usize)4, "an alias of an array");
+    expect_eq(sizeof(b.extra) / sizeof(int), (usize)5, "a global let");
+}
+
+test "a def names a def declared further down" {
+    expect_eq(TWICE, 8, "TWICE is SIZE * 2");
+    expect_eq(FIRST, 7, "a chain of defs");
+    let cells: int[FIRST];
+    expect_eq(sizeof(cells) / sizeof(int), (usize)7, "an array of the chain's size");
+}
+
+test "in a module imported with an alias" {
+    let g = later::Grid {};
+    expect_eq(sizeof(g.cells) / sizeof(int), (usize)9, "an array size");
+    expect_eq(later::AREA, 9, "a def");
+}

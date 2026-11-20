@@ -727,6 +727,7 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
     if (ctx->parse_depth == 0)
     {
         ctx->declarations_read = 1;
+        resolve_pending_constants(ctx);
         resolve_pending_type_names(ctx);
         resolve_waiting_structs(ctx);
         parse_pending_declarations(ctx);
@@ -758,6 +759,7 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
     ctx->declarations_read = 0;
     ctx->waiting_structs = NULL;
     ctx->pending_type_names = NULL;
+    ctx->pending_constants = NULL;
     ctx->pending_declarations = NULL;
     ctx->pending_declarations_tail = NULL;
     ctx->impl_slot = NULL;

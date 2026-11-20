@@ -431,6 +431,7 @@ struct ParserContext
     int declarations_read; ///< Set once every declaration is read: instances are made at once.
     struct WaitingStruct *waiting_structs;      ///< Structs whose `use` waits for the declarations.
     struct PendingTypeName *pending_type_names; ///< Type names read before their declaration.
+    struct PendingConstant *pending_constants;  ///< Constants read before what they name.
     struct FileDependency *file_dependencies;   ///< Which file imports which (file_sees).
     struct PendingDeclaration *pending_declarations;      ///< Impls and derives, in the order read.
     struct PendingDeclaration *pending_declarations_tail; ///< Last of `pending_declarations`.
@@ -681,6 +682,23 @@ typedef struct PendingTypeName
     } state;
     struct PendingTypeName *next;
 } PendingTypeName;
+
+/**
+ * @brief A constant read while the declarations are that names one not declared yet: the size of
+ *        an array type, or the value of a `def`. It is computed once every declaration is read,
+ *        first in the round (resolve_pending_constants).
+ */
+typedef struct PendingConstant
+{
+    ASTNode *expr;         ///< The expression, as read.
+    Type *array;           ///< The array type whose size it is; NULL for a `def`.
+    struct ZenSymbol *def; ///< The `def`'s symbol; NULL for an array size.
+    Token token;           ///< Where it is written.
+    char *module_prefix;   ///< The module it was read in.
+    const char *filename;  ///< The file it was read in.
+    int done;              ///< Computed.
+    struct PendingConstant *next;
+} PendingConstant;
 
 /** @brief One import: the file `importer` imports the module `imported` (file_sees). */
 typedef struct FileDependency
@@ -1405,9 +1423,34 @@ int type_name_declared(ParserContext *ctx, const char *name);
  */
 void resolve_pending_type_names(ParserContext *ctx);
 /**
- * @brief Whether `t` holds a type name that waits for its declaration.
+ * @brief Whether `t` holds a type name that waits for its declaration, or an array size that
+ *        waits for a constant.
  */
 int type_names_pending(ParserContext *ctx, Type *t);
+/**
+ * @brief The size `size_expr` of an array type, in *size: 1 when it is known now. While the
+ *        declarations are read, 0 for one that cannot be computed yet (it may name a constant
+ *        declared further down): the caller makes the array wait (wait_for_constant). -1 when it
+ *        is no constant integer.
+ */
+int array_size_now(ParserContext *ctx, ASTNode *size_expr, int *size);
+/**
+ * @brief Makes the size of `array`, or the value of the `def` whose symbol is `def`, wait for
+ *        the declarations: `expr` is computed then (resolve_pending_constants).
+ */
+void wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *array, struct ZenSymbol *def,
+                       Token token);
+/**
+ * @brief Computes the constants that waited for the declarations, each in its module, in passes
+ *        until no more can be (a `def` may name another that waits), and reports an array size
+ *        that is still no constant.
+ */
+void resolve_pending_constants(ParserContext *ctx);
+/**
+ * @brief Gives the `def` whose symbol is `s` the integer value `val`, and the type `int` (or
+ *        `i64` when it does not fit) if it has none.
+ */
+void set_def_value(struct ZenSymbol *s, long long val);
 /**
  * @brief Appends `pending` to the impls and derives that wait for the declarations.
  */

@@ -366,14 +366,11 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         if (lexer_peek(l).kind == TOK_SEMICOLON)
         {
             lexer_next(l); // eat ;
+            Token size_token = lexer_peek(l);
             ASTNode *size_expr = parse_constant_expression(ctx, l);
-            long long compiled_size = 0;
             int size = 0;
-            if (eval_const_int_expr(size_expr, ctx, &compiled_size))
-            {
-                size = (int)compiled_size;
-            }
-            else
+            int known = array_size_now(ctx, size_expr, &size);
+            if (known < 0)
             {
                 zpanic_at(size_expr->token,
                           "Array size must be a compile-time constant or integer literal");
@@ -388,6 +385,10 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             Type *arr = type_new(TYPE_ARRAY);
             arr->inner = inner;
             arr->array_size = size;
+            if (known == 0)
+            {
+                wait_for_constant(ctx, size_expr, arr, NULL, size_token);
+            }
             return arr;
         }
 
