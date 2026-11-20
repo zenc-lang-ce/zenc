@@ -541,7 +541,14 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
             {
                 register_deprecated_func(ctx, declared_type_c_name(s), attrs.deprecated_msg);
             }
-            if (attrs.derived_count > 0)
+            // The derived code reads the fields, which may wait for a struct `s` uses.
+            WaitingStruct *waiting = find_waiting_struct(ctx, s);
+            if (waiting)
+            {
+                waiting->derived_traits = attrs.derived_traits;
+                waiting->derived_count = attrs.derived_count;
+            }
+            else if (attrs.derived_count > 0)
             {
                 ASTNode *impls =
                     generate_derive_impls(ctx, s, attrs.derived_traits, attrs.derived_count);
@@ -634,6 +641,7 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
     if (ctx->parse_depth == 0)
     {
         ctx->declarations_read = 1;
+        resolve_waiting_structs(ctx);
         resolve_pending_instances(ctx);
         parse_pending_bodies(ctx);
         ctx->declarations_read = 0;
@@ -659,6 +667,7 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
     ctx->pending_instances = NULL;
     ctx->pending_instances_tail = NULL;
     ctx->declarations_read = 0;
+    ctx->waiting_structs = NULL;
     ctx->pending_template_bodies = NULL;
     ctx->pending_template_bodies_tail = NULL;
     ctx->body_copies = NULL;
