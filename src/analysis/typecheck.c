@@ -800,7 +800,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                         symbol_lookup_kind(tc->pctx->global_scope, target_type->name, SYM_STRUCT);
                     if (struct_sym)
                     {
-                        struct_sym->is_dereferenced = 1;
+                        tc_symbol_use(tc, struct_sym)->is_dereferenced = 1;
                     }
                 }
                 ASTNode *struct_def = named_type_def(tc->pctx, target_type);
@@ -1507,8 +1507,8 @@ int check_program(ParserContext *ctx, ASTNode *root)
     // them.
     if (tc.pctx->config->misra_mode && !tc.type_errors_as_warnings)
     {
-        misra_audit_unused_symbols(tc.pctx);
-        misra_audit_block_scope(tc.pctx);
+        misra_audit_unused_symbols(tc.pctx, &tc);
+        misra_audit_block_scope(tc.pctx, &tc);
         misra_audit_identifier_uniqueness(tc.pctx);
     }
 

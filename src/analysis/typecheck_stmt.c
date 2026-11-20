@@ -328,8 +328,9 @@ void check_function(TypeChecker *tc, ASTNode *node, int depth)
                     if (psym->type_info && psym->type_info->kind == TYPE_POINTER)
                     {
                         Type *inner = resolve_alias(psym->type_info->inner);
+                        const SymbolUse *use = tc_symbol_use_found(tc, psym);
                         if (inner && !inner->is_const && !psym->type_info->is_const &&
-                            !psym->is_written_to)
+                            !(use && use->is_written_to))
                         {
                             misra_check_const_ptr_param(tc->pctx, psym->name, psym->decl_token);
                         }

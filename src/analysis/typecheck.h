@@ -50,6 +50,18 @@ typedef struct CFunctionLocals
     struct CFunctionLocals *next;
 } CFunctionLocals;
 
+/**
+ * @brief How the program uses a symbol, as one analysis finds it. It is the analysis's, not the
+ *        symbol's: checking the program again starts from none.
+ */
+typedef struct SymbolUse
+{
+    int is_written_to;         ///< The value, or what it points to, is modified.
+    int is_dereferenced;       ///< A struct whose fields are accessed (MISRA Rule 2.3).
+    ASTNode *first_using_func; ///< MISRA Rule 8.9: the first function that uses a global.
+    int multi_func_use;        ///< More than one function uses it.
+} SymbolUse;
+
 // Type Checker Context
 // Holds the state during the semantic analysis pass.
 // Unlike the parser, this focuses on semantic validity (types, definitions).
@@ -82,6 +94,7 @@ typedef struct TypeChecker
     int waiting_lambda_count;
     CFunctionLocals *c_functions; ///< The locals of every C function checked (tc_declare_local).
     CFunctionLocals *c_function;  ///< Those of the one being checked; NULL at the top level.
+    zmap_UseBySymbol symbol_uses; ///< How the program uses each symbol (tc_symbol_use).
 
     // Configuration
     int rechecking; ///< Checking code a second time (a loop's second pass, the expressions of an
@@ -98,6 +111,13 @@ typedef struct TypeChecker
     int func_return_count;  ///< Count of returns for Rule 15.5
     int current_depth;      ///< Current nesting level for escape analysis (0=global).
 } TypeChecker;
+
+/**
+ * @brief How the program uses `sym`, as this analysis has found it so far; created empty the first
+ *        time. tc_symbol_use_found does not create it: NULL when nothing was found.
+ */
+SymbolUse *tc_symbol_use(TypeChecker *tc, const struct ZenSymbol *sym);
+const SymbolUse *tc_symbol_use_found(const TypeChecker *tc, const struct ZenSymbol *sym);
 
 /**
  * @brief Main Type Checking Entry Point.
