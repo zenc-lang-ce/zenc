@@ -40,14 +40,7 @@ void handle_node_assert(ParserContext *ctx, ASTNode *node)
     }
     else if (node->assert_stmt.message)
     {
-        if (node->assert_stmt.message_is_literal)
-        {
-            EMIT(ctx, ", %s", node->assert_stmt.message);
-        }
-        else
-        {
-            EMIT(ctx, ", \"%%s\", %s", node->assert_stmt.message);
-        }
+        EMIT(ctx, ", \"%%s\", %s", node->assert_stmt.message);
     }
     else
     {
@@ -67,14 +60,7 @@ void handle_node_expect(ParserContext *ctx, ASTNode *node)
     }
     else if (node->assert_stmt.message)
     {
-        if (node->assert_stmt.message_is_literal)
-        {
-            EMIT(ctx, ", %s", node->assert_stmt.message);
-        }
-        else
-        {
-            EMIT(ctx, ", \"%%s\", %s", node->assert_stmt.message);
-        }
+        EMIT(ctx, ", \"%%s\", %s", node->assert_stmt.message);
     }
     else
     {

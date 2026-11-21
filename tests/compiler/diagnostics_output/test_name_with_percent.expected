@@ -1,0 +1,9 @@
+  TEST: covers 100% of "add" ... OK
+  TEST: prints %s and %d ... OK
+  TEST: %% at the start, 50% at the end % ...   tests/compiler/diagnostics_output/test_name_with_percent.zc:11: Assertion failed: fails with %d in the message
+FAIL
+  TEST: expect at 100% ...   tests/compiler/diagnostics_output/test_name_with_percent.zc:15: Expectation failed: expected %s, 100%
+FAIL
+
+2 test(s) failed
+[exit 2]
