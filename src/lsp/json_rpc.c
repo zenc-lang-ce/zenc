@@ -198,7 +198,7 @@ static cJSON *initialize(const cJSON *params)
         "\"documentFormattingProvider\":true,"
         "\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\"]},"
         "\"completionProvider\":{"
-        "\"triggerCharacters\":[\".\",\":\"]},"
+        "\"triggerCharacters\":[\".\",\":\",\"/\",\"\\\"\"]},"
         "\"semanticTokensProvider\":{\"full\":true}"
         "}}";
 

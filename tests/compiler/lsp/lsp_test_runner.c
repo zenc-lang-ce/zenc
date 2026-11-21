@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -222,11 +223,13 @@ static void test_initialize()
         printf("Initialize response: %s\n", resp);
         fail("Init response must give the legend of the semantic tokens");
     }
-    // `.` opens the members of a value and `:` those of a type (`Color::`).
-    if (!strstr(resp, "\"completionProvider\":{\"triggerCharacters\":[\".\",\":\"]}"))
+    // `.` opens the members of a value and `:` those of a type (`Color::`); `/` and `"` the path
+    // of an import (test_import_path_completion).
+    if (!strstr(resp, "\"completionProvider\":{\"triggerCharacters\":[\".\",\":\",\"/\",\"\\\"\"]}"))
     {
         printf("Initialize response: %s\n", resp);
-        fail("Init response must give `.` and `:` as the characters that open the completion");
+        fail("Init response must give `.`, `:`, `/` and `\"` as the characters that open the "
+             "completion");
     }
     printf("PASS: test_initialize\n");
     free(resp);
@@ -377,6 +380,49 @@ static void test_fstring_interpolation_lookup(void)
     }
     free(resp);
     printf("PASS: test_fstring_interpolation_lookup\n");
+}
+
+// A method or a function used as a value (`Cpu::lda`, passed or stored, not called) refers to its
+// declaration where the path writes its name, as a call does.
+static void test_method_reference(void)
+{
+    printf("Running test_method_reference...\n");
+    // Line 0: struct Cpu { a: int; }
+    // Line 1: impl Cpu {
+    // Line 2:     fn lda(self, v: int) -> int { return v; }
+    // Line 3: }
+    // Line 4: fn twice(x: int) -> int { return x * 2; }
+    // Line 5: fn main() {
+    // Line 6:     let f = Cpu::lda;
+    // Line 7:     let g = twice;
+    // Line 8: }
+    const char *uri = "file:///tmp/test_method_reference.zc";
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_method_reference.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Cpu { a: int; }\\nimpl Cpu {\\n    fn lda(self, v: int) -> int { return "
+                 "v; }\\n}\\nfn twice(x: int) -> int { return x * 2; }\\nfn main() {\\n    let f = "
+                 "Cpu::lda;\\n    let g = twice;\\n}\\n\"}}}");
+    usleep(100000);
+
+    // The method, where the path writes it; the path's start is still the type.
+    expect_hover_in(uri, 991, 6, 18, "fn lda(self, v: int) -> int");
+    expect_hover_in(uri, 992, 6, 13, "struct Cpu");
+    expect_hover_in(uri, 993, 7, 13, "fn twice(x: int) -> int");
+
+    // Go to definition leads to the method's declaration.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 994, \"method\": \"textDocument/definition\", "
+                 "\"params\": {\"textDocument\": {\"uri\": "
+                 "\"file:///tmp/test_method_reference.zc\"}, "
+                 "\"position\": {\"line\": 6, \"character\": 18}}}");
+    char *resp = wait_for_response(994);
+    if (!resp || !strstr(resp, "test_method_reference.zc") || !strstr(resp, "\"line\":2"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition must lead from Cpu::lda to the method's declaration");
+    }
+    free(resp);
+    printf("PASS: test_method_reference\n");
 }
 
 static void test_hover_parameters(void)
@@ -2445,6 +2491,57 @@ static void test_module_alias_completion(void)
     printf("PASS: test_module_alias_completion\n");
 }
 
+static void test_import_path_completion(void)
+{
+    printf("Running test_import_path_completion...\n");
+    // In the string of an import, the directories and modules its path can name: next to the
+    // file, in a directory of it, and in the standard library. Not the file itself, and nothing
+    // of this after a `/` that divides.
+    mkdir(C_TEST_DIR, 0755);
+    mkdir(C_TEST_DIR "/imp_sub", 0755);
+    write_file(C_TEST_DIR "/imp_a.zc", "fn a() {}\n");
+    write_file(C_TEST_DIR "/imp_sub/b.zc", "fn b() {}\n");
+    const char *path = C_TEST_DIR "/imp_use.zc";
+    open_document(path, "import \"imp_\n"            // Line 0
+                        "import \"imp_sub/\n"        // Line 1
+                        "import \"std/ve\n"          // Line 2
+                        "import { a } from \"imp_\n" // Line 3
+                        "let x = 1 / 2;\n");         // Line 4
+    usleep(100000);
+    char labels[8192];
+    completion_labels(1720, path, 0, 12, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "imp_a.zc ") || !strstr(labels, "imp_sub/ ") || strstr(labels, "imp_use"))
+    {
+        printf("Completion in `import \"imp_`: %s\n", labels);
+        fail("In an import, the modules and directories next to the file, not the file itself");
+    }
+    completion_labels(1721, path, 1, 16, "/", labels, sizeof(labels));
+    if (strcmp(labels, "b.zc ") != 0)
+    {
+        printf("Completion in `import \"imp_sub/`: %s\n", labels);
+        fail("In an import, the modules of the directory the path names");
+    }
+    completion_labels(1722, path, 2, 14, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "vec.zc "))
+    {
+        printf("Completion in `import \"std/ve`: %s\n", labels);
+        fail("In an import, the modules of the standard library");
+    }
+    completion_labels(1723, path, 3, 22, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "imp_a.zc "))
+    {
+        printf("Completion in `import { a } from \"imp_`: %s\n", labels);
+        fail("In an import one by one, the modules next to the file");
+    }
+    completion_labels(1724, path, 4, 11, "/", labels, sizeof(labels));
+    if (labels[0])
+    {
+        printf("Completion after a division: %s\n", labels);
+        fail("A `/` outside an import offers nothing");
+    }
+    printf("PASS: test_import_path_completion\n");
+}
+
 static void test_trait_value_completion(void)
 {
     printf("Running test_trait_value_completion...\n");
@@ -3435,6 +3532,75 @@ static void test_index_gitignore(void)
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
     waitpid(child_pid, NULL, 0);
     printf("PASS: test_index_gitignore\n");
+}
+
+static void test_workspace_module_alias(void)
+{
+    printf("Running test_workspace_module_alias...\n");
+    // A module of the workspace is parsed on its own when the workspace is indexed; a file that
+    // imports it with an alias names its function through the alias, called or as a value, and
+    // gets hover and go to definition for it. The workspace by its real path (on macOS /tmp is a
+    // link to /private/tmp): the import finds the module the index parsed, as in a project.
+    mkdir("/tmp/zc_lsp_alias_ws", 0755);
+    char root[PATH_MAX];
+    if (!realpath("/tmp/zc_lsp_alias_ws", root))
+    {
+        fail("realpath of the workspace failed");
+    }
+    char geo[PATH_MAX + 16], use[PATH_MAX + 16], uri[PATH_MAX + 32], req[2 * PATH_MAX];
+    snprintf(geo, sizeof(geo), "%s/geo.zc", root);
+    snprintf(use, sizeof(use), "%s/use.zc", root);
+    snprintf(uri, sizeof(uri), "file://%s", use);
+    write_index_fixture(geo, "fn helper(x: int) -> int { return x + 1; }\n");
+    const char *use_text = "import \"geo.zc\" as geo\n"    // Line 0
+                           "fn main() {\n"                 // Line 1
+                           "    let h = geo::helper;\n"    // Line 2
+                           "    let n = geo::helper(1);\n" // Line 3
+                           "}\n";
+    write_index_fixture(use, use_text);
+
+    // Started in the workspace, as an editor starts it.
+    global_len = 0;
+    global_buf[0] = 0;
+    lsp_cwd = root;
+    start_lsp_server();
+    lsp_cwd = NULL;
+    snprintf(req, sizeof(req),
+             "{\"jsonrpc\": \"2.0\", \"id\": 1200, \"method\": \"initialize\", \"params\": "
+             "{\"rootUri\": \"file://%s\"}}",
+             root);
+    send_request(req);
+    free(wait_for_response(1200));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"initialized\", \"params\": {}}");
+    // The workspace indexed first, the module on its own too, as an editor finds it when it opens
+    // a file. Asking for a file's symbols before would analyze it ahead of the index.
+    usleep(2000000);
+
+    // Opening it analyzes it again, with the module parsed already: the import is not its first.
+    open_document(use, use_text);
+    usleep(1500000);
+    expect_hover_in(uri, 1202, 2, 18, "fn helper(x: int) -> int");
+    expect_hover_in(uri, 1203, 3, 18, "fn helper(x: int) -> int");
+    snprintf(req, sizeof(req),
+             "{\"jsonrpc\": \"2.0\", \"id\": 1204, \"method\": \"textDocument/definition\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"%s\"}, "
+             "\"position\": {\"line\": 2, \"character\": 18}}}",
+             uri);
+    send_request(req);
+    char *resp = wait_for_response(1204);
+    if (!resp || !strstr(resp, "zc_lsp_alias_ws/geo.zc"))
+    {
+        printf("Definition response: %s\n", resp ? resp : "(no response)");
+        fail("Go to definition must lead from geo::helper to the module's function");
+    }
+    free(resp);
+
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 1205, \"method\": \"shutdown\", \"params\": null}");
+    free(wait_for_response(1205));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
+    waitpid(child_pid, NULL, 0);
+    printf("PASS: test_workspace_module_alias\n");
 }
 
 static void on_missing_progress(int signal_number)
@@ -4428,6 +4594,7 @@ int main()
     test_unclosed_include_keeps_server_alive();
     test_fstring_interpolation_lookup();
     test_hover_parameters();
+    test_method_reference();
     test_occurrences_by_scope();
     test_enum_rename();
     test_field_occurrences();
@@ -4492,6 +4659,7 @@ int main()
     test_literal_field_completion();
     test_scope_completion_trigger();
     test_module_alias_completion();
+    test_import_path_completion();
     test_trait_value_completion();
     test_trait_impl_completion();
     test_implement_trait_action();
@@ -4503,6 +4671,7 @@ int main()
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
     waitpid(child_pid, NULL, 0);
     test_index_gitignore();
+    test_workspace_module_alias();
     test_index_progress();
     test_project_config();
     test_index_exclude();

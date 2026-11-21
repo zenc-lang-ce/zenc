@@ -16,6 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "analysis/declaration_checks.h"
 
 typedef struct Diagnostic
@@ -1901,12 +1903,222 @@ static void add_scope_completions(cJSON *items, ProjectFile *pf, const char *qua
 // is. Returns the new array; `items` is deleted.
 static cJSON *add_completion_imports(cJSON *items, ProjectFile *pf);
 
+// The path being typed in the string of an import on `text` (the line up to the cursor, `len`
+// bytes): `import "std/ve` or `import { Vec } from "std/ve` give `std/ve`. NULL when the
+// cursor is not there.
+static const char *import_path_at(const char *text, int len, int *path_len)
+{
+    int quote = -1;
+    int quotes = 0;
+    for (int i = 0; i < len; i++)
+    {
+        if (text[i] == '"')
+        {
+            quote = i;
+            quotes++;
+        }
+    }
+    if (quotes % 2 == 0)
+    {
+        return NULL; // Not inside a string.
+    }
+    int i = 0;
+    while (i < quote && (text[i] == ' ' || text[i] == '\t'))
+    {
+        i++;
+    }
+    if (quote - i < 6 || strncmp(text + i, "import", 6) != 0 ||
+        (text[i + 6] != ' ' && text[i + 6] != '\t' && text[i + 6] != '{' && text[i + 6] != '"'))
+    {
+        return NULL;
+    }
+    // `import "` or `import { A, B } from "`: nothing else between `import` and the quote.
+    int j = quote - 1;
+    while (j > i + 5 && (text[j] == ' ' || text[j] == '\t'))
+    {
+        j--;
+    }
+    int after_import = j == i + 5;
+    int after_from = j >= 3 && strncmp(text + j - 3, "from", 4) == 0 &&
+                     memchr(text + i, '}', (size_t)(j - i)) != NULL;
+    if (!after_import && !after_from)
+    {
+        return NULL;
+    }
+    *path_len = len - quote - 1;
+    return text + quote + 1;
+}
+
+// What can follow the path being typed in an import: the directories (`nes/`) and the `.zc` and
+// `.h` files of the directory it names, in every directory the compiler looks for imports in.
+typedef struct
+{
+    const char *dir;      // The typed path up to its last `/` (`std/`), or "".
+    const char *partial;  // What follows it (`ve`).
+    const char *own_path; // The file being edited, left out.
+    cJSON *items;
+    int line;
+    int start_col; // Where `partial` starts: what an item replaces.
+    int end_col;
+} ImportPathCompletion;
+
+static int import_item_listed(cJSON *items, const char *label)
+{
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, items)
+    {
+        cJSON *l = cJSON_GetObjectItem(item, "label");
+        if (cJSON_IsString(l) && strcmp(l->valuestring, label) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int list_import_dir(const char *base, void *data)
+{
+    ImportPathCompletion *c = data;
+    // The compiler also finds a module of the standard library without its `std/` (in
+    // `<root>/std`); programs write it with it, and it is offered under `std/`.
+    size_t base_len = strlen(base);
+    if (base_len >= 4 && strcmp(base + base_len - 4, "/std") == 0)
+    {
+        return 0;
+    }
+    char path[MAX_PATH_LEN];
+    snprintf(path, sizeof(path), "%s/%s", base, c->dir);
+    DIR *d = opendir(path);
+    if (!d)
+    {
+        return 0; // Every directory adds what it has: keep looking.
+    }
+    size_t partial_len = strlen(c->partial);
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL)
+    {
+        const char *name = e->d_name;
+        if (name[0] == '.' || strncmp(name, c->partial, partial_len) != 0)
+        {
+            continue;
+        }
+        // The directory, a `/` and a name of the directory (at most 255 bytes).
+        char full[MAX_PATH_LEN + 257];
+        snprintf(full, sizeof(full), "%s/%s", path, name);
+        struct stat st;
+        if (stat(full, &st) != 0)
+        {
+            continue;
+        }
+        size_t n = strlen(name);
+        int is_dir = S_ISDIR(st.st_mode);
+        int is_module = !is_dir && ((n > 3 && strcmp(name + n - 3, ".zc") == 0) ||
+                                    (n > 2 && strcmp(name + n - 2, ".h") == 0));
+        if (!is_dir && !is_module)
+        {
+            continue;
+        }
+        char real[MAX_PATH_LEN];
+        if (!is_dir && c->own_path && realpath(full, real) && strcmp(real, c->own_path) == 0)
+        {
+            continue;
+        }
+        char label[MAX_PATH_LEN];
+        snprintf(label, sizeof(label), "%s%s", name, is_dir ? "/" : "");
+        if (import_item_listed(c->items, label))
+        {
+            continue;
+        }
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "label", label);
+        cJSON_AddNumberToObject(item, "kind", is_dir ? LSP_COMPLETION_FOLDER : LSP_COMPLETION_FILE);
+        cJSON *edit = cJSON_AddObjectToObject(item, "textEdit");
+        cJSON *range = cJSON_AddObjectToObject(edit, "range");
+        cJSON *start = cJSON_AddObjectToObject(range, "start");
+        cJSON_AddNumberToObject(start, "line", c->line);
+        cJSON_AddNumberToObject(start, "character", c->start_col);
+        cJSON *end = cJSON_AddObjectToObject(range, "end");
+        cJSON_AddNumberToObject(end, "line", c->line);
+        cJSON_AddNumberToObject(end, "character", c->end_col);
+        cJSON_AddStringToObject(edit, "newText", label);
+        cJSON_AddItemToArray(c->items, item);
+    }
+    closedir(d);
+    return 0;
+}
+
+// Inside the string of an import, what the path can name, as the compiler resolves it
+// (z_import_search_dirs); NULL when the cursor is anywhere else.
+static cJSON *import_path_completion(ProjectFile *pf, int line, int col)
+{
+    if (!pf->source || !g_project->ctx || !g_project->ctx->config)
+    {
+        return NULL;
+    }
+    const char *text = pf->source;
+    for (int l = 0; l < line && *text; text++)
+    {
+        if (*text == '\n')
+        {
+            l++;
+        }
+    }
+    int line_len = 0;
+    while (text[line_len] && text[line_len] != '\n' && text[line_len] != '\r')
+    {
+        line_len++;
+    }
+    if (col > line_len)
+    {
+        return NULL;
+    }
+    int typed_len = 0;
+    const char *typed = import_path_at(text, col, &typed_len);
+    if (!typed || typed_len >= MAX_PATH_LEN)
+    {
+        return NULL;
+    }
+    char path[MAX_PATH_LEN];
+    memcpy(path, typed, (size_t)typed_len);
+    path[typed_len] = 0;
+    char *slash = strrchr(path, '/');
+    const char *partial = slash ? slash + 1 : path;
+    char dir[MAX_PATH_LEN];
+    snprintf(dir, sizeof(dir), "%.*s", slash ? (int)(slash - path + 1) : 0, path);
+
+    char own[MAX_PATH_LEN];
+    ImportPathCompletion c = {dir,
+                              partial,
+                              realpath(pf->path, own) ? own : pf->path,
+                              cJSON_CreateArray(),
+                              line,
+                              col - (int)strlen(partial),
+                              col};
+    // Every directory an import of this path may be found in, not only the first: a `std/` and
+    // a directory of the program may both have what is being typed.
+    z_import_search_dirs(path[0] ? path : "x", pf->path, g_project->ctx->config, list_import_dir,
+                         &c);
+    return c.items;
+}
+
 cJSON *lsp_completion(const char *uri, int line, int col, const char *trigger)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
     if (!g_project || !g_project->ctx || !pf)
     {
         return NULL;
+    }
+
+    // Inside the string of an import, the files and directories its path can name.
+    cJSON *path_items = import_path_completion(pf, line, col);
+    if (path_items)
+    {
+        return path_items;
+    }
+    // A `/` or a `"` opens the completion for an import's path only.
+    if (trigger && (strcmp(trigger, "/") == 0 || strcmp(trigger, "\"") == 0))
+    {
+        return cJSON_CreateArray();
     }
 
     // After the alias of a C header (`rl::`), the declarations of that header.
