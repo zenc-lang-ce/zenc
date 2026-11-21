@@ -679,7 +679,6 @@ struct ASTNode
         {
             ASTNode *condition;
             char *message;
-            int message_is_literal;   ///< 1 if message was a string literal, 0 if variable
             ASTNode *message_fstring; ///< The message when it interpolates (message is NULL).
         } assert_stmt;
 

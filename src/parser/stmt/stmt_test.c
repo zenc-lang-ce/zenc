@@ -65,8 +65,7 @@ ASTNode *parse_test(ParserContext *ctx, Lexer *l)
 // like any other string: it becomes an f-string node (*fstring, and NULL is
 // returned), emitted the way a message variable is (`"%s", expr`), so it is only
 // evaluated when the check fails.
-static char *parse_check_message_string(ParserContext *ctx, Token st, int *is_literal,
-                                        ASTNode **fstring)
+static char *parse_check_message_string(ParserContext *ctx, Token st, ASTNode **fstring)
 {
     char *content = token_get_string_content(st);
     int has_interpolation = 0;
@@ -84,7 +83,6 @@ static char *parse_check_message_string(ParserContext *ctx, Token st, int *is_li
     {
         *fstring = parse_fstring_parts(ctx, st, content);
         zfree(content);
-        *is_literal = 0;
         return NULL;
     }
     zfree(content);
@@ -93,7 +91,6 @@ static char *parse_check_message_string(ParserContext *ctx, Token st, int *is_li
     // `{expr}` if it gets here).
     const char *text = st.kind == TOK_FSTRING ? st.start + 1 : st.start;
     size_t len = st.kind == TOK_FSTRING ? st.len - 1 : st.len;
-    *is_literal = 1;
     char *msg = xmalloc(len + 1);
     strncpy(msg, text, len);
     msg[len] = 0;
@@ -112,7 +109,6 @@ static ASTNode *parse_check(ParserContext *ctx, Lexer *l, NodeType kind)
     ASTNode *cond = parse_expression(ctx, l);
 
     char *msg = NULL;
-    int is_literal = 0;
     ASTNode *msg_fstring = NULL;
     if (lexer_peek(l).kind == TOK_COMMA)
     {
@@ -120,11 +116,10 @@ static ASTNode *parse_check(ParserContext *ctx, Lexer *l, NodeType kind)
         Token st = lexer_next(l);
         if (st.kind == TOK_STRING || st.kind == TOK_FSTRING)
         {
-            msg = parse_check_message_string(ctx, st, &is_literal, &msg_fstring);
+            msg = parse_check_message_string(ctx, st, &msg_fstring);
         }
         else if (st.kind == TOK_IDENT)
         {
-            is_literal = 0;
             msg = xmalloc(st.len + 1);
             strncpy(msg, st.start, st.len);
             msg[st.len] = 0;
@@ -155,7 +150,6 @@ static ASTNode *parse_check(ParserContext *ctx, Lexer *l, NodeType kind)
     n->token = tk;
     n->assert_stmt.condition = cond;
     n->assert_stmt.message = msg;
-    n->assert_stmt.message_is_literal = is_literal;
     n->assert_stmt.message_fstring = msg_fstring;
     return n;
 }

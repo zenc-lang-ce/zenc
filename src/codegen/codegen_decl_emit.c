@@ -488,7 +488,7 @@ int emit_tests_and_runner(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, "#if %s\n", cur->cfg_condition);
             }
             EMIT(ctx, "static int _z_test_%d() {\n", test_count);
-            EMIT(ctx, "fprintf(stderr, \"  TEST: %s ... \");\n", cur->test_stmt.name);
+            EMIT(ctx, "fprintf(stderr, \"  TEST: %%s ... \", \"%s\");\n", cur->test_stmt.name);
             EMIT(ctx, "int _zc_before = _zc_test_failures;\n");
             int saved = ctx->cg.defer_count;
             Type *saved_ret = ctx->cg.current_func_ret_type_info;
