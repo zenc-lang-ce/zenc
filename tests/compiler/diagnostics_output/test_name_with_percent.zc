@@ -1,0 +1,16 @@
+// ARGS: run -q
+test "covers 100% of \"add\"" {
+    assert(1 + 2 == 3, "sum");
+}
+
+test "prints %s and %d" {
+    assert(2 + 2 == 4, "sum");
+}
+
+test "%% at the start, 50% at the end %" {
+    assert(1 == 2, "fails with %d in the message");
+}
+
+test "expect at 100%" {
+    expect(1 == 2, "expected %s, 100%");
+}
