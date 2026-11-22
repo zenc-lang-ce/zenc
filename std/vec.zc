@@ -308,7 +308,9 @@ impl Vec<T> {
         let new_len = self.len + other.len;
         self.grow_to_fit(new_len);
 
-        memcpy(self.data + self.len, other.data, other.len * sizeof(T));
+        if other.len > 0 {
+            memcpy(self.data + self.len, other.data, other.len * sizeof(T));
+        }
         self.len = new_len;
         other.forget();
     }
@@ -475,7 +477,7 @@ impl Vec<T> {
             self.clear();
             return;
         }
-        if (count == 1) {
+        if (count == 1 || self.len == 0) {
             return;
         }
         let original_len = self.len;
