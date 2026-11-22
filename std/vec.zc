@@ -388,6 +388,9 @@ impl Vec<T> {
     
     /// Reverses the Vec in place.
     fn reverse(self) {
+        if self.len < 2 {
+            return;
+        }
         let i: usize = 0;
         let j = self.len - 1;
         while i < j {
