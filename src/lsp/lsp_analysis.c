@@ -2082,6 +2082,14 @@ static void list_import_entries(ImportPathCompletion *c, const char *base, int s
         cJSON_AddNumberToObject(end, "line", c->line);
         cJSON_AddNumberToObject(end, "character", c->end_col);
         cJSON_AddStringToObject(edit, "newText", label);
+        if (is_dir)
+        {
+            // Accepting a directory asks for completion again, with what it holds: the `/` it
+            // inserts is not typed, and only a typed one triggers it.
+            cJSON *command = cJSON_AddObjectToObject(item, "command");
+            cJSON_AddStringToObject(command, "title", "Suggest");
+            cJSON_AddStringToObject(command, "command", "editor.action.triggerSuggest");
+        }
         cJSON_AddItemToArray(c->items, item);
     }
     closedir(d);

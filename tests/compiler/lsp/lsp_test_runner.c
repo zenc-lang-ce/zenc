@@ -2223,6 +2223,26 @@ static int completion_kind(int id, const char *path, int line, int character, co
     return kind;
 }
 
+// Whether the completion item `label` at (line, character) of `path` runs a command once accepted.
+static int completion_has_command(int id, const char *path, int line, int character,
+                                  const char *label)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    int has_command = 0;
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *item = cJSON_GetArrayItem(items, i);
+        cJSON *item_label = cJSON_GetObjectItem(item, "label");
+        if (cJSON_IsString(item_label) && strcmp(item_label->valuestring, label) == 0)
+        {
+            has_command = cJSON_GetObjectItem(item, "command") != NULL;
+        }
+    }
+    cJSON_Delete(response);
+    return has_command;
+}
+
 static void test_qualified_member_completion(void)
 {
     printf("Running test_qualified_member_completion...\n");
@@ -2518,6 +2538,11 @@ static void test_import_path_completion(void)
     {
         printf("Completion in `import \"imp_`: %s\n", labels);
         fail("In an import, the modules and directories next to the file, not the file itself");
+    }
+    if (!completion_has_command(1728, path, 0, 12, "imp_sub/") ||
+        completion_has_command(1729, path, 0, 12, "imp_a.zc"))
+    {
+        fail("Accepting a directory in an import asks for completion again; a module does not");
     }
     completion_labels(1721, path, 1, 16, "/", labels, sizeof(labels));
     if (strcmp(labels, "b.zc ") != 0)
