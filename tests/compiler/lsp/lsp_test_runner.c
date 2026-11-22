@@ -2223,6 +2223,26 @@ static int completion_kind(int id, const char *path, int line, int character, co
     return kind;
 }
 
+// Whether the completion item `label` at (line, character) of `path` runs a command once accepted.
+static int completion_has_command(int id, const char *path, int line, int character,
+                                  const char *label)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    int has_command = 0;
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *item = cJSON_GetArrayItem(items, i);
+        cJSON *item_label = cJSON_GetObjectItem(item, "label");
+        if (cJSON_IsString(item_label) && strcmp(item_label->valuestring, label) == 0)
+        {
+            has_command = cJSON_GetObjectItem(item, "command") != NULL;
+        }
+    }
+    cJSON_Delete(response);
+    return has_command;
+}
+
 static void test_qualified_member_completion(void)
 {
     printf("Running test_qualified_member_completion...\n");
@@ -2495,8 +2515,9 @@ static void test_import_path_completion(void)
 {
     printf("Running test_import_path_completion...\n");
     // In the string of an import, the directories and modules its path can name: next to the
-    // file, in a directory of it, and in the standard library. Not the file itself, and nothing
-    // of this after a `/` that divides.
+    // file, in a directory of it, and in the standard library. Not the file itself, nothing else
+    // of where the server runs or the compiler is, and nothing of this after a `/` that divides.
+    // `./` and `../` are the file's directory and its parent.
     mkdir(C_TEST_DIR, 0755);
     mkdir(C_TEST_DIR "/imp_sub", 0755);
     write_file(C_TEST_DIR "/imp_a.zc", "fn a() {}\n");
@@ -2506,7 +2527,10 @@ static void test_import_path_completion(void)
                         "import \"imp_sub/\n"        // Line 1
                         "import \"std/ve\n"          // Line 2
                         "import { a } from \"imp_\n" // Line 3
-                        "let x = 1 / 2;\n");         // Line 4
+                        "let x = 1 / 2;\n"           // Line 4
+                        "import \"./imp_\n"          // Line 5
+                        "import \"../zc_lsp_c/imp_\n" // Line 6
+                        "import \"sr\n");            // Line 7
     usleep(100000);
     char labels[8192];
     completion_labels(1720, path, 0, 12, NULL, labels, sizeof(labels));
@@ -2514,6 +2538,11 @@ static void test_import_path_completion(void)
     {
         printf("Completion in `import \"imp_`: %s\n", labels);
         fail("In an import, the modules and directories next to the file, not the file itself");
+    }
+    if (!completion_has_command(1728, path, 0, 12, "imp_sub/") ||
+        completion_has_command(1729, path, 0, 12, "imp_a.zc"))
+    {
+        fail("Accepting a directory in an import asks for completion again; a module does not");
     }
     completion_labels(1721, path, 1, 16, "/", labels, sizeof(labels));
     if (strcmp(labels, "b.zc ") != 0)
@@ -2538,6 +2567,25 @@ static void test_import_path_completion(void)
     {
         printf("Completion after a division: %s\n", labels);
         fail("A `/` outside an import offers nothing");
+    }
+    completion_labels(1725, path, 5, 14, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "imp_a.zc ") || strstr(labels, "std/"))
+    {
+        printf("Completion in `import \"./imp_`: %s\n", labels);
+        fail("`./` is the directory of the file only");
+    }
+    completion_labels(1726, path, 6, 24, NULL, labels, sizeof(labels));
+    if (!strstr(labels, "imp_a.zc "))
+    {
+        printf("Completion in `import \"../zc_lsp_c/imp_`: %s\n", labels);
+        fail("`../` is the parent of the file's directory");
+    }
+    // The server runs in the compiler's repository, whose src/ no program imports.
+    completion_labels(1727, path, 7, 10, NULL, labels, sizeof(labels));
+    if (strstr(labels, "src/"))
+    {
+        printf("Completion in `import \"sr`: %s\n", labels);
+        fail("Only the standard library comes from where the server runs or the compiler is");
     }
     printf("PASS: test_import_path_completion\n");
 }

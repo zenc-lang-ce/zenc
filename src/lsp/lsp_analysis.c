@@ -1949,13 +1949,17 @@ static const char *import_path_at(const char *text, int len, int *path_len)
     return text + quote + 1;
 }
 
-// What can follow the path being typed in an import: the directories (`nes/`) and the `.zc` and
-// `.h` files of the directory it names, in every directory the compiler looks for imports in.
+// What can follow the path being typed in an import: the directories (`sub/`) and the `.zc` and
+// `.h` files of the directory it names, where the compiler looks for it and the program means it:
+// the document's directory, the -I paths, and the standard library under `std/`.
 typedef struct
 {
     const char *dir;      // The typed path up to its last `/` (`std/`), or "".
     const char *partial;  // What follows it (`ve`).
     const char *own_path; // The file being edited, left out.
+    const char *doc_dir;  // Its directory, as z_import_search_dirs gives it.
+    int is_relative;      // The path starts with `./` or `../`: the document's directory only.
+    CompilerConfig *cfg;
     cJSON *items;
     int line;
     int start_col; // Where `partial` starts: what an item replaces.
@@ -1976,29 +1980,66 @@ static int import_item_listed(cJSON *items, const char *label)
     return 0;
 }
 
-static int list_import_dir(const char *base, void *data)
+// How completion uses a directory the compiler looks for imports in, for the path being typed.
+typedef enum
 {
-    ImportPathCompletion *c = data;
+    IMPORT_BASE_SKIPPED,  // Nothing from it.
+    IMPORT_BASE_LISTED,   // What it has under the typed path.
+    IMPORT_BASE_STD_ONLY, // Only its `std` directory.
+} ImportBaseUse;
+
+// Which directories count, and how: the document's, for `./` and `../` only that one; the -I
+// paths (the workspace root among them, which the server adds); and from where the compiler runs
+// (`.`), its root and the system paths, the standard library and nothing else of what they hold.
+static ImportBaseUse import_base_use(const ImportPathCompletion *c, const char *base)
+{
     // The compiler also finds a module of the standard library without its `std/` (in
     // `<root>/std`); programs write it with it, and it is offered under `std/`.
     size_t base_len = strlen(base);
     if (base_len >= 4 && strcmp(base + base_len - 4, "/std") == 0)
     {
-        return 0;
+        return IMPORT_BASE_SKIPPED;
     }
+    if (c->doc_dir && strcmp(base, c->doc_dir) == 0)
+    {
+        return IMPORT_BASE_LISTED;
+    }
+    if (c->is_relative)
+    {
+        return IMPORT_BASE_SKIPPED;
+    }
+    for (size_t i = 0; i < c->cfg->include_paths.length; i++)
+    {
+        if (strcmp(base, c->cfg->include_paths.data[i]) == 0)
+        {
+            return IMPORT_BASE_LISTED;
+        }
+    }
+    if (strncmp(c->dir, "std/", 4) == 0)
+    {
+        return IMPORT_BASE_LISTED;
+    }
+    return c->dir[0] ? IMPORT_BASE_SKIPPED : IMPORT_BASE_STD_ONLY;
+}
+
+// Adds the directories and the `.zc` and `.h` files of `base` + the typed path that start with
+// what is being typed, each once; `std_only` keeps only the directory `std`.
+static void list_import_entries(ImportPathCompletion *c, const char *base, int std_only)
+{
     char path[MAX_PATH_LEN];
     snprintf(path, sizeof(path), "%s/%s", base, c->dir);
     DIR *d = opendir(path);
     if (!d)
     {
-        return 0; // Every directory adds what it has: keep looking.
+        return;
     }
     size_t partial_len = strlen(c->partial);
     struct dirent *e;
     while ((e = readdir(d)) != NULL)
     {
         const char *name = e->d_name;
-        if (name[0] == '.' || strncmp(name, c->partial, partial_len) != 0)
+        if (name[0] == '.' || strncmp(name, c->partial, partial_len) != 0 ||
+            (std_only && strcmp(name, "std") != 0))
         {
             continue;
         }
@@ -2041,9 +2082,29 @@ static int list_import_dir(const char *base, void *data)
         cJSON_AddNumberToObject(end, "line", c->line);
         cJSON_AddNumberToObject(end, "character", c->end_col);
         cJSON_AddStringToObject(edit, "newText", label);
+        if (is_dir)
+        {
+            // Accepting a directory asks for completion again, with what it holds: the `/` it
+            // inserts is not typed, and only a typed one triggers it.
+            cJSON *command = cJSON_AddObjectToObject(item, "command");
+            cJSON_AddStringToObject(command, "title", "Suggest");
+            cJSON_AddStringToObject(command, "command", "editor.action.triggerSuggest");
+        }
         cJSON_AddItemToArray(c->items, item);
     }
     closedir(d);
+}
+
+// Visits a directory the compiler looks for imports in (z_import_search_dirs): every one adds
+// what it has, so the search goes on.
+static int complete_import_from(const char *base, void *data)
+{
+    ImportPathCompletion *c = data;
+    ImportBaseUse use = import_base_use(c, base);
+    if (use != IMPORT_BASE_SKIPPED)
+    {
+        list_import_entries(c, base, use == IMPORT_BASE_STD_ONLY);
+    }
     return 0;
 }
 
@@ -2087,17 +2148,28 @@ static cJSON *import_path_completion(ProjectFile *pf, int line, int col)
     snprintf(dir, sizeof(dir), "%.*s", slash ? (int)(slash - path + 1) : 0, path);
 
     char own[MAX_PATH_LEN];
+    char doc_dir[MAX_PATH_LEN];
+    snprintf(doc_dir, sizeof(doc_dir), "%s", pf->path);
+    char *doc_slash = strrchr(doc_dir, '/');
+    if (doc_slash)
+    {
+        *doc_slash = 0;
+    }
+    int is_relative = strncmp(path, "./", 2) == 0 || strncmp(path, "../", 3) == 0;
     ImportPathCompletion c = {dir,
                               partial,
                               realpath(pf->path, own) ? own : pf->path,
+                              doc_slash ? doc_dir : NULL,
+                              is_relative,
+                              g_project->ctx->config,
                               cJSON_CreateArray(),
                               line,
                               col - (int)strlen(partial),
                               col};
     // Every directory an import of this path may be found in, not only the first: a `std/` and
     // a directory of the program may both have what is being typed.
-    z_import_search_dirs(path[0] ? path : "x", pf->path, g_project->ctx->config, list_import_dir,
-                         &c);
+    z_import_search_dirs(path[0] ? path : "x", pf->path, g_project->ctx->config,
+                         complete_import_from, &c);
     return c.items;
 }
 
