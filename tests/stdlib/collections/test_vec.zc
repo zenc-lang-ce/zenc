@@ -165,6 +165,37 @@ test "Vec Utils (Reverse, Contains)" {
     assert(!v.contains(99), "Contains false");
 }
 
+test "Vec Reverse of short Vecs" {
+    let empty = Vec<int>::new();
+    empty.reverse();
+    assert(empty.len == 0, "Reverse empty");
+
+    let reserved = Vec<int>::with_capacity(4);
+    reserved.reverse();
+    assert(reserved.len == 0, "Reverse empty with capacity");
+
+    let cleared = Vec<int>::new();
+    cleared.push(5);
+    cleared.clear();
+    cleared.reverse();
+    assert(cleared.len == 0, "Reverse cleared");
+
+    let names = Vec<char*>::new();
+    names.reverse();
+    assert(names.len == 0, "Reverse empty of pointers");
+
+    let one = Vec<int>::new();
+    one.push(7);
+    one.reverse();
+    assert(one.len == 1 && one.get(0) == 7, "Reverse one");
+
+    let two = Vec<int>::new();
+    two.push(1);
+    two.push(2);
+    two.reverse();
+    assert(two.get(0) == 2 && two.get(1) == 1, "Reverse two");
+}
+
 test "Vec Iterator Combinators" {
     let v = Vec<int>::new();
     v.push(1);
