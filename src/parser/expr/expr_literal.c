@@ -4,6 +4,7 @@
 #include "expr_internal.h"
 #include "ast/ast.h"
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -438,14 +439,8 @@ ASTNode *parse_int_literal(ParserContext *ctx, Token t)
     unsigned long long val;
     char *endptr = NULL;
 
-    // Cap integer literal length to prevent overflow hangs (max safe decimal: 19 digits for
-    // ULLONG_MAX)
-    if (write_idx > 20)
-    {
-        val = 1048576;
-        endptr = s + write_idx;
-    }
-    else if (t.len > 2 && s[0] == '0' && (s[1] == 'b' || s[1] == 'B'))
+    errno = 0;
+    if (t.len > 2 && s[0] == '0' && (s[1] == 'b' || s[1] == 'B'))
     {
         val = strtoull(s + 2, &endptr, 2);
     }
@@ -460,6 +455,11 @@ ASTNode *parse_int_literal(ParserContext *ctx, Token t)
     else
     {
         val = strtoull(s, &endptr, 10);
+    }
+
+    if (errno == ERANGE)
+    {
+        zerror_at(t, "Integer literal does not fit in 64 bits");
     }
 
     // Validate and apply suffix
