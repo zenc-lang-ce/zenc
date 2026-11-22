@@ -1,0 +1,8 @@
+// EXPECT: FAIL
+// compiler/diagnostics: a hex literal with a suffix that does not fit in 64 bits is
+// an error.
+
+fn main() {
+    let x: u64 = 0x1_0000_0000_0000_0000u64;
+    printf("%lu\n", x);
+}

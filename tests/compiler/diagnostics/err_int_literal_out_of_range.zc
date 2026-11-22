@@ -1,0 +1,8 @@
+// EXPECT: FAIL
+// compiler/diagnostics: a decimal literal that does not fit in 64 bits is an error,
+// not the largest u64.
+
+fn main() {
+    let x: u64 = 99999999999999999999;
+    printf("%lu\n", x);
+}

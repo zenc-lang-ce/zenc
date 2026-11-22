@@ -1,0 +1,27 @@
+// language/types: an integer literal keeps its value however long its text is;
+// the prefix, the suffix, leading zeros and `_` are not digits of the value.
+
+test "decimal literal with a type suffix" {
+    let big: u64 = 1000000000000000000u64;
+    let max: u64 = 18446744073709551615u64;
+    let size: usize = 14695981039346656037usize;
+    expect(big == 1000000000000000000, "19 digits with u64 suffix should keep their value");
+    expect(max == 18446744073709551615, "u64 max with u64 suffix should keep its value");
+    expect(size == 14695981039346656037, "20 digits with usize suffix should keep their value");
+}
+
+test "binary, hex and octal literals with many digits" {
+    let bits = 0b1010101010101010101;
+    let padded = 0x00000000000000000001;
+    let wide: u64 = 0xFFFF_FFFF_FFFF_FFFFu64;
+    let oct: u64 = 0o1777777777777777777777;
+    expect(bits == 349525, "19 binary digits should be 349525");
+    expect(padded == 1, "hex with leading zeros should be 1");
+    expect(wide == 18446744073709551615, "16 hex digits with _ and u64 suffix should be u64 max");
+    expect(oct == 18446744073709551615, "22 octal digits should be u64 max");
+}
+
+test "underscores do not count as digits" {
+    let grouped: u64 = 1_000_000_000_000_000_000u64;
+    expect(grouped == 1000000000000000000, "10^18 written with _ should keep its value");
+}
