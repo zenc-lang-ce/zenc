@@ -312,7 +312,7 @@ impl Vec<T> {
             memcpy(self.data + self.len, other.data, other.len * sizeof(T));
         }
         self.len = new_len;
-        other.forget();
+        other.free();
     }
 
     /// Returns a copy of the item at `idx`.
