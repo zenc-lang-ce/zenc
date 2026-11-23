@@ -135,25 +135,37 @@ impl Map<V> {
 
         let hash = _map_hash_str(key);
         let idx = hash % self.cap;
+        let start_idx = idx;
+        let free_idx = self.cap;
 
+        // The key may sit behind a removed slot: search the whole chain before reusing one.
         while (true) {
-            if (!self.occupied[idx] || (self.occupied[idx] && !self.deleted[idx] && strcmp(self.keys[idx], key) == 0)) {
-                if (!self.occupied[idx]) {
-                    self.len = self.len + 1;
+            if (!self.occupied[idx]) {
+                if (free_idx == self.cap) {
+                    free_idx = idx;
                 }
-                
-                if (!self.occupied[idx] || self.deleted[idx]) {
-                    self.keys[idx] = strdup(key);
+                break;
+            }
+            if (self.deleted[idx]) {
+                if (free_idx == self.cap) {
+                    free_idx = idx;
                 }
-                
+            } else if (strcmp(self.keys[idx], key) == 0) {
                 self.vals[idx] = val;
-                self.occupied[idx] = true;
-                self.deleted[idx] = false;
                 return;
             }
-            
+
             idx = (idx + 1) % self.cap;
+            if (idx == start_idx) {
+                break;
+            }
         }
+
+        self.keys[free_idx] = strdup(key);
+        self.vals[free_idx] = val;
+        self.occupied[free_idx] = true;
+        self.deleted[free_idx] = false;
+        self.len = self.len + 1;
     }
 
     /// Returns the value for `key`, or `None`.
@@ -197,20 +209,24 @@ impl Map<V> {
         
         let hash = _map_hash_str(key);
         let idx = hash % self.cap;
-        
+        let start_idx = idx;
+
         while (true) {
             if (!self.occupied[idx]) {
                 return;
             }
-            
+
             if (!self.deleted[idx] && strcmp(self.keys[idx], key) == 0) {
                  self.deleted[idx] = true;
                  self.len = self.len - 1;
                  dealloc<char>(self.keys[idx]);
                  return;
             }
-            
+
             idx = (idx + 1) % self.cap;
+            if (idx == start_idx) {
+                return;
+            }
         }
     }
     
