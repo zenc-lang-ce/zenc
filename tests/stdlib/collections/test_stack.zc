@@ -62,3 +62,78 @@ test "Stack Clone" {
   v = stack.pop();
   assert(v.is_none(), "v should not have a valid value");
 }
+
+test "Stack Clone of an empty Stack" {
+  let empty = Stack<i32>::new();
+  let c = empty.clone();
+  assert(c.is_empty() && c.length() == 0, "clone of a new Stack is empty");
+  assert(c.data == NULL && c.cap == 0, "clone of a new Stack owns no storage");
+  assert(c.pop().is_none(), "pop on the clone of a new Stack");
+
+  c.push(7);
+  assert(c.length() == 1 && empty.is_empty(), "push on the clone leaves the original empty");
+  assert(c.pop().unwrap() == 7, "pop after push on the clone");
+
+  let again = c.clone();
+  assert(again.is_empty() && again.cap == 0, "clone of a Stack emptied by pop");
+}
+
+test "Stack Free resets the Stack" {
+  let s = Stack<i32>::new();
+  s.push(1);
+  s.push(2);
+  s.free();
+  assert(s.is_empty() && s.data == NULL && s.cap == 0, "free leaves an empty Stack");
+
+  s.free();
+  assert(s.is_empty() && s.cap == 0, "free twice");
+
+  let c = s.clone();
+  assert(c.is_empty() && c.data == NULL && c.cap == 0, "clone after free");
+
+  for i in 0..20 {
+    s.push(i);
+  }
+  assert(s.length() == 20, "push after free grows again");
+  for i in 0..20 {
+    assert(s.pop().unwrap() == 19 - i, "pop order after free");
+  }
+  assert(s.pop().is_none(), "pop after the last item");
+  assert(c.is_empty(), "clone made after free is not touched by the original");
+}
+
+test "Stack Clone after clear" {
+  let s = Stack<i32>::new();
+  s.push(5);
+  s.clear();
+  let c = s.clone();
+  assert(c.is_empty() && c.pop().is_none(), "clone of a cleared Stack");
+
+  s.push(6);
+  c.push(8);
+  assert(s.pop().unwrap() == 6 && c.pop().unwrap() == 8, "cleared Stack and its clone are separate");
+}
+
+test "Stack Clone of a grown Stack is independent" {
+  let s = Stack<i32>::new();
+  for i in 0..12 {
+    s.push(i * 10);
+  }
+  let c = s.clone();
+  assert(c.length() == 12, "clone keeps every item");
+
+  c.push(999);
+  assert(s.length() == 12 && c.length() == 13, "push on the clone");
+  assert(c.pop().unwrap() == 999, "pop the item pushed on the clone");
+
+  assert(s.pop().unwrap() == 110 && s.pop().unwrap() == 100, "pop on the original");
+  assert(c.length() == 12, "pop on the original leaves the clone");
+
+  let cc = c.clone();
+  c.free();
+  assert(cc.length() == 12, "free of a Stack leaves its clone");
+  for i in 0..12 {
+    assert(cc.pop().unwrap() == (11 - i) * 10, "pop order on a clone of a clone");
+  }
+  assert(cc.is_empty() && s.length() == 10, "originals after the clones are emptied");
+}
