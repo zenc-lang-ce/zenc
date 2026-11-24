@@ -9,6 +9,7 @@ let OTHER = Rate::Normal();
 def FIXED: Rate = Rate::Double;
 let TABLE: Rate[2] = [Rate::Normal, Rate::Double];
 let LATER: Speed = Speed::Fast;
+def LATER_FIXED: Speed = Speed::Fast;
 
 enum Speed { Slow, Fast }
 
@@ -18,5 +19,6 @@ test "a variant without payloads is a constant" {
     expect_eq((int)FIXED, 1, "a def");
     expect_eq((int)TABLE[1], 1, "an element of a global array");
     expect_eq((int)LATER, 1, "an enum declared further down");
+    expect_eq((int)LATER_FIXED, 1, "a def of an enum declared further down");
     expect(START == Rate::Double, "compared with the variant");
 }

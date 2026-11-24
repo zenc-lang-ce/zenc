@@ -28,6 +28,7 @@ Mainly a bug-fix release, with some improvements and new features.
 
 ### Fixes
 - `@derive` generates complete methods for types with many fields, long field names, or many enum variants.
+- The value of a `def` can name a declaration written further down, as a global `let` already could: `def TOP: Speed = Speed::Fast;` before `enum Speed` compiles.
 - A `%` in the name of a `test` or in the message of an `assert` or `expect` is printed as written, not read as a printf conversion [#410](https://github.com/zenc-lang-ce/zenc/issues/410).
 - Standard library:
   - `Map`: `put` reuses the slot of a removed key, and `remove` of a missing key stops after one pass over the table; with every slot used and removed, both looped forever [#431](https://github.com/zenc-lang-ce/zenc/issues/431). Growing the table moves each key to the new table; it copied every key again and leaked the previous copies [#432](https://github.com/zenc-lang-ce/zenc/issues/432). `val_at` panics with "Index out of bounds" for a slot past `capacity()`; it read past the table, or through a null pointer on an empty `Map` [#436](https://github.com/zenc-lang-ce/zenc/issues/436).
