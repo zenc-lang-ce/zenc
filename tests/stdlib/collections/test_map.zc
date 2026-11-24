@@ -191,3 +191,47 @@ test "Map growth keeps live keys and drops removed ones" {
     assert(count == 37, "iterator after growth");
     m.free();
 }
+
+test "Map keys stay readable through several growths" {
+    let m = Map<int>::new();
+    let buf: char[16];
+    for (let i = 0; i < 100; i = i + 1) {
+        sprintf(buf, "key-%d", i * 3);
+        m.put(buf, i);
+    }
+    sprintf(buf, "overwritten");
+    assert(m.capacity() >= 128, "the table grew several times");
+    let count = 0;
+    let expected: char[16];
+    for entry in m {
+        sprintf(expected, "key-%d", entry.val * 3);
+        assert(strcmp(entry.key, expected) == 0, "key of each entry after growth");
+        count = count + 1;
+    }
+    assert(count == 100, "every entry after growth");
+    m.free();
+}
+
+test "Map remove and put again after growth" {
+    let m = Map<int>::new();
+    let names: char*[3] = ["alpha", "beta", "gamma"];
+    let buf: char[24];
+    for (let i = 0; i < 30; i = i + 1) {
+        sprintf(buf, "%s/%d", names[i % 3], i);
+        m.put(buf, i);
+    }
+    for (let i = 0; i < 30; i = i + 1) {
+        sprintf(buf, "%s/%d", names[i % 3], i);
+        m.remove(buf);
+    }
+    assert(m.length() == 0, "every key removed after growth");
+    for (let i = 0; i < 30; i = i + 1) {
+        sprintf(buf, "%s/%d", names[i % 3], i);
+        m.put(buf, i * 10);
+    }
+    for (let i = 0; i < 30; i = i + 1) {
+        sprintf(buf, "%s/%d", names[i % 3], i);
+        assert(m.get(buf).unwrap() == i * 10, "value put again after growth");
+    }
+    m.free();
+}
