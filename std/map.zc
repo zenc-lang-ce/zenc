@@ -113,6 +113,7 @@ impl Map<V> {
         for (let i: usize = 0; i < old_cap; i = i + 1) {
             if (old_occupied[i] && !old_deleted[i]) {
                 self.put(old_keys[i], old_vals[i]);
+                dealloc<char>(old_keys[i]);
             }
         }
         
