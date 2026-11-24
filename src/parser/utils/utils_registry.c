@@ -839,6 +839,11 @@ void resolve_pending_constants(ParserContext *ctx)
             else
             {
                 set_def_value(p->def, value);
+                // The value named a `def` that had no type yet: it has its own now.
+                if (!p->expr->type_info || p->expr->type_info->kind == TYPE_UNKNOWN)
+                {
+                    p->expr->type_info = p->def->type_info;
+                }
             }
             p->done = 1;
             progress = 1;

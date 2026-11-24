@@ -1179,7 +1179,15 @@ void push_pending_body(ParserContext *ctx, PendingBody *pending);
 void check_unused_parameters(ParserContext *ctx, Scope *scope, const char *func_name);
 void parse_pending_bodies(ParserContext *ctx);
 /**
- * @brief Makes the value of the global `node`, at `start`, wait for the declarations.
+ * @brief Reads the value of the `def` `node` at `l`, and gives `symbol` its integer value and,
+ *        when none was written, its type. With `may_wait`, a value that cannot be computed yet
+ *        waits for the other constants (wait_for_constant).
+ */
+void read_def_value(ParserContext *ctx, Lexer *l, ASTNode *node, struct ZenSymbol *symbol,
+                    int may_wait);
+/**
+ * @brief Makes the value of the global `node` (a `let` or a `def`), at `start`, wait for the
+ *        declarations.
  */
 void wait_for_global_value(ParserContext *ctx, ASTNode *node, char *type, Lexer start);
 /**

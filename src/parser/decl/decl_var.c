@@ -244,9 +244,24 @@ void parse_pending_global_values(ParserContext *ctx)
     const char *saved_filename = ctx->current_filename;
     Scope *saved_scope = ctx->current_scope;
     ctx->current_scope = ctx->global_scope;
+    // The `def`s first: a value that names one reads it as its value.
+    for (PendingGlobalValue *p = in_order; p; p = p->next)
+    {
+        if (p->node->kind == NODE_CONST)
+        {
+            ctx->imports.current_module_prefix = p->module_prefix;
+            ctx->current_filename = p->filename;
+            Lexer l = p->start;
+            read_def_value(ctx, &l, p->node, p->symbol, 1);
+        }
+    }
     for (PendingGlobalValue *p = in_order; p; p = p->next)
     {
         ASTNode *node = p->node;
+        if (node->kind == NODE_CONST)
+        {
+            continue;
+        }
         ctx->imports.current_module_prefix = p->module_prefix;
         ctx->current_filename = p->filename;
         Lexer l = p->start;
