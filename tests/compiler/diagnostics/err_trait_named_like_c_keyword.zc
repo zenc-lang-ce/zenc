@@ -1,0 +1,10 @@
+// EXPECT: FAIL
+// compiler/diagnostics: a trait's name is written as it is in the generated C,
+// so it cannot be a keyword of C.
+
+trait register {
+    fn load(self) -> int;
+}
+
+fn main() {
+}

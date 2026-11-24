@@ -16,7 +16,7 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
 {
     lexer_next(l); // eat trait
     Token n = lexer_next(l);
-    check_identifier(n);
+    check_type_name(n);
     if (n.kind != TOK_IDENT)
     {
         zpanic_at(n, "Expected trait name");
@@ -25,6 +25,15 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
     char *name = xmalloc(n.len + 1);
     strncpy(name, n.start, n.len);
     name[n.len] = 0;
+    // A trait's name is written as it is in the generated code (`typedef struct Name`): it
+    // has no other C name, as a struct or an enum has (definition_link_name).
+    if (c_safe_name(name, ctx->config->use_cpp) != name)
+    {
+        char buf[MAX_SHORT_MSG_LEN];
+        snprintf(buf, sizeof(buf),
+                 "'%s' is a keyword of the generated code and cannot name a trait", name);
+        zpanic_at(n, "%s", buf);
+    }
 
     // Generics <T>. `register_generic` skips a name that is already a generic parameter: what
     // the trait registers is undone by restoring the count, not by subtracting what it declared.

@@ -1,0 +1,11 @@
+// EXPECT: FAIL
+// compiler/diagnostics: a struct cannot take the name of a built-in type:
+// where a type is read, `short` is the built-in one.
+
+struct short {
+    value: int;
+}
+
+fn main() {
+    let width = short{value: 2};
+}

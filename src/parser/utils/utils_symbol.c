@@ -385,7 +385,14 @@ char *definition_link_name(ParserContext *ctx, const char *link_name, const char
 const char *link_name_of(void *ctx, const char *name)
 {
     ASTNode *def = find_struct_def((ParserContext *)ctx, name);
-    return def ? def->link_name : NULL;
+    if (def)
+    {
+        return def->link_name;
+    }
+    // An alias has no @link_name: only the name that keeps it from being a keyword
+    return find_type_alias_node((ParserContext *)ctx, name)
+               ? definition_link_name((ParserContext *)ctx, NULL, name)
+               : NULL;
 }
 
 // Several enums may share a variant name (`Slot::None`, `Attribute::None`), so

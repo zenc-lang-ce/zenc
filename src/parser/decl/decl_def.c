@@ -141,6 +141,7 @@ ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_ex
         zpanic_at(n, "Expected identifier for type alias");
         return NULL;
     }
+    check_type_name(n);
 
     lexer_next(l); // consume '='
 

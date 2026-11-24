@@ -284,7 +284,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
             {
                 if (v->variant.payload)
                 {
-                    emit_c_decl(ctx, v->variant.payload, v->variant.name);
+                    emit_c_decl(ctx, v->variant.payload, c_name(ctx, v->variant.name));
                     EMIT(ctx, "; ");
                 }
                 v = v->next;
@@ -310,7 +310,8 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                             EMIT(ctx, "%s _res = {}; _res.tag = %s_Tag; ", final_name, vsym);
                             for (int j = 0; j < i; j++)
                             {
-                                EMIT(ctx, "_res.data.%s.v%d = _%d; ", v->variant.name, j, j);
+                                EMIT(ctx, "_res.data.%s.v%d = _%d; ", c_name(ctx, v->variant.name),
+                                     j, j);
                             }
                             emitter_dedent(&ctx->cg.emitter);
                             EMIT(ctx, "return _res; }\n");
@@ -318,7 +319,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                         else
                         {
                             EMIT(ctx, "return (%s){.tag=%s_Tag, .data.%s={", final_name, vsym,
-                                 v->variant.name);
+                                 c_name(ctx, v->variant.name));
                             for (int j = 0; j < i; j++)
                             {
                                 EMIT(ctx, ".v%d=_%d%s", j, j, (j == i - 1) ? "" : ", ");
@@ -336,12 +337,12 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                             EMIT(ctx,
                                  ") { %s _res = {}; _res.tag=%s_Tag; "
                                  "_res.data.%s=v; return _res; }\n",
-                                 final_name, vsym, v->variant.name);
+                                 final_name, vsym, c_name(ctx, v->variant.name));
                         }
                         else
                         {
                             EMIT(ctx, ") { return (%s){.tag=%s_Tag, .data.%s=v}; }\n", final_name,
-                                 vsym, v->variant.name);
+                                 vsym, c_name(ctx, v->variant.name));
                         }
                     }
                 }
