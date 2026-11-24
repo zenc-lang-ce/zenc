@@ -61,15 +61,15 @@ ASTNode *parse_test(ParserContext *ctx, Lexer *l)
     return n;
 }
 
-// The message of `assert`/`expect`. A string with `{...}` parts is interpolated
-// like any other string: it becomes an f-string node (*fstring, and NULL is
-// returned), emitted the way a message variable is (`"%s", expr`), so it is only
-// evaluated when the check fails.
+// The message of `assert`/`expect`. An f"..." with `{...}` parts becomes an
+// f-string node (*fstring, and NULL is returned), emitted the way a message
+// variable is (`"%s", expr`), so it is only evaluated when the check fails. A
+// "..." is its text, braces included.
 static char *parse_check_message_string(ParserContext *ctx, Token st, ASTNode **fstring)
 {
     char *content = token_get_string_content(st);
     int has_interpolation = 0;
-    for (const char *c = content; *c; c++)
+    for (const char *c = content; st.kind == TOK_FSTRING && *c; c++)
     {
         // `\u{...}` is a unicode escape, not an interpolation
         if (*c == '{' && !(c - content >= 2 && (c[-1] == 'u' || c[-1] == 'U') && c[-2] == '\\'))

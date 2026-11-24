@@ -1,0 +1,48 @@
+// language/string: only f"..." interpolates (RFC 0001), so the braces of a
+// plain "..." are text: `{name}` is not replaced and `{{` stays two braces. It
+// holds in a local, a global, an argument and a multi-line string.
+
+let shader = "void main() { }";
+let block = """
+fn hello() {
+    return;
+}
+""";
+let expected_block = r"""
+fn hello() {
+    return;
+}
+""";
+
+fn length_of(text: string) -> usize {
+    return strlen(text);
+}
+
+test "plain_string_keeps_a_name_in_braces" {
+    let n = 3;
+    let text = "value {n}";
+    expect(strcmp(text, r"value {n}") == 0, "{n} should stay as written in a plain string");
+    expect(n == 3, "n is only here to share its name with the text");
+}
+
+test "plain_string_keeps_doubled_braces" {
+    let text = "a {{b}} c";
+    expect(strcmp(text, r"a {{b}} c") == 0, "{{ and }} should stay doubled in a plain string");
+}
+
+test "plain_string_keeps_code_in_braces" {
+    expect(strcmp(shader, r"void main() { }") == 0, "a global should keep its braces");
+    expect(strcmp(block, expected_block) == 0, "a multi-line global should keep its braces");
+    let json = "{\"key\": [1, 2]}";
+    expect(strcmp(json, r"""{"key": [1, 2]}""") == 0, "text that is not an expression should compile");
+}
+
+test "plain_string_argument_keeps_its_braces" {
+    expect(length_of("{x}") == 3, "an argument should keep its braces");
+}
+
+test "fstring_still_interpolates" {
+    let n = 3;
+    let text = f"{{n}} = {n}";
+    expect(strcmp(text, r"{n} = 3") == 0, "f\"...\" should interpolate and unescape");
+}
