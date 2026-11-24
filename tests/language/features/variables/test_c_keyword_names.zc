@@ -94,10 +94,10 @@ test "aliases_named_like_c_keywords" {
 
 test "loops_captures_and_fstrings_named_like_c_keywords" {
     let total = 0;
-    for typedef in 0..3 {
-        total = total + typedef;
+    for double in 0..3 {
+        total = total + double;
     }
-    expect(total == 3, "a loop variable named typedef should count");
+    expect(total == 3, "a loop variable named double should count");
     let extern = 10;
     let add = fn[=](x: int) -> int { return x + extern; };
     expect(add(1) == 11, "a capture named extern should be read");
