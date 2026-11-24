@@ -291,8 +291,11 @@ impl Map<V> {
         return self.keys[idx];
     }
     
-    /// Returns the value at slot `idx`.
+    /// Returns the value at slot `idx`; panics if `idx` is not below `capacity()`.
     fn val_at(self, idx: usize) -> V {
+        if (idx >= self.cap) {
+            panic("Index out of bounds");
+        }
         return self.vals[idx];
     }
 
