@@ -7,6 +7,7 @@
 #include "constants.h"
 #include "ast/primitives.h"
 #include <ctype.h>
+#include <limits.h>
 #include "analysis/const_fold.h"
 
 static char *local_key(const char *site, const char *name)
@@ -803,7 +804,8 @@ int array_size_now(ParserContext *ctx, ASTNode *size_expr, int *size)
     return size_expr && !ctx->declarations_read ? 0 : -1;
 }
 
-void wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *array, ZenSymbol *def, Token token)
+PendingConstant *wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *array, ZenSymbol *def,
+                                   Token token)
 {
     PendingConstant *p = xcalloc(1, sizeof(PendingConstant));
     p->expr = expr;
@@ -814,6 +816,28 @@ void wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *array, ZenSymbol
     p->filename = ctx->current_filename;
     p->next = ctx->pending_constants;
     ctx->pending_constants = p;
+    return p;
+}
+
+// Gives the variant of `p` the value `value`, and the variants that count on from it theirs.
+static void set_variant_values(ParserContext *ctx, PendingConstant *p, long long value)
+{
+    if (value < INT_MIN || value + p->followers > INT_MAX)
+    {
+        zpanic_at(p->token, "Enum variant value %lld does not fit in an 'int'", value);
+        return;
+    }
+    ASTNode *variant = p->variant;
+    for (int i = 0; i <= p->followers && variant; i++, variant = variant->next)
+    {
+        variant->variant.tag_id = (int)value + i;
+        EnumVariantReg *reg = find_enum_variant_of(ctx, p->enum_name, variant->variant.name);
+        if (reg)
+        {
+            reg->tag_id = variant->variant.tag_id;
+            reg->tag_pending = 0;
+        }
+    }
 }
 
 void resolve_pending_constants(ParserContext *ctx)
@@ -836,6 +860,14 @@ void resolve_pending_constants(ParserContext *ctx)
             {
                 p->array->array_size = (int)value;
             }
+            else if (p->variant)
+            {
+                set_variant_values(ctx, p, value);
+            }
+            else if (p->is_macro)
+            {
+                define_macro_constant(ctx, p->token, value);
+            }
             else
             {
                 set_def_value(p->def, value);
@@ -849,7 +881,8 @@ void resolve_pending_constants(ParserContext *ctx)
             progress = 1;
         }
     }
-    // A `def` with another value (a float, a string) has no integer one; an array size must.
+    // A `def` or a `#define` with another value (a float, a string) has no integer one; an array
+    // size and the value of a variant must.
     for (PendingConstant *p = ctx->pending_constants; p; p = p->next)
     {
         if (!p->done && p->array)
@@ -857,6 +890,10 @@ void resolve_pending_constants(ParserContext *ctx)
             zpanic_at(p->token, ctx->config->misra_mode
                                     ? "MISRA Rule 18.8"
                                     : "Array size must be a known compile-time constant integer");
+        }
+        else if (!p->done && p->variant)
+        {
+            zpanic_at(p->token, "Enum variant value must be a constant integer");
         }
     }
     ctx->pending_constants = NULL;

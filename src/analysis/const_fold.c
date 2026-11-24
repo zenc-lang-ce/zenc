@@ -144,7 +144,7 @@ int eval_const_int_expr(ASTNode *node, ParserContext *ctx, long long *out_val)
             variant->member
                 ? find_enum_variant_of(ctx, type_def_name(variant->owner), variant->member)
                 : find_enum_variant(ctx, node->var_ref.name);
-        if (ev)
+        if (ev && !ev->tag_pending)
         {
             *out_val = (long long)ev->tag_id;
             return 1;

@@ -214,6 +214,7 @@ typedef struct EnumVariantReg
     char *enum_name;    ///< Name of the enum.
     char *variant_name; ///< Name of the variant.
     int tag_id;         ///< Integration tag value.
+    int tag_pending; ///< The value waits for a constant (PendingConstant): `tag_id` is not it yet.
     struct EnumVariantReg *next;
 } EnumVariantReg;
 
@@ -701,15 +702,19 @@ typedef struct PendingTypeName
 } PendingTypeName;
 
 /**
- * @brief A constant read while the declarations are that names one not declared yet: the size of
- *        an array type, or the value of a `def`. It is computed once every declaration is read,
- *        first in the round (resolve_pending_constants).
+ * @brief A constant read while the declarations are that names one without a value yet: the size
+ *        of an array type, the value of a `def`, of an enum variant or of a `#define`. It is
+ *        computed once every declaration is read, first in the round (resolve_pending_constants).
  */
 typedef struct PendingConstant
 {
     ASTNode *expr;         ///< The expression, as read.
-    Type *array;           ///< The array type whose size it is; NULL for a `def`.
-    struct ZenSymbol *def; ///< The `def`'s symbol; NULL for an array size.
+    Type *array;           ///< The array type whose size it is, or NULL.
+    struct ZenSymbol *def; ///< The `def`'s symbol, or NULL.
+    ASTNode *variant;      ///< The enum variant whose value it is, or NULL.
+    const char *enum_name; ///< The C name of the variant's enum.
+    int followers;         ///< The variants after `variant` that count on from its value.
+    int is_macro;          ///< The value of the `#define` named by `token`.
     Token token;           ///< Where it is written.
     char *module_prefix;   ///< The module it was read in.
     const char *filename;  ///< The file it was read in.
@@ -1411,7 +1416,12 @@ void register_plugin(ParserContext *ctx, const char *name, const char *alias);
 void register_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
                                const char *source_module, const char *source_path);
 void register_deprecated_func(ParserContext *ctx, const char *name, const char *replacement);
-void try_parse_macro_const(ParserContext *ctx, const char *name);
+/**
+ * @brief Reads the `#define` in `content` and, when its value is a constant integer, declares its
+ *        name as a constant. With `may_wait`, a value that cannot be computed yet waits for the
+ *        other constants (wait_for_constant).
+ */
+void try_parse_macro_const(ParserContext *ctx, const char *content, int may_wait);
 void parser_audit_preprocessor(ParserContext *ctx, Token t);
 char *normalize_raw_content(const char *content);
 char *parse_condition_raw(ParserContext *ctx, Lexer *l);
@@ -1470,10 +1480,15 @@ int type_names_pending(ParserContext *ctx, Type *t);
 int array_size_now(ParserContext *ctx, ASTNode *size_expr, int *size);
 /**
  * @brief Makes the size of `array`, or the value of the `def` whose symbol is `def`, wait for
- *        the declarations: `expr` is computed then (resolve_pending_constants).
+ *        the declarations: `expr` is computed then (resolve_pending_constants). With neither,
+ *        the caller says what waits in the PendingConstant it gets (a variant, a `#define`).
  */
-void wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *array, struct ZenSymbol *def,
-                       Token token);
+struct PendingConstant *wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *array,
+                                          struct ZenSymbol *def, Token token);
+/**
+ * @brief Declares the `#define` `name` as a constant of value `value`, unless the name is taken.
+ */
+void define_macro_constant(ParserContext *ctx, Token name, long long value);
 /**
  * @brief Computes the constants that waited for the declarations, each in its module, in passes
  *        until no more can be (a `def` may name another that waits), and reports an array size

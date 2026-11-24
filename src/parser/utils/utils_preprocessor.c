@@ -65,7 +65,7 @@ void parser_audit_preprocessor(ParserContext *ctx, Token tok)
         char *content = xmalloc(tok.len + 1);
         strncpy(content, tok.start, tok.len);
         content[tok.len] = 0;
-        try_parse_macro_const(ctx, content);
+        try_parse_macro_const(ctx, content, 1);
         zfree(content);
     }
     else if (strncmp(p, "include", 7) == 0)
@@ -197,7 +197,7 @@ void parser_audit_preprocessor(ParserContext *ctx, Token tok)
     }
 }
 
-void try_parse_macro_const(ParserContext *ctx, const char *content)
+void try_parse_macro_const(ParserContext *ctx, const char *content, int may_wait)
 {
     CompilerConfig *cfg = &ctx->compiler->config;
     Lexer l;
@@ -481,26 +481,33 @@ void try_parse_macro_const(ParserContext *ctx, const char *content)
         return;
     }
 
+    // A value that names a constant without a value yet (a `def` read further down, or whose own
+    // value waits) is computed once every declaration is read (resolve_pending_constants).
     long long val;
     if (eval_const_int_expr(expr, ctx, &val))
     {
-        char *n = token_strdup(name);
+        define_macro_constant(ctx, name, val);
+    }
+    else if (may_wait && !ctx->declarations_read)
+    {
+        wait_for_constant(ctx, expr, NULL, NULL, name)->is_macro = 1;
+    }
+}
 
-        ZenSymbol *existing = find_symbol_entry(ctx, n);
-        if (!existing)
-        {
-            add_symbol_with_token(ctx, n, type_new(TYPE_I32), name, 0);
-            ZenSymbol *sym = find_symbol_entry(ctx, n);
-            if (sym)
-            {
-                sym->is_const_value = 1;
-                sym->const_int_val = val;
-                sym->is_def = 1;
-            }
-        }
-        else
-        {
-            zfree(n);
-        }
+void define_macro_constant(ParserContext *ctx, Token name, long long value)
+{
+    char *n = token_strdup(name);
+    if (find_symbol_entry(ctx, n))
+    {
+        zfree(n);
+        return;
+    }
+    add_symbol_with_token(ctx, n, type_new(TYPE_I32), name, 0);
+    ZenSymbol *sym = find_symbol_entry(ctx, n);
+    if (sym)
+    {
+        sym->is_const_value = 1;
+        sym->const_int_val = value;
+        sym->is_def = 1;
     }
 }
