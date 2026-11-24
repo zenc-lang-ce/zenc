@@ -235,3 +235,26 @@ test "Map remove and put again after growth" {
     }
     m.free();
 }
+
+test "Map put of a key the Map owns when the table grows" {
+    let m = Map<int>::new();
+    let buf: char[16];
+    for (let i = 0; i < 6; i = i + 1) {
+        sprintf(buf, "own-%d", i);
+        m.put(buf, i);
+    }
+    let k: char* = NULL;
+    for (let i: usize = 0; i < m.capacity(); i = i + 1) {
+        if (m.is_slot_occupied(i)) {
+            k = m.key_at(i);
+            break;
+        }
+    }
+    let before = m.get(k).unwrap();
+    m.put(k, 100);
+    assert(m.capacity() > 8, "the put grew the table");
+    assert(m.length() == 6, "the put overwrote, it did not add");
+    sprintf(buf, "own-%d", before);
+    assert(m.get(buf).unwrap() == 100, "the overwritten value");
+    m.free();
+}
