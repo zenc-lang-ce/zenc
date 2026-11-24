@@ -176,7 +176,8 @@ static void collect_impl_trait(ParserContext *ctx, ASTNode *node)
     }
 }
 
-void collect_declaration(ParserContext *ctx, ASTNode *node)
+// Registers the declaration `node` at once.
+static void register_collected(ParserContext *ctx, ASTNode *node)
 {
     switch (node->kind)
     {
@@ -206,4 +207,47 @@ void collect_declaration(ParserContext *ctx, ASTNode *node)
     default:
         break;
     }
+}
+
+void collect_declaration(ParserContext *ctx, ASTNode *node)
+{
+    if (ctx->declarations_read)
+    {
+        register_collected(ctx, node);
+        return;
+    }
+    PendingCollection *p = xcalloc(1, sizeof(PendingCollection));
+    p->node = node;
+    p->scope = ctx->current_scope;
+    p->module_prefix = ctx->imports.current_module_prefix;
+    p->filename = ctx->current_filename;
+    if (ctx->pending_collections_tail)
+    {
+        ctx->pending_collections_tail->next = p;
+    }
+    else
+    {
+        ctx->pending_collections = p;
+    }
+    ctx->pending_collections_tail = p;
+}
+
+void collect_pending_declarations(ParserContext *ctx)
+{
+    PendingCollection *pending = ctx->pending_collections;
+    ctx->pending_collections = NULL;
+    ctx->pending_collections_tail = NULL;
+    Scope *saved_scope = ctx->current_scope;
+    char *saved_prefix = ctx->imports.current_module_prefix;
+    const char *saved_filename = ctx->current_filename;
+    for (PendingCollection *p = pending; p; p = p->next)
+    {
+        ctx->current_scope = p->scope;
+        ctx->imports.current_module_prefix = p->module_prefix;
+        ctx->current_filename = p->filename;
+        register_collected(ctx, p->node);
+    }
+    ctx->current_scope = saved_scope;
+    ctx->imports.current_module_prefix = saved_prefix;
+    ctx->current_filename = saved_filename;
 }
