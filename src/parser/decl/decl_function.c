@@ -80,13 +80,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     lexer_next(l);
     Token name_tok = lexer_next(l);
     check_reserved_keyword(name_tok);
-    // Methods are emitted with a prefix (`Type__default`) and extern functions
-    // keep their C name, so only free functions may not be named like a C
-    // keyword.
-    if (!ctx->current_impl_target && !is_extern)
-    {
-        check_c_identifier(name_tok);
-    }
     char *name = token_strdup(name_tok);
 
     char **gen_params = NULL;

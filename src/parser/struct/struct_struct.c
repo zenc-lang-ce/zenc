@@ -178,7 +178,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     // registers is undone by restoring the count, not by subtracting what it declared.
     int generics_before = ctx->known_generics_count;
     Token n = lexer_next(l);
-    check_identifier(n);
+    check_type_name(n);
     char *name = token_strdup(n);
     Token name_token = n;
 

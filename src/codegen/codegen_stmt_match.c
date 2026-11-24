@@ -323,7 +323,8 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                 }
                 else
                 {
-                    const char *v = case_variant(c);
+                    // The payload's field in the enum's union, as its declaration names it
+                    const char *v = c_name(ctx, case_variant(c));
 
                     if (c->match_case.binding_count > 1)
                     {

@@ -1,0 +1,106 @@
+// language/features/variables: the keywords of C that Zen C does not reserve
+// (`short`, `double`, `register`, `switch`, `default`, `int`...) are valid
+// names: codegen writes them under another name, in C and with --cpp.
+
+struct Sample {
+    short: int;
+    double: int;
+}
+
+struct register {
+    value: int;
+}
+
+enum Width {
+    short(int),
+    long(int, int),
+    default
+}
+
+alias typedef = u8;
+opaque alias extern = int;
+
+fn tag(value: int) -> extern {
+    return (extern)value;
+}
+
+fn untag(value: extern) -> int {
+    return (int)value;
+}
+
+let unsigned: int = 3;
+def signed = 4;
+
+fn switch(case: int, auto: int) -> int {
+    return case - auto;
+}
+
+fn inline() -> int {
+    return 7;
+}
+
+impl Sample {
+    fn sum(self, float: int) -> int {
+        return self.short + self.double + float;
+    }
+}
+
+fn bits(width: Width) -> int {
+    match width {
+        Width::short(char) => { return char; },
+        Width::long(int, void) => { return int + void; },
+        Width::default => { return 0; }
+    }
+    return 0;
+}
+
+test "locals_parameters_and_functions_named_like_c_keywords" {
+    let short = 1;
+    let int = 2;
+    expect(short + int == 3, "locals named short and int should hold their values");
+    expect(switch(5, 2) == 3, "parameters named case and auto should hold their values");
+    expect(inline() == 7, "a function named inline should be callable");
+    expect(unsigned + signed == 7, "a global and a constant should keep their values");
+}
+
+test "fields_and_types_named_like_c_keywords" {
+    let sample = Sample{short: 1, double: 2};
+    expect(sample.short + sample.double == 3, "fields named short and double should be read");
+    expect(sample.sum(4) == 7, "a method's parameter named float should hold its value");
+    let slot = register{value: 5};
+    expect(slot.value == 5, "a struct named register should be built");
+}
+
+test "variant_payloads_named_like_c_keywords" {
+    expect(bits(Width::short(16)) == 16, "a variant named short should give its payload");
+    expect(bits(Width::long(32, 32)) == 64, "a variant named long should give both payloads");
+    expect(bits(Width::default()) == 0, "a variant named default should match");
+}
+
+test "a_name_and_the_type_of_the_same_spelling" {
+    let short: short = 3;
+    let long: long = (long)short + 1;
+    expect(long == 4, "a variable named as its type should hold its value");
+}
+
+test "aliases_named_like_c_keywords" {
+    let small: typedef = 200;
+    let pair: typedef[2] = [1, 2];
+    let cast = (typedef)3;
+    expect(small == 200, "a variable of an alias named typedef should hold its value");
+    expect(pair[1] + cast == 5, "an array and a cast of that alias should work");
+    expect(untag(tag(7)) == 7, "an opaque alias named extern should go through functions");
+}
+
+test "loops_captures_and_fstrings_named_like_c_keywords" {
+    let total = 0;
+    for typedef in 0..3 {
+        total = total + typedef;
+    }
+    expect(total == 3, "a loop variable named typedef should count");
+    let extern = 10;
+    let add = fn[=](x: int) -> int { return x + extern; };
+    expect(add(1) == 11, "a capture named extern should be read");
+    let text = f"{extern}";
+    expect(strcmp(text, "10") == 0, "an f-string should read a variable named extern");
+}

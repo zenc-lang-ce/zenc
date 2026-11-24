@@ -818,11 +818,6 @@ void report_not_a_field(Lexer *l, Token t);
 
 // C reserved word warnings
 
-/**
- * @brief Checks if a name is a C reserved word.
- */
-int is_c_reserved_word(const char *name);
-
 // ZenSymbol table
 
 /**
@@ -1091,7 +1086,8 @@ int is_reserved_keyword(Token t);
  */
 void check_identifier(Token t);
 void check_reserved_keyword(Token t);
-void check_c_identifier(Token t);
+/** @brief The same for the name of a struct, enum, trait or alias: not a built-in type's either. */
+void check_type_name(Token t);
 
 /**
  * @brief Main loop to parse top-level nodes in a file.

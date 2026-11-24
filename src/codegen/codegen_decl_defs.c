@@ -103,7 +103,7 @@ void emit_includes_and_aliases(ParserContext *ctx, ASTNode *node, VisitedModules
 static void emit_alias_typedef(ParserContext *ctx, Type *type, const char *alias)
 {
     EMIT(ctx, "typedef ");
-    emit_c_decl(ctx, type, alias);
+    emit_c_decl(ctx, type, c_name(ctx, alias));
     EMIT(ctx, ";\n");
 }
 

@@ -1,0 +1,8 @@
+// EXPECT: FAIL
+// compiler/diagnostics: an alias cannot take the name of a built-in type:
+// where a type is read, `i32` is the built-in one.
+
+alias i32 = u8;
+
+fn main() {
+}

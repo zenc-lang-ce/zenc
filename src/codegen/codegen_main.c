@@ -479,7 +479,7 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
                         continue;
                     }
                     char lvalue[MAX_SHORT_MSG_LEN];
-                    snprintf(lvalue, sizeof(lvalue), "self->data.%s", v->variant.name);
+                    snprintf(lvalue, sizeof(lvalue), "self->data.%s", c_name(ctx, v->variant.name));
                     EMIT(ctx, "    case %s_Tag: %s break;\n",
                          mangle_variant_symbol(struct_c_type(s), v->variant.name),
                          drop_value_stmt(v->variant.payload, lvalue, 0));
