@@ -258,3 +258,29 @@ test "Map put of a key the Map owns when the table grows" {
     assert(m.get(buf).unwrap() == 100, "the overwritten value");
     m.free();
 }
+
+struct SlotPoint {
+    x: int;
+    y: int;
+}
+
+test "Map val_at reads every slot up to the last one" {
+    let m = Map<SlotPoint>::new();
+    let buf: char[16];
+    for (let i = 0; i < 20; i = i + 1) {
+        sprintf(buf, "p%d", i);
+        m.put(buf, SlotPoint { x: i, y: i * 2 });
+    }
+    let live = 0;
+    for (let i: usize = 0; i < m.capacity(); i = i + 1) {
+        let p = m.val_at(i);
+        if (m.is_slot_occupied(i)) {
+            let q = m.get(m.key_at(i)).unwrap();
+            assert(p.x == q.x && p.y == q.y, "val_at of a live slot agrees with get");
+            assert(p.y == p.x * 2, "val_at returns the stored value");
+            live = live + 1;
+        }
+    }
+    assert(live == 20, "every live slot read through val_at");
+    m.free();
+}

@@ -1073,9 +1073,6 @@ char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out
  */
 ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *content);
 
-/** @brief Rejects a plain "..." that interpolates or escapes braces (RFC 0001: only f"..."). */
-void reject_implicit_interpolation(ParserContext *ctx, Token t, const char *content);
-
 /**
  * @brief Checks if a token is a reserved keyword.
  */
