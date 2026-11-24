@@ -44,7 +44,7 @@ UTEST(lambda_captures, a_variable_used_in_an_fstring_expression)
     ASTNode *lambda =
         first_lambda(parse_source("fn main() {\n"
                                   "    let k = 7;\n"
-                                  "    let f = fn(x: int) -> int { let s = \"{k}\"; return x; };\n"
+                                  "    let f = fn(x: int) -> int { let s = f\"{k}\"; return x; };\n"
                                   "}\n"));
     ASSERT_TRUE(lambda != NULL);
     ASSERT_TRUE(captures(lambda, "k"));

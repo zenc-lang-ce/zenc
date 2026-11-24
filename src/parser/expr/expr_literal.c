@@ -645,28 +645,6 @@ static int string_has_interpolated_expr(const char *s)
     return 0;
 }
 
-// RFC 0001: only f"..." interpolates. For one release a plain "..." that relies on the old
-// meaning does not compile: its `{expr}` would interpolate and its `{{` / `}}` would mean
-// one brace. Called where those are turned into code or text, so `}}` alone in a value
-// (left as is there) is not an error.
-void reject_implicit_interpolation(ParserContext *ctx, Token t, const char *content)
-{
-    if (ctx->is_speculative || t.kind != TOK_STRING)
-    {
-        return;
-    }
-    if (string_has_interpolated_expr(content))
-    {
-        const char *hints[] = {"add the 'f' prefix to interpolate: f\"...\"", NULL};
-        zerror_with_hints(t, "only f\"...\" strings interpolate", hints);
-    }
-    else if (strstr(content, "{{") || strstr(content, "}}"))
-    {
-        const char *hints[] = {"add the 'f' prefix to keep them as escapes: f\"...\"", NULL};
-        zerror_with_hints(t, "'{{' and '}}' only escape braces in f\"...\" strings", hints);
-    }
-}
-
 // `{{` -> `{` and `}}` -> `}`, as interpolation does for literal text.
 static char *unescape_string_braces(const char *s)
 {
@@ -689,83 +667,7 @@ ASTNode *parse_string_literal(ParserContext *ctx, Token t)
     char *content = token_get_string_content(t);
     int str_len = (int)strlen(content);
 
-    // Check for implicit interpolation
-    int has_interpolation = 0;
-    for (int i = 0; i < str_len; i++)
-    {
-        if (content[i] == '{')
-        {
-            // Ignore if part of \u{ or \U{
-            if (i >= 2 && (content[i - 1] == 'u' || content[i - 1] == 'U') &&
-                content[i - 2] == '\\')
-            {
-                continue;
-            }
-            has_interpolation = 1;
-            break;
-        }
-    }
-
-    // Only escaped braces (`{{`, `}}`) and no `{expr}`: a plain literal with the
-    // braces unescaped, so it also works where a statement expression cannot
-    // (a global initializer).
-    if (has_interpolation && !string_has_interpolated_expr(content))
-    {
-        reject_implicit_interpolation(ctx, t, content);
-        char *unescaped = unescape_string_braces(content);
-        zfree(content);
-        content = unescaped;
-        str_len = (int)strlen(content);
-        has_interpolation = 0;
-    }
-
-    if (has_interpolation)
-    {
-        ASTNode *node = parse_fstring_parts(ctx, t, content);
-        if (!node)
-        {
-            zfree(content);
-            return ast_create(NODE_ERRONEOUS);
-        }
-
-        // Rule 4.1 check also for interpolated strings (though rarer)
-        if (ctx->config->misra_mode)
-        {
-            for (int i = 0; i < str_len; i++)
-            {
-                if (content[i] == '\\' && i + 1 < str_len)
-                {
-
-                    // Hex
-                    if (content[i + 1] == 'x')
-                    {
-                        if (i + 3 >= str_len)
-                        {
-                            warn_misra_violation(t, "MISRA Rule 4.1: Octal/hexadecimal escape "
-                                                    "sequences shall not be used");
-                        }
-                        i += 2;
-                        continue;
-                    }
-
-                    // Octal (starts with \0)
-                    if (content[i + 1] == '0')
-                    {
-                        warn_misra_violation(
-                            t,
-                            "MISRA Rule 4.1: Octal/hexadecimal escape sequences shall not be used");
-                    }
-                    i++;
-                }
-            }
-        }
-
-        zfree(content);
-        return node;
-    }
-
-    // Plain string literal (no interpolation)
-
+    // A "..." is its text: only f"..." interpolates (RFC 0001), so braces mean nothing here
     if (ctx->config->misra_mode)
     {
         for (int i = 0; i < str_len; i++)
@@ -1016,7 +918,6 @@ static ASTNode *fstring_expr_part(ParserContext *ctx, Token srctoken, char *brac
 
 ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *content)
 {
-    reject_implicit_interpolation(ctx, srctoken, content);
     int saved_silent = ctx->silent_warnings;
     ctx->silent_warnings = 1;
 
@@ -1095,7 +996,7 @@ ASTNode *parse_fstring_literal(ParserContext *ctx, Token t)
     // Without a `{expr}` (only escaped braces, or none) there is nothing to build at run
     // time: a plain C literal, so it also works where a statement expression cannot (a global
     // initializer). Built here and not by parse_string_literal: in an f"..." `{{` and `}}`
-    // always mean one brace, while a "..." used as a value leaves a `}}` alone.
+    // always mean one brace, while a "..." keeps its braces as written.
     if (!string_has_interpolated_expr(content))
     {
         char *unescaped = unescape_string_braces(content);
