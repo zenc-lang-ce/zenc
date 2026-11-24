@@ -1,0 +1,286 @@
+// stdlib: test_map
+import "std/io.zc"
+import "std/map.zc"
+
+// A key whose slot in a table of `cap` slots is the slot of `base`, other than `base`.
+fn colliding_key(base: char*, cap: usize, buf: char*) {
+    let want = _map_hash_str(base) % cap;
+    for (let i = 0; i < 100000; i = i + 1) {
+        sprintf(buf, "c%d", i);
+        if (_map_hash_str(buf) % cap == want && strcmp(buf, base) != 0) {
+            return;
+        }
+    }
+    assert(false, "no colliding key found");
+}
+
+test "Map put and remove of new keys reuse removed slots" {
+    let m = Map<int>::new();
+    let buf: char[16];
+    for (let i = 0; i < 100; i = i + 1) {
+        sprintf(buf, "k%d", i);
+        m.put(buf, i);
+        assert(m.length() == 1 && m.get(buf).unwrap() == i, "put after removes");
+        m.remove(buf);
+        assert(m.length() == 0 && !m.contains(buf), "remove after put");
+    }
+    assert(m.capacity() == 8, "removed slots do not grow the table");
+    m.free();
+}
+
+test "Map lookups of missing keys in a table full of removed slots" {
+    let m = Map<int>::new();
+    let buf: char[16];
+    for (let i = 0; i < 8; i = i + 1) {
+        sprintf(buf, "k%d", i);
+        m.put(buf, i);
+        m.remove(buf);
+    }
+    m.remove("missing");
+    assert(!m.contains("missing") && m.get("missing").is_none(), "missing key");
+    assert(m.length() == 0, "length after removes");
+    m.free();
+}
+
+test "Map put of a key behind a removed slot overwrites it" {
+    let m = Map<int>::new();
+    m.put("a", 1);
+    let b: char[16];
+    colliding_key("a", m.capacity(), b);
+    m.put(b, 2);
+    m.remove("a");
+
+    m.put(b, 3);
+    assert(m.length() == 1 && m.get(b).unwrap() == 3, "overwrite behind a removed slot");
+    m.remove(b);
+    assert(m.length() == 0 && !m.contains(b), "no second copy of the key");
+
+    m.put("a", 4);
+    assert(m.length() == 1 && m.get("a").unwrap() == 4, "put into the removed slot");
+    m.free();
+}
+
+test "Map mixed puts, overwrites and removes" {
+    let m = Map<int>::new();
+    let buf: char[16];
+    for (let i = 0; i < 50; i = i + 1) {
+        sprintf(buf, "k%d", i);
+        m.put(buf, i);
+    }
+    for (let i = 0; i < 50; i = i + 2) {
+        sprintf(buf, "k%d", i);
+        m.remove(buf);
+    }
+    for (let i = 0; i < 50; i = i + 1) {
+        sprintf(buf, "k%d", i);
+        m.put(buf, i * 10);
+    }
+    assert(m.length() == 50, "every key once");
+    for (let i = 0; i < 50; i = i + 1) {
+        sprintf(buf, "k%d", i);
+        assert(m.get(buf).unwrap() == i * 10, "latest value of every key");
+    }
+
+    let count = 0;
+    for entry in m {
+        count = count + 1;
+    }
+    assert(count == 50, "the iterator sees every key once");
+
+    m.free();
+    assert(m.length() == 0 && m.capacity() == 0, "free");
+    m.put("again", 1);
+    assert(m.length() == 1 && m.get("again").unwrap() == 1, "put after free");
+    m.free();
+}
+
+test "Map operations on an empty Map" {
+    let m = Map<int>::new();
+    assert(m.length() == 0 && m.is_empty() && m.capacity() == 0, "new Map");
+    assert(m.get("x").is_none() && !m.contains("x"), "lookup in a new Map");
+    m.remove("x");
+    assert(m.length() == 0, "remove in a new Map");
+    assert(!m.is_slot_occupied(0) && m.key_at(0) == NULL, "slot of a new Map");
+    let count = 0;
+    for entry in m {
+        count = count + 1;
+    }
+    assert(count == 0, "iterator of a new Map");
+}
+
+test "Map overwrite, remove twice and put again" {
+    let m = Map<int>::new();
+    m.put("a", 1);
+    m.put("a", 2);
+    assert(m.length() == 1 && m.get("a").unwrap() == 2, "overwrite keeps one entry");
+
+    m.remove("a");
+    m.remove("a");
+    assert(m.length() == 0 && m.is_empty() && !m.contains("a"), "remove twice");
+
+    m.put("a", 3);
+    assert(m.length() == 1 && !m.is_empty() && m.get("a").unwrap() == 3, "put after remove");
+    m.free();
+}
+
+test "Map slots and iterator agree after removed slots are reused" {
+    let m = Map<int>::new();
+    let buf: char[16];
+    for (let i = 0; i < 5; i = i + 1) {
+        sprintf(buf, "k%d", i);
+        m.put(buf, i);
+    }
+    m.remove("k1");
+    m.remove("k3");
+    m.put("n1", 10);
+    m.put("n2", 20);
+    assert(m.length() == 5, "length after removes and reuse");
+
+    let live = 0;
+    for (let i: usize = 0; i < m.capacity(); i = i + 1) {
+        if (m.is_slot_occupied(i)) {
+            live = live + 1;
+            assert(m.key_at(i) != NULL, "key of a live slot");
+            assert(m.get(m.key_at(i)).unwrap() == m.val_at(i), "slot value and get agree");
+        } else {
+            assert(m.key_at(i) == NULL, "no key in a slot that is not live");
+        }
+    }
+    assert(live == 5, "live slots");
+
+    let count = 0;
+    let sum = 0;
+    for entry in m {
+        count = count + 1;
+        sum = sum + entry.val;
+    }
+    assert(count == 5 && sum == 0 + 2 + 4 + 10 + 20, "iterator after reuse");
+    assert(!m.contains("k1") && !m.contains("k3"), "removed keys stay removed");
+    m.free();
+}
+
+test "Map growth keeps live keys and drops removed ones" {
+    let m = Map<int>::new();
+    let buf: char[16];
+    for (let i = 0; i < 6; i = i + 1) {
+        sprintf(buf, "k%d", i);
+        m.put(buf, i);
+    }
+    for (let i = 0; i < 6; i = i + 2) {
+        sprintf(buf, "k%d", i);
+        m.remove(buf);
+    }
+    for (let i = 6; i < 40; i = i + 1) {
+        sprintf(buf, "k%d", i);
+        m.put(buf, i);
+    }
+    assert(m.capacity() > 8, "the table grew");
+    assert(m.length() == 37, "length after growth");
+    for (let i = 0; i < 40; i = i + 1) {
+        sprintf(buf, "k%d", i);
+        if (i < 6 && i % 2 == 0) {
+            assert(!m.contains(buf), "removed key absent after growth");
+        } else {
+            assert(m.get(buf).unwrap() == i, "live key kept by growth");
+        }
+    }
+    let count = 0;
+    for entry in m {
+        count = count + 1;
+    }
+    assert(count == 37, "iterator after growth");
+    m.free();
+}
+
+test "Map keys stay readable through several growths" {
+    let m = Map<int>::new();
+    let buf: char[16];
+    for (let i = 0; i < 100; i = i + 1) {
+        sprintf(buf, "key-%d", i * 3);
+        m.put(buf, i);
+    }
+    sprintf(buf, "overwritten");
+    assert(m.capacity() >= 128, "the table grew several times");
+    let count = 0;
+    let expected: char[16];
+    for entry in m {
+        sprintf(expected, "key-%d", entry.val * 3);
+        assert(strcmp(entry.key, expected) == 0, "key of each entry after growth");
+        count = count + 1;
+    }
+    assert(count == 100, "every entry after growth");
+    m.free();
+}
+
+test "Map remove and put again after growth" {
+    let m = Map<int>::new();
+    let names: char*[3] = ["alpha", "beta", "gamma"];
+    let buf: char[24];
+    for (let i = 0; i < 30; i = i + 1) {
+        sprintf(buf, "%s/%d", names[i % 3], i);
+        m.put(buf, i);
+    }
+    for (let i = 0; i < 30; i = i + 1) {
+        sprintf(buf, "%s/%d", names[i % 3], i);
+        m.remove(buf);
+    }
+    assert(m.length() == 0, "every key removed after growth");
+    for (let i = 0; i < 30; i = i + 1) {
+        sprintf(buf, "%s/%d", names[i % 3], i);
+        m.put(buf, i * 10);
+    }
+    for (let i = 0; i < 30; i = i + 1) {
+        sprintf(buf, "%s/%d", names[i % 3], i);
+        assert(m.get(buf).unwrap() == i * 10, "value put again after growth");
+    }
+    m.free();
+}
+
+test "Map put of a key the Map owns when the table grows" {
+    let m = Map<int>::new();
+    let buf: char[16];
+    for (let i = 0; i < 6; i = i + 1) {
+        sprintf(buf, "own-%d", i);
+        m.put(buf, i);
+    }
+    let k: char* = NULL;
+    for (let i: usize = 0; i < m.capacity(); i = i + 1) {
+        if (m.is_slot_occupied(i)) {
+            k = m.key_at(i);
+            break;
+        }
+    }
+    let before = m.get(k).unwrap();
+    m.put(k, 100);
+    assert(m.capacity() > 8, "the put grew the table");
+    assert(m.length() == 6, "the put overwrote, it did not add");
+    sprintf(buf, "own-%d", before);
+    assert(m.get(buf).unwrap() == 100, "the overwritten value");
+    m.free();
+}
+
+struct SlotPoint {
+    x: int;
+    y: int;
+}
+
+test "Map val_at reads every slot up to the last one" {
+    let m = Map<SlotPoint>::new();
+    let buf: char[16];
+    for (let i = 0; i < 20; i = i + 1) {
+        sprintf(buf, "p%d", i);
+        m.put(buf, SlotPoint { x: i, y: i * 2 });
+    }
+    let live = 0;
+    for (let i: usize = 0; i < m.capacity(); i = i + 1) {
+        let p = m.val_at(i);
+        if (m.is_slot_occupied(i)) {
+            let q = m.get(m.key_at(i)).unwrap();
+            assert(p.x == q.x && p.y == q.y, "val_at of a live slot agrees with get");
+            assert(p.y == p.x * 2, "val_at returns the stored value");
+            live = live + 1;
+        }
+    }
+    assert(live == 20, "every live slot read through val_at");
+    m.free();
+}

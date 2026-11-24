@@ -901,9 +901,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 callee->var_ref.name = resolved_name;
                 keep_method_owner(ctx, callee, resolved_target_type, resolved_trait,
                                   lhs->member.field);
-                call->call.callee = callee;
                 // For the language server: the method, where the call writes its name.
-                call->call.member_token = lhs->token;
+                callee->var_ref.member_token = lhs->token;
+                call->call.callee = callee;
                 call->definition_token = resolved_sig->decl_token;
             }
             else

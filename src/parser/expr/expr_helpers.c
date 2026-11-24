@@ -40,6 +40,56 @@ static int token_is_only_stars(Token t)
     return 1;
 }
 
+int skip_expression(Lexer *l)
+{
+    int depth = 0;
+    while (1)
+    {
+        Token tk = lexer_peek(l);
+        switch (tk.kind)
+        {
+        case TOK_EOF:
+            return 0;
+        case TOK_LPAREN:
+        case TOK_LBRACKET:
+        case TOK_LBRACE:
+            depth++;
+            break;
+        case TOK_RPAREN:
+        case TOK_RBRACKET:
+        case TOK_RBRACE:
+            if (depth == 0)
+            {
+                return tk.kind == TOK_RPAREN;
+            }
+            depth--;
+            break;
+        case TOK_COMMA:
+        case TOK_SEMICOLON:
+            if (depth == 0)
+            {
+                return 1;
+            }
+            break;
+        case TOK_LANGLE:
+            if (tokens_could_be_generic_args(l))
+            {
+                lexer_next(l); // the `<`
+                for (int angles = 1; angles > 0;)
+                {
+                    Token arg = lexer_next(l);
+                    angles += arg.kind == TOK_LANGLE ? 1 : arg.kind == TOK_RANGLE ? -1 : 0;
+                }
+                continue;
+            }
+            break;
+        default:
+            break;
+        }
+        lexer_next(l);
+    }
+}
+
 int tokens_could_be_generic_args(Lexer *l)
 {
     Lexer scan = *l;

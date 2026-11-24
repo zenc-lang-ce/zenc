@@ -52,7 +52,8 @@ Type *type_from_name(ParserContext *ctx, const char *name)
 
 // Records that the type `ty`, named `name` (of `scope`, for `scope::name`) where `t` is, waits
 // for the declarations.
-static void push_pending_type_name(ParserContext *ctx, Type *ty, char *name, Token t, char *scope)
+static PendingTypeName *push_pending_type_name(ParserContext *ctx, Type *ty, char *name, Token t,
+                                               char *scope)
 {
     PendingTypeName *p = xcalloc(1, sizeof(PendingTypeName));
     p->type = ty;
@@ -63,6 +64,7 @@ static void push_pending_type_name(ParserContext *ctx, Type *ty, char *name, Tok
     p->filename = ctx->current_filename;
     p->next = ctx->pending_type_names;
     ctx->pending_type_names = p;
+    return p;
 }
 
 // Whether `scope` of `scope::Name` is a module this file has imported.
@@ -128,7 +130,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             // once that one is resolved (resolve_pending_type_names).
             if (!ctx->declarations_read && type_names_pending(ctx, alias_node->type_info))
             {
-                push_pending_type_name(ctx, aliased, name, t, NULL);
+                push_pending_type_name(ctx, aliased, name, t, NULL)->alias = alias_node;
             }
             return aliased;
         }
@@ -364,14 +366,11 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         if (lexer_peek(l).kind == TOK_SEMICOLON)
         {
             lexer_next(l); // eat ;
+            Token size_token = lexer_peek(l);
             ASTNode *size_expr = parse_constant_expression(ctx, l);
-            long long compiled_size = 0;
             int size = 0;
-            if (eval_const_int_expr(size_expr, ctx, &compiled_size))
-            {
-                size = (int)compiled_size;
-            }
-            else
+            int known = array_size_now(ctx, size_expr, &size);
+            if (known < 0)
             {
                 zpanic_at(size_expr->token,
                           "Array size must be a compile-time constant or integer literal");
@@ -386,6 +385,10 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             Type *arr = type_new(TYPE_ARRAY);
             arr->inner = inner;
             arr->array_size = size;
+            if (known == 0)
+            {
+                wait_for_constant(ctx, size_expr, arr, NULL, size_token);
+            }
             return arr;
         }
 

@@ -573,6 +573,11 @@ ZenSymbol *tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t,
         misra_check_shadowing(tc->pctx, name, t);
         misra_check_typographic_ambiguity(tc->pctx, name, t);
     }
+    // Reported once: a loop's second pass declares its locals again.
+    if (!tc->rechecking)
+    {
+        audit_section_5(tc->pctx, tc->pctx->current_scope, name, NULL, t);
+    }
     add_symbol_with_token(tc->pctx, name, type, t, 0);
     ZenSymbol *sym = symbol_lookup(tc->pctx->current_scope, name);
     if (sym)

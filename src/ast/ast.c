@@ -1533,7 +1533,8 @@ static const char *link_name_of_type(Type *t, CNameLookup lookup, void *context)
     return (lookup && name) ? lookup(context, name) : NULL;
 }
 
-// The C name of a struct or enum: its @link_name, else the name its definition has.
+// The C name of a struct, enum or alias: its @link_name or the name that keeps it from being a
+// keyword (definition_link_name), else the name its definition has.
 static const char *c_name_of(Type *t, CNameLookup lookup, void *context)
 {
     const char *link_name = link_name_of_type(t, lookup, context);
@@ -1658,7 +1659,7 @@ static char *c_type_name(Type *t, int misra_mode, CNameLookup lookup, void *cont
         return type_to_string(t);
 
     case TYPE_ALIAS: // An opaque one: a plain alias is the type it names (c_declaration).
-        return xstrdup(t->name);
+        return xstrdup(c_name_of(t, lookup, context));
 
     case TYPE_ENUM:
         return xstrdup(c_name_of(t, lookup, context));

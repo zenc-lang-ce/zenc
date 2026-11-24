@@ -1,0 +1,10 @@
+// Helper for test_constants_declared_later.zc: an array size and a `def` that name a constant
+// the module declares further down, in a module imported with an alias.
+
+struct Grid {
+    cells: int[SIDE * SIDE];
+}
+
+def AREA = SIDE * SIDE;
+
+def SIDE = 3;

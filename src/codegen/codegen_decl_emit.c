@@ -6,6 +6,7 @@
 #include "../zprep.h"
 #include "codegen.h"
 #include "compat.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,11 +51,18 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             {
                 EMIT(ctx, "_Thread_local ");
             }
+            char *declared = node_c_type(ctx, node);
             if (node->kind == NODE_CONST)
             {
-                EMIT(ctx, "__attribute__((unused)) const ");
+                // A `def` is const. The type it is written with may say so already: a value that
+                // names another `def` (`LATE * 2`) has that `def`'s const type, and C++ rejects
+                // `const const`. A pointer's const is its target's, not the `def`'s.
+                Type *written = declared                   ? node->type_info
+                                : node->var_decl.init_expr ? node->var_decl.init_expr->type_info
+                                                           : NULL;
+                int already_const = written && written->is_const && written->kind != TYPE_POINTER;
+                EMIT(ctx, "__attribute__((unused)) %s", already_const ? "" : "const ");
             }
-            char *declared = node_c_type(ctx, node);
             if (declared)
             {
                 emit_var_decl_type(ctx, node->type_info, node->var_decl.name);
@@ -82,7 +90,32 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
                     zfree(inferred);
                 }
             }
-            if (node->var_decl.init_expr)
+            // A `def` of an integer type is its value: the C does not depend on the order of the
+            // constants it names (`def M = N * 2;` before `def N = 4;`).
+            ZenSymbol *constant =
+                node->kind == NODE_CONST ? find_symbol_entry(ctx, node->var_decl.name) : NULL;
+            // The type the C declares it with: the written one, or its value's.
+            Type *c_type = declared                   ? node->type_info
+                           : node->var_decl.init_expr ? node->var_decl.init_expr->type_info
+                                                      : NULL;
+            if (constant && constant->is_def && constant->is_const_value && c_type &&
+                is_integer_type(c_type) && !is_boolean_type(c_type))
+            {
+                long long value = constant->const_int_val;
+                if (value < 0 && is_unsigned_type(c_type))
+                {
+                    EMIT(ctx, " = %lluULL", (unsigned long long)value); // Above LLONG_MAX.
+                }
+                else if (value == LLONG_MIN)
+                {
+                    EMIT(ctx, " = (-9223372036854775807LL - 1)"); // No literal is LLONG_MIN.
+                }
+                else
+                {
+                    EMIT(ctx, " = %lld", value);
+                }
+            }
+            else if (node->var_decl.init_expr)
             {
                 EMIT(ctx, " = ");
                 char *tname = declared ? declared
@@ -455,7 +488,7 @@ int emit_tests_and_runner(ParserContext *ctx, ASTNode *node)
                 EMIT(ctx, "#if %s\n", cur->cfg_condition);
             }
             EMIT(ctx, "static int _z_test_%d() {\n", test_count);
-            EMIT(ctx, "fprintf(stderr, \"  TEST: %s ... \");\n", cur->test_stmt.name);
+            EMIT(ctx, "fprintf(stderr, \"  TEST: %%s ... \", \"%s\");\n", cur->test_stmt.name);
             EMIT(ctx, "int _zc_before = _zc_test_failures;\n");
             int saved = ctx->cg.defer_count;
             Type *saved_ret = ctx->cg.current_func_ret_type_info;

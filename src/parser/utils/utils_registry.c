@@ -472,19 +472,22 @@ static char *file_key(const char *file, const char *name)
 
 Module *imported_module(ParserContext *ctx, const char *scope)
 {
-#if FF_COMPATIBILITY_0_5
-    Module **found = zmap_get(&ctx->imports.modules, scope);
-    return found ? *found : NULL;
-#else
-    if (!ctx->current_filename)
+    // The module this file imports by that alias.
+    Module **found = NULL;
+    if (ctx->current_filename)
     {
-        return NULL;
+        char *key = file_key(ctx->current_filename, scope);
+        found = zmap_get(&ctx->imports.file_modules, key);
+        zfree(key);
     }
-    char *key = file_key(ctx->current_filename, scope);
-    Module **found = zmap_get(&ctx->imports.file_modules, key);
-    zfree(key);
-    return found ? *found : NULL;
+#if FF_COMPATIBILITY_0_5
+    // In 0.5 an alias imported by any file is seen by every file.
+    if (!found)
+    {
+        found = zmap_get(&ctx->imports.modules, scope);
+    }
 #endif
+    return found ? *found : NULL;
 }
 
 // The C name of the top-level declaration `decl`: its name, which carries the module prefix.
@@ -719,7 +722,12 @@ static void resolve_pending_type_name(ParserContext *ctx, PendingTypeName *list,
     ctx->imports.current_module_prefix = p->module_prefix;
     ctx->current_filename = p->filename;
     Type *t = p->type;
-    TypeAlias *alias = !p->scope && t->count == 0 ? find_type_alias_node(ctx, p->name) : NULL;
+    // A copy of a known alias, or a name (with no arguments) that turned out to be one.
+    TypeAlias *alias = p->alias;
+    if (!alias && !p->scope && t->kind == TYPE_STRUCT && t->count == 0)
+    {
+        alias = find_type_alias_node(ctx, p->name);
+    }
     if (p->scope)
     {
         // `m::Name`, now that `m` is imported.
@@ -750,13 +758,26 @@ static void resolve_pending_type_name(ParserContext *ctx, PendingTypeName *list,
     p->state = PENDING_TYPE_DONE;
 }
 
+// Whether the size of the array `t` waits for a constant.
+static int size_pending(ParserContext *ctx, Type *t)
+{
+    for (PendingConstant *p = ctx->pending_constants; p; p = p->next)
+    {
+        if (p->array == t && !p->done)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int type_names_pending(ParserContext *ctx, Type *t)
 {
     if (!t)
     {
         return 0;
     }
-    if (pending_type_of(ctx->pending_type_names, t))
+    if (pending_type_of(ctx->pending_type_names, t) || size_pending(ctx, t))
     {
         return 1;
     }
@@ -768,6 +789,74 @@ int type_names_pending(ParserContext *ctx, Type *t)
         }
     }
     return type_names_pending(ctx, t->inner);
+}
+
+int array_size_now(ParserContext *ctx, ASTNode *size_expr, int *size)
+{
+    long long value = 0;
+    if (size_expr && eval_const_int_expr(size_expr, ctx, &value))
+    {
+        *size = (int)value;
+        return 1;
+    }
+    *size = 0;
+    return size_expr && !ctx->declarations_read ? 0 : -1;
+}
+
+void wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *array, ZenSymbol *def, Token token)
+{
+    PendingConstant *p = xcalloc(1, sizeof(PendingConstant));
+    p->expr = expr;
+    p->array = array;
+    p->def = def;
+    p->token = token;
+    p->module_prefix = ctx->imports.current_module_prefix;
+    p->filename = ctx->current_filename;
+    p->next = ctx->pending_constants;
+    ctx->pending_constants = p;
+}
+
+void resolve_pending_constants(ParserContext *ctx)
+{
+    char *saved_prefix = ctx->imports.current_module_prefix;
+    const char *saved_filename = ctx->current_filename;
+    for (int progress = 1; progress;)
+    {
+        progress = 0;
+        for (PendingConstant *p = ctx->pending_constants; p; p = p->next)
+        {
+            long long value = 0;
+            ctx->imports.current_module_prefix = p->module_prefix;
+            ctx->current_filename = p->filename;
+            if (p->done || !eval_const_int_expr(p->expr, ctx, &value))
+            {
+                continue;
+            }
+            if (p->array)
+            {
+                p->array->array_size = (int)value;
+            }
+            else
+            {
+                set_def_value(p->def, value);
+            }
+            p->done = 1;
+            progress = 1;
+        }
+    }
+    // A `def` with another value (a float, a string) has no integer one; an array size must.
+    for (PendingConstant *p = ctx->pending_constants; p; p = p->next)
+    {
+        if (!p->done && p->array)
+        {
+            zpanic_at(p->token, ctx->config->misra_mode
+                                    ? "MISRA Rule 18.8"
+                                    : "Array size must be a known compile-time constant integer");
+        }
+    }
+    ctx->pending_constants = NULL;
+    ctx->imports.current_module_prefix = saved_prefix;
+    ctx->current_filename = saved_filename;
 }
 
 void resolve_pending_type_names(ParserContext *ctx)
@@ -1149,7 +1238,6 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
                 sig->arg_types = n->func.arg_types;
                 sig->ret_type = n->func.ret_type_info;
                 sig->is_varargs = n->func.is_varargs;
-                sig->required = 0;
                 return sig;
             }
             n = n->next;

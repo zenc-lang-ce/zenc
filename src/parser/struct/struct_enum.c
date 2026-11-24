@@ -20,7 +20,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     // registers is undone by restoring the count, not by subtracting what it declared.
     int generics_before = ctx->known_generics_count;
     Token n = lexer_next(l);
-    check_identifier(n);
+    check_type_name(n);
 
     char *gp = NULL;
     if (lexer_peek(l).kind == TOK_LANGLE)
@@ -85,9 +85,6 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             int tuple_count = 0;
             if (lexer_peek(l).kind == TOK_LPAREN)
             {
-                // A variant with a payload names a field of the generated union, so it
-                // cannot be a C keyword; a payload-less one is only emitted as `Enum__name`.
-                check_c_identifier(vt);
                 lexer_next(l);
                 Type *first_t = parse_type_obj(ctx, l);
 
@@ -167,14 +164,14 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
 
                     // We can reuse the tuple_types collected during parsing!
                     register_func(ctx, ctx->current_scope, mangled, tuple_count, NULL, tuple_types,
-                                  ret_t, 0, 0, c_mangled, va->variant.name, vt, is_export);
+                                  ret_t, 0, c_mangled, va->variant.name, vt, is_export);
                 }
                 else
                 {
                     Type **at = xmalloc(sizeof(Type *));
                     at[0] = payload;
                     Type *ret_t = type_new_enum(ename);
-                    register_func(ctx, ctx->current_scope, mangled, 1, NULL, at, ret_t, 0, 0,
+                    register_func(ctx, ctx->current_scope, mangled, 1, NULL, at, ret_t, 0,
                                   c_mangled, va->variant.name, vt, is_export);
                 }
             }

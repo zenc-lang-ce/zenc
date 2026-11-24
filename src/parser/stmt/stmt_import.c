@@ -381,9 +381,10 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
     if (is_file_imported(ctx, fn))
     {
         // The file is not read again (a std module may already have brought in the same C
-        // header), but `as name` still belongs to this import. A C header's alias is
-        // registered: its symbols keep their C names. A module's symbols already carry the
-        // prefix of its first import, so its alias cannot be honoured here and is consumed.
+        // header, the language server parses every file of the workspace), but `as name` still
+        // belongs to this import and is registered. Its declarations keep the names of the
+        // first import: `name::member` finds the module's own declaration by the name the file
+        // writes (qualified_type_name), whatever its C name is; a C header's keep their C names.
         if (!is_selective)
         {
             Token next_tok = lexer_peek(l);
@@ -393,16 +394,18 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
                 lexer_next(l);
                 Token alias_tok = lexer_next(l);
                 int is_header = strlen(fn) > 2 && strcmp(fn + strlen(fn) - 2, ".h") == 0;
-                if (is_header && alias_tok.kind == TOK_IDENT)
+                if (alias_tok.kind == TOK_IDENT)
                 {
                     char *alias = token_strdup(alias_tok);
                     Module *m = xmalloc(sizeof(Module));
                     m->alias = alias;
                     m->path = xstrdup(fn);
                     m->base_name = module_prefix_for(ctx, fn);
-                    m->is_c_header = 1;
+                    m->is_c_header = is_header;
                     m->is_re_export = is_re_export;
-                    if (!zmap_get(&ctx->imports.modules, alias))
+                    // A module's alias is this file's (imported_module); a C header's is also
+                    // every file's, as its first import's would be.
+                    if (is_header && !zmap_get(&ctx->imports.modules, alias))
                     {
                         zmap_put(&ctx->imports.modules, alias, m);
                     }

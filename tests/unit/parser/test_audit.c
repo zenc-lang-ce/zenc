@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Unit tests of audit_section_5 (src/parser/utils/utils_audit.c) outside MISRA mode: a new
-// name warns once for each symbol of that name in the scopes around its own.
+// name that hides a symbol of the scopes around its own warns once.
 #include "diagnostics/diagnostics.h"
 #include "parser/parser.h"
 #include <stdio.h>
@@ -30,7 +30,9 @@ static ParserContext *context_counting_warnings(ZenCompiler *compiler, ParserCon
     return ctx;
 }
 
-UTEST(audit_section_5, warns_for_each_symbol_of_the_name_in_the_scopes_around)
+// A name that hides symbols of the scopes around it is one warning, however many symbols of that
+// name there are (here a variable and a function).
+UTEST(audit_section_5, warns_once_when_the_name_hides_symbols_around)
 {
     ZenCompiler compiler = {0};
     ParserContext ctx = {0};
@@ -43,7 +45,7 @@ UTEST(audit_section_5, warns_for_each_symbol_of_the_name_in_the_scopes_around)
     symbol_add(block, "z", SYM_VARIABLE);
 
     audit_section_5(&ctx, block, "x", NULL, TOKEN_UNKNOWN);
-    EXPECT_EQ(2, warnings);
+    EXPECT_EQ(1, warnings);
 
     warnings = 0;
     audit_section_5(&ctx, block, "z", NULL, TOKEN_UNKNOWN);

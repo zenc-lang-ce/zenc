@@ -497,6 +497,10 @@ struct ASTNode
             /// names. The copy for an instance of the template renames it from this type.
             Type *owner;
             char *member;
+            /// Where a path writes its last segment (`sta` of `Cpu6502::sta`, `of` of
+            /// `Id::of(1)`), for the language server: the node's token is where the path starts.
+            /// TOKEN_UNKNOWN for a plain name.
+            Token member_token;
         } var_ref;
 
         struct
@@ -505,9 +509,6 @@ struct ASTNode
             ASTNode *args;
             char **arg_names;
             int count;
-            // Where a path writes the function, its last segment (`of` of `Id::of(1)`): the
-            // node's token is where the path starts. TOKEN_UNKNOWN for a plain name.
-            Token member_token;
             // For a call the typechecker made from other syntax (`v[i]` with a `get` method), the
             // expression as the program writes it. Not a child: it shares its parts with the call.
             ASTNode *written;
@@ -679,7 +680,6 @@ struct ASTNode
         {
             ASTNode *condition;
             char *message;
-            int message_is_literal;   ///< 1 if message was a string literal, 0 if variable
             ASTNode *message_fstring; ///< The message when it interpolates (message is NULL).
         } assert_stmt;
 

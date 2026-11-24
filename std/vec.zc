@@ -308,9 +308,11 @@ impl Vec<T> {
         let new_len = self.len + other.len;
         self.grow_to_fit(new_len);
 
-        memcpy(self.data + self.len, other.data, other.len * sizeof(T));
+        if other.len > 0 {
+            memcpy(self.data + self.len, other.data, other.len * sizeof(T));
+        }
         self.len = new_len;
-        other.forget();
+        other.free();
     }
 
     /// Returns a copy of the item at `idx`.
@@ -388,6 +390,9 @@ impl Vec<T> {
     
     /// Reverses the Vec in place.
     fn reverse(self) {
+        if self.len < 2 {
+            return;
+        }
         let i: usize = 0;
         let j = self.len - 1;
         while i < j {
@@ -472,7 +477,7 @@ impl Vec<T> {
             self.clear();
             return;
         }
-        if (count == 1) {
+        if (count == 1 || self.len == 0) {
             return;
         }
         let original_len = self.len;

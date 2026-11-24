@@ -123,8 +123,6 @@ typedef struct FuncSig
     Type **arg_types;         ///< Argument types.
     Type *ret_type;           ///< Return type.
     int is_varargs;           ///< 1 if variadic.
-    int required;             ///< 1 if return value must be used.
-    int is_pure;              ///< 1 if marked @pure.
     char *link_name;          ///< Overriding C identifier (from @link_name).
     const char *own_name;     ///< The name the program writes, when the C name adds to it:
                               ///< `push` of `Vec__int32_t__push`, `Rect` of `Shape__Rect`.
@@ -363,6 +361,43 @@ typedef struct PendingBody
 } PendingBody;
 
 /**
+ * @brief A default value read while the declarations are: it may name one declared further down,
+ *        so it is parsed once every declaration is read, before the bodies, whose calls copy it
+ *        (parse_pending_default_values).
+ */
+/**
+ * @brief A global's value read while the declarations are: it may name one declared further down,
+ *        so it is read once every declaration is, first in the round
+ *        (parse_pending_global_values).
+ */
+typedef struct PendingGlobalValue
+{
+    ASTNode *node;            ///< The global (NODE_VAR_DECL), whose value is still missing.
+    char *type;               ///< Its type as written (type_mangle_spelling), or NULL.
+    Lexer start;              ///< Lexer positioned at the value, after the `=`.
+    char *module_prefix;      ///< The module it was read in.
+    const char *filename;     ///< The file it was read in.
+    struct ZenSymbol *symbol; ///< The global's symbol, which takes the value's type.
+    struct PendingGlobalValue *next;
+} PendingGlobalValue;
+
+typedef struct PendingDefaultValue
+{
+    ASTNode **values;           ///< The parameters' default values; this one goes at `index`.
+    int index;                  ///< Its parameter.
+    char **param_names;         ///< The names of the parameters, which it cannot use.
+    int param_count;            ///< How many parameters.
+    Lexer start;                ///< Lexer positioned at the value, after the `=`.
+    Scope *scope;               ///< The scope of the signature.
+    char *module_prefix;        ///< The module it was read in.
+    const char *filename;       ///< The file it was read in.
+    Type *impl_target;          ///< The type of the impl the function is in, or NULL.
+    GenericParameter *generics; ///< The generic parameters in scope at the signature (`T`).
+    int generic_count;
+    struct PendingDefaultValue *next;
+} PendingDefaultValue;
+
+/**
  * @brief Where the prototype of a function a whole program may leave out (see
  *        prototype_span_begin) is in the C file being written: bytes [start, end).
  */
@@ -412,6 +447,7 @@ struct ParserContext
     int declarations_read; ///< Set once every declaration is read: instances are made at once.
     struct WaitingStruct *waiting_structs;      ///< Structs whose `use` waits for the declarations.
     struct PendingTypeName *pending_type_names; ///< Type names read before their declaration.
+    struct PendingConstant *pending_constants;  ///< Constants read before what they name.
     struct FileDependency *file_dependencies;   ///< Which file imports which (file_sees).
     struct PendingDeclaration *pending_declarations;      ///< Impls and derives, in the order read.
     struct PendingDeclaration *pending_declarations_tail; ///< Last of `pending_declarations`.
@@ -455,8 +491,11 @@ struct ParserContext
     int in_constant_expression;    ///< 1 while parse_constant_expression reads an expression.
 
     // Deferred function bodies
-    PendingBody *pending_bodies;               ///< First body waiting to be parsed (FIFO).
-    PendingBody *pending_bodies_tail;          ///< Last one, to append in O(1).
+    PendingGlobalValue *pending_global_values;   ///< Globals' values waiting, in reverse.
+    PendingDefaultValue *pending_default_values; ///< Default values waiting, in the order read.
+    PendingDefaultValue *pending_default_values_tail; ///< Last of `pending_default_values`.
+    PendingBody *pending_bodies;                      ///< First body waiting to be parsed (FIFO).
+    PendingBody *pending_bodies_tail;                 ///< Last one, to append in O(1).
     PendingBody *pending_template_bodies;      ///< Bodies of generic templates, parsed first.
     PendingBody *pending_template_bodies_tail; ///< Last of `pending_template_bodies`.
     struct BodyCopy *body_copies; ///< Instances made before their template's body was read.
@@ -648,6 +687,7 @@ typedef struct PendingTypeName
     Type *type;           ///< The type, shared by whatever names it.
     char *name;           ///< The name as written; the member of `scope` for `scope::name`.
     char *scope;          ///< `m` of `m::Name`, a module imported further down; else NULL.
+    TypeAlias *alias;     ///< For a copy of a known alias whose type waits: the alias; else NULL.
     Token token;          ///< Where it is written.
     char *module_prefix;  ///< The module it was read in.
     const char *filename; ///< The file it was read in.
@@ -659,6 +699,23 @@ typedef struct PendingTypeName
     } state;
     struct PendingTypeName *next;
 } PendingTypeName;
+
+/**
+ * @brief A constant read while the declarations are that names one not declared yet: the size of
+ *        an array type, or the value of a `def`. It is computed once every declaration is read,
+ *        first in the round (resolve_pending_constants).
+ */
+typedef struct PendingConstant
+{
+    ASTNode *expr;         ///< The expression, as read.
+    Type *array;           ///< The array type whose size it is; NULL for a `def`.
+    struct ZenSymbol *def; ///< The `def`'s symbol; NULL for an array size.
+    Token token;           ///< Where it is written.
+    char *module_prefix;   ///< The module it was read in.
+    const char *filename;  ///< The file it was read in.
+    int done;              ///< Computed.
+    struct PendingConstant *next;
+} PendingConstant;
 
 /** @brief One import: the file `importer` imports the module `imported` (file_sees). */
 typedef struct FileDependency
@@ -761,11 +818,6 @@ void report_not_a_field(Lexer *l, Token t);
 
 // C reserved word warnings
 
-/**
- * @brief Checks if a name is a C reserved word.
- */
-int is_c_reserved_word(const char *name);
-
 // ZenSymbol table
 
 /**
@@ -852,7 +904,7 @@ const char *normalize_type_name(const char *name);
  */
 FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
                        ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
-                       int is_pure, const char *link_name, const char *own_name, Token decl_token,
+                       const char *link_name, const char *own_name, Token decl_token,
                        int is_export);
 
 /**
@@ -1021,9 +1073,6 @@ char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out
  */
 ASTNode *parse_fstring_parts(ParserContext *ctx, Token srctoken, const char *content);
 
-/** @brief Rejects a plain "..." that interpolates or escapes braces (RFC 0001: only f"..."). */
-void reject_implicit_interpolation(ParserContext *ctx, Token t, const char *content);
-
 /**
  * @brief Checks if a token is a reserved keyword.
  */
@@ -1034,7 +1083,8 @@ int is_reserved_keyword(Token t);
  */
 void check_identifier(Token t);
 void check_reserved_keyword(Token t);
-void check_c_identifier(Token t);
+/** @brief The same for the name of a struct, enum, trait or alias: not a built-in type's either. */
+void check_type_name(Token t);
 
 /**
  * @brief Main loop to parse top-level nodes in a file.
@@ -1128,6 +1178,27 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
 void push_pending_body(ParserContext *ctx, PendingBody *pending);
 void check_unused_parameters(ParserContext *ctx, Scope *scope, const char *func_name);
 void parse_pending_bodies(ParserContext *ctx);
+/**
+ * @brief Makes the value of the global `node`, at `start`, wait for the declarations.
+ */
+void wait_for_global_value(ParserContext *ctx, ASTNode *node, char *type, Lexer start);
+/**
+ * @brief Reads the values of the globals read while the declarations were (PendingGlobalValue), in
+ *        the order written, each in its module.
+ */
+void parse_pending_global_values(ParserContext *ctx);
+/**
+ * @brief Moves `l` past the expression it is on, as parse_expression would read it, without
+ *        reading it: up to the `,`, `;` or `)` that ends it. A `<` opens generic arguments where
+ *        parse_expression takes it so (tokens_could_be_generic_args). 0 when the expression runs
+ *        into the end of the file or a `]` or `}` it did not open.
+ */
+int skip_expression(Lexer *l);
+/**
+ * @brief Parses the default values read while the declarations were (PendingDefaultValue), in the
+ *        order read, each where its function is.
+ */
+void parse_pending_default_values(ParserContext *ctx);
 ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_packed, int align,
                       const char *link_name, int is_export);
 ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_export);
@@ -1378,9 +1449,34 @@ int type_name_declared(ParserContext *ctx, const char *name);
  */
 void resolve_pending_type_names(ParserContext *ctx);
 /**
- * @brief Whether `t` holds a type name that waits for its declaration.
+ * @brief Whether `t` holds a type name that waits for its declaration, or an array size that
+ *        waits for a constant.
  */
 int type_names_pending(ParserContext *ctx, Type *t);
+/**
+ * @brief The size `size_expr` of an array type, in *size: 1 when it is known now. While the
+ *        declarations are read, 0 for one that cannot be computed yet (it may name a constant
+ *        declared further down): the caller makes the array wait (wait_for_constant). -1 when it
+ *        is no constant integer.
+ */
+int array_size_now(ParserContext *ctx, ASTNode *size_expr, int *size);
+/**
+ * @brief Makes the size of `array`, or the value of the `def` whose symbol is `def`, wait for
+ *        the declarations: `expr` is computed then (resolve_pending_constants).
+ */
+void wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *array, struct ZenSymbol *def,
+                       Token token);
+/**
+ * @brief Computes the constants that waited for the declarations, each in its module, in passes
+ *        until no more can be (a `def` may name another that waits), and reports an array size
+ *        that is still no constant.
+ */
+void resolve_pending_constants(ParserContext *ctx);
+/**
+ * @brief Gives the `def` whose symbol is `s` the integer value `val`, and the type `int` (or
+ *        `i64` when it does not fit) if it has none.
+ */
+void set_def_value(struct ZenSymbol *s, long long val);
 /**
  * @brief Appends `pending` to the impls and derives that wait for the declarations.
  */

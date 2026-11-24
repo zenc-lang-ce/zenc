@@ -31,7 +31,9 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, Type *type_info, T
 {
     ensure_global_scope(ctx);
 
-    if (strcmp(n, "it") != 0 && strcmp(n, "self") != 0)
+    // A local is audited once, where the typechecker declares it (tc_add_symbol) with every
+    // declaration known; the parser declares it too, to read the code that follows.
+    if (ctx->current_scope == ctx->global_scope)
     {
         audit_section_5(ctx, ctx->current_scope, n, NULL, tok);
     }
@@ -96,8 +98,7 @@ void init_builtins(void)
 
 FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int count,
                        ASTNode **default_values, Type **arg_types, Type *ret_type, int is_varargs,
-                       int is_pure, const char *link_name, const char *own_name, Token decl_token,
-                       int is_export)
+                       const char *link_name, const char *own_name, Token decl_token, int is_export)
 {
     FuncSig *f = NULL;
     if (ctx->config->mode_lsp || ctx->config->misra_mode)
@@ -126,8 +127,6 @@ FuncSig *register_func(ParserContext *ctx, Scope *scope, const char *name, int c
     f->arg_types = arg_types;
     f->ret_type = ret_type;
     f->is_varargs = is_varargs;
-    f->is_pure = is_pure;
-    f->required = 0;
     f->own_name = own_name;
 
     Scope *target_scope = scope ? scope : ctx->current_scope;
@@ -169,7 +168,7 @@ FuncSig *register_function(ParserContext *ctx, Scope *scope, ASTNode *fn, const 
 {
     FuncSig *sig =
         register_func(ctx, scope, name, fn->func.count, fn->func.default_values, fn->func.arg_types,
-                      fn->func.ret_type_info, fn->func.is_varargs, fn->func.pure, fn->link_name,
+                      fn->func.ret_type_info, fn->func.is_varargs, fn->link_name,
                       fn->func.is_method ? fn->func.name : NULL, fn->token, is_export);
     sig->decl = fn;
     return sig;
@@ -386,7 +385,14 @@ char *definition_link_name(ParserContext *ctx, const char *link_name, const char
 const char *link_name_of(void *ctx, const char *name)
 {
     ASTNode *def = find_struct_def((ParserContext *)ctx, name);
-    return def ? def->link_name : NULL;
+    if (def)
+    {
+        return def->link_name;
+    }
+    // An alias has no @link_name: only the name that keeps it from being a keyword
+    return find_type_alias_node((ParserContext *)ctx, name)
+               ? definition_link_name((ParserContext *)ctx, NULL, name)
+               : NULL;
 }
 
 // Several enums may share a variant name (`Slot::None`, `Attribute::None`), so

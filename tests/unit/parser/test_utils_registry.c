@@ -89,7 +89,7 @@ UTEST(type_registry, finds_a_generic_template)
 
 static void register_signature(ParserContext *ctx, Scope *scope, const char *name, int count)
 {
-    register_func(ctx, scope, name, count, NULL, NULL, NULL, 0, 0, NULL, NULL, TOKEN_UNKNOWN, 0);
+    register_func(ctx, scope, name, count, NULL, NULL, NULL, 0, NULL, NULL, TOKEN_UNKNOWN, 0);
 }
 
 UTEST(find_func, finds_a_registered_function)

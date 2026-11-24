@@ -20,9 +20,13 @@ fn free(self) {
         self.data = NULL;
     }
 self.len = 0;
+self.cap = 0;
 }
 
 fn clone(self) -> Stack<T> {
+    if (self.len == 0) {
+        return Stack<T>::new();
+    }
     let new_stack = Stack<T>::new();
     new_stack.len = self.len;
     new_stack.cap = self.cap;

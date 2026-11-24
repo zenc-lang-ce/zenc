@@ -1,0 +1,72 @@
+// language/features/functions: test_default_declared_later
+// A default value can name what is declared further down: an enum variant, a static method, a
+// function, a `def` and a generic struct with two parameters, also in a module imported with
+// an alias.
+import "_default_later_mod.zc" as later;
+
+fn scaled(amount: int, rate: Rate = Rate::Double()) -> int {
+    if rate == Rate::Double {
+        return amount * 2;
+    }
+    return amount;
+}
+
+fn slowed(amount: int, rate: Rate = Rate::Normal) -> int {
+    return scaled(amount, rate);
+}
+
+fn origin_x(p: Point = Point::origin()) -> int {
+    return p.x;
+}
+
+fn plus_seven(n: int, extra: int = seven()) -> int {
+    return n + extra;
+}
+
+fn capped(n: int, limit: int = LIMIT, small: bool = LIMIT < 9) -> int {
+    if small && n > limit {
+        return limit;
+    }
+    return n;
+}
+
+fn pair_sum(p: Pair<int, int> = Pair<int, int> { a: 1, b: 2 }) -> int {
+    return p.a + p.b;
+}
+
+enum Rate { Normal = 0, Double }
+
+struct Point {
+    x: int;
+}
+
+impl Point {
+    fn origin() -> Point {
+        return Point { x: 30 };
+    }
+}
+
+fn seven() -> int {
+    return 7;
+}
+
+def LIMIT = 8;
+
+struct Pair<A, B> {
+    a: A;
+    b: B;
+}
+
+test "a default value names what is declared further down" {
+    expect_eq(scaled(3), 6, "an enum variant called");
+    expect_eq(slowed(3), 3, "an enum variant");
+    expect_eq(origin_x(), 30, "a static method");
+    expect_eq(plus_seven(1), 8, "a function");
+    expect_eq(capped(20), 8, "a def, and a comparison with it");
+    expect_eq(pair_sum(), 3, "a generic struct with two parameters");
+}
+
+test "in a module imported with an alias" {
+    expect_eq(later::scaled(3), 6, "an enum variant of the module");
+    expect_eq(later::origin_x(), 40, "a static method of the module");
+}

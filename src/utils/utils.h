@@ -19,6 +19,15 @@ struct zarena;
 struct ASTNode;
 
 char *z_resolve_path(const char *fn, const char *relative_to, struct CompilerConfig *cfg);
+/**
+ * @brief Calls `visit` with each directory an import of `fn` (from the file `relative_to`) is
+ *        looked for in, in the order z_resolve_path tries them, until `visit` returns non-zero:
+ *        the importing file's directory, `.`, the -I paths, ZC_ROOT (and its std/), the system
+ *        paths (and their std/). With the std library located, a `std/` import only looks there.
+ *        `fn` is not absolute.
+ */
+void z_import_search_dirs(const char *fn, const char *relative_to, struct CompilerConfig *cfg,
+                          int (*visit)(const char *dir, void *data), void *data);
 char *load_file(const char *fn, const char *relative_to, struct CompilerConfig *cfg);
 char *sanitize_path_for_c_string(const char *path);
 char *z_basename(const char *path);

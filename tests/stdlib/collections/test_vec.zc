@@ -165,6 +165,83 @@ test "Vec Utils (Reverse, Contains)" {
     assert(!v.contains(99), "Contains false");
 }
 
+test "Vec Reverse of short Vecs" {
+    let empty = Vec<int>::new();
+    empty.reverse();
+    assert(empty.len == 0, "Reverse empty");
+
+    let reserved = Vec<int>::with_capacity(4);
+    reserved.reverse();
+    assert(reserved.len == 0, "Reverse empty with capacity");
+
+    let cleared = Vec<int>::new();
+    cleared.push(5);
+    cleared.clear();
+    cleared.reverse();
+    assert(cleared.len == 0, "Reverse cleared");
+
+    let names = Vec<char*>::new();
+    names.reverse();
+    assert(names.len == 0, "Reverse empty of pointers");
+
+    let one = Vec<int>::new();
+    one.push(7);
+    one.reverse();
+    assert(one.len == 1 && one.get(0) == 7, "Reverse one");
+
+    let two = Vec<int>::new();
+    two.push(1);
+    two.push(2);
+    two.reverse();
+    assert(two.get(0) == 2 && two.get(1) == 1, "Reverse two");
+}
+
+test "Vec Append and Repeat with empty Vecs" {
+    let both = Vec<int>::new();
+    both.append(Vec<int>::new());
+    assert(both.len == 0, "Append empty to empty");
+
+    let full = Vec<int>::new();
+    full.push(1);
+    full.append(Vec<int>::new());
+    assert(full.len == 1 && full.get(0) == 1, "Append empty to one item");
+
+    let cleared = Vec<int>::new();
+    cleared.push(9);
+    cleared.clear();
+    full.append(cleared);
+    assert(full.len == 1 && full.get(0) == 1, "Append cleared");
+
+    let into_empty = Vec<int>::new();
+    let src = Vec<int>::new();
+    src.push(2);
+    src.push(3);
+    into_empty.append(src);
+    assert(into_empty.len == 2 && into_empty.get(0) == 2 && into_empty.get(1) == 3, "Append to empty");
+
+    let none = Vec<int>::new();
+    none.mul_assign(3);
+    assert(none.len == 0, "mul_assign of empty");
+
+    let reserved = Vec<int>::with_capacity(4);
+    reserved.mul_assign(2);
+    assert(reserved.len == 0, "mul_assign of empty with capacity");
+
+    let rep = Vec<int>::new();
+    rep.push(4);
+    rep.mul_assign(3);
+    assert(rep.len == 3 && rep.get(0) == 4 && rep.get(2) == 4, "mul_assign of one item");
+
+    let empty = Vec<int>::new();
+    let other = Vec<int>::new();
+    let sum = empty + &other;
+    assert(sum.len == 0, "Add empty Vecs");
+    let tripled = empty * 3;
+    assert(tripled.len == 0, "Mul empty Vec");
+    empty += &other;
+    assert(empty.len == 0, "Add-assign empty Vecs");
+}
+
 test "Vec Iterator Combinators" {
     let v = Vec<int>::new();
     v.push(1);

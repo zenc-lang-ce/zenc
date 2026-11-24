@@ -328,26 +328,6 @@ void skip_comments(Lexer *l)
     l->emit_comments = prev_emit;
 }
 
-static const char *C_RESERVED_WORDS[] = {
-    "double",        "float",    "signed",   "unsigned",   "short",     "long",
-    "auto",          "register", "switch",   "case",       "default",   "do",
-    "goto",          "typedef",  "static",   "extern",     "volatile",  "inline",
-    "restrict",      "sizeof",   "const",    "_Alignas",   "_Alignof",  "_Atomic",
-    "_Bool",         "_Complex", "_Generic", "_Imaginary", "_Noreturn", "_Static_assert",
-    "_Thread_local", "int",      "char",     "void",       NULL};
-
-int is_c_reserved_word(const char *name)
-{
-    for (int i = 0; C_RESERVED_WORDS[i] != NULL; i++)
-    {
-        if (strcmp(name, C_RESERVED_WORDS[i]) == 0)
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-
 char *consume_until_semicolon(Lexer *l)
 {
     const char *s = l->src + l->pos;
@@ -446,25 +426,22 @@ void check_reserved_keyword(Token t)
     }
 }
 
-// Names are emitted unchanged into the generated C (variables, parameters,
-// fields, free functions...), so a C keyword used as a name (`let double = 2;`)
-// can only end in C syntax errors.
-void check_c_identifier(Token t)
-{
-    char name[64];
-    snprintf(name, sizeof(name), "%.*s", (int)t.len, t.start);
-    if (is_c_reserved_word(name))
-    {
-        char buf[MAX_SHORT_MSG_LEN];
-        snprintf(buf, sizeof(buf), "'%s' is a C keyword and cannot be used as an identifier", name);
-        const char *hints[] = {"Zen C names are emitted unchanged into the generated C",
-                               "Rename it, for example with a suffix: `value_double`", NULL};
-        zpanic_with_hints(t, buf, hints);
-    }
-}
-
 void check_identifier(Token t)
 {
     check_reserved_keyword(t);
-    check_c_identifier(t);
+}
+
+// A struct, enum, trait or alias cannot take the name of a built-in type (`int`, `i32`,
+// `short`): where a type is read, that name is the built-in one.
+void check_type_name(Token t)
+{
+    check_reserved_keyword(t);
+    char name[64];
+    snprintf(name, sizeof(name), "%.*s", (int)t.len, t.start);
+    if (is_primitive_type_name(name))
+    {
+        char buf[MAX_SHORT_MSG_LEN];
+        snprintf(buf, sizeof(buf), "'%s' is a built-in type and cannot name another type", name);
+        zpanic_at(t, "%s", buf);
+    }
 }
