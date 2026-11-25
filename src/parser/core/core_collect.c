@@ -47,6 +47,46 @@ static void check_struct_name(ParserContext *ctx, ASTNode *node, const char *nam
     }
 }
 
+void collect_variant(ParserContext *ctx, ASTNode *enum_node, ASTNode *variant)
+{
+    const char *enum_name = enum_node->type_info->name;
+    char *name = variant->variant.name;
+    register_enum_variant(ctx, name, enum_name, variant->variant.tag_id);
+    if (variant->variant.value_pending)
+    {
+        EnumVariantReg *reg = find_enum_variant_of(ctx, enum_name, name);
+        if (reg)
+        {
+            reg->tag_pending = 1;
+        }
+    }
+
+    // A variant that carries values has a constructor, named after the enum; with @link_name,
+    // C calls it by that name. A generic enum's are made with each instance.
+    Type *payload = variant->variant.payload;
+    if (!payload || enum_node->enm.is_template)
+    {
+        return;
+    }
+    char *mangled = mangle_variant_symbol(enum_name, name);
+    char *link_name = enum_node->enm.written_link_name;
+    char *c_mangled = link_name ? mangle_variant_symbol(link_name, name) : mangled;
+    // Several values make a tuple, and each is a parameter. One value that is itself a tuple
+    // (`Pair((int, int))`) is registered without parameters, as it was.
+    int several = variant->variant.payload_count > 1;
+    int count = several ? payload->count : 0;
+    Type **arg_types = several ? payload->args : NULL;
+    if (payload->kind != TYPE_TUPLE)
+    {
+        count = 1;
+        arg_types = xmalloc(sizeof(Type *));
+        arg_types[0] = payload;
+    }
+    register_func(ctx, ctx->current_scope, mangled, count, NULL, arg_types,
+                  type_new_enum(enum_name), 0, c_mangled, name, variant->token,
+                  enum_node->enm.is_export);
+}
+
 // A struct, or an enum, by its C name: the type's name, and the definition's or the template's.
 static void collect_type(ParserContext *ctx, ASTNode *node)
 {
@@ -73,6 +113,11 @@ static void collect_type(ParserContext *ctx, ASTNode *node)
     }
     register_struct_def(ctx, name, node);
     add_to_enum_list(ctx, node);
+    for (ASTNode *variant = node->enm.variants; variant && !node->enm.variants_collected;
+         variant = variant->next)
+    {
+        collect_variant(ctx, node, variant);
+    }
 }
 
 // A function outside an impl: a template by its written name, a concrete one by its C name.

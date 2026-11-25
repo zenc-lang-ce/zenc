@@ -836,6 +836,7 @@ static void set_variant_values(ParserContext *ctx, PendingConstant *p, long long
     for (int i = 0; i <= p->followers && variant; i++, variant = variant->next)
     {
         variant->variant.tag_id = (int)value + i;
+        variant->variant.value_pending = 0;
         EnumVariantReg *reg = find_enum_variant_of(ctx, p->enum_name, variant->variant.name);
         if (reg)
         {
