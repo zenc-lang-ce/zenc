@@ -1,0 +1,32 @@
+// stdlib/system: File::read_to_string on streams that do not report their size
+import "std/fs.zc"
+import "std/string.zc"
+import "std/sys/process.zc"
+
+fn read_command(cmd: char*) -> String {
+    let p = popen(cmd, "r");
+    assert(p != NULL, "popen failed");
+    let f = File { handle: (void*)p };
+    let res = f.read_to_string();
+    f.handle = NULL;
+    pclose(p);
+    assert(res.is_ok(), "read_to_string failed");
+    return res.unwrap();
+}
+
+test "read_to_string reads a pipe larger than one chunk" {
+    let s = read_command("seq 1 20000");
+    assert(s.length() == 108894, "wrong length");
+    assert(s.starts_with("1\n2\n3\n"), "wrong start");
+    assert(s.ends_with("19999\n20000\n"), "wrong end");
+}
+
+test "read_to_string reads a short pipe" {
+    let s = read_command("printf abc");
+    assert(s.eq_str("abc"), "wrong content");
+}
+
+test "read_to_string reads an empty pipe" {
+    let s = read_command("true");
+    assert(s.length() == 0, "expected empty string");
+}

@@ -54,17 +54,33 @@ impl File {
             return Result<String>::Err("File not open");
         }
         
-        fseek((FILE*)self.handle, 0, Z_SEEK_END);
-        let size = ftell((FILE*)self.handle);
         fseek((FILE*)self.handle, 0, Z_SEEK_SET);
-        
-        let buffer: char* = alloc_n<char>((usize)size + 1);
+
+        // Pipes report no size and /proc files report 0, so read until EOF.
+        let cap: usize = 4096;
+        let len: usize = 0;
+        let buffer: char* = alloc_n<char>(cap);
         if (buffer == NULL) {
             return Result<String>::Err("Out of memory");
         }
-        
-        let read = fread(buffer, 1, size, (FILE*)self.handle);
-        buffer[read] = 0;
+
+        while (true) {
+            if (len + 1 == cap) {
+                let grown = realloc_n<char>(buffer, cap, cap * 2);
+                if (grown == NULL) {
+                    dealloc<char>(buffer);
+                    return Result<String>::Err("Out of memory");
+                }
+                buffer = grown;
+                cap = cap * 2;
+            }
+            let n = fread(buffer + len, 1, cap - len - 1, (FILE*)self.handle);
+            if (n == 0) {
+                break;
+            }
+            len = len + n;
+        }
+        buffer[len] = 0;
         
         let s = String::new(buffer);
         dealloc<char>(buffer);
