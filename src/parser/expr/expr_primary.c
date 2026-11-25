@@ -729,9 +729,11 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             if (fi.kind == TOK_RBRACE)
             {
                 // Empty struct init often conflicts with block start (e.g. if x == y {})
-                // We allow it only if we verify 'acc' is a struct name.
-                if (find_struct_def(ctx, acc) || is_known_generic(ctx, acc) ||
-                    is_primitive_type_name(acc))
+                // We allow it only if we verify 'acc' is a struct name: as it is written, or the
+                // one it names here (a module's own struct, one imported by name).
+                char *declared = acc_is_bare ? type_declaration_name(ctx, acc) : NULL;
+                if (find_struct_def(ctx, acc) || (declared && find_struct_def(ctx, declared)) ||
+                    is_known_generic(ctx, acc) || is_primitive_type_name(acc))
                 {
                     is_struct_init = 1;
                 }
@@ -1022,7 +1024,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             }
         }
 
-        // A bare `helper` in a module parsed with a prefix names the module's own function.
+        // A bare `helper` names the function imported so, or the own one of a module parsed
+        // with a prefix.
         char *own_function = (!variant.member && !owner) ? module_function_name(ctx, acc) : NULL;
         if (own_function)
         {

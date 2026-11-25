@@ -19,6 +19,8 @@ Mainly a bug-fix release, with some improvements and new features.
 
 ### Fixes
 - `@derive` generates complete methods for types with many fields, long field names, or many enum variants.
+- A function imported by name (`import { twice } from "geom.zc";`, also `twice as double`) or with `as *` is called by that name; the C called `twice` instead of the module's function [#214](https://github.com/zenc-lang-ce/zenc/issues/214).
+- An empty literal (`Point {}`) names a struct imported by name or with `as *`, and a module's own struct in a module imported with an alias; it was the C error "use of undeclared identifier".
 - A `%` in the name of a `test` or in the message of an `assert` or `expect` is printed as written, not read as a printf conversion [#410](https://github.com/zenc-lang-ce/zenc/issues/410).
 - Standard library:
   - `File::read_to_string` and `File::read_all` read until the end of the stream instead of trusting the size `ftell` reports. A pipe, FIFO or terminal corrupted the heap, and a file under `/proc` read as an empty string [#444](https://github.com/zenc-lang-ce/zenc/issues/444).

@@ -923,6 +923,19 @@ char *module_function_name(ParserContext *ctx, const char *name)
     {
         return NULL;
     }
+    // Imported one by one, or with `as *`: the module's function, as type_declaration_name
+    // finds a type.
+    if (!ctx->imports.current_module_prefix)
+    {
+        SelectiveImport *imported = imported_by_name(ctx, ctx->current_filename, name);
+        ASTNode *decl = imported && imported->source_path
+                            ? find_file_declaration(ctx, imported->source_path, imported->symbol)
+                            : NULL;
+        if (decl && is_function_declaration(decl))
+        {
+            return imported_c_name(ctx, imported);
+        }
+    }
     return module_own_name(ctx, name, is_function_declaration);
 }
 
