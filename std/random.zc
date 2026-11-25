@@ -49,8 +49,8 @@ impl Random {
     // Returns a pseudo-random integer in the range [min, max] inclusive
     fn next_int_range(self, min: int, max: int) -> int {
         if (min > max) { panic("next_int_range: min > max"); }
-        let range = (u64)(max - min + 1);
-        return min + (int)(self.next_raw() % range);
+        let range = (u64)((i64)max - (i64)min + 1);
+        return (int)((i64)min + (i64)(self.next_raw() % range));
     }
 
     // Returns a pseudo-random f64 in the range [0.0, 1.0)
