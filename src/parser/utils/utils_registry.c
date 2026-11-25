@@ -805,7 +805,7 @@ int array_size_now(ParserContext *ctx, ASTNode *size_expr, int *size)
 }
 
 PendingConstant *wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *array, ZenSymbol *def,
-                                   Token token)
+                                   Token token, Lexer *start)
 {
     PendingConstant *p = xcalloc(1, sizeof(PendingConstant));
     p->expr = expr;
@@ -814,6 +814,11 @@ PendingConstant *wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *arra
     p->token = token;
     p->module_prefix = ctx->imports.current_module_prefix;
     p->filename = ctx->current_filename;
+    if (start)
+    {
+        p->start = *start;
+        p->read_again = 1;
+    }
     p->next = ctx->pending_constants;
     ctx->pending_constants = p;
     return p;
@@ -844,6 +849,18 @@ void resolve_pending_constants(ParserContext *ctx)
 {
     char *saved_prefix = ctx->imports.current_module_prefix;
     const char *saved_filename = ctx->current_filename;
+    // What was read before the declarations were registered did not see them: `Code::First`
+    // was not a variant yet.
+    for (PendingConstant *p = ctx->pending_constants; p; p = p->next)
+    {
+        if (p->read_again)
+        {
+            ctx->imports.current_module_prefix = p->module_prefix;
+            ctx->current_filename = p->filename;
+            Lexer l = p->start;
+            p->expr = parse_constant_expression(ctx, &l);
+        }
+    }
     for (int progress = 1; progress;)
     {
         progress = 0;
@@ -852,7 +869,7 @@ void resolve_pending_constants(ParserContext *ctx)
             long long value = 0;
             ctx->imports.current_module_prefix = p->module_prefix;
             ctx->current_filename = p->filename;
-            if (p->done || !eval_const_int_expr(p->expr, ctx, &value))
+            if (p->done || !p->expr || !eval_const_int_expr(p->expr, ctx, &value))
             {
                 continue;
             }

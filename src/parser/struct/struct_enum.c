@@ -128,6 +128,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             {
                 lexer_next(l);
                 Token value_tok = lexer_peek(l);
+                Lexer value_start = *l;
                 ASTNode *value_expr = parse_constant_expression(ctx, l);
                 long long value = 0;
                 counts_from = NULL;
@@ -145,7 +146,8 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
                 {
                     // It names a constant without a value yet (a `def`, whose value is read
                     // once every declaration is): the variant takes its value then.
-                    waiting_value = wait_for_constant(ctx, value_expr, NULL, NULL, value_tok);
+                    waiting_value =
+                        wait_for_constant(ctx, value_expr, NULL, NULL, value_tok, &value_start);
                 }
                 else
                 {
