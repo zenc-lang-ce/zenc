@@ -71,3 +71,31 @@ test "Random Deterministic Sequence" {
     }
 }
 
+
+fn all_in_range(min: int, max: int) -> bool {
+    let r = Random::from_seed(7);
+    for (let i = 0; i < 1000; i = i + 1) {
+        let v = r.next_int_range(min, max);
+        if (v < min || v > max) {
+            return false;
+        }
+    }
+    return true;
+}
+
+test "Random IntRange wider than INT32_MAX values" {
+    let lo = -2147483647 - 1;
+    let hi = 2147483647;
+    assert(all_in_range(0, hi), "0..INT32_MAX stays in range");
+    assert(all_in_range(-10, hi), "-10..INT32_MAX stays in range");
+    assert(all_in_range(lo, 0), "INT32_MIN..0 stays in range");
+    assert(all_in_range(lo, hi), "INT32_MIN..INT32_MAX stays in range");
+}
+
+test "Random IntRange of one value at the int limits" {
+    let lo = -2147483647 - 1;
+    let hi = 2147483647;
+    let r = Random::from_seed(3);
+    assert(r.next_int_range(hi, hi) == hi, "INT32_MAX..INT32_MAX");
+    assert(r.next_int_range(lo, lo) == lo, "INT32_MIN..INT32_MIN");
+}
