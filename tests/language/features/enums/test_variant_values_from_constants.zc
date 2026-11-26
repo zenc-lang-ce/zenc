@@ -1,0 +1,58 @@
+// language/features/enums: test_variant_values_from_constants
+// The value of a variant can name a `def`, written above or below the enum, and the variants
+// after it count on from that value. What names such a variant (another `def`, another enum,
+// an array size, a `match`) reads the value it ends up with. A `#define` can name a `def` too.
+import "_variant_values_mod.zc" as levels;
+
+def BASE = 10;
+
+enum Code { Zero, First = BASE, Second, Third = LATER * 3, Fourth, Fixed = 100, Last }
+
+def LATER = 10;
+def AFTER_SECOND = (int)Code::Second + 1;
+
+enum Other { Start = Code::Fourth, Next }
+
+struct Row {
+    cells: int[Code::Second];
+}
+
+#define TWICE (LATER * 2)
+
+fn name(code: Code) -> int {
+    match code {
+        Code::First => { return 1; },
+        Code::Fourth => { return 4; },
+        _ => { return 0; }
+    }
+}
+
+test "a variant takes its value from a def" {
+    expect_eq((int)Code::Zero, 0, "before any value");
+    expect_eq((int)Code::First, 10, "a def written above");
+    expect_eq((int)Code::Second, 11, "counts on from it");
+    expect_eq((int)Code::Third, 30, "a def written below");
+    expect_eq((int)Code::Fourth, 31, "counts on from it");
+    expect_eq((int)Code::Fixed, 100, "a literal");
+    expect_eq((int)Code::Last, 101, "counts on from the literal");
+}
+
+test "what names the variant reads its value" {
+    expect_eq(AFTER_SECOND, 12, "a def");
+    expect_eq((int)Other::Start, 31, "a variant of another enum");
+    expect_eq((int)Other::Next, 32, "counts on from it");
+    let row = Row {};
+    expect_eq(sizeof(row.cells) / sizeof(int), (usize)11, "an array size");
+    expect_eq(name(Code::Fourth), 4, "a match");
+    expect_eq(name(Code::First), 1, "a match");
+}
+
+test "in a module imported with an alias" {
+    expect_eq((int)levels::Level::Low, 4, "a def written below");
+    expect_eq((int)levels::Level::High, 5, "counts on from it");
+}
+
+test "a #define names a def" {
+    let cells: int[TWICE];
+    expect_eq(sizeof(cells) / sizeof(int), (usize)20, "an array of its size");
+}

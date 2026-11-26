@@ -1,0 +1,6 @@
+// Helper for test_variant_values_from_constants.zc: a variant whose value names a `def` the
+// module declares further down, in a module imported with an alias.
+
+enum Level { Low = HALF, High }
+
+def HALF = 4;

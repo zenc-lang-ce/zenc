@@ -52,7 +52,7 @@ static void scan_c_header_contents(ParserContext *ctx, const char *path, int dep
             char *line = xmalloc((size_t)(to - from + 1));
             memcpy(line, header->text + from, (size_t)(to - from));
             line[to - from] = 0;
-            try_parse_macro_const(ctx, line);
+            try_parse_macro_const(ctx, line, 0);
         }
     }
 

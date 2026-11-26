@@ -33,6 +33,42 @@ void set_def_value(ZenSymbol *s, long long val)
     }
 }
 
+void read_def_value(ParserContext *ctx, Lexer *l, ASTNode *node, ZenSymbol *symbol, int may_wait)
+{
+    Type *type_obj = node->type_info;
+    if (type_obj && type_obj->kind == TYPE_TUPLE && tuple_literal_follows(l))
+    {
+        node->var_decl.init_expr = parse_tuple_expression(ctx, l, type_obj, NULL);
+        return;
+    }
+    ASTNode *value = parse_expression(ctx, l);
+    node->var_decl.init_expr = value;
+    if (!symbol)
+    {
+        return;
+    }
+
+    // Its integer value, for the symbol table. One that names a `def` whose value is not known
+    // yet is computed once every value is read (resolve_pending_constants).
+    long long val;
+    if (eval_const_int_expr(value, ctx, &val))
+    {
+        set_def_value(symbol, val);
+    }
+    else if (may_wait)
+    {
+        wait_for_constant(ctx, value, NULL, symbol, node->token);
+    }
+    // Any other value without a type gives the `def` its type, as it gives a `let` its own: a
+    // float or a string literal, a struct literal.
+    if (symbol->type_info->kind == TYPE_UNKNOWN && value && value->type_info &&
+        value->type_info->kind != TYPE_UNKNOWN)
+    {
+        symbol->type_info = type_clone(value->type_info);
+        symbol->type_info->is_const = 1;
+    }
+}
+
 ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
 {
     lexer_next(l); // eat def
@@ -67,49 +103,33 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
         // is_const_value set only if literal
     }
 
-    ASTNode *i = 0;
-    if (lexer_peek(l).kind == TOK_OP && is_token(lexer_peek(l), "="))
-    {
-        lexer_next(l);
-
-        if (type_obj && type_obj->kind == TYPE_TUPLE && tuple_literal_follows(l))
-        {
-            i = parse_tuple_expression(ctx, l, type_obj, NULL);
-        }
-        else
-        {
-            i = parse_expression(ctx, l);
-
-            // Its integer value, for the symbol table. One that names a declaration further
-            // down is computed once every declaration is read (resolve_pending_constants).
-            long long val;
-            if (eval_const_int_expr(i, ctx, &val))
-            {
-                ZenSymbol *s = find_symbol_entry(ctx, ns);
-                if (s)
-                {
-                    set_def_value(s, val);
-                }
-            }
-            else if (!ctx->declarations_read && sym_entry)
-            {
-                wait_for_constant(ctx, i, NULL, sym_entry, n);
-            }
-            // Any other value without a type gives the `def` its type, as it gives a `let` its
-            // own: a float or a string literal, a struct literal.
-            if (sym_entry && sym_entry->type_info->kind == TYPE_UNKNOWN && i && i->type_info &&
-                i->type_info->kind != TYPE_UNKNOWN)
-            {
-                sym_entry->type_info = type_clone(i->type_info);
-                sym_entry->type_info->is_const = 1;
-            }
-        }
-    }
-
-    else
+    if (lexer_peek(l).kind != TOK_OP || !is_token(lexer_peek(l), "="))
     {
         zpanic_at(n, "'def' constants must be initialized");
         return NULL;
+    }
+    lexer_next(l);
+
+    ASTNode *o = ast_create(NODE_CONST);
+    o->token = n;
+    o->var_decl.name = ns;
+    o->type_info = type_obj;
+
+    // A global's value is read once every declaration is: it may name one declared further down
+    // (parse_pending_global_values).
+    int is_global = !ctx->current_scope || !ctx->current_scope->parent;
+    if (is_global && !ctx->declarations_read)
+    {
+        wait_for_global_value(ctx, o, NULL, *l);
+        if (!skip_expression(l) || lexer_peek(l).kind != TOK_SEMICOLON)
+        {
+            zpanic_at(lexer_peek(l), "Expected ';' after the value of '%s'", ns);
+            return NULL;
+        }
+    }
+    else
+    {
+        read_def_value(ctx, l, o, sym_entry, 0);
     }
 
     if (lexer_peek(l).kind == TOK_SEMICOLON)
@@ -117,14 +137,7 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
         lexer_next(l);
     }
 
-    ASTNode *o = ast_create(NODE_CONST);
-    o->token = n;
-    o->var_decl.name = ns;
-    o->var_decl.init_expr = i;
-    o->type_info = type_obj;
-    // Store extra metadata if needed, but NODE_CONST usually suffices
-
-    if (!ctx->current_scope || !ctx->current_scope->parent)
+    if (is_global)
     {
         collect_declaration(ctx, o);
     }
