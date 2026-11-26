@@ -37,6 +37,8 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
 
     ASTNode *h = 0, *tl = 0;
     int v = 0;
+    // The variant whose value waits for a constant, which the variants after it count on from.
+    PendingConstant *counts_from = NULL;
     char *ename = token_strdup(n); // Store enum name
 
     // In a module parsed with a prefix (imported with an alias, one by one or as `*`), the enum
@@ -120,25 +122,36 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
                 }
             }
 
-            // Explicit value: `Ok = 200`. It must be known before the variant is
-            // registered, since match and constant folding read the registered tag.
+            // Explicit value: `Ok = 200`.
+            PendingConstant *waiting_value = NULL;
             if (lexer_peek(l).kind == TOK_OP && is_token(lexer_peek(l), "="))
             {
                 lexer_next(l);
                 Token value_tok = lexer_peek(l);
                 ASTNode *value_expr = parse_constant_expression(ctx, l);
                 long long value = 0;
-                if (!value_expr || !eval_const_int_expr(value_expr, ctx, &value))
+                counts_from = NULL;
+                if (value_expr && eval_const_int_expr(value_expr, ctx, &value))
+                {
+                    if (value < INT_MIN || value > INT_MAX)
+                    {
+                        zpanic_at(value_tok, "Enum variant value %lld does not fit in an 'int'",
+                                  value);
+                        return NULL;
+                    }
+                    v = (int)value;
+                }
+                else if (value_expr && !ctx->declarations_read)
+                {
+                    // It names a constant without a value yet (a `def`, whose value is read
+                    // once every declaration is): the variant takes its value then.
+                    waiting_value = wait_for_constant(ctx, value_expr, NULL, NULL, value_tok);
+                }
+                else
                 {
                     zpanic_at(value_tok, "Enum variant value must be a constant integer");
                     return NULL;
                 }
-                if (value < INT_MIN || value > INT_MAX)
-                {
-                    zpanic_at(value_tok, "Enum variant value %lld does not fit in an 'int'", value);
-                    return NULL;
-                }
-                v = (int)value;
             }
 
             ASTNode *va = ast_create(NODE_ENUM_VARIANT);
@@ -154,6 +167,26 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             char *mangled = mangle_variant_symbol(ename, vname);
             char *c_mangled = link_name ? mangle_variant_symbol(link_name, vname) : mangled;
             register_enum_variant(ctx, vname, ename, va->variant.tag_id);
+            // A variant whose value waits, and the ones that count on from it, have no value
+            // yet (resolve_pending_constants gives it).
+            if (waiting_value)
+            {
+                waiting_value->variant = va;
+                waiting_value->enum_name = ename;
+                counts_from = waiting_value;
+            }
+            else if (counts_from)
+            {
+                counts_from->followers++;
+            }
+            if (counts_from)
+            {
+                EnumVariantReg *reg = find_enum_variant_of(ctx, ename, vname);
+                if (reg)
+                {
+                    reg->tag_pending = 1;
+                }
+            }
 
             // Register Constructor Function Signature
             if (payload && !gp) // Only for non-generic enums for now
