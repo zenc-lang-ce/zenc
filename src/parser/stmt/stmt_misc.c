@@ -48,6 +48,60 @@ char *normalize_raw_content(const char *content)
     return normalized;
 }
 
+// A name in a raw block that resolves to a symbol is a use of it. A name after
+// `.` or `->` is a field; names in C strings and comments are not tokens.
+static void mark_raw_ident_used(ParserContext *ctx, Token t, Token prev)
+{
+    if (t.kind != TOK_IDENT || prev.kind == TOK_ARROW ||
+        (prev.kind == TOK_OP && prev.len == 1 && prev.start[0] == '.'))
+    {
+        return;
+    }
+    char *name = token_strdup(t);
+    ZenSymbol *sym = find_symbol_entry(ctx, name);
+    if (sym)
+    {
+        sym->is_used = 1;
+    }
+    zfree(name);
+}
+
+char *parse_raw_block_body(ParserContext *ctx, Lexer *l)
+{
+    const char *start = l->src + l->pos;
+    Token prev = {0};
+    int depth = 1;
+    while (depth > 0)
+    {
+        Token t = lexer_next(l);
+        if (t.kind == TOK_EOF)
+        {
+            zpanic_at(t, "Unexpected EOF in raw block");
+            return NULL;
+        }
+        if (t.kind == TOK_LBRACE)
+        {
+            depth++;
+        }
+        if (t.kind == TOK_RBRACE)
+        {
+            depth--;
+        }
+        mark_raw_ident_used(ctx, t, prev);
+        prev = t;
+    }
+    const char *end = l->src + l->pos - 1;
+    size_t len = (size_t)(end - start);
+
+    char *content = xmalloc(len + 1);
+    memcpy(content, start, len);
+    content[len] = 0;
+
+    char *normalized = normalize_raw_content(content);
+    zfree(content);
+    return normalized;
+}
+
 ASTNode *parse_macro_call(ParserContext *ctx, Lexer *l, char *macro_name)
 {
     Token start_tok = lexer_peek(l);

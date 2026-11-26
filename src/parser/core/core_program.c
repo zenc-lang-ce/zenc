@@ -482,38 +482,14 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                 }
                 lexer_next(l);
 
-                const char *start = l->src + l->pos;
-
-                int depth = 1;
-                while (depth > 0)
+                char *content = parse_raw_block_body(ctx, l);
+                if (!content)
                 {
-                    Token inner_t = lexer_next(l);
-                    if (inner_t.kind == TOK_EOF)
-                    {
-                        zpanic_at(inner_t, "Unexpected EOF in raw block");
-                        return NULL;
-                    }
-                    if (inner_t.kind == TOK_LBRACE)
-                    {
-                        depth++;
-                    }
-                    if (inner_t.kind == TOK_RBRACE)
-                    {
-                        depth--;
-                    }
+                    return NULL;
                 }
-
-                const char *end = l->src + l->pos - 1;
-                size_t len = (size_t)(end - start);
-
-                char *content = xmalloc(len + 1);
-                memcpy(content, start, (size_t)(len));
-                content[len] = 0;
-
                 s = ast_create(NODE_RAW_STMT);
                 s->token = t;
-                s->raw_stmt.content = normalize_raw_content(content);
-                zfree(content);
+                s->raw_stmt.content = content;
             }
             else if (is_token(t, "const"))
             {

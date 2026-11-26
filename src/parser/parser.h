@@ -1406,6 +1406,16 @@ void register_deprecated_func(ParserContext *ctx, const char *name, const char *
 void try_parse_macro_const(ParserContext *ctx, const char *name);
 void parser_audit_preprocessor(ParserContext *ctx, Token t);
 char *normalize_raw_content(const char *content);
+
+/**
+ * @brief Reads a raw block's body up to its closing '}' (the '{' is already read).
+ *
+ * The body stays C text, but each name in it that resolves to a symbol marks
+ * that symbol used, so it is not reported as unused.
+ *
+ * @return The body text, or NULL after reporting an unterminated block.
+ */
+char *parse_raw_block_body(ParserContext *ctx, Lexer *l);
 char *parse_condition_raw(ParserContext *ctx, Lexer *l);
 const char *resolve_plugin(ParserContext *ctx, const char *name_or_alias);
 ASTNode *parse_embed(ParserContext *ctx, Lexer *l);
