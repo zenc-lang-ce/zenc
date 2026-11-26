@@ -724,6 +724,8 @@ typedef struct PendingTypeName
 typedef struct PendingConstant
 {
     ASTNode *expr;         ///< The expression, as read.
+    Lexer start;           ///< Where the expression starts, to read it again (`read_again`).
+    int read_again;        ///< It was read before the declarations were registered.
     Type *array;           ///< The array type whose size it is, or NULL.
     struct ZenSymbol *def; ///< The `def`'s symbol, or NULL.
     ASTNode *variant;      ///< The enum variant whose value it is, or NULL.
@@ -1497,9 +1499,12 @@ int array_size_now(ParserContext *ctx, ASTNode *size_expr, int *size);
  * @brief Makes the size of `array`, or the value of the `def` whose symbol is `def`, wait for
  *        the declarations: `expr` is computed then (resolve_pending_constants). With neither,
  *        the caller says what waits in the PendingConstant it gets (a variant, a `#define`).
+ *        `start` is where `expr` starts when it was read before the declarations were
+ *        registered: it may name one of them, so it is read again first; NULL when it was read
+ *        after.
  */
 struct PendingConstant *wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *array,
-                                          struct ZenSymbol *def, Token token);
+                                          struct ZenSymbol *def, Token token, Lexer *start);
 /**
  * @brief Declares the `#define` `name` as a constant of value `value`, unless the name is taken.
  */

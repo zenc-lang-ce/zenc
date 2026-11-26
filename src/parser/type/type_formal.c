@@ -174,6 +174,7 @@ static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
     // (array_size_or_wait).
     ASTNode **dim_sizes = NULL;
     Token *dim_tokens = NULL;
+    Lexer *dim_starts = NULL;
     int dims_cap = 0;
     int dims_count = 0;
 
@@ -187,6 +188,7 @@ static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
             dims = xrealloc(dims, sizeof(int) * (size_t)(dims_cap));
             dim_sizes = xrealloc(dim_sizes, sizeof(ASTNode *) * (size_t)(dims_cap));
             dim_tokens = xrealloc(dim_tokens, sizeof(Token) * (size_t)(dims_cap));
+            dim_starts = xrealloc(dim_starts, sizeof(Lexer) * (size_t)(dims_cap));
         }
         dim_sizes[dims_count] = NULL;
 
@@ -198,6 +200,7 @@ static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
         }
 
         Token size_token = lexer_peek(l);
+        dim_starts[dims_count] = *l;
         ASTNode *size_expr = parse_constant_expression(ctx, l);
         if (!size_expr)
         {
@@ -249,7 +252,7 @@ static Type *parse_type_formal_impl(ParserContext *ctx, Lexer *l)
         arr->array_size = dims[i];
         if (dim_sizes[i])
         {
-            wait_for_constant(ctx, dim_sizes[i], arr, NULL, dim_tokens[i]);
+            wait_for_constant(ctx, dim_sizes[i], arr, NULL, dim_tokens[i], &dim_starts[i]);
         }
         t = arr;
     }
