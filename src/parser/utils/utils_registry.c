@@ -747,12 +747,27 @@ static void resolve_pending_type_name(ParserContext *ctx, PendingTypeName *list,
     }
     else
     {
-        char *c_name = type_declaration_name(ctx, p->name);
-        if (c_name)
+#if FF_COMPATIBILITY_0_5
+        // `Slice_Point`, read before `Point` was registered.
+        Type *compat_slice = t->kind == TYPE_STRUCT && t->count == 0
+                                 ? compat_slice_from_name(ctx, p->name, p->token)
+                                 : NULL;
+        if (compat_slice)
         {
-            t->name = c_name;
+            int is_const = t->is_const;
+            *t = *compat_slice;
+            t->is_const = t->is_const || is_const;
         }
-        register_type_usage(ctx, t->name, p->token);
+        else
+#endif
+        {
+            char *c_name = type_declaration_name(ctx, p->name);
+            if (c_name)
+            {
+                t->name = c_name;
+            }
+            register_type_usage(ctx, t->name, p->token);
+        }
     }
     ctx->imports.current_module_prefix = saved_prefix;
     ctx->current_filename = saved_filename;
