@@ -56,6 +56,24 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
         ename = prefixed_name;
     }
 
+    ASTNode *node = ast_create(NODE_ENUM);
+    node->token = n;
+    node->enm.name = own_name;
+    node->enm.module_prefix = ctx->imports.current_module_prefix;
+    node->enm.is_module_prefixed = prefixed_name != NULL;
+    node->enm.written_name = written_name;
+    node->enm.written_link_name = link_name ? xstrdup(link_name) : NULL;
+    node->link_name = definition_link_name(ctx, link_name, ename);
+    node->type_info = type_new_enum(ename);
+    node->enm.is_export = is_export;
+    if (gp)
+    {
+        node->enm.generic_params = xmalloc(sizeof(char *));
+        node->enm.generic_params[0] = gp;
+        node->enm.generic_param_count = 1;
+        node->enm.is_template = 1;
+    }
+
     while (1)
     {
         skip_comments(l);
@@ -164,11 +182,6 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             va->variant.payload = payload; // Store Type*
             va->variant.payload_count = tuple_count ? tuple_count : (payload ? 1 : 0);
 
-            // Register Variant (Mangled name to avoid collisions: Result_Ok). The
-            // constructor is named after the enum; with @link_name, C calls it by that name.
-            char *mangled = mangle_variant_symbol(ename, vname);
-            char *c_mangled = link_name ? mangle_variant_symbol(link_name, vname) : mangled;
-            register_enum_variant(ctx, vname, ename, va->variant.tag_id);
             // A variant whose value waits, and the ones that count on from it, have no value
             // yet (resolve_pending_constants gives it).
             if (waiting_value)
@@ -181,41 +194,15 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             {
                 counts_from->followers++;
             }
-            if (counts_from)
-            {
-                EnumVariantReg *reg = find_enum_variant_of(ctx, ename, vname);
-                if (reg)
-                {
-                    reg->tag_pending = 1;
-                }
-            }
+            va->variant.value_pending = counts_from != NULL;
 
-            // Register Constructor Function Signature
-            if (payload && !gp) // Only for non-generic enums for now
+            // Read once the declarations are registered, a variant is registered at once: the
+            // value of the next one may name it.
+            if (ctx->declarations_read)
             {
-                if (payload->kind == TYPE_TUPLE)
-                {
-                    Type *ret_t = type_new_enum(ename);
-
-                    // We can reuse the tuple_types collected during parsing!
-                    register_func(ctx, ctx->current_scope, mangled, tuple_count, NULL, tuple_types,
-                                  ret_t, 0, c_mangled, va->variant.name, vt, is_export);
-                }
-                else
-                {
-                    Type **at = xmalloc(sizeof(Type *));
-                    at[0] = payload;
-                    Type *ret_t = type_new_enum(ename);
-                    register_func(ctx, ctx->current_scope, mangled, 1, NULL, at, ret_t, 0,
-                                  c_mangled, va->variant.name, vt, is_export);
-                }
+                collect_variant(ctx, node, va);
+                node->enm.variants_collected = 1;
             }
-            else if (!gp)
-            {
-                // No payload: don't register as function.
-                // Codegen handles calling the constructor via codegen_var_expr.
-            }
-            zfree(mangled);
 
             if (!h)
             {
@@ -233,27 +220,9 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
         }
     }
 
-    ASTNode *node = ast_create(NODE_ENUM);
-    node->token = n;
-    node->enm.name = own_name;
-    node->enm.module_prefix = ctx->imports.current_module_prefix;
-    node->enm.is_module_prefixed = prefixed_name != NULL;
-    node->enm.written_name = written_name;
-    node->link_name = definition_link_name(ctx, link_name, ename);
-    node->type_info = type_new_enum(ename);
-
     node->enm.variants = h;
     if (gp)
     {
-        node->enm.generic_params = xmalloc(sizeof(char *));
-        node->enm.generic_params[0] = gp;
-        node->enm.generic_param_count = 1;
-    }
-    node->enm.is_export = is_export;
-
-    if (gp)
-    {
-        node->enm.is_template = 1;
         ctx->known_generics_count = generics_before;
     }
 

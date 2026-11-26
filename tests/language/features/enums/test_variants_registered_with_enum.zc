@@ -1,0 +1,57 @@
+// language/features/enums: test_variants_registered_with_enum
+// The variants of an enum and their constructors are registered with the enum, once every
+// declaration is read: the value of a variant can name the ones before it, and what is written
+// above the enum can name its variants and call its constructors.
+
+fn area(shape: Shape) -> int {
+    match shape {
+        Shape::Circle(radius) => { return radius; },
+        Shape::Rect(width, height) => { return width * height; },
+        _ => { return 0; }
+    }
+}
+
+fn default_shape(shape: Shape = Shape::Circle(4)) -> int {
+    return area(shape);
+}
+
+fn unwrap(value: Maybe<int>) -> int {
+    match value {
+        Maybe::Some(inner) => { return inner; },
+        Maybe::Nothing => { return -1; }
+    }
+}
+
+enum Code { First = 5, Second = First + 1, Third, Fourth = Code::Third * 2 }
+
+enum Flags { None = 0, Read = 1 << 0, Write = 1 << 1, Both = Read | Write }
+
+enum Shape { Circle(int), Rect(int, int), Empty }
+
+enum Maybe<T> { Some(T), Nothing }
+
+@link_name("c_token")
+enum Token { Number(int), End }
+
+test "the value of a variant names the ones before it" {
+    expect_eq((int)Code::Second, 6, "by its name");
+    expect_eq((int)Code::Third, 7, "counts on from it");
+    expect_eq((int)Code::Fourth, 14, "by its qualified name");
+    expect_eq((int)Flags::Both, 3, "two of them");
+}
+
+test "constructors called above the enum" {
+    expect_eq(area(Shape::Rect(2, 3)), 6, "several values");
+    expect_eq(default_shape(), 4, "in a default value");
+    expect_eq(area(Shape::Empty), 0, "without values");
+    expect_eq(unwrap(Maybe<int>::Some(2)), 2, "of a generic enum");
+    expect_eq(unwrap(Maybe<int>::Nothing), -1, "of a generic enum, without values");
+}
+
+test "the constructors of an enum with a link name" {
+    let token = Token::Number(3);
+    match token {
+        Token::Number(value) => { expect_eq(value, 3, "its value"); },
+        Token::End => { expect(false, "not the variant built"); }
+    }
+}
