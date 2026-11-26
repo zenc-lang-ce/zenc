@@ -367,6 +367,19 @@ typedef struct PendingBody
  *        (parse_pending_default_values).
  */
 /**
+ * @brief A declaration read while the declarations are: it is registered once every one is read,
+ *        first in the round (collect_pending_declarations).
+ */
+typedef struct PendingCollection
+{
+    ASTNode *node;        ///< The declaration.
+    struct Scope *scope;  ///< The scope it was read in.
+    char *module_prefix;  ///< The module it was read in.
+    const char *filename; ///< The file it was read in.
+    struct PendingCollection *next;
+} PendingCollection;
+
+/**
  * @brief A global's value read while the declarations are: it may name one declared further down,
  *        so it is read once every declaration is, first in the round
  *        (parse_pending_global_values).
@@ -446,11 +459,13 @@ struct ParserContext
     struct PendingInstance *pending_instances;      ///< Instances waiting for the declarations.
     struct PendingInstance *pending_instances_tail; ///< Last of `pending_instances`.
     int declarations_read; ///< Set once every declaration is read: instances are made at once.
-    struct WaitingStruct *waiting_structs;      ///< Structs whose `use` waits for the declarations.
-    struct PendingTypeName *pending_type_names; ///< Type names read before their declaration.
-    struct PendingConstant *pending_constants;  ///< Constants read before what they name.
-    struct FileDependency *file_dependencies;   ///< Which file imports which (file_sees).
-    struct PendingDeclaration *pending_declarations;      ///< Impls and derives, in the order read.
+    struct WaitingStruct *waiting_structs; ///< Structs whose `use` waits for the declarations.
+    struct PendingCollection *pending_collections;      ///< Declarations read, not registered yet.
+    struct PendingCollection *pending_collections_tail; ///< Last of `pending_collections`.
+    struct PendingTypeName *pending_type_names;      ///< Type names read before their declaration.
+    struct PendingConstant *pending_constants;       ///< Constants read before what they name.
+    struct FileDependency *file_dependencies;        ///< Which file imports which (file_sees).
+    struct PendingDeclaration *pending_declarations; ///< Impls and derives, in the order read.
     struct PendingDeclaration *pending_declarations_tail; ///< Last of `pending_declarations`.
     ASTNode *impl_slot; ///< The node an impl read now fills (parse_pending_declarations).
     ASTNode *instantiated_structs; ///< List of AST nodes for instantiated structs.
@@ -1557,9 +1572,15 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
 /**
  * @brief Registers the declaration `node` where later code looks it up: a struct, an enum, a
  *        function outside an impl, an impl and its methods, a type alias, a trait, or a global
- *        constant or variable.
+ *        constant or variable. While the declarations are read it only notes it: reading one
+ *        does not depend on the ones read before it (collect_pending_declarations).
  */
 void collect_declaration(ParserContext *ctx, ASTNode *node);
+/**
+ * @brief Registers the declarations read while the declarations were (PendingCollection), in the
+ *        order read, each in its module: first in the round, before anything looks one up.
+ */
+void collect_pending_declarations(ParserContext *ctx);
 
 // decl/ declarations
 void replace_it_with_var(ASTNode *node, char *var_name);
