@@ -1,0 +1,27 @@
+// Helper for test_selective_import_functions.zc: functions, a generic function, a global, a
+// `def` and a struct, imported by name and with `as *`.
+
+struct Cell {
+    value: int;
+}
+
+fn twice(n: int) -> int {
+    return n * 2;
+}
+
+fn make_cell() -> Cell {
+    return Cell { value: 3 };
+}
+
+// An empty literal of the module's own struct, in a module imported with an alias.
+fn blank_cell() -> Cell {
+    return Cell {};
+}
+
+fn same<T>(value: T) -> T {
+    return value;
+}
+
+let COUNTER: int = 7;
+
+def LIMIT = 4;
