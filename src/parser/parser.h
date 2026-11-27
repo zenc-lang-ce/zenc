@@ -1291,6 +1291,11 @@ EnumVariantReg *pattern_variant(ParserContext *ctx, MatchPattern *p);
  */
 int expr_has_address(ParserContext *ctx, ASTNode *e);
 TypeAlias *find_type_alias_node(ParserContext *ctx, const char *name);
+/**
+ * @brief The alias a type name written in the current file names: the one declared by that name,
+ *        or the one the file imports under it (`import { Width as Span }`); NULL when none.
+ */
+TypeAlias *find_written_type_alias(ParserContext *ctx, const char *name);
 char *extract_module_name(const char *path);
 char *module_prefix_for(ParserContext *ctx, const char *path);
 int check_impl(ParserContext *ctx, const char *trait_name, const char *type_name);
@@ -1486,11 +1491,6 @@ WaitingStruct *find_waiting_struct(ParserContext *ctx, ASTNode *strct);
  *        declaration is read.
  */
 void resolve_waiting_structs(ParserContext *ctx);
-/**
- * @brief Whether a type `name` written in the current file names something declared already: a
- *        struct, an enum, a template, an alias, a trait, an imported or C type.
- */
-int type_name_declared(ParserContext *ctx, const char *name);
 /**
  * @brief Resolves, in place, the type names read before their declaration, each in its module,
  *        once every declaration is read.

@@ -121,7 +121,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         char *name = token_strdup(t);
 
         // Check for alias
-        TypeAlias *alias_node = find_type_alias_node(ctx, name);
+        TypeAlias *alias_node = find_written_type_alias(ctx, name);
         if (alias_node)
         {
             register_type_usage(ctx, name, t);
@@ -283,11 +283,12 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             return ty;
         }
 
-        // While declarations are read, a name nothing declared yet may be declared further down:
-        // what it names (an alias, a template, a type of this module) is known once every
-        // declaration is, and the type keeps the name as written until then.
-        int pending = pending_scope ||
-                      (!ctx->declarations_read && !is_qualified && !type_name_declared(ctx, name));
+        // While declarations are read, what a name names (an alias, a template, a type of this
+        // module or of one it imports) is known once every declaration is: the type keeps the
+        // name as written until then, whether it is declared above or below.
+        int pending =
+            pending_scope || (!ctx->declarations_read && !is_qualified &&
+                              !is_known_generic(ctx, name) && strcasecmp(name, "Self") != 0);
 
         // A bare name: a type imported one by one, or in a module the module's own type.
         char *type_name = is_qualified || pending ? NULL : type_declaration_name(ctx, name);

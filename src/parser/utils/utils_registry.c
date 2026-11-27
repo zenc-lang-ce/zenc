@@ -655,27 +655,6 @@ char *module_type_name(ParserContext *ctx, const char *name)
     return module_prefixed_name(ctx, ctx->imports.current_module_prefix, name);
 }
 
-int type_name_declared(ParserContext *ctx, const char *name)
-{
-    if (is_known_generic(ctx, name) || is_primitive_type_name(name) ||
-        strcasecmp(name, "Self") == 0 || is_extern_symbol(ctx, name) ||
-        find_struct_def(ctx, name) || find_type_alias_node(ctx, name) ||
-        find_generic_template(ctx, name) || find_trait_def(ctx, name))
-    {
-        return 1;
-    }
-    if (!ctx->imports.current_module_prefix && imported_by_name(ctx, ctx->current_filename, name))
-    {
-        return 1;
-    }
-    if (module_own_name(ctx, name, is_type_declaration))
-    {
-        return 1;
-    }
-    char *prefixed = module_prefixed_name(ctx, ctx->imports.current_module_prefix, name);
-    return prefixed && find_struct_def(ctx, prefixed);
-}
-
 // The pending name whose type is `t`, among `list`, or NULL.
 static PendingTypeName *pending_type_of(PendingTypeName *list, Type *t)
 {
@@ -727,7 +706,7 @@ static void resolve_pending_type_name(ParserContext *ctx, PendingTypeName *list,
     TypeAlias *alias = p->alias;
     if (!alias && !p->scope && t->kind == TYPE_STRUCT && t->count == 0)
     {
-        alias = find_type_alias_node(ctx, p->name);
+        alias = find_written_type_alias(ctx, p->name);
     }
     if (p->scope)
     {
@@ -949,6 +928,18 @@ void resolve_pending_type_names(ParserContext *ctx)
     {
         resolve_pending_type_name(ctx, in_order, p);
     }
+}
+
+TypeAlias *find_written_type_alias(ParserContext *ctx, const char *name)
+{
+    TypeAlias *alias = find_type_alias_node(ctx, name);
+    if (!alias && !ctx->imports.current_module_prefix)
+    {
+        // Imported under another name (`import { Width as Span }`): by the name it declares.
+        SelectiveImport *imported = imported_by_name(ctx, ctx->current_filename, name);
+        alias = imported ? find_type_alias_node(ctx, imported->symbol) : NULL;
+    }
+    return alias;
 }
 
 char *type_declaration_name(ParserContext *ctx, const char *name)
