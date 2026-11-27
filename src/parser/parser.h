@@ -368,14 +368,17 @@ typedef struct PendingBody
  */
 /**
  * @brief A declaration read while the declarations are: it is registered once every one is read,
- *        first in the round (collect_pending_declarations).
+ *        first in the round (collect_pending_declarations). Or an import with `as *`, which
+ *        names what its module declares and so waits for those declarations in the same queue.
  */
 typedef struct PendingCollection
 {
-    ASTNode *node;        ///< The declaration.
-    struct Scope *scope;  ///< The scope it was read in.
-    char *module_prefix;  ///< The module it was read in.
-    const char *filename; ///< The file it was read in.
+    ASTNode *node;               ///< The declaration; NULL for an import with `as *`.
+    const char *wildcard_module; ///< For an import with `as *`: the prefix of its module.
+    const char *wildcard_path;   ///< For an import with `as *`: the file of its module.
+    struct Scope *scope;         ///< The scope it was read in.
+    char *module_prefix;         ///< The module it was read in.
+    const char *filename;        ///< The file it was read in.
     struct PendingCollection *next;
 } PendingCollection;
 
@@ -1581,6 +1584,12 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
  *        does not depend on the ones read before it (collect_pending_declarations).
  */
 void collect_declaration(ParserContext *ctx, ASTNode *node);
+/**
+ * @brief Gives the file the names of the module `module_base` (the file `module_path`) it imports
+ *        with `as *` (re_export_wildcard_symbols). While the declarations are read it only notes
+ *        it: the module's declarations are not registered yet.
+ */
+void collect_wildcard_import(ParserContext *ctx, const char *module_base, const char *module_path);
 /**
  * @brief Registers the declarations read while the declarations were (PendingCollection), in the
  *        order read, each in its module: first in the round, before anything looks one up.
