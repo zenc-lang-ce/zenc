@@ -254,15 +254,9 @@ static void register_collected(ParserContext *ctx, ASTNode *node)
     }
 }
 
-void collect_declaration(ParserContext *ctx, ASTNode *node)
+// Notes `p` where it is read, last in the queue.
+static void wait_for_collection(ParserContext *ctx, PendingCollection *p)
 {
-    if (ctx->declarations_read)
-    {
-        register_collected(ctx, node);
-        return;
-    }
-    PendingCollection *p = xcalloc(1, sizeof(PendingCollection));
-    p->node = node;
     p->scope = ctx->current_scope;
     p->module_prefix = ctx->imports.current_module_prefix;
     p->filename = ctx->current_filename;
@@ -275,6 +269,31 @@ void collect_declaration(ParserContext *ctx, ASTNode *node)
         ctx->pending_collections = p;
     }
     ctx->pending_collections_tail = p;
+}
+
+void collect_declaration(ParserContext *ctx, ASTNode *node)
+{
+    if (ctx->declarations_read)
+    {
+        register_collected(ctx, node);
+        return;
+    }
+    PendingCollection *p = xcalloc(1, sizeof(PendingCollection));
+    p->node = node;
+    wait_for_collection(ctx, p);
+}
+
+void collect_wildcard_import(ParserContext *ctx, const char *module_base, const char *module_path)
+{
+    if (ctx->declarations_read)
+    {
+        re_export_wildcard_symbols(ctx, module_base, module_path);
+        return;
+    }
+    PendingCollection *p = xcalloc(1, sizeof(PendingCollection));
+    p->wildcard_module = xstrdup(module_base);
+    p->wildcard_path = xstrdup(module_path);
+    wait_for_collection(ctx, p);
 }
 
 void collect_pending_declarations(ParserContext *ctx)
@@ -290,7 +309,14 @@ void collect_pending_declarations(ParserContext *ctx)
         ctx->current_scope = p->scope;
         ctx->imports.current_module_prefix = p->module_prefix;
         ctx->current_filename = p->filename;
-        register_collected(ctx, p->node);
+        if (p->node)
+        {
+            register_collected(ctx, p->node);
+        }
+        else
+        {
+            re_export_wildcard_symbols(ctx, p->wildcard_module, p->wildcard_path);
+        }
     }
     ctx->current_scope = saved_scope;
     ctx->imports.current_module_prefix = saved_prefix;

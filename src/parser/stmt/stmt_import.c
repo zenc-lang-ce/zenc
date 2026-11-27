@@ -625,7 +625,7 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
 
     if (is_wildcard && temp_module_prefix)
     {
-        re_export_wildcard_symbols(ctx, temp_module_prefix, fn);
+        collect_wildcard_import(ctx, temp_module_prefix, fn);
         zmap_put(&ctx->imports.wildcard_imports, temp_module_prefix, temp_module_prefix);
     }
 
