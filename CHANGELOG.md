@@ -23,6 +23,7 @@ Mainly a bug-fix release, with some improvements and new features.
 - The value of an enum variant can name a `def` written further down: `enum Code { First = BASE }` before `def BASE = 10;` compiles. It was the error "Enum variant value must be a constant integer".
 - A function imported by name (`import { twice } from "geom.zc";`, also `twice as double`) or with `as *` is called by that name; the C called `twice` instead of the module's function [#214](https://github.com/zenc-lang-ce/zenc/issues/214).
 - An empty literal (`Point {}`) names a struct imported by name or with `as *`, and a module's own struct in a module imported with an alias; it was the C error "use of undeclared identifier".
+- A constant written with the declarations can name a variant of an enum written further down, or a variant of its own enum by its full name: `[int; Size::Small]` in a struct before `enum Size`, and `Fourth = Code::Third * 2` inside `enum Code`, compile. They were the errors "Array size must be a known compile-time constant integer" and "Enum variant value must be a constant integer".
 - A `%` in the name of a `test` or in the message of an `assert` or `expect` is printed as written, not read as a printf conversion [#410](https://github.com/zenc-lang-ce/zenc/issues/410).
 - Standard library:
   - `File::read_to_string` and `File::read_all` read until the end of the stream instead of trusting the size `ftell` reports. A pipe, FIFO or terminal corrupted the heap, and a file under `/proc` read as an empty string [#444](https://github.com/zenc-lang-ce/zenc/issues/444).

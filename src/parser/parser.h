@@ -367,6 +367,22 @@ typedef struct PendingBody
  *        (parse_pending_default_values).
  */
 /**
+ * @brief A declaration read while the declarations are: it is registered once every one is read,
+ *        first in the round (collect_pending_declarations). Or an import with `as *`, which
+ *        names what its module declares and so waits for those declarations in the same queue.
+ */
+typedef struct PendingCollection
+{
+    ASTNode *node;               ///< The declaration; NULL for an import with `as *`.
+    const char *wildcard_module; ///< For an import with `as *`: the prefix of its module.
+    const char *wildcard_path;   ///< For an import with `as *`: the file of its module.
+    struct Scope *scope;         ///< The scope it was read in.
+    char *module_prefix;         ///< The module it was read in.
+    const char *filename;        ///< The file it was read in.
+    struct PendingCollection *next;
+} PendingCollection;
+
+/**
  * @brief A global's value read while the declarations are: it may name one declared further down,
  *        so it is read once every declaration is, first in the round
  *        (parse_pending_global_values).
@@ -446,11 +462,13 @@ struct ParserContext
     struct PendingInstance *pending_instances;      ///< Instances waiting for the declarations.
     struct PendingInstance *pending_instances_tail; ///< Last of `pending_instances`.
     int declarations_read; ///< Set once every declaration is read: instances are made at once.
-    struct WaitingStruct *waiting_structs;      ///< Structs whose `use` waits for the declarations.
-    struct PendingTypeName *pending_type_names; ///< Type names read before their declaration.
-    struct PendingConstant *pending_constants;  ///< Constants read before what they name.
-    struct FileDependency *file_dependencies;   ///< Which file imports which (file_sees).
-    struct PendingDeclaration *pending_declarations;      ///< Impls and derives, in the order read.
+    struct WaitingStruct *waiting_structs; ///< Structs whose `use` waits for the declarations.
+    struct PendingCollection *pending_collections;      ///< Declarations read, not registered yet.
+    struct PendingCollection *pending_collections_tail; ///< Last of `pending_collections`.
+    struct PendingTypeName *pending_type_names;      ///< Type names read before their declaration.
+    struct PendingConstant *pending_constants;       ///< Constants read before what they name.
+    struct FileDependency *file_dependencies;        ///< Which file imports which (file_sees).
+    struct PendingDeclaration *pending_declarations; ///< Impls and derives, in the order read.
     struct PendingDeclaration *pending_declarations_tail; ///< Last of `pending_declarations`.
     ASTNode *impl_slot; ///< The node an impl read now fills (parse_pending_declarations).
     ASTNode *instantiated_structs; ///< List of AST nodes for instantiated structs.
@@ -709,6 +727,8 @@ typedef struct PendingTypeName
 typedef struct PendingConstant
 {
     ASTNode *expr;         ///< The expression, as read.
+    Lexer start;           ///< Where the expression starts, to read it again (`read_again`).
+    int read_again;        ///< It was read before the declarations were registered.
     Type *array;           ///< The array type whose size it is, or NULL.
     struct ZenSymbol *def; ///< The `def`'s symbol, or NULL.
     ASTNode *variant;      ///< The enum variant whose value it is, or NULL.
@@ -1482,9 +1502,12 @@ int array_size_now(ParserContext *ctx, ASTNode *size_expr, int *size);
  * @brief Makes the size of `array`, or the value of the `def` whose symbol is `def`, wait for
  *        the declarations: `expr` is computed then (resolve_pending_constants). With neither,
  *        the caller says what waits in the PendingConstant it gets (a variant, a `#define`).
+ *        `start` is where `expr` starts when it was read before the declarations were
+ *        registered: it may name one of them, so it is read again first; NULL when it was read
+ *        after.
  */
 struct PendingConstant *wait_for_constant(ParserContext *ctx, ASTNode *expr, Type *array,
-                                          struct ZenSymbol *def, Token token);
+                                          struct ZenSymbol *def, Token token, Lexer *start);
 /**
  * @brief Declares the `#define` `name` as a constant of value `value`, unless the name is taken.
  */
@@ -1557,9 +1580,21 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
 /**
  * @brief Registers the declaration `node` where later code looks it up: a struct, an enum, a
  *        function outside an impl, an impl and its methods, a type alias, a trait, or a global
- *        constant or variable.
+ *        constant or variable. While the declarations are read it only notes it: reading one
+ *        does not depend on the ones read before it (collect_pending_declarations).
  */
 void collect_declaration(ParserContext *ctx, ASTNode *node);
+/**
+ * @brief Gives the file the names of the module `module_base` (the file `module_path`) it imports
+ *        with `as *` (re_export_wildcard_symbols). While the declarations are read it only notes
+ *        it: the module's declarations are not registered yet.
+ */
+void collect_wildcard_import(ParserContext *ctx, const char *module_base, const char *module_path);
+/**
+ * @brief Registers the declarations read while the declarations were (PendingCollection), in the
+ *        order read, each in its module: first in the round, before anything looks one up.
+ */
+void collect_pending_declarations(ParserContext *ctx);
 
 // decl/ declarations
 void replace_it_with_var(ASTNode *node, char *var_name);

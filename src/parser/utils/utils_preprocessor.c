@@ -475,6 +475,7 @@ void try_parse_macro_const(ParserContext *ctx, const char *content, int may_wait
         return;
     }
 
+    Lexer value_start = l;
     ASTNode *expr = parse_constant_expression(ctx, &l);
     if (!expr)
     {
@@ -490,7 +491,7 @@ void try_parse_macro_const(ParserContext *ctx, const char *content, int may_wait
     }
     else if (may_wait && !ctx->declarations_read)
     {
-        wait_for_constant(ctx, expr, NULL, NULL, name)->is_macro = 1;
+        wait_for_constant(ctx, expr, NULL, NULL, name, &value_start)->is_macro = 1;
     }
 }
 

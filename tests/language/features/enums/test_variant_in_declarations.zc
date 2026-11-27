@@ -1,0 +1,33 @@
+// language/features/enums: test_variant_in_declarations
+// A declaration can name a variant where it needs a constant: the size of an array and the
+// value of a variant of another enum, with the enum written above or below.
+
+struct Before {
+    cells: int[Size::Large];
+    pairs: [int; Size::Small];
+}
+
+enum Size { Small = 2, Large = 5 }
+
+struct After {
+    cells: int[Size::Large];
+}
+
+enum Next { First = Size::Large, Second }
+
+alias Line = int[Size::Small];
+
+test "an array size names a variant" {
+    let before = Before {};
+    expect_eq(sizeof(before.cells) / sizeof(int), (usize)5, "the enum written below");
+    expect_eq(sizeof(before.pairs) / sizeof(int), (usize)2, "as [T; N]");
+    let after = After {};
+    expect_eq(sizeof(after.cells) / sizeof(int), (usize)5, "the enum written above");
+    let line: Line;
+    expect_eq(sizeof(line) / sizeof(int), (usize)2, "in an alias");
+}
+
+test "the value of a variant names a variant of another enum" {
+    expect_eq((int)Next::First, 5, "its value");
+    expect_eq((int)Next::Second, 6, "counts on from it");
+}

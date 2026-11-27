@@ -703,6 +703,7 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
     if (ctx->parse_depth == 0)
     {
         ctx->declarations_read = 1;
+        collect_pending_declarations(ctx);
         parse_pending_global_values(ctx);
         resolve_pending_constants(ctx);
         resolve_pending_type_names(ctx);
@@ -738,6 +739,8 @@ ASTNode *parse_program(ParserContext *ctx, Lexer *l)
     ctx->pending_type_names = NULL;
     ctx->pending_constants = NULL;
     ctx->pending_global_values = NULL;
+    ctx->pending_collections = NULL;
+    ctx->pending_collections_tail = NULL;
     ctx->pending_declarations = NULL;
     ctx->pending_declarations_tail = NULL;
     ctx->impl_slot = NULL;

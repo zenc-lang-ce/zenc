@@ -57,7 +57,7 @@ void read_def_value(ParserContext *ctx, Lexer *l, ASTNode *node, ZenSymbol *symb
     }
     else if (may_wait)
     {
-        wait_for_constant(ctx, value, NULL, symbol, node->token);
+        wait_for_constant(ctx, value, NULL, symbol, node->token, NULL);
     }
     // Any other value without a type gives the `def` its type, as it gives a `let` its own: a
     // float or a string literal, a struct literal.

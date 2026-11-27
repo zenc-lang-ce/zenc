@@ -367,6 +367,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         {
             lexer_next(l); // eat ;
             Token size_token = lexer_peek(l);
+            Lexer size_start = *l;
             ASTNode *size_expr = parse_constant_expression(ctx, l);
             int size = 0;
             int known = array_size_now(ctx, size_expr, &size);
@@ -387,7 +388,7 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             arr->array_size = size;
             if (known == 0)
             {
-                wait_for_constant(ctx, size_expr, arr, NULL, size_token);
+                wait_for_constant(ctx, size_expr, arr, NULL, size_token, &size_start);
             }
             return arr;
         }
