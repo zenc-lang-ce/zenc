@@ -1296,6 +1296,11 @@ TypeAlias *find_type_alias_node(ParserContext *ctx, const char *name);
  *        or the one the file imports under it (`import { Width as Span }`); NULL when none.
  */
 TypeAlias *find_written_type_alias(ParserContext *ctx, const char *name);
+/**
+ * @brief The alias `scope::name` names: the one the module imported as `scope` declares by
+ *        `name`; NULL when `scope` is not a module or it declares no alias by that name.
+ */
+TypeAlias *find_module_type_alias(ParserContext *ctx, const char *scope, const char *name);
 char *extract_module_name(const char *path);
 char *module_prefix_for(ParserContext *ctx, const char *path);
 int check_impl(ParserContext *ctx, const char *trait_name, const char *type_name);

@@ -704,11 +704,12 @@ static void resolve_pending_type_name(ParserContext *ctx, PendingTypeName *list,
     Type *t = p->type;
     // A copy of a known alias, or a name (with no arguments) that turned out to be one.
     TypeAlias *alias = p->alias;
-    if (!alias && !p->scope && t->kind == TYPE_STRUCT && t->count == 0)
+    if (!alias && t->kind == TYPE_STRUCT && t->count == 0)
     {
-        alias = find_written_type_alias(ctx, p->name);
+        alias = p->scope ? find_module_type_alias(ctx, p->scope, p->name)
+                         : find_written_type_alias(ctx, p->name);
     }
-    if (p->scope)
+    if (p->scope && !alias)
     {
         // `m::Name`, now that `m` is imported.
         t->name = qualified_type_name(ctx, p->scope, p->name);
@@ -940,6 +941,14 @@ TypeAlias *find_written_type_alias(ParserContext *ctx, const char *name)
         alias = imported ? find_type_alias_node(ctx, imported->symbol) : NULL;
     }
     return alias;
+}
+
+TypeAlias *find_module_type_alias(ParserContext *ctx, const char *scope, const char *name)
+{
+    Module *mod = imported_module(ctx, scope);
+    ASTNode *decl = mod && !mod->is_c_header ? find_file_declaration(ctx, mod->path, name) : NULL;
+    return decl && decl->kind == NODE_TYPE_ALIAS ? find_type_alias_node(ctx, decl->type_alias.alias)
+                                                 : NULL;
 }
 
 char *type_declaration_name(ParserContext *ctx, const char *name)
