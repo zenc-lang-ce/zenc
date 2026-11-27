@@ -66,10 +66,11 @@ impl StaticArena {
             }
         }
 
-        // Otherwise, allocate new space and copy
+        // Otherwise, allocate new space and copy what fits in it
         let new_ptr = (T*)self.alloc_bytes(new_size);
-        if (old_ptr != NULL && old_size > 0) {
-            memcpy(new_ptr, old_ptr, old_size);
+        let copy_size = if (old_size < new_size) { old_size } else { new_size };
+        if (old_ptr != NULL && copy_size > 0) {
+            memcpy(new_ptr, old_ptr, copy_size);
         }
         return new_ptr;
     }
