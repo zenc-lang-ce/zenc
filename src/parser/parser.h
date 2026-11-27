@@ -1591,6 +1591,11 @@ void collect_declaration(ParserContext *ctx, ASTNode *node);
  */
 void collect_wildcard_import(ParserContext *ctx, const char *module_base, const char *module_path);
 /**
+ * @brief Registers the variant `variant` of the enum `enum_node`: its value, and its constructor
+ *        when it carries values.
+ */
+void collect_variant(ParserContext *ctx, ASTNode *enum_node, ASTNode *variant);
+/**
  * @brief Registers the declarations read while the declarations were (PendingCollection), in the
  *        order read, each in its module: first in the round, before anything looks one up.
  */

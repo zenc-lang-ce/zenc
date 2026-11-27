@@ -378,6 +378,7 @@ struct ASTNode
             Type *payload;
             int payload_count; ///< Values the variant carries; several make a tuple payload.
             int tag_id;
+            int value_pending; ///< Its value waits for a constant: `tag_id` is not it yet.
         } variant;
 
         struct
@@ -391,6 +392,8 @@ struct ASTNode
             char **generic_params; // `T` of `enum Option<T>` (an enum declares one at most).
             int generic_param_count;
             int is_export;
+            char *written_link_name; ///< Its @link_name as written, which names its constructors.
+            int variants_collected;  ///< Its variants were registered as they were read.
         } enm;
 
         struct
