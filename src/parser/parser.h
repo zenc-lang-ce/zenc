@@ -1340,10 +1340,10 @@ char *type_declaration_name(ParserContext *ctx, const char *name);
  */
 char *qualified_type_name(ParserContext *ctx, const char *scope, const char *name);
 /**
- * @brief The function a bare name names in the module being parsed: the module's own
- *        (`prefix__helper`) before a function of the program called so; NULL when the
- *        module has none, outside a module parsed with a prefix, or when a local or a
- *        parameter called so hides it. Same rule as module_type_name.
+ * @brief The function a bare name names where it is written: one the file imports by name or
+ *        with `as *`, or, in a module parsed with a prefix, the module's own (`prefix__helper`)
+ *        before a function of the program called so. NULL when it names neither, or when a
+ *        local or a parameter called so hides it. Same rule as type_declaration_name.
  */
 char *module_function_name(ParserContext *ctx, const char *name);
 /**

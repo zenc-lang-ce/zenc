@@ -1,0 +1,14 @@
+// Helper for test_selective_import_functions.zc: a function and a struct imported with `as *`.
+
+struct Pair {
+    left: int;
+    right: int;
+}
+
+fn sum_pair(pair: Pair) -> int {
+    return pair.left + pair.right;
+}
+
+fn make_pair() -> Pair {
+    return Pair { left: 1, right: 2 };
+}

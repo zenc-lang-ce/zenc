@@ -1,0 +1,41 @@
+// language/modules: test_selective_import_functions
+// What a module declares can be imported by name (`import { f } from`), under another name
+// (`f as g`) and all at once (`as *`): its functions are called by the bare name, as its types
+// are named. An empty literal names the struct too.
+import { Cell, twice, make_cell as build, same, COUNTER, LIMIT } from "./test_modules/_selective_functions.zc";
+import "./test_modules/_selective_functions.zc" as cells;
+import "./test_modules/_wildcard_functions.zc" as *;
+
+fn hidden() -> int {
+    let twice = 5;
+    return twice;
+}
+
+test "a function imported by name" {
+    expect_eq(twice(4), 8, "called by its name");
+    let cell = build();
+    expect_eq(cell.value, 3, "called by the name the import gives it");
+    expect_eq(same(5), 5, "a generic function");
+    let double = twice;
+    expect_eq(double(2), 4, "as a value");
+    expect_eq(hidden(), 5, "a local with its name hides it");
+}
+
+test "a global and a def imported by name" {
+    expect_eq(COUNTER, 7, "a global");
+    expect_eq(LIMIT, 4, "a def");
+}
+
+test "an empty literal of an imported struct" {
+    let empty = Cell {};
+    expect_eq(empty.value, 0, "imported by name");
+    let blank = cells::blank_cell();
+    expect_eq(blank.value, 0, "the module's own struct, in the module");
+}
+
+test "a module imported with as *" {
+    let pair = make_pair();
+    expect_eq(sum_pair(pair), 3, "its functions");
+    let other = Pair {};
+    expect_eq(other.left, 0, "an empty literal of its struct");
+}
