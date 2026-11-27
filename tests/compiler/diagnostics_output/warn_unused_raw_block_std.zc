@@ -1,0 +1,8 @@
+// ARGS: build
+// The parameters that std/sys/fs.zc and std/regex.zc use only in raw blocks are used: importing
+// them reports nothing.
+
+import "std/sys/fs.zc"
+import "std/regex.zc"
+
+fn main() {}

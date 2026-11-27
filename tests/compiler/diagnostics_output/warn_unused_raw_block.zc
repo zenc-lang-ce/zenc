@@ -1,0 +1,70 @@
+// ARGS: build
+// A parameter or local named in a raw block is used: no warning for it, in a function, a
+// method or nested braces. A name that only follows `.` or `->`, or only appears in a C string
+// or comment, is not a use, and a raw block elsewhere in the body hides nothing: those warn.
+
+struct Counter {
+    count: int;
+}
+
+fn twice(x: int) -> int {
+    let r: int = 0;
+    raw { r = x * 2; }
+    return r;
+}
+
+fn local_in_raw() -> int {
+    let y: int = 5;
+    let out: int = 0;
+    raw { out = y + 1; }
+    return out;
+}
+
+fn nested_braces(n: int) -> int {
+    let r: int = 0;
+    raw { if (n > 0) { for (int i = 0; i < n; i++) { r += i; } } }
+    return r;
+}
+
+impl Counter {
+    fn add(self, k: int) -> int {
+        let r: int = 0;
+        raw { r = self->count + k; }
+        return r;
+    }
+}
+
+fn dead_param(alive: int, dead: int) -> int {
+    let r: int = 0;
+    raw { r = alive; }
+    return r;
+}
+
+fn field_only(c: Counter*, count: int) -> int {
+    let r: int = 0;
+    raw { r = c->count + (*c).count; }
+    return r;
+}
+
+fn text_only(in_string: int, in_comment: int) -> int {
+    let r: int = 0;
+    raw {
+        const char *t = "in_string";
+        /* in_comment */ // in_comment
+        r = (int)t[0];
+    }
+    return r;
+}
+
+fn local_in_comment() -> int {
+    let ghost: int = 1;
+    raw { /* ghost */ }
+    return 0;
+}
+
+fn main() {
+    let c = Counter { count: 3 };
+    let total = twice(21) + local_in_raw() + nested_braces(4) + c.add(2) + dead_param(1, 2) +
+                field_only(&c, 0) + text_only(0, 0) + local_in_comment();
+    raw { printf("%d\n", total); }
+}

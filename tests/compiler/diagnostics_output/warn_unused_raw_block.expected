@@ -1,0 +1,38 @@
+   Compiling tests/compiler/diagnostics_output/warn_unused_raw_block.zc...
+warning: Unused parameter 'dead' in function 'dead_param'
+  --> tests/compiler/diagnostics_output/warn_unused_raw_block.zc:37:27
+   |
+37 | fn dead_param(alive: int, dead: int) -> int {
+   |                           ^ here
+   |
+   = note: Consider prefixing with '_' if intentionally unused
+warning: Unused parameter 'count' in function 'field_only'
+  --> tests/compiler/diagnostics_output/warn_unused_raw_block.zc:43:28
+   |
+43 | fn field_only(c: Counter*, count: int) -> int {
+   |                            ^ here
+   |
+   = note: Consider prefixing with '_' if intentionally unused
+warning: Unused parameter 'in_comment' in function 'text_only'
+  --> tests/compiler/diagnostics_output/warn_unused_raw_block.zc:49:30
+   |
+49 | fn text_only(in_string: int, in_comment: int) -> int {
+   |                              ^ here
+   |
+   = note: Consider prefixing with '_' if intentionally unused
+warning: Unused parameter 'in_string' in function 'text_only'
+  --> tests/compiler/diagnostics_output/warn_unused_raw_block.zc:49:14
+   |
+49 | fn text_only(in_string: int, in_comment: int) -> int {
+   |              ^ here
+   |
+   = note: Consider prefixing with '_' if intentionally unused
+warning: Unused variable 'ghost'
+  --> tests/compiler/diagnostics_output/warn_unused_raw_block.zc:60:9
+   |
+60 |     let ghost: int = 1;
+   |         ^ here
+   |
+   = note: Consider removing it or prefixing with '_'
+    Finished build in Xs with 0 errors and 5 warnings
+[exit 0]
