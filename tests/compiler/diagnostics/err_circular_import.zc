@@ -1,6 +1,0 @@
-// EXPECT: FAIL
-// compiler/diagnostics: circular import should fail
-
-import "tests/compiler/diagnostics/_circ_a.zc"
-
-fn main() {}

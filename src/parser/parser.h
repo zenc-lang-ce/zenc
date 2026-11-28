@@ -289,14 +289,15 @@ typedef struct TypeAlias
  */
 typedef struct ModuleState
 {
-    zmap_ModMap modules;           ///< Map: alias → Module*.
-    zmap_SelMap selective_imports; ///< Map: symbol → SelectiveImport*.
-    char *current_module_prefix;   ///< Prefix for current module (namespacing).
-    char *current_module_alias;    ///< Alias the current module is imported with (`math` of
-                                   ///< `import "m.zc" as math`); NULL for a selective import.
-    zmap_FileSet imported_files;   ///< Set: imported file paths (key=value).
-    zmap_FileSet
-        currently_parsing; ///< Set: files whose import is in progress (for cycle detection).
+    zmap_ModMap modules;             ///< Map: alias → Module*.
+    zmap_SelMap selective_imports;   ///< Map: symbol → SelectiveImport*.
+    char *current_module_prefix;     ///< Prefix for current module (namespacing).
+    char *current_module_alias;      ///< Alias the current module is imported with (`math` of
+                                     ///< `import "m.zc" as math`); NULL for a selective import.
+    zmap_FileSet imported_files;     ///< Set: imported file paths (key=value).
+    zmap_FileSet currently_parsing;  ///< Set: files whose import is in progress: not read again.
+    const char *primary_file;        ///< The file the program starts in, as the command names it.
+    char *primary_real_path;         ///< Its real path, the one an import of it resolves to.
     zmap_PluginMap imported_plugins; ///< Map: alias → ImportedPlugin*.
     zmap_FileSet wildcard_imports;   ///< Set: module base names imported via `as *`.
     /// The same imports by the file that makes them (stage 4, step 5 of the architecture plan):
@@ -1395,6 +1396,16 @@ void record_file_dependency(ParserContext *ctx, const char *importer, const char
  */
 int file_sees(ParserContext *ctx, const char *from, const char *to);
 void mark_file_imported(ParserContext *ctx, const char *path);
+/**
+ * @brief Records `path` as the file the program starts in, being read: a module that imports it
+ *        back names that file, and does not read it again as a module of its own.
+ */
+void begin_primary_file(ParserContext *ctx, const char *path);
+/**
+ * @brief The name the compiler knows the file at the resolved path `path` by: the one the
+ *        command gave for the file the program starts in, else `path`.
+ */
+const char *known_file_name(ParserContext *ctx, const char *path);
 /**
  * @brief Whether the headers of the C preamble declare `name` (strstr, fputs, va_end...): it
  *        can be called without a Zen C declaration, and a declaration needs no prototype.
