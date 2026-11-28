@@ -162,6 +162,15 @@ ASTNode *parse_include(ParserContext *ctx, Lexer *l)
     return n;
 }
 
+// Registers `import "path" as *` of the module `module_base` for the file being parsed, once the
+// module's declarations are read: by an earlier import, or by this one.
+static void register_wildcard_import(ParserContext *ctx, char *module_base, const char *path)
+{
+    collect_wildcard_import(ctx, module_base, path);
+    zmap_put(&ctx->imports.wildcard_imports, module_base, module_base);
+    record_file_wildcard_import(ctx, module_base, path);
+}
+
 ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
 {
     lexer_next(l);
@@ -378,13 +387,29 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
     }
     record_file_dependency(ctx, ctx->current_filename, fn);
 
+    // The names imported one by one, whether the file is read now or was read by an earlier
+    // import.
+    char *module_base_name = NULL;
+    if (is_selective)
+    {
+        module_base_name = module_prefix_for(ctx, fn);
+        for (size_t i = 0; i < symbols.length; i++)
+        {
+            register_selective_import(ctx, symbols.data[i], aliases.data[i], module_base_name, fn);
+            record_file_selective_import(ctx, symbols.data[i], aliases.data[i], module_base_name,
+                                         fn);
+        }
+    }
+
     if (is_file_imported(ctx, fn))
     {
         // The file is not read again (a std module may already have brought in the same C
-        // header, the language server parses every file of the workspace), but `as name` still
-        // belongs to this import and is registered. Its declarations keep the names of the
-        // first import: `name::member` finds the module's own declaration by the name the file
-        // writes (qualified_type_name), whatever its C name is; a C header's keep their C names.
+        // header, the language server parses every file of the workspace), but what this import
+        // names still belongs to it and is registered: `as name`, the names imported one by
+        // one (above), `as *`. Its declarations keep the names of the first import:
+        // `name::member` and a name imported one by one find the module's own declaration by the
+        // name the file writes (qualified_type_name, imported_c_name), whatever its C name is; a
+        // C header's keep their C names.
         if (!is_selective)
         {
             Token next_tok = lexer_peek(l);
@@ -410,6 +435,10 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
                         zmap_put(&ctx->imports.modules, alias, m);
                     }
                     record_file_import(ctx, alias, fn, m);
+                }
+                else if (alias_tok.len == 1 && *alias_tok.start == '*' && !is_header)
+                {
+                    register_wildcard_import(ctx, module_prefix_for(ctx, fn), fn);
                 }
             }
         }
@@ -444,18 +473,6 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         return NULL;
     }
     zmap_put(&ctx->imports.currently_parsing, fn, fn);
-
-    char *module_base_name = NULL;
-    if (is_selective)
-    {
-        module_base_name = module_prefix_for(ctx, fn);
-        for (size_t i = 0; i < symbols.length; i++)
-        {
-            register_selective_import(ctx, symbols.data[i], aliases.data[i], module_base_name, fn);
-            record_file_selective_import(ctx, symbols.data[i], aliases.data[i], module_base_name,
-                                         fn);
-        }
-    }
 
     char *alias = NULL;
     int is_wildcard = 0;
@@ -623,16 +640,10 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
     zmap_remove(&ctx->imports.currently_parsing, fn);
     mark_file_imported(ctx, fn);
 
-    if (is_wildcard && temp_module_prefix)
-    {
-        collect_wildcard_import(ctx, temp_module_prefix, fn);
-        zmap_put(&ctx->imports.wildcard_imports, temp_module_prefix, temp_module_prefix);
-    }
-
     ctx->current_filename = (char *)saved_fn;
     if (is_wildcard && temp_module_prefix)
     {
-        record_file_wildcard_import(ctx, temp_module_prefix, fn);
+        register_wildcard_import(ctx, temp_module_prefix, fn);
     }
 
     ctx->imports.current_module_prefix = prev_module_prefix;

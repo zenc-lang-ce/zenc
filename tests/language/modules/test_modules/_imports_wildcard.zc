@@ -1,0 +1,14 @@
+// A module that imports with `as *` what it uses (test_module_imports_inside.zc).
+import "./_selective_shapes.zc" as *;
+import "./_wildcard_functions.zc" as *;
+
+struct Slot {
+    tile: Tile;
+    pair: Pair;
+}
+
+fn slot_total() -> int {
+    let slot = Slot { tile: Tile { x: 2, y: 3 }, pair: make_pair() };
+    let empty = Pair {};
+    return slot.tile.x * slot.tile.y + sum_pair(slot.pair) + empty.left + (int)Corner::Bottom;
+}

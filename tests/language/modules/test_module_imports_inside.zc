@@ -1,0 +1,27 @@
+// language/modules: test_module_imports_inside
+// A module imported with an alias uses what it imports itself by name (`import { X } from`) and
+// with `as *`, as the program does. A file imported a second time, by name or with `as *`, gives
+// its names too.
+import "./test_modules/_imports_by_name.zc" as named;
+import "./test_modules/_imports_wildcard.zc" as starred;
+import "./test_modules/_geo.zc" as geo;
+import { create as fresh, Builder } from "./test_modules/_geo.zc";
+import "./test_modules/_simple.zc" as simple;
+import "./test_modules/_simple.zc" as *;
+
+test "a module that imports by name" {
+    assert(named::board_total() == 2 + 3 + 1 + 4, "types, a variant, an alias and an empty literal");
+    assert(named::shapes_total() == 4 + 6 + 3, "an enum under another name and functions");
+}
+
+test "a module that imports with as *" {
+    assert(starred::slot_total() == 6 + 3 + 1, "types, functions, a variant and an empty literal");
+}
+
+test "a file imported with an alias and then by name or with as *" {
+    assert(fresh() == geo::create(), "a function under the name the second import gives");
+    let builder = Builder {};
+    let other = geo::Builder {};
+    assert(sizeof(builder) == sizeof(other), "a struct by its name");
+    assert(foo() == simple::foo(), "a function of a file imported again with as *");
+}

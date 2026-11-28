@@ -514,15 +514,18 @@ static const char *declaration_c_name(ASTNode *decl)
     }
 }
 
-// The import, one by one or with `as *`, that brings `name` into `file`; NULL when none. In 0.5
-// (FF_COMPATIBILITY_0_5) the program's table, where `as *` registers each name of the module.
-// From 0.6 the file's own imports, then the modules it imports with `as *`.
+// The import, one by one or with `as *`, that brings `name` into `file`; NULL when none: the
+// file's own imports, then the modules it imports with `as *`. In 0.5 (FF_COMPATIBILITY_0_5) a
+// file that is not a module parsed with a prefix sees the program's table instead, where `as *`
+// registers each name of the module: what any such file imports, every one of them sees.
 static SelectiveImport *imported_by_name(ParserContext *ctx, const char *file, const char *name)
 {
 #if FF_COMPATIBILITY_0_5
-    (void)file;
-    return find_selective_import(ctx, name);
-#else
+    if (!ctx->imports.current_module_prefix)
+    {
+        return find_selective_import(ctx, name);
+    }
+#endif
     if (!file)
     {
         return NULL;
@@ -551,7 +554,6 @@ static SelectiveImport *imported_by_name(ParserContext *ctx, const char *file, c
         }
     }
     return NULL;
-#endif
 }
 
 char *module_prefixed_name(ParserContext *ctx, const char *prefix, const char *name)
@@ -934,7 +936,7 @@ void resolve_pending_type_names(ParserContext *ctx)
 TypeAlias *find_written_type_alias(ParserContext *ctx, const char *name)
 {
     TypeAlias *alias = find_type_alias_node(ctx, name);
-    if (!alias && !ctx->imports.current_module_prefix)
+    if (!alias)
     {
         // Imported under another name (`import { Width as Span }`): by the name it declares.
         SelectiveImport *imported = imported_by_name(ctx, ctx->current_filename, name);
@@ -953,15 +955,12 @@ TypeAlias *find_module_type_alias(ParserContext *ctx, const char *scope, const c
 
 char *type_declaration_name(ParserContext *ctx, const char *name)
 {
-    // Imported one by one, or with `as *`: the module's type, by the name the import gives it.
-    if (!ctx->imports.current_module_prefix)
+    // Imported one by one, or with `as *`: the module's declaration of it, by the name the import
+    // gives it.
+    SelectiveImport *imported = imported_by_name(ctx, ctx->current_filename, name);
+    if (imported)
     {
-        // Imported one by one, or with `as *`: the module's declaration of it.
-        SelectiveImport *imported = imported_by_name(ctx, ctx->current_filename, name);
-        if (imported)
-        {
-            return imported_c_name(ctx, imported);
-        }
+        return imported_c_name(ctx, imported);
     }
     return module_type_name(ctx, name);
 }
@@ -1000,16 +999,13 @@ char *module_function_name(ParserContext *ctx, const char *name)
     }
     // Imported one by one, or with `as *`: the module's function, as type_declaration_name
     // finds a type.
-    if (!ctx->imports.current_module_prefix)
+    SelectiveImport *imported = imported_by_name(ctx, ctx->current_filename, name);
+    ASTNode *decl = imported && imported->source_path
+                        ? find_file_declaration(ctx, imported->source_path, imported->symbol)
+                        : NULL;
+    if (decl && is_function_declaration(decl))
     {
-        SelectiveImport *imported = imported_by_name(ctx, ctx->current_filename, name);
-        ASTNode *decl = imported && imported->source_path
-                            ? find_file_declaration(ctx, imported->source_path, imported->symbol)
-                            : NULL;
-        if (decl && is_function_declaration(decl))
-        {
-            return imported_c_name(ctx, imported);
-        }
+        return imported_c_name(ctx, imported);
     }
     return module_own_name(ctx, name, is_function_declaration);
 }
