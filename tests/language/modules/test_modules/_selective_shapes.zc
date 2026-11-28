@@ -15,3 +15,7 @@ struct Tile {
     x: int;
     y: int;
 }
+
+alias Side = int;
+
+alias Width = int;

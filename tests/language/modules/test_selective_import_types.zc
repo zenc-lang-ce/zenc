@@ -1,7 +1,8 @@
 // language/modules: the types of a module imported one by one, or under another name, are used
 // by that name: the variants of its enums build values, compare and name the cases of a `match`,
-// and the program implements methods and traits for its structs.
-import { Corner, Figure as Shape, Tile } from "./test_modules/_selective_shapes.zc";
+// and the program implements methods and traits for its structs. An alias imported that way is the
+// type it names, in a declaration too.
+import { Corner, Figure as Shape, Tile, Side, Width as Span } from "./test_modules/_selective_shapes.zc";
 
 trait Sized {
     fn size(self) -> int;
@@ -32,6 +33,28 @@ fn area(f: Shape) -> int {
         },
     }
     return -1;
+}
+
+struct Frame {
+    side: Side;
+    span: Span;
+}
+
+fn perimeter(side: Side, span: Span) -> Side {
+    return (side + span) * 2;
+}
+
+let edge: Side = 4;
+
+test "an alias imported one by one is the type it names" {
+    let frame = Frame { side: 3, span: 5 };
+    assert(frame.side + frame.span == 8, "as the type of a field");
+    assert(perimeter(frame.side, frame.span) == 16, "as the type of a parameter and of a result");
+    assert(edge + 1 == 5, "as the type of a global");
+    let local: Side = frame.side * 2;
+    assert(local == 6, "as the type of a local");
+    let wide: Span = frame.span + 1;
+    assert(wide + (Span)2 == 8, "imported under another name, as the type of a local and of a cast");
 }
 
 test "a variant without a payload of an enum imported one by one" {
