@@ -66,11 +66,16 @@ impl StaticArena {
             }
         }
 
-        // Otherwise, allocate new space and copy what fits in it
+        // A smaller block stays where it is: the arena never reuses the space of a
+        // block that is not the last, so moving it would only use more of it.
+        if (new_size <= old_size) {
+            return old_ptr;
+        }
+
+        // Otherwise, allocate new space and copy
         let new_ptr = (T*)self.alloc_bytes(new_size);
-        let copy_size = if (old_size < new_size) { old_size } else { new_size };
-        if (old_ptr != NULL && copy_size > 0) {
-            memcpy(new_ptr, old_ptr, copy_size);
+        if (old_ptr != NULL && old_size > 0) {
+            memcpy(new_ptr, old_ptr, old_size);
         }
         return new_ptr;
     }
