@@ -1,0 +1,50 @@
+// test_json_parse_unicode: JsonValue::parse reads \uXXXX escapes as UTF-8
+import "std/io.zc"
+import "std/json.zc"
+
+// Whether a JSON text parses to the string `expected`.
+fn parses_to(json: char*, expected: char*) -> bool {
+    let r = JsonValue::parse(json);
+    if (r.is_err()) {
+        return false;
+    }
+    let s = r.unwrap().as_string();
+    return s.is_some() && strcmp(s.unwrap(), expected) == 0;
+}
+
+test "parse reads a \\u escape as the character in UTF-8" {
+    assert(parses_to("\"caf\\u00e9\"", "caf\xC3\xA9"), "\\u00e9 should read as e-acute in 2 bytes");
+    assert(parses_to("\"caf\\u00E9\"", "caf\xC3\xA9"), "\\u00E9 with upper-case digits should read as e-acute");
+    assert(parses_to("\"\\u4e2d\\u6587\"", "\xE4\xB8\xAD\xE6\x96\x87"), "\\u4e2d\\u6587 should read as two characters of 3 bytes");
+    assert(parses_to("\"a\\u0001z\"", "a\x01z"), "\\u0001 should read as the control character U+0001");
+    assert(parses_to("\"\\u0041\\u002F\"", "A/"), "\\u0041\\u002F should read as ASCII A/");
+}
+
+test "parse reads a surrogate pair as one character" {
+    assert(parses_to("\"\\ud83d\\ude00\"", "\xF0\x9F\x98\x80"), "\\ud83d\\ude00 should read as U+1F600 in 4 bytes");
+    assert(parses_to("\"x\\uD83D\\uDE00y\"", "x\xF0\x9F\x98\x80y"), "a surrogate pair between characters should read as one character");
+}
+
+test "parse reads a surrogate that is not part of a pair as U+FFFD" {
+    assert(parses_to("\"\\ud83d\"", "\xEF\xBF\xBD"), "a high surrogate at the end should read as U+FFFD");
+    assert(parses_to("\"\\ud83dz\"", "\xEF\xBF\xBDz"), "a high surrogate before a character should read as U+FFFD");
+    assert(parses_to("\"\\ude00\"", "\xEF\xBF\xBD"), "a low surrogate alone should read as U+FFFD");
+    assert(parses_to("\"\\ud83d\\u007A\"", "\xEF\xBF\xBDz"), "a high surrogate before another \\u escape should read as U+FFFD");
+}
+
+test "parse rejects a \\u escape without 4 hexadecimal digits" {
+    assert(JsonValue::parse("\"\\u12\"").is_err(), "\\u with 2 digits should be a parse error");
+    assert(JsonValue::parse("\"\\uZZZZ\"").is_err(), "\\u with letters that are not hexadecimal should be a parse error");
+    assert(JsonValue::parse("\"\\u\"").is_err(), "\\u at the end of a string should be a parse error");
+    assert(JsonValue::parse("[\"\\u12x\"]").is_err(), "a bad \\u escape in an array should be a parse error");
+}
+
+test "parse finds a key written with a \\u escape" {
+    let r = JsonValue::parse("{\"caf\\u00e9\":1}");
+    assert(r.is_ok(), "an object with a \\u escape in a key should parse");
+    assert(r.unwrap().get("caf\xC3\xA9").is_some(), "the key should be found under its UTF-8 name");
+}
+
+test "parse keeps the other escapes" {
+    assert(parses_to("\"a\\nb\\t\\\"\\\\\\/\"", "a\nb\t\"\\/"), "the other escapes should read as before");
+}

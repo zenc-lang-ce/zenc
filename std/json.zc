@@ -6,6 +6,7 @@ import "./string.zc"
 import "./result.zc"
 import "./option.zc"
 import "./mem.zc"
+import "./utf8.zc"
 
 @derive(Eq)
 enum JsonType {
@@ -35,6 +36,40 @@ fn _json_skip_ws(data: char*, pos: usize*) {
     }
 }
 
+// The value of the 4 hexadecimal digits at `data[at]`, or -1 when one of them is
+// not a hexadecimal digit. It stops at the first one that is not, so it never
+// reads past the NUL that ends `data`.
+fn _json_hex4(data: char*, at: usize) -> int {
+    let value = 0;
+    for (let i: usize = 0; i < 4; i = i + 1) {
+        let c = data[at + i];
+        let digit = -1;
+        if (c >= '0' && c <= '9') digit = (int)(c - '0');
+        else if (c >= 'a' && c <= 'f') digit = (int)(c - 'a') + 10;
+        else if (c >= 'A' && c <= 'F') digit = (int)(c - 'A') + 10;
+        if (digit < 0) return -1;
+        value = value * 16 + digit;
+    }
+    return value;
+}
+
+// Reads the `\uXXXX` escape whose `u` is at `data[*pos]`, and a second one when
+// the first is a high surrogate, and leaves `*pos` on their last digit. Returns
+// the code point: U+FFFD for a surrogate that is not part of a pair, which UTF-8
+// cannot hold, and -1 when the escape does not have 4 hexadecimal digits.
+fn _json_parse_unicode_escape(data: char*, pos: usize*) -> int {
+    let code = _json_hex4(data, *pos + 1);
+    if (code < 0) return -1;
+    *pos = *pos + 4;
+    if (code >= 0xDC00 && code <= 0xDFFF) return 0xFFFD;
+    if (code < 0xD800 || code > 0xDBFF) return code;
+    if (data[*pos + 1] != '\\' || data[*pos + 2] != 'u') return 0xFFFD;
+    let low = _json_hex4(data, *pos + 3);
+    if (low < 0xDC00 || low > 0xDFFF) return 0xFFFD;
+    *pos = *pos + 6;
+    return 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+}
+
 fn _json_parse_string(data: char*, pos: usize*) -> char* {
     if (data[*pos] != '"') return NULL;
     *pos = *pos + 1;
@@ -43,7 +78,16 @@ fn _json_parse_string(data: char*, pos: usize*) -> char* {
         if (data[*pos] == '\\' && data[*pos + 1] != 0) {
             *pos = *pos + 1;
             let c = data[*pos];
-            if (c == 'n') v.push('\n');
+            if (c == 'u') {
+                let code = _json_parse_unicode_escape(data, pos);
+                if (code < 0) return NULL;
+                let bytes: char[4];
+                let n = Utf8::encode((rune)code, (char*)bytes);
+                for (let i: usize = 0; i < n; i = i + 1) {
+                    v.push(bytes[i]);
+                }
+            }
+            else if (c == 'n') v.push('\n');
             else if (c == 't') v.push('\t');
             else if (c == 'r') v.push('\r');
             else if (c == '"') v.push('"');
