@@ -376,9 +376,14 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         dummy->block.statements = NULL;
         return dummy;
     }
+    // The file the program starts in keeps the name the command gave it.
+    fn = xstrdup(known_file_name(ctx, fn));
     record_file_dependency(ctx, ctx->current_filename, fn);
 
-    if (is_file_imported(ctx, fn))
+    // A file that is being read (it imports, directly or through others, the file that imports
+    // it back) is not read again either: its declarations are registered once every file is
+    // read, and nothing here needs them before.
+    if (is_file_imported(ctx, fn) || zmap_get(&ctx->imports.currently_parsing, fn))
     {
         // The file is not read again (a std module may already have brought in the same C
         // header, the language server parses every file of the workspace), but what this import
@@ -446,22 +451,6 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         return NULL;
     }
 
-    if (zmap_get(&ctx->imports.currently_parsing, fn))
-    {
-        zpanic_at(t, "Circular import detected: '%s'", fn);
-        for (size_t _c = 0; _c < symbols.length; _c++)
-        {
-            zfree(symbols.data[_c]);
-            if (aliases.data[_c])
-            {
-                zfree(aliases.data[_c]);
-            }
-        }
-        zvec_free_Str(&symbols);
-        zvec_free_Str(&aliases);
-        zfree(fn);
-        return NULL;
-    }
     zmap_put(&ctx->imports.currently_parsing, fn, fn);
 
     char *module_base_name = NULL;

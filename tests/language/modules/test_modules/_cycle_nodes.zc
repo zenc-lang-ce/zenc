@@ -1,0 +1,51 @@
+// A module that imports the one that imports it (test_circular_imports.zc): each names the
+// other's types, functions and constants.
+import "./_cycle_edges.zc" as edges;
+
+def CAPACITY = edges::BASE + 1;
+
+struct Node {
+    value: int;
+    edge: edges::Edge*;
+    slots: int[edges::BASE];
+}
+
+enum Kind {
+    Leaf = 2,
+    Branch = edges::BASE + 1,
+}
+
+struct Wrap<T> {
+    item: T;
+}
+
+trait Weighted {
+    fn weight(self) -> int;
+}
+
+impl Weighted for Node {
+    fn weight(self) -> int {
+        return self.value;
+    }
+}
+
+impl Node {
+    fn through(self) -> int {
+        return self.edge.cost;
+    }
+}
+
+fn unwrap(wrapped: Wrap<edges::Edge>) -> int {
+    return wrapped.item.cost;
+}
+
+fn same<T>(value: T) -> T {
+    return value;
+}
+
+fn down(n: int) -> int {
+    if n == 0 {
+        return 0;
+    }
+    return edges::up(n - 1) + 1;
+}

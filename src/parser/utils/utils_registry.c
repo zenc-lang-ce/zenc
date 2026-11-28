@@ -1268,6 +1268,28 @@ int file_sees(ParserContext *ctx, const char *from, const char *to)
     return file_reaches(ctx, from, to, &seen);
 }
 
+void begin_primary_file(ParserContext *ctx, const char *path)
+{
+    // An absolute path is resolved as an import of the file is: the same real path.
+    char *absolute = realpath(path, NULL);
+    ctx->imports.primary_file = xstrdup(path);
+    ctx->imports.primary_real_path = absolute ? z_resolve_path(absolute, NULL, ctx->config) : NULL;
+    if (absolute)
+    {
+        libc_free(absolute);
+    }
+    zmap_put(&ctx->imports.currently_parsing, ctx->imports.primary_file, ctx->imports.primary_file);
+}
+
+const char *known_file_name(ParserContext *ctx, const char *path)
+{
+    if (ctx->imports.primary_real_path && strcmp(path, ctx->imports.primary_real_path) == 0)
+    {
+        return ctx->imports.primary_file;
+    }
+    return path;
+}
+
 void mark_file_imported(ParserContext *ctx, const char *path)
 {
     // Duplicate into the arena so the map key outlives callers that free the

@@ -169,6 +169,7 @@ static int compile_program(ZenCompiler *compiler)
         fflush(stdout);
     }
 
+    begin_primary_file(&ctx, compiler->config.input_file);
     ASTNode *root = parse_program(&ctx, &l);
     if (!root)
     {

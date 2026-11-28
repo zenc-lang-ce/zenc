@@ -1,0 +1,47 @@
+// language/modules: test_circular_imports
+// Two modules can import each other, and a module can import the file that imports it: each
+// names the other's types, functions and constants, whichever is read first.
+import "./test_modules/_cycle_nodes.zc" as nodes;
+import "./test_modules/_cycle_edges.zc" as edges;
+import "./test_circular_imports.zc" as me;
+
+struct Local {
+    n: int;
+}
+
+fn local_value() -> int {
+    return 9;
+}
+
+test "structs of two modules that point to each other" {
+    let node = nodes::Node { value: 3, edge: NULL, slots: [0, 0, 0, 0] };
+    let edge = edges::Edge { cost: 5, from: &node };
+    node.edge = &edge;
+    assert(node.through() == 5, "a method that reads through the other module's struct");
+    assert(edge.from.value == 3, "a field of the other module's struct");
+    assert(edges::heavier(&node, &edge) == 9, "a trait of one module implemented in the other");
+}
+
+test "constants that name the other module's" {
+    let capacity = nodes::CAPACITY;
+    assert(capacity == 5, "a def from a def");
+    let node: nodes::Node;
+    assert(sizeof(node.slots) / sizeof(node.slots[0]) == 4, "an array size");
+    assert((int)nodes::Kind::Branch == 5, "the value of a variant");
+    assert((int)edges::Level::Low == 2, "a variant from a variant");
+    assert((int)edges::Level::High == 5, "a variant from a def");
+}
+
+test "generics with the other module's types" {
+    assert(nodes::unwrap(edges::wrap(7)) == 7, "an instance with a struct of the other module");
+}
+
+test "functions that call each other across the modules" {
+    assert(nodes::down(5) == 5, "mutual recursion");
+    assert(edges::around() == 7, "a cycle of three, imported by name");
+}
+
+test "a file that imports itself" {
+    let local = me::Local { n: me::local_value() };
+    assert(local.n == local_value(), "its own names with the alias");
+}

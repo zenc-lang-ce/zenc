@@ -1,0 +1,8 @@
+// The third module of a cycle of three (test_circular_imports.zc): it imports by name the
+// module that imports the one that imports it.
+import { Node, CAPACITY, down as descend } from "./_cycle_nodes.zc";
+
+fn closing() -> int {
+    let node = Node { value: CAPACITY, edge: NULL, slots: [0, 0, 0, 0] };
+    return node.value + descend(2);
+}

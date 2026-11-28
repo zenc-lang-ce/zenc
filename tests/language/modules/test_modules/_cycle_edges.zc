@@ -1,0 +1,41 @@
+// A module that imports the one that imports it (test_circular_imports.zc).
+import "./_cycle_nodes.zc" as nodes;
+import { Weighted } from "./_cycle_nodes.zc";
+import "./_cycle_ring.zc" as ring;
+
+def BASE = 4;
+
+struct Edge {
+    cost: int;
+    from: nodes::Node*;
+}
+
+enum Level {
+    Low = nodes::Kind::Leaf,
+    High = nodes::CAPACITY,
+}
+
+impl Weighted for Edge {
+    fn weight(self) -> int {
+        return self.cost;
+    }
+}
+
+fn wrap(cost: int) -> nodes::Wrap<Edge> {
+    return nodes::Wrap<Edge> { item: Edge { cost: cost, from: NULL } };
+}
+
+fn heavier(node: nodes::Node*, edge: Edge*) -> int {
+    return node.weight() + edge.weight() + nodes::same(1);
+}
+
+fn up(n: int) -> int {
+    if n == 0 {
+        return 0;
+    }
+    return nodes::down(n - 1) + 1;
+}
+
+fn around() -> int {
+    return ring::closing();
+}
