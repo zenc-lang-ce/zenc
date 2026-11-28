@@ -1,0 +1,55 @@
+// test_json_stringify: JsonValue::stringify escapes object keys as it escapes string values
+import "std/io.zc"
+import "std/json.zc"
+
+fn stringify_one_key(key: char*) -> String {
+    let o = JsonValue::object();
+    o.set(key, JsonValue::number(1.0));
+    let buf = String::new("");
+    o.stringify(&buf);
+    return buf;
+}
+
+fn reads_back(json: char*, key: char*) -> bool {
+    let back = JsonValue::parse(json);
+    return back.is_ok() && back.unwrap().get(key).is_some();
+}
+
+test "stringify escapes the special characters of a key" {
+    let quote = stringify_one_key("a\"b");
+    assert(quote.eq_str("{\"a\\\"b\":1}"), "stringify should escape a quote in a key");
+    assert(reads_back(quote.c_str(), "a\"b"), "a key with a quote should read back the same");
+
+    let backslash = stringify_one_key("a\\b");
+    assert(backslash.eq_str("{\"a\\\\b\":1}"), "stringify should escape a backslash in a key");
+    assert(reads_back(backslash.c_str(), "a\\b"), "a key with a backslash should read back the same");
+
+    let newline = stringify_one_key("a\nb");
+    assert(newline.eq_str("{\"a\\nb\":1}"), "stringify should escape a newline in a key");
+    assert(reads_back(newline.c_str(), "a\nb"), "a key with a newline should read back the same");
+
+    let tab = stringify_one_key("a\tb");
+    assert(tab.eq_str("{\"a\\tb\":1}"), "stringify should escape a tab in a key");
+    assert(reads_back(tab.c_str(), "a\tb"), "a key with a tab should read back the same");
+}
+
+test "stringify escapes the key of a nested object" {
+    let inner = JsonValue::object();
+    inner.set("x\"y", JsonValue::bool(true));
+    let outer = JsonValue::object();
+    outer.set("in", inner);
+    let buf = String::new("");
+    outer.stringify(&buf);
+    assert(buf.eq_str("{\"in\":{\"x\\\"y\":true}}"), "stringify should escape the keys of a nested object");
+}
+
+test "stringify keeps a plain key and escapes a string value as before" {
+    let plain = stringify_one_key("plain");
+    assert(plain.eq_str("{\"plain\":1}"), "stringify should write a plain key as it is");
+
+    let o = JsonValue::object();
+    o.set("k", JsonValue::string("a\"b\\c\nd"));
+    let buf = String::new("");
+    o.stringify(&buf);
+    assert(buf.eq_str("{\"k\":\"a\\\"b\\\\c\\nd\"}"), "stringify should escape a string value");
+}
