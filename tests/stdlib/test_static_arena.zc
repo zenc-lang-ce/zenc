@@ -30,9 +30,27 @@ test "realloc shrinks a block that is not the last allocation" {
 
     let q = a.realloc<byte>(p, 64, 16);
 
-    assert(guard_intact(), "realloc to a smaller size should not write past the new block");
+    assert(guard_intact(), "realloc to a smaller size should not write past the block");
+    assert(q == p, "realloc to a smaller size should keep a block that is not the last where it is");
+    assert(a.used == 72, "realloc to a smaller size should not allocate when the block is not the last");
     for (let i: usize = 0; i < 16; i = i + 1) {
         assert(q[i] == (byte)i, "realloc to a smaller size should keep the first new_count items");
+    }
+}
+
+test "realloc shrinks the last allocation in place" {
+    let a = guarded_arena();
+    let p = a.alloc_n<byte>(64);
+    for (let i: usize = 0; i < 64; i = i + 1) {
+        p[i] = (byte)i;
+    }
+
+    let q = a.realloc<byte>(p, 64, 16);
+
+    assert(q == p, "realloc of the last allocation should keep it where it is");
+    assert(a.used == 16, "realloc of the last allocation to a smaller size should give back the rest");
+    for (let i: usize = 0; i < 16; i = i + 1) {
+        assert(q[i] == (byte)i, "realloc of the last allocation should keep the first new_count items");
     }
 }
 
