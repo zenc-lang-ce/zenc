@@ -1,0 +1,46 @@
+// language/modules: test_module_alias_types
+// An alias of a module, named with the module (`shapes::Id`), is the type it names: in a
+// declaration written above or below the import, in a body, and as the argument of a generic.
+struct Frame {
+    id: shapes::Id;
+    ids: shapes::Ids;
+    later: shapes::Later;
+    wrapped: shapes::Wrap<shapes::Id>;
+    pair: (shapes::Id, bool);
+}
+
+fn next(id: shapes::Id) -> shapes::Id {
+    return id + 1;
+}
+
+import "./test_modules/_module_aliases.zc" as shapes;
+
+alias Mine = shapes::Id;
+
+def TOP: shapes::Id = 4;
+
+let count: shapes::Id = 6;
+
+test "an alias named with its module, in declarations" {
+    let frame = Frame {
+        id: 1,
+        ids: [2, 3],
+        later: shapes::Mark { value: 4 },
+        wrapped: shapes::Wrap<shapes::Id> { item: 5 },
+        pair: (6, true)
+    };
+    assert(frame.id + frame.ids[1] == 4, "as the type of a field and of an array field");
+    assert(frame.later.value == 4, "an alias of a struct declared below it");
+    assert(frame.wrapped.item + 1 == 6, "as the argument of a generic");
+    assert(frame.pair.0 + 1 == 7, "inside a tuple");
+    assert(next(frame.id) == 2, "as the type of a parameter and of a result");
+    assert(TOP + count == 10, "as the type of a def and of a global");
+    let mine: Mine = TOP + 1;
+    assert(mine == 5, "through an alias of the program");
+}
+
+test "an alias named with its module, in a body" {
+    let id: shapes::Id = 3;
+    assert(id * 2 == 6, "as the type of a local");
+    assert((shapes::Id)2 + id == 5, "as the type of a cast");
+}

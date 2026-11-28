@@ -67,12 +67,6 @@ static PendingTypeName *push_pending_type_name(ParserContext *ctx, Type *ty, cha
     return p;
 }
 
-// Whether `scope` of `scope::Name` is a module this file has imported.
-static int is_qualified_scope_known(ParserContext *ctx, const char *scope)
-{
-    return imported_module(ctx, scope) != NULL;
-}
-
 // The `>` that closes a list of generic arguments. A `>>` (two lists closing together, as in
 // `Vec<Vec<int>>`) is split: its first `>` is consumed and the second is left for the outer
 // list. Returns 0 when neither comes next.
@@ -150,7 +144,8 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
         }
 
         // A path: `m::Vector` of a module imported as `m`, `A::B`. While declarations are read,
-        // `m` may be imported further down: the name waits for it (pending_scope).
+        // what `m` declares is not known yet, and `m` itself may be imported further down: the
+        // name waits for the declarations (pending_scope).
         int is_qualified = 0;
         char *pending_scope = NULL;
         char *pending_member = NULL;
@@ -169,10 +164,18 @@ static Type *parse_type_base_impl(ParserContext *ctx, Lexer *l)
             // Map aliases (I32 -> int32_t, string -> char*) using centralized logic
             const char *resolved_suffix = normalize_type_name(suffix);
 
-            if (!is_qualified_scope_known(ctx, name) && !ctx->declarations_read && !pending_scope)
+            if (!ctx->declarations_read && !pending_scope)
             {
                 pending_scope = xstrdup(name);
                 pending_member = xstrdup(resolved_suffix);
+            }
+            // An alias of the module: the type it names.
+            TypeAlias *module_alias =
+                pending_scope ? NULL : find_module_type_alias(ctx, name, resolved_suffix);
+            if (module_alias && lexer_peek(l).kind != TOK_DCOLON)
+            {
+                register_type_usage(ctx, module_alias->alias, next);
+                return alias_type(module_alias);
             }
             char *merged = qualified_type_name(ctx, name, resolved_suffix);
             zfree(name);

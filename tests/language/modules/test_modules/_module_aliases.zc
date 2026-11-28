@@ -1,0 +1,15 @@
+// A module whose aliases a program names with the module (test_module_alias_types.zc).
+
+alias Id = int;
+
+alias Ids = Id[2];
+
+alias Later = Mark;
+
+struct Mark {
+    value: int;
+}
+
+struct Wrap<T> {
+    item: T;
+}
