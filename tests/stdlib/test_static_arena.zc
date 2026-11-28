@@ -69,3 +69,28 @@ test "realloc grows a block that is not the last allocation" {
         assert(q[i] == (byte)(i + 1), "realloc to a larger size should keep the old items");
     }
 }
+
+// An arena that owns _outer[64..256], with memory below it that is not part of it.
+let _outer: [byte; 256];
+
+fn grow_from_below(distance: usize) {
+    let a = StaticArena { data: (byte*)&_outer[64], capacity: 192, used: 0 };
+    let outside = (byte*)&_outer[64 - distance];
+    for (let i: usize = 0; i < distance; i = i + 1) {
+        outside[i] = (byte)(i + 1);
+    }
+
+    let q = a.realloc<byte>(outside, distance, 64);
+
+    assert(q != outside, "realloc should not take memory below the arena for its last allocation");
+    assert(q == (byte*)&_outer[64], "realloc of memory outside the arena should allocate in the arena");
+    assert(a.used == 64, "realloc of memory outside the arena should use new_count bytes of it");
+    for (let i: usize = 0; i < distance; i = i + 1) {
+        assert(q[i] == (byte)(i + 1), "realloc of memory outside the arena should copy its old items");
+    }
+}
+
+test "realloc of memory just below the arena does not grow it in place" {
+    grow_from_below(8);
+    grow_from_below(56);
+}

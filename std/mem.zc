@@ -56,12 +56,13 @@ impl StaticArena {
         let new_size = sizeof(T) * new_count;
         let old_size = sizeof(T) * old_count;
 
-        // If it's the most recent allocation, we can just grow it in place!
-        let aligned_old = (self.used - old_size + 7) & ~7;
-        if ((byte*)self.data + aligned_old == (byte*)old_ptr) {
-            let new_aligned = (aligned_old + new_size + 7) & ~7;
-            if (new_aligned <= self.capacity) {
-                self.used = aligned_old + new_size;
+        // The last allocation is resized in place. It is the block that ends at
+        // `used` (`alloc_bytes` sets `used` to its end), so it starts at
+        // `used - old_size`; a block larger than `used` is not one of the arena's.
+        if (old_size <= self.used) {
+            let start = self.used - old_size;
+            if ((byte*)self.data + start == (byte*)old_ptr && new_size <= self.capacity - start) {
+                self.used = start + new_size;
                 return old_ptr;
             }
         }
